@@ -42,8 +42,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   int _cobertosPorPatrocinio = 0;
 
   // RECEITAS POR TIPO
-  double _totalInscricoes = 0;      // Soma de todos os pagamentos de inscrição
-  double _totalCamisas = 0;          // Soma de todas as camisas pagas (participações + avulsas)
+  double _totalInscricoes = 0;
+  double _totalCamisas = 0;
   double _totalPatrocinios = 0;
 
   // RECEITAS POR FORMA DE PAGAMENTO
@@ -60,7 +60,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'por_tamanho': <String, int>{},
   };
 
-  // 🔥 CAMISAS DOS ALUNOS (participações)
+  // CAMISAS DOS ALUNOS (participações)
   Map<String, dynamic> _camisasParticipacoes = {
     'total': 0,
     'pagas': 0,
@@ -68,7 +68,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'por_tamanho': <String, int>{},
   };
 
-  // 🔥 CAMISAS AVULSAS
+  // CAMISAS AVULSAS
   Map<String, dynamic> _camisasAvulsas = {
     'total': 0,
     'pagas': 0,
@@ -84,7 +84,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'patrocinios_pendentes': 0,
   };
 
-  // 🔥 USOS DE PATROCÍNIO (alunos beneficiados)
+  // USOS DE PATROCÍNIO (alunos beneficiados)
   List<Map<String, dynamic>> _usosPatrocinio = [];
 
   @override
@@ -97,10 +97,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Primeiro carrega patrocínios para ter os usos
+      await _carregarPatrocinios();
+
+      // Depois carrega o resto
       await Future.wait([
         _carregarParticipacoes(),
         _carregarCamisasAvulsas(),
-        _carregarPatrocinios(),
         _carregarGastos(),
       ]);
 
@@ -116,198 +119,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
   }
 
-  // ==================== PARTICIPAÇÕES ====================
-  Future<void> _carregarParticipacoes() async {
-    try {
-      final participacoesSnapshot = await FirebaseFirestore.instance
-          .collection('participacoes_eventos_em_andamento')
-          .where('evento_id', isEqualTo: widget.eventoId)
-          .get();
-
-      debugPrint('📊 Total de participações: ${participacoesSnapshot.docs.length}');
-
-      double totalInscricoes = 0;
-      double totalCamisasParticipacoes = 0;
-      Map<String, double> porForma = {};
-      Map<String, int> camisasPorTamanho = {};
-      int totalCamisasParticipacoesCount = 0;
-      int camisasPagasParticipacoesCount = 0;
-
-      int quitados = 0;
-      int inadimplentes = 0;
-      int cobertosPatrocinio = 0;
-
-      for (var participacao in participacoesSnapshot.docs) {
-        final data = participacao.data();
-        final totalPago = (data['total_pago'] as num?)?.toDouble() ?? 0;
-        final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
-        final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
-        final totalDevido = valorInscricao + valorCamisa;
-        final tamanhoCamisa = data['tamanho_camisa'] as String?;
-
-        // 🔥 VERIFICA SE TEM PAGAMENTO POR PATROCÍNIO
-        final pagamentosSnapshot = await FirebaseFirestore.instance
-            .collection('eventos')
-            .doc(widget.eventoId)
-            .collection('participacoes')
-            .doc(participacao.id)
-            .collection('pagamentos')
-            .where('formaPagamento', isEqualTo: 'PATROCÍNIO')
-            .get();
-
-        bool temPatrocinio = pagamentosSnapshot.docs.isNotEmpty;
-
-        // 🔥 CLASSIFICAÇÃO DO STATUS
-        if (totalPago >= totalDevido - 1) {
-          quitados++;
-        } else if (temPatrocinio) {
-          cobertosPatrocinio++;
-        } else {
-          inadimplentes++;
-        }
-
-        // 🔥 CONTABILIZA RECEITAS (apenas pagamentos confirmados)
-        if (totalPago > 0) {
-          // Busca os pagamentos individuais para saber as formas
-          final todosPagamentos = await FirebaseFirestore.instance
-              .collection('eventos')
-              .doc(widget.eventoId)
-              .collection('participacoes')
-              .doc(participacao.id)
-              .collection('pagamentos')
-              .where('status', isEqualTo: 'confirmado')
-              .get();
-
-          for (var pag in todosPagamentos.docs) {
-            final pagData = pag.data();
-            final valor = (pagData['valor'] as num?)?.toDouble() ?? 0;
-            final forma = pagData['formaPagamento'] as String? ?? 'OUTROS';
-
-            // Separa o que é inscrição do que é camisa
-            if (valorCamisa > 0 && pagData['observacoes']?.contains('camisa') == true) {
-              totalCamisasParticipacoes += valor;
-            } else {
-              totalInscricoes += valor;
-            }
-
-            porForma[forma] = (porForma[forma] ?? 0) + valor;
-          }
-        }
-
-        // 🔥 CONTABILIZA CAMISAS
-        if (tamanhoCamisa != null && tamanhoCamisa.isNotEmpty) {
-          totalCamisasParticipacoesCount++;
-          camisasPorTamanho[tamanhoCamisa] = (camisasPorTamanho[tamanhoCamisa] ?? 0) + 1;
-
-          // Verifica se a camisa foi paga (tem pagamento)
-          if (totalPago >= valorCamisa - 1) {
-            camisasPagasParticipacoesCount++;
-          }
-        }
-      }
-
-      setState(() {
-        _totalParticipantes = participacoesSnapshot.docs.length;
-        _quitados = quitados;
-        _inadimplentes = inadimplentes;
-        _cobertosPorPatrocinio = cobertosPatrocinio;
-
-        _totalInscricoes = totalInscricoes;
-        _totalReceitas = totalInscricoes + totalCamisasParticipacoes + _totalPatrocinios;
-        _totalCamisas += totalCamisasParticipacoes;
-
-        _camisasParticipacoes = {
-          'total': totalCamisasParticipacoesCount,
-          'pagas': camisasPagasParticipacoesCount,
-          'valor': totalCamisasParticipacoes,
-          'por_tamanho': camisasPorTamanho,
-        };
-
-        // Mescla as formas de pagamento
-        porForma.forEach((key, value) {
-          _receitasPorForma[key] = (_receitasPorForma[key] ?? 0) + value;
-        });
-      });
-
-      debugPrint('✅ Inscrições: R\$ ${totalInscricoes.toStringAsFixed(2)}');
-      debugPrint('✅ Camisas (participações): R\$ ${totalCamisasParticipacoes.toStringAsFixed(2)}');
-      debugPrint('📊 Status: Quitados=$quitados, Patrocínio=$cobertosPatrocinio, Inadimplentes=$inadimplentes');
-
-    } catch (e) {
-      debugPrint('❌ Erro ao carregar participações: $e');
-    }
-  }
-
-  // ==================== CAMISAS AVULSAS ====================
-  Future<void> _carregarCamisasAvulsas() async {
-    try {
-      final camisasSnapshot = await FirebaseFirestore.instance
-          .collection('camisas_eventos')
-          .where('evento_id', isEqualTo: widget.eventoId)
-          .get();
-
-      debugPrint('👕 Camisas avulsas: ${camisasSnapshot.docs.length}');
-
-      double totalValor = 0;
-      int pagas = 0;
-      Map<String, int> porTamanho = {};
-
-      for (var camisa in camisasSnapshot.docs) {
-        final data = camisa.data();
-        final valor = (data['valor'] as num?)?.toDouble() ?? 0;
-        final pago = data['pago'] as bool? ?? false;
-        final tamanho = data['tamanho']?.toString() ?? 'OUTRO';
-
-        porTamanho[tamanho] = (porTamanho[tamanho] ?? 0) + 1;
-
-        if (pago && valor > 0) {
-          totalValor += valor;
-          pagas++;
-
-          // Adiciona às receitas por forma
-          _receitasPorForma['CAMISA AVULSA'] = (_receitasPorForma['CAMISA AVULSA'] ?? 0) + valor;
-        }
-      }
-
-      setState(() {
-        _totalReceitas += totalValor;
-        _totalCamisas += totalValor;
-
-        _camisasAvulsas = {
-          'total': camisasSnapshot.docs.length,
-          'pagas': pagas,
-          'valor': totalValor,
-          'por_tamanho': porTamanho,
-        };
-
-        // Combina com as camisas das participações para o resumo geral
-        _detalhesCamisas = {
-          'total_camisas': _camisasParticipacoes['total'] + _camisasAvulsas['total'],
-          'camisas_pagas': _camisasParticipacoes['pagas'] + _camisasAvulsas['pagas'],
-          'valor_total_camisas': _camisasParticipacoes['valor'] + _camisasAvulsas['valor'],
-          'por_tamanho': _combinarMapas(
-            _camisasParticipacoes['por_tamanho'],
-            _camisasAvulsas['por_tamanho'],
-          ),
-        };
-      });
-
-      debugPrint('✅ Camisas avulsas: R\$ ${totalValor.toStringAsFixed(2)}');
-
-    } catch (e) {
-      debugPrint('❌ Erro ao carregar camisas avulsas: $e');
-    }
-  }
-
-  // 🔥 Combina dois mapas de contagem
-  Map<String, int> _combinarMapas(Map<String, int> a, Map<String, int> b) {
-    final result = Map<String, int>.from(a);
-    b.forEach((key, value) {
-      result[key] = (result[key] ?? 0) + value;
-    });
-    return result;
-  }
-
   // ==================== PATROCÍNIOS ====================
   Future<void> _carregarPatrocinios() async {
     try {
@@ -316,6 +127,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           .where('evento_id', isEqualTo: widget.eventoId)
           .get();
 
+      debugPrint('🤝 ===== CARREGANDO PATROCÍNIOS =====');
       debugPrint('🤝 Total de patrocinadores: ${patrocinadoresSnapshot.docs.length}');
 
       double totalPatrocinios = 0;
@@ -326,6 +138,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       for (var patrocinador in patrocinadoresSnapshot.docs) {
         final data = patrocinador.data();
         final status = data['status']?.toString() ?? 'PENDENTE';
+        final nomePatrocinador = data['nome'] ?? 'Patrocinador';
+
+        debugPrint('\n📌 Patrocinador: $nomePatrocinador (${patrocinador.id})');
+        debugPrint('   - Status: $status');
 
         double valorPago = (data['valor_pago'] as num?)?.toDouble() ?? 0;
 
@@ -333,30 +149,50 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           final saldoInicial = (data['saldo_inicial'] as num?)?.toDouble() ?? 0;
           final saldoDisponivel = (data['saldo_disponivel'] as num?)?.toDouble() ?? 0;
           valorPago = saldoInicial - saldoDisponivel;
+          debugPrint('   - Valor pago calculado: R\$ ${valorPago.toStringAsFixed(2)}');
         }
 
-        if (valorPago > 0) {
+        // 🔥 SEMPRE buscar usos, independente do valorPago
+        debugPrint('   🔍 Buscando usos na subcoleção...');
+
+        final usosSnapshot = await patrocinador.reference
+            .collection('usos')
+            .orderBy('data', descending: true)
+            .get();
+
+        debugPrint('   📊 Usos encontrados: ${usosSnapshot.docs.length}');
+
+        double totalUsos = 0;
+
+        for (var uso in usosSnapshot.docs) {
+          final usoData = uso.data();
+          final valorUso = (usoData['valor'] as num?)?.toDouble() ?? 0;
+          totalUsos += valorUso;
+
+          debugPrint('   - Uso: ${usoData['aluno_nome']} - R\$ $valorUso');
+
+          usos.add({
+            'patrocinador': nomePatrocinador,
+            'aluno_nome': usoData['aluno_nome'] ?? 'Aluno',
+            'valor': valorUso,
+            'data': usoData['data'] is Timestamp
+                ? (usoData['data'] as Timestamp).toDate()
+                : DateTime.now(),
+            'observacao': usoData['observacao'] ?? '',
+          });
+        }
+
+        // 🔥 Se tem usos mas valorPago é zero, usa o total dos usos
+        if (totalUsos > 0) {
+          if (valorPago == 0) {
+            valorPago = totalUsos;
+            debugPrint('   🔥 Usando valor dos usos: R\$ $valorPago');
+          }
           totalPatrocinios += valorPago;
           pagos++;
-
-          // 🔥 Busca os usos deste patrocínio
-          final usosSnapshot = await patrocinador.reference
-              .collection('usos')
-              .orderBy('data', descending: true)
-              .get();
-
-          for (var uso in usosSnapshot.docs) {
-            final usoData = uso.data();
-            usos.add({
-              'patrocinador': data['nome'] ?? 'Patrocinador',
-              'aluno_nome': usoData['aluno_nome'] ?? 'Aluno',
-              'valor': (usoData['valor'] as num?)?.toDouble() ?? 0,
-              'data': usoData['data'] is Timestamp
-                  ? (usoData['data'] as Timestamp).toDate()
-                  : DateTime.now(),
-              'observacao': usoData['observacao'] ?? '',
-            });
-          }
+        } else if (valorPago > 0) {
+          totalPatrocinios += valorPago;
+          pagos++;
         } else if (status == 'PENDENTE' || status == 'ATRASADO') {
           pendentes++;
         }
@@ -380,11 +216,201 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         }
       });
 
-      debugPrint('✅ Patrocínios: R\$ ${totalPatrocinios.toStringAsFixed(2)}');
-      debugPrint('📊 Usos de patrocínio: ${usos.length}');
+      debugPrint('\n✅ RESUMO PATROCÍNIOS:');
+      debugPrint('   - Total recebido: R\$ ${totalPatrocinios.toStringAsFixed(2)}');
+      debugPrint('   - Patrocinadores pagos: $pagos');
+      debugPrint('   - Usos encontrados: ${usos.length}');
 
     } catch (e) {
       debugPrint('❌ Erro ao carregar patrocínios: $e');
+    }
+  }
+
+  // ==================== PARTICIPAÇÕES ====================
+  Future<void> _carregarParticipacoes() async {
+    try {
+      final participacoesSnapshot = await FirebaseFirestore.instance
+          .collection('participacoes_eventos_em_andamento')
+          .where('evento_id', isEqualTo: widget.eventoId)
+          .get();
+
+      debugPrint('\n📊 ===== CARREGANDO PARTICIPAÇÕES =====');
+      debugPrint('📊 Total de participações: ${participacoesSnapshot.docs.length}');
+
+      double totalInscricoes = 0;
+      double totalCamisasParticipacoes = 0;
+      Map<String, double> porForma = {};
+      Map<String, int> camisasPorTamanho = {};
+      int totalCamisasParticipacoesCount = 0;
+      int camisasPagasParticipacoesCount = 0;
+
+      int quitados = 0;
+      int inadimplentes = 0;
+      int cobertosPatrocinio = 0;
+
+      // 🔥 Lista de IDs de participantes com patrocínio
+      Set<String> participantesComPatrocinio = _usosPatrocinio
+          .map((uso) => uso['aluno_nome'] as String)
+          .toSet();
+
+      for (var participacao in participacoesSnapshot.docs) {
+        final data = participacao.data();
+        final totalPago = (data['total_pago'] as num?)?.toDouble() ?? 0;
+        final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
+        final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
+        final totalDevido = valorInscricao + valorCamisa;
+        final tamanhoCamisa = data['tamanho_camisa'] as String?;
+        final alunoNome = data['aluno_nome'] as String? ?? '';
+
+        // 🔥 VERIFICA SE ESTE ALUNO TEM USO DE PATROCÍNIO
+        bool temPatrocinio = participantesComPatrocinio.contains(alunoNome);
+
+        debugPrint('\n📌 Aluno: $alunoNome');
+        debugPrint('   - Total devido: R\$ $totalDevido');
+        debugPrint('   - Total pago: R\$ $totalPago');
+        debugPrint('   - Tem patrocínio: $temPatrocinio');
+
+        // 🔥 CLASSIFICAÇÃO CORRETA:
+        if (temPatrocinio) {
+          cobertosPatrocinio++;
+          debugPrint('   ✅ Classificado: COBERTO POR PATROCÍNIO');
+        } else if (totalPago >= totalDevido - 1) {
+          quitados++;
+          debugPrint('   ✅ Classificado: QUITADO');
+        } else {
+          inadimplentes++;
+          debugPrint('   ⚠️ Classificado: INADIMPLENTE');
+        }
+
+        // 🔥 CONTABILIZA RECEITAS
+        if (totalPago > 0) {
+          final todosPagamentos = await FirebaseFirestore.instance
+              .collection('eventos')
+              .doc(widget.eventoId)
+              .collection('participacoes')
+              .doc(participacao.id)
+              .collection('pagamentos')
+              .where('status', isEqualTo: 'confirmado')
+              .get();
+
+          for (var pag in todosPagamentos.docs) {
+            final pagData = pag.data();
+            final valor = (pagData['valor'] as num?)?.toDouble() ?? 0;
+            final forma = pagData['formaPagamento'] as String? ?? 'OUTROS';
+
+            if (forma == 'PATROCÍNIO') {
+              // Já foi contabilizado nos patrocínios
+              continue;
+            } else if (valorCamisa > 0 && pagData['observacoes']?.contains('camisa') == true) {
+              totalCamisasParticipacoes += valor;
+            } else {
+              totalInscricoes += valor;
+            }
+
+            porForma[forma] = (porForma[forma] ?? 0) + valor;
+          }
+        }
+
+        // 🔥 CONTABILIZA CAMISAS
+        if (tamanhoCamisa != null && tamanhoCamisa.isNotEmpty) {
+          totalCamisasParticipacoesCount++;
+          camisasPorTamanho[tamanhoCamisa] = (camisasPorTamanho[tamanhoCamisa] ?? 0) + 1;
+
+          if (totalPago >= valorCamisa - 1) {
+            camisasPagasParticipacoesCount++;
+          }
+        }
+      }
+
+      setState(() {
+        _totalParticipantes = participacoesSnapshot.docs.length;
+        _quitados = quitados;
+        _inadimplentes = inadimplentes;
+        _cobertosPorPatrocinio = cobertosPatrocinio;
+
+        _totalInscricoes = totalInscricoes;
+        _totalReceitas += totalInscricoes + totalCamisasParticipacoes;
+        _totalCamisas += totalCamisasParticipacoes;
+
+        _camisasParticipacoes = {
+          'total': totalCamisasParticipacoesCount,
+          'pagas': camisasPagasParticipacoesCount,
+          'valor': totalCamisasParticipacoes,
+          'por_tamanho': camisasPorTamanho,
+        };
+
+        porForma.forEach((key, value) {
+          _receitasPorForma[key] = (_receitasPorForma[key] ?? 0) + value;
+        });
+      });
+
+      debugPrint('\n✅ RESUMO PARTICIPAÇÕES:');
+      debugPrint('   - Quitados: $quitados');
+      debugPrint('   - Patrocínio: $cobertosPatrocinio');
+      debugPrint('   - Inadimplentes: $inadimplentes');
+      debugPrint('   - Inscrições: R\$ ${totalInscricoes.toStringAsFixed(2)}');
+
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar participações: $e');
+    }
+  }
+
+  // ==================== CAMISAS AVULSAS ====================
+  Future<void> _carregarCamisasAvulsas() async {
+    try {
+      final camisasSnapshot = await FirebaseFirestore.instance
+          .collection('camisas_eventos')
+          .where('evento_id', isEqualTo: widget.eventoId)
+          .get();
+
+      debugPrint('\n👕 ===== CAMISAS AVULSAS =====');
+      debugPrint('👕 Total: ${camisasSnapshot.docs.length}');
+
+      double totalValor = 0;
+      int pagas = 0;
+      Map<String, int> porTamanho = {};
+
+      for (var camisa in camisasSnapshot.docs) {
+        final data = camisa.data();
+        final valor = (data['valor'] as num?)?.toDouble() ?? 0;
+        final pago = data['pago'] as bool? ?? false;
+        final tamanho = data['tamanho']?.toString() ?? 'OUTRO';
+
+        porTamanho[tamanho] = (porTamanho[tamanho] ?? 0) + 1;
+
+        if (pago && valor > 0) {
+          totalValor += valor;
+          pagas++;
+          _receitasPorForma['CAMISA AVULSA'] = (_receitasPorForma['CAMISA AVULSA'] ?? 0) + valor;
+        }
+      }
+
+      setState(() {
+        _totalReceitas += totalValor;
+        _totalCamisas += totalValor;
+
+        _camisasAvulsas = {
+          'total': camisasSnapshot.docs.length,
+          'pagas': pagas,
+          'valor': totalValor,
+          'por_tamanho': porTamanho,
+        };
+
+        _detalhesCamisas = {
+          'total_camisas': _camisasParticipacoes['total'] + _camisasAvulsas['total'],
+          'camisas_pagas': _camisasParticipacoes['pagas'] + _camisasAvulsas['pagas'],
+          'valor_total_camisas': _camisasParticipacoes['valor'] + _camisasAvulsas['valor'],
+          'por_tamanho': _combinarMapas(
+            _camisasParticipacoes['por_tamanho'],
+            _camisasAvulsas['por_tamanho'],
+          ),
+        };
+      });
+
+      debugPrint('✅ Total arrecadado: R\$ ${totalValor.toStringAsFixed(2)}');
+
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar camisas avulsas: $e');
     }
   }
 
@@ -416,11 +442,21 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         _gastosPorCategoria = porCategoria;
       });
 
-      debugPrint('💰 Total de gastos: R\$ ${total.toStringAsFixed(2)}');
+      debugPrint('\n💰 ===== GASTOS =====');
+      debugPrint('💰 Total: R\$ ${total.toStringAsFixed(2)}');
 
     } catch (e) {
       debugPrint('❌ Erro ao carregar gastos: $e');
     }
+  }
+
+  // 🔥 Combina dois mapas de contagem
+  Map<String, int> _combinarMapas(Map<String, int> a, Map<String, int> b) {
+    final result = Map<String, int>.from(a);
+    b.forEach((key, value) {
+      result[key] = (result[key] ?? 0) + value;
+    });
+    return result;
   }
 
   // ==================== EXPORTAR EXCEL ====================
@@ -752,7 +788,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
               const SizedBox(height: 16),
 
-              // ===== GRÁFICO DE PIZZA (RECEITAS VS GASTOS) =====
+              // ===== GRÁFICO DE PIZZA =====
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -826,7 +862,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
               const SizedBox(height: 16),
 
-              // ===== PARTICIPAÇÕES (COM NOVOS STATUS) =====
+              // ===== PARTICIPAÇÕES =====
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -905,7 +941,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Barra de progresso com divisão por status
                     if (_totalParticipantes > 0)
                       Column(
                         children: [
@@ -1017,10 +1052,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   shape: BoxShape.circle,
+                                  color: _getCorFormaPagamento(entry.key),
                                 ),
-                                child: Container(), // placeholder
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -1058,7 +1093,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
               const SizedBox(height: 16),
 
-              // ===== DETALHES DAS CAMISAS (SEPARADO) =====
+              // ===== DETALHES DAS CAMISAS =====
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1434,7 +1469,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       ),
                     ),
 
-                    // ===== ALUNOS BENEFICIADOS POR PATROCÍNIO =====
                     if (_usosPatrocinio.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       const Divider(),
@@ -1567,10 +1601,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   shape: BoxShape.circle,
+                                  color: Colors.red.shade400,
                                 ),
-                                child: Container(), // placeholder
                               ),
                               const SizedBox(width: 8),
                               Expanded(
