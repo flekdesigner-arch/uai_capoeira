@@ -12,7 +12,6 @@ import 'dart:io';
 // 👈 ALIAS PARA EVITAR CONFLITO DE NOMES
 import 'package:flutter/material.dart' as material;
 
-
 class RelatorioFinanceiroScreen extends StatefulWidget {
   final String eventoId;
   final String eventoNome;
@@ -184,8 +183,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             final valor = (pagData['valor'] as num?)?.toDouble() ?? 0;
             final forma = pagData['formaPagamento'] as String? ?? 'OUTROS';
 
-            // Separa o que é inscrição do que é camisa (proporcionalmente se necessário)
-            // Mas como temos o valorCamisa específico, podemos usar direto
+            // Separa o que é inscrição do que é camisa
             if (valorCamisa > 0 && pagData['observacoes']?.contains('camisa') == true) {
               totalCamisasParticipacoes += valor;
             } else {
@@ -919,7 +917,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                   height: 8,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
-                                    borderRadius: BorderRadius.horizontal(
+                                    borderRadius: const BorderRadius.horizontal(
                                       left: Radius.circular(4),
                                     ),
                                   ),
@@ -939,7 +937,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                   height: 8,
                                   decoration: BoxDecoration(
                                     color: Colors.orange,
-                                    borderRadius: BorderRadius.horizontal(
+                                    borderRadius: const BorderRadius.horizontal(
                                       right: Radius.circular(4),
                                     ),
                                   ),
@@ -1019,10 +1017,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: _getCorFormaPagamento(entry.key),
                                 ),
+                                child: Container(), // placeholder
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -1455,7 +1453,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         decoration: BoxDecoration(
                           color: Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.purple.shade200),
+                          border: material.Border.all(color: Colors.purple.shade200),
                         ),
                         child: Row(
                           children: [
@@ -1569,10 +1567,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: Colors.red.shade400,
                                 ),
+                                child: Container(), // placeholder
                               ),
                               const SizedBox(width: 8),
                               Expanded(
