@@ -17,7 +17,6 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #B71C1C;
             min-height: 100vh;
         }
 
@@ -34,13 +33,30 @@
             align-items: center;
             z-index: 1000;
             transition: opacity 0.3s ease;
+            animation: bgTransition 3s ease-in-out forwards; /* Agora em 3 segundos */
+        }
+
+        @keyframes bgTransition {
+            0% {
+                background-color: #B71C1C; /* Vermelho UAI */
+            }
+            33% {
+                background-color: #8B1A1A; /* Vermelho mais escuro */
+            }
+            66% {
+                background-color: #2C0707; /* Quase preto */
+            }
+            100% {
+                background-color: #000000; /* Preto puro */
+            }
         }
 
         .logo-container {
             width: 80%;
             max-width: 500px;
             animation: pulse 1.5s ease-in-out infinite;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
+            position: relative;
         }
 
         /* Animação de pulsação */
@@ -85,15 +101,49 @@
             }
         }
 
+        /* Container para os textos */
+        .text-container {
+            text-align: center;
+            margin-top: 15px;
+        }
+
         /* Texto "CARREGANDO" */
         .loading-text {
             color: white;
             font-family: Arial, sans-serif;
             font-size: 14px;
             letter-spacing: 4px;
-            margin-top: 15px;
             opacity: 0.8;
             animation: textGlow 2s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        /* Mensagem de boas-vindas */
+        .welcome-message {
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            opacity: 0;
+            animation: fadeInUp 1s ease-out forwards;
+            animation-delay: 1s;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #FFD700, #FFFFFF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1px;
+        }
+
+        @keyframes fadeInUp {
+            0% {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         @keyframes textGlow {
@@ -102,55 +152,46 @@
         }
 
         /* ===== HARMONIZAÇÃO DAS CORES ===== */
-        /* UAI - SEMPRE o mais vibrante/brilhante */
         #uai {
-            animation: uaiColors 3s ease-in-out 6;
+            animation: uaiColors 3s ease-in-out;
             filter: drop-shadow(0 0 15px currentColor) brightness(1.3);
             animation-fill-mode: forwards;
         }
 
-        /* FAIXA - Tom médio (mais escuro que UAI, prepara contraste com CAPOEIRA) */
         #faixa {
-            animation: faixaColors 3s ease-in-out 6;
+            animation: faixaColors 3s ease-in-out;
             filter: drop-shadow(0 0 8px currentColor) brightness(1.1);
             animation-fill-mode: forwards;
         }
 
-        /* CAPOEIRA - Contraste com a faixa (claro quando faixa escura, escuro quando faixa clara) */
         #capoeira {
-            animation: capoeiraColors 3s ease-in-out 6;
+            animation: capoeiraColors 3s ease-in-out;
             filter: drop-shadow(0 0 5px currentColor);
             animation-fill-mode: forwards;
         }
 
-        /* Sequência de cores para o UAI (sempre vibrante) */
         @keyframes uaiColors {
-            0% { fill: #ffd700; } /* Ouro vibrante */
-            20% { fill: #ff6b6b; } /* Coral vibrante */
-            40% { fill: #4ecdc4; } /* Turquesa */
-            60% { fill: #ffe66d; } /* Amarelo claro */
-            80% { fill: #ff9f1c; } /* Laranja */
-            100% { fill: #B71C1C; } /* Vermelho UAI */
+            0% { fill: #ffd700; }
+            25% { fill: #ff6b6b; }
+            50% { fill: #4ecdc4; }
+            75% { fill: #ff9f1c; }
+            100% { fill: #B71C1C; }
         }
 
-        /* Sequência para a FAIXA - sempre um tom mais escuro/queimado que o UAI */
         @keyframes faixaColors {
-            0% { fill: #b8860b; } /* Ouro escuro */
-            20% { fill: #8b3a3a; } /* Coral escuro */
-            40% { fill: #2c7a78; } /* Turquesa escuro */
-            60% { fill: #b8860b; } /* Amarelo escuro */
-            80% { fill: #8b5a2b; } /* Laranja escuro */
-            100% { fill: #8B1A1A; } /* Vermelho UAI escuro */
+            0% { fill: #b8860b; }
+            25% { fill: #8b3a3a; }
+            50% { fill: #2c7a78; }
+            75% { fill: #8b5a2b; }
+            100% { fill: #8B1A1A; }
         }
 
-        /* Sequência para CAPOEIRA - contraste com a faixa */
         @keyframes capoeiraColors {
-            0% { fill: #ffffff; } /* Branco (contraste com ouro escuro) */
-            20% { fill: #f0f0f0; } /* Quase branco (contraste com coral escuro) */
-            40% { fill: #333333; } /* Cinza escuro (contraste com turquesa escuro) */
-            60% { fill: #666666; } /* Cinza médio (contraste com amarelo escuro) */
-            80% { fill: #ffffff; } /* Branco (contraste com laranja escuro) */
-            100% { fill: #FEFEFE; } /* Branco original */
+            0% { fill: #ffffff; }
+            25% { fill: #f0f0f0; }
+            50% { fill: #333333; }
+            75% { fill: #ffffff; }
+            100% { fill: #FEFEFE; }
         }
 
         /* Brilho pulsante no fundo */
@@ -165,6 +206,7 @@
             background: radial-gradient(circle, rgba(255,215,0,0.15) 0%, rgba(255,255,255,0) 70%);
             pointer-events: none;
             animation: glowPulse 2s ease-in-out infinite;
+            z-index: -1;
         }
 
         @keyframes glowPulse {
@@ -184,7 +226,6 @@
                 <style type="text/css">
                     <![CDATA[
                         .str0 {stroke:#373435;stroke-width:20;stroke-miterlimit:22.9256}
-                        /* As cores serão controladas pelas animações */
                     ]]>
                 </style>
             </defs>
@@ -205,7 +246,12 @@
         <div class="bar"></div>
         <div class="bar"></div>
     </div>
-    <div class="loading-text">CARREGANDO</div>
+
+    <!-- Container com textos -->
+    <div class="text-container">
+        <div class="loading-text">CARREGANDO</div>
+        <div class="welcome-message">Seja bem-vindo ao site oficial do UAI Capoeira! </div>
+    </div>
 </div>
 
 <script>

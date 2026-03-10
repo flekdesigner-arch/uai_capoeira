@@ -136,9 +136,35 @@ class ParticipacaoService {
   /// Remove um participante do evento (da coleção EM ANDAMENTO)
   Future<void> removerParticipante(String participacaoId) async {
     try {
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).delete();
+      // Primeiro, busca a participação para saber o eventoId
+      final participacaoDoc = await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .get();
+
+      if (!participacaoDoc.exists) return;
+
+      final eventoId = participacaoDoc.data()?['evento_id'] as String?;
+
+      // 1️⃣ Remove da coleção EM ANDAMENTO
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .delete();
+
+      // 2️⃣ Remove também da subcoleção do evento (se existir eventoId)
+      if (eventoId != null) {
+        await _firestore
+            .collection('eventos')
+            .doc(eventoId)
+            .collection('participacoes')
+            .doc(participacaoId)
+            .delete();
+      }
+
+      debugPrint('✅ Participação $participacaoId removida de todos os lugares');
     } catch (e) {
-      debugPrint('Erro ao remover participante: $e');
+      debugPrint('❌ Erro ao remover participante: $e');
       rethrow;
     }
   }

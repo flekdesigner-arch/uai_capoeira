@@ -656,12 +656,49 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   Future<void> _editarCamisa() async {
     if (!_podeEditarCamisa) return;
 
+    // 🔥 CORREÇÃO: Converter List<dynamic> para List<String>
+    List<String> tamanhosDisponiveis = [];
+
+    try {
+      if (_dadosEvento != null && _dadosEvento!.containsKey('tamanhosDisponiveis')) {
+        final rawValue = _dadosEvento!['tamanhosDisponiveis'];
+
+        if (rawValue != null) {
+          if (rawValue is List) {
+            // Converte cada item para String de forma segura
+            tamanhosDisponiveis = rawValue
+                .where((item) => item != null) // Remove nulos
+                .map((item) => item.toString()) // Converte para String
+                .toList();
+          } else if (rawValue is String) {
+            // Se for uma string, pode ser um formato específico (ex: "P,M,G,GG")
+            tamanhosDisponiveis = rawValue
+                .split(',')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao processar tamanhos disponíveis: $e');
+      // Em caso de erro, usa uma lista padrão de tamanhos
+      tamanhosDisponiveis = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
+    }
+
+    // Se ainda estiver vazia, usa uma lista padrão
+    if (tamanhosDisponiveis.isEmpty) {
+      tamanhosDisponiveis = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
+    }
+
+    debugPrint('📏 Tamanhos disponíveis processados: $tamanhosDisponiveis');
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => EditarCamisaModal(
         tamanhoAtual: _participacao.tamanhoCamisa,
         entregue: _participacao.camisaEntregue,
-        tamanhosDisponiveis: _dadosEvento?['tamanhosDisponiveis'] ?? [],
+        tamanhosDisponiveis: tamanhosDisponiveis, // 👈 Agora é List<String>
       ),
     );
 
