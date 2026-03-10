@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Caminhos padrão do app -->
+    <external-path name="external" path="." />
+    <external-files-path name="external_files" path="." />
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <files-path name="files" path="." />
+
+    <!-- DOWNLOADS -->
+    <!-- Para versões mais antigas do Android (acesso direto ao diretório Download) -->
+    <external-path
+        name="download"
+        path="Download" />
+
+    <!-- Para Android 10+ (acesso via contexto do app) -->
+    <external-files-path
+        name="downloads_app"
+        path="Download/" />
+
+    <!-- MÍDIA -->
+    <!-- Pictures directory -->
+    <external-path
+        name="pictures"
+        path="Pictures" />
+
+    <!-- DCIM directory (fotos da câmera) -->
+    <external-path
+        name="dcim"
+        path="DCIM" />
+
+    <!-- Documentos -->
+    <external-path
+        name="documents"
+        path="Documents" />
+
+    <!-- Música -->
+    <external-path
+        name="music"
+        path="Music" />
+
+    <!-- Vídeos -->
+    <external-path
+        name="movies"
+        path="Movies" />
+
+    <!-- Para downloads específicos do app -->
+    <external-files-path
+        name="app_downloads"
+        path="downloads/" />
+
+    <external-files-path
+        name="app_documents"
+        path="documents/" />
+</paths>

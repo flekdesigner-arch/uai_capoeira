@@ -1,0 +1,161 @@
+name: uai_capoeira
+description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
+publish_to: 'none' # Impede a publicação no pub.dev
+version: 2.0.21+1 # Versão do app (2.0.15) e código interno (1)
+
+# Versões do SDK e Flutter necessárias
+environment:
+  sdk: ">=3.10.8 <4.0.0"  # Versão do Dart
+  flutter: ">=3.22.0"       # Versão mínima do Flutter
+
+# DEPENDÊNCIAS PRINCIPAIS (usadas no app em produção)
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 🌍 INTERNACIONALIZAÇÃO
+  # Permite tradução do app para vários idiomas
+  flutter_localizations:
+    sdk: flutter
+
+  # 🎉 ANIMAÇÕES E EFEITOS
+  confetti: ^0.7.0                # Efeito de confetes para comemorações
+  flutter_animate: ^4.5.0         # Animações simplificadas e performáticas
+  shimmer: ^3.0.0                 # Efeito de brilho (loading skeleton)
+  animations: ^2.0.11              # Animações pré-prontas (fade, scale, etc)
+
+  # 📄 GERAÇÃO DE DOCUMENTOS E CERTIFICADOS
+  pdf: ^3.10.7                    # Criação de arquivos PDF
+  printing: ^5.11.1               # Impressão de documentos
+  archive: ^3.4.10                # Manipulação de arquivos ZIP
+  flutter_svg: ^2.0.10+1          # Exibição de imagens SVG
+  # 📄 VISUALIZADOR DE PDF
+  flutter_pdfview: ^1.3.2  # 👈 ADICIONE ESTA LINHA
+  webview_flutter: ^4.7.0
+
+  # 🔥 FIREBASE CORE
+  # Obrigatório para qualquer serviço Firebase
+  firebase_core: ^3.5.0
+
+  # 🔥 FIREBASE SERVICES
+  firebase_auth: ^5.3.0            # Autenticação (email, google, etc)
+  cloud_firestore: ^5.0.1          # Banco de dados NoSQL
+  firebase_storage: ^12.0.1        # Armazenamento de arquivos (imagens, docs)
+  firebase_messaging: ^15.2.4      # Notificações push
+  firebase_app_check: ^0.3.2+1     # Segurança contra abusos
+  google_sign_in: ^6.1.5           # Login com Google
+
+  # 🎨 UI & DESIGN
+  cupertino_icons: ^1.0.8          # Ícones estilo iOS
+
+  # 🖼️ MANIPULAÇÃO DE IMAGENS
+  image_picker: ^1.1.2             # Selecionar fotos da galeria/câmera
+  cached_network_image: ^3.3.1     # Cache de imagens da internet
+  file_picker: ^8.1.2              # Selecionar arquivos do dispositivo
+
+  # 🎨 FORMULÁRIOS E INPUTS
+  flutter_colorpicker: ^1.1.0      # Seletor de cores
+
+  # 🌐 REQUISIÇÕES E DADOS
+  http: ^1.2.1                     # Requisições HTTP
+  csv: ^6.0.0                      # Leitura/escrita de arquivos CSV
+  xml: ^6.3.0                      # Parse de arquivos XML
+  connectivity_plus: ^6.0.0        # Verificar conexão com internet
+
+  # 📁 ACESSO A ARQUIVOS E PERMISSÕES
+  path_provider: ^2.1.3            # Caminhos de diretórios do sistema
+  permission_handler: ^11.3.1      # Gerenciar permissões (armazenamento, etc)
+  open_filex: ^4.4.0               # Abrir arquivos com apps externos
+  package_info_plus: ^8.0.0        # Informações do app (versão, pacote)
+  device_info_plus: ^9.1.0         # Informações do dispositivo (Android/iOS)
+
+  # 📅 DATAS E LOCALIZAÇÃO
+  intl: ^0.20.2                    # Formatação de datas, números, moedas
+
+  # 📱 INTEGRAÇÃO COM O DISPOSITIVO
+  url_launcher: ^6.3.0             # Abrir links (web, tel, email, maps)
+
+  # 🔔 NOTIFICAÇÕES
+  flutter_local_notifications: ^17.2.0  # Notificações locais agendadas
+
+  # 📊 GRÁFICOS E RELATÓRIOS
+  fl_chart: ^0.68.0                # Gráficos (barras, linhas, pizza)
+  excel: ^2.0.0                    # Manipulação de arquivos Excel
+  share_plus: ^10.0.0              # Compartilhar conteúdo com outros apps
+
+  # ✅ UTILITÁRIOS GERAIS
+  collection: ^1.18.0              # Funções extras para coleções
+  async: ^2.11.0                   # Programação assíncrona avançada
+  uuid: ^4.4.0                     # Geração de IDs únicos
+
+  # 🆕 INTEGRAÇÃO COM GOOGLE SHEETS
+  googleapis: ^13.0.0              # API do Google (Sheets, Drive, etc)
+  googleapis_auth: ^1.5.0          # Autenticação para Google APIs
+
+  # ========== 🆕 NOVAS DEPENDÊNCIAS ADICIONADAS ==========
+  # 📦 CACHE PERSISTENTE (para dados offline)
+  hive: ^2.2.3                     # Banco de dados NoSQL local
+  hive_flutter: ^1.1.0             # Integração do Hive com Flutter
+
+# DEPENDÊNCIAS DE DESENVOLVIMENTO (usadas apenas durante o desenvolvimento)
+dev_dependencies:
+  flutter_test:
+    sdk: flutter                   # Testes unitários
+  flutter_lints: ^6.0.0            # Regras de boas práticas de código
+  image: ^4.1.7                    # Manipulação avançada de imagens
+
+  # 🔥 GERAÇÃO DE ÍCONES E SPLASH SCREEN
+  flutter_launcher_icons: ^0.14.1  # Gerar ícones do app automaticamente
+  flutter_native_splash: ^2.3.5    # Gerar splash screen nativa
+
+  # 🛠️ FERRAMENTAS PARA HIVE (geração de adapters - opcional)
+  hive_generator: ^2.0.1            # Gerador de código para Hive (opcional)
+  build_runner: ^2.4.9              # Executar geradores de código (opcional)
+
+# CONFIGURAÇÃO DO FLUTTER
+flutter:
+  uses-material-design: true  # Habilita ícones Material Design
+
+  # 🔥 ARQUIVOS ESTÁTICOS (IMAGENS, JSON, CSV)
+  assets:
+    # Imagens gerais
+    - assets/images/               # Todas as imagens da pasta
+    - assets/images/fundo_aniversario_app_flutter.png  # Fundo de aniversário
+    - assets/images/logo_uai.png    # Logo do app
+
+    # Dados e migrações (arquivos para inicializar/carregar dados)
+    - assets/dadosalunos.csv
+    - assets/alunos.json
+    - assets/log_presenca_alunos_1.json
+    - assets/log_presenca_alunos_2.json
+    - assets/log_presenca_alunos_3.json
+    - assets/eventos.json
+    - assets/participacao_alunos_eventos.json
+    - assets/graduacoes.csv
+
+    # 🆕 CREDENCIAIS DA GOOGLE
+    - assets/credentials.json      # Chave de API para Google Sheets
+
+# 🔥 CONFIGURAÇÃO DE ÍCONES DO APP
+flutter_launcher_icons:
+  android: true                    # Gera ícones para Android
+  ios: true                        # Gera ícones para iOS
+  web:
+    generate: true                  # Gera ícones para Web
+    background_color: "#B71C1C"     # Cor de fundo (vermelho UAI)
+    theme_color: "#B71C1C"          # Cor do tema
+  image_path: "assets/images/logo_uai.png"  # Imagem original
+  adaptive_icon_background: "#B71C1C"       # Fundo do ícone adaptativo (Android)
+  adaptive_icon_foreground: "assets/images/logo_uai.png"  # Imagem do ícone adaptativo
+  min_sdk_android: 21               # Versão mínima do Android (Android 5.0)
+
+# 🔥 CONFIGURAÇÃO DA TELA DE SPLASH
+flutter_native_splash:
+  color: "#B71C1C"                  # Cor de fundo (vermelho UAI)
+  image: assets/images/logo_uai.png  # Logo na splash screen
+  android: true                      # Habilita para Android
+  ios: true                          # Habilita para iOS
+  web: true                          # Habilita para Web
+  android_gravity: center             # Posição da imagem no Android
+  ios_content_mode: center            # Posição da imagem no iOS
+  web_image_mode: center              # Posição da imagem na Web

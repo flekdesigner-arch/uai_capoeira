@@ -1,0 +1,35 @@
+﻿# Flutter
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# System
+.DS_Store
+Thumbs.db
+
+# Android
+android/local.properties
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# iOS
+ios/Pods/
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Generated.xcconfig
+ios/Flutter/Release.xcconfig
+ios/Flutter/Debug.xcconfig
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Sensitive
+*.env
+**/secrets.json
+**/credentials.json

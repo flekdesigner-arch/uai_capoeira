@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1600" viewBox="0 0 9144 13546.66">
+    <defs>
+        <style type="text/css">
+            <![CDATA[
+    .fil1 {fill:black}
+    .fil0 {fill:white}
+    .fnt1 {font-weight:normal;font-size:317.5px;font-family:'Arial'}
+    .fnt0 {font-weight:normal;font-size:599.42px;font-family:'Arial'}
+   ]]>
+        </style>
+    </defs>
+    <g id="Camada_x0020_1">
+        <rect id="foto_placeholder" class="fil0" x="1974.46" y="3673.75" width="5195.07" height="5195.07" rx="418.72" ry="495.53"/>
+        <text x="3762.36" y="8723.49" id="nome_placeholder" class="fil1 fnt0">NOME</text>
+        <text x="2174.82" y="9358.2" id="mensagem_linha1" class="fil0 fnt1">Parabéns, João! Que seu dia seja</text>
+        <text x="2563.17" y="9712.9" id="mensagem_linha2" class="fil0 fnt1">especial e cheio de alegrias.</text>
+        <text x="3203.44" y="10067.6" id="mensagem_linha3" class="fil0 fnt1">Feliz aniversário! 🎉</text>
+    </g>
+</svg>
