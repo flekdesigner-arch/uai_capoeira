@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/campeonato_service.dart';
-import 'package:uai_capoeira/models/inscricao_campeonato_model.dart'; // ✅ ÚNICO IMPORT!
+import 'package:uai_capoeira/models/inscricao_campeonato_model.dart';
 import 'gerar_chaves_screen.dart';
 import 'registrar_resultado_screen.dart';
 import 'editar_chaves_screen.dart';
@@ -216,6 +216,12 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
     return comp?.apelido ?? '';
   }
 
+  String? _getFotoCompetidor(String? id) {
+    if (id == null) return null;
+    final comp = _competidoresMap[id];
+    return comp?.fotoUrl;
+  }
+
   InscricaoCampeonatoModel? _getCompetidor(String? id) {
     if (id == null) return null;
     return _competidoresMap[id];
@@ -408,6 +414,8 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
     final nome2 = _getNomeCompetidor(comp2Id);
     final apelido1 = _getApelidoCompetidor(comp1Id);
     final apelido2 = _getApelidoCompetidor(comp2Id);
+    final foto1 = _getFotoCompetidor(comp1Id);
+    final foto2 = _getFotoCompetidor(comp2Id);
 
     final isVencedor1 = vencedorId == comp1Id;
     final isVencedor2 = vencedorId == comp2Id;
@@ -506,8 +514,9 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 apelido: apelido1,
                 isVencedor: isVencedor1,
                 isBye: status == 'bye' && comp2Id == null,
-                fotoUrl: comp1?.fotoUrl,
-                cor: Colors.amber,
+                fotoUrl: foto1,
+                cor: Colors.amber.shade700,
+                mostrarIndicadorCor: true,
               ),
 
               // VS
@@ -556,8 +565,9 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                   apelido: apelido2,
                   isVencedor: isVencedor2,
                   isBye: false,
-                  fotoUrl: comp2?.fotoUrl,
-                  cor: Colors.blue,
+                  fotoUrl: foto2,
+                  cor: Colors.blue.shade700,
+                  mostrarIndicadorCor: true,
                 )
               else
                 Container(
@@ -565,6 +575,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200, width: 1),
                   ),
                   child: Row(
                     children: [
@@ -604,10 +615,11 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                     decoration: BoxDecoration(
                       color: Colors.amber.shade50,
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade200, width: 1),
                     ),
                     child: const Center(
                       child: Text(
-                        'Clique para registrar resultado',
+                        '👆 Clique para registrar resultado',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.amber,
@@ -631,66 +643,110 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
     required bool isBye,
     String? fotoUrl,
     required Color cor,
+    bool mostrarIndicadorCor = true,
   }) {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: isVencedor ? Colors.green.shade50 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(8),
-        border: isVencedor ? Border.all(color: Colors.green, width: 1) : null,
+        border: isVencedor
+            ? Border.all(color: Colors.green, width: 1)
+            : Border.all(color: Colors.grey.shade200, width: 1),
       ),
       child: Row(
         children: [
+          // Indicador de cor (faixa lateral)
+          if (mostrarIndicadorCor && !isBye)
+            Container(
+              width: 4,
+              height: 40,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: cor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
           // Foto ou ícone
           Container(
-            width: 30,
-            height: 30,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: isVencedor ? Colors.green : cor.withValues(alpha: 0.2),
+              color: isVencedor ? Colors.green : cor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
               border: Border.all(
                 color: isVencedor ? Colors.green : cor,
                 width: 2,
               ),
             ),
-            child: fotoUrl != null
+            child: fotoUrl != null && fotoUrl.isNotEmpty
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(18),
               child: CachedNetworkImage(
                 imageUrl: fotoUrl,
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Center(
                   child: SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1),
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1,
+                      valueColor: AlwaysStoppedAnimation<Color>(cor),
+                    ),
                   ),
                 ),
                 errorWidget: (context, url, error) => Icon(
                   isVencedor ? Icons.emoji_events : Icons.person,
-                  size: 16,
-                  color: isVencedor ? Colors.white : cor,
+                  size: 18,
+                  color: isVencedor ? Colors.green : cor,
                 ),
               ),
             )
                 : Icon(
               isVencedor ? Icons.emoji_events : Icons.person,
-              size: 16,
-              color: isVencedor ? Colors.white : cor,
+              size: 18,
+              color: isVencedor ? Colors.green : cor,
             ),
           ),
           const SizedBox(width: 12),
+
+          // Informações do competidor
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  nome,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: isVencedor ? FontWeight.bold : FontWeight.normal,
-                    color: isVencedor ? Colors.green.shade900 : Colors.black,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        nome,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isVencedor ? FontWeight.bold : FontWeight.normal,
+                          color: isVencedor ? Colors.green.shade900 : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isBye)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'BYE',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 if (apelido.isNotEmpty)
                   Text(
@@ -699,10 +755,14 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                       fontSize: 11,
                       color: Colors.grey.shade600,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
               ],
             ),
           ),
+
+          // Badge de vencedor
           if (isVencedor)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -710,13 +770,24 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 color: Colors.green,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text(
-                'VENCEDOR',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.emoji_events,
+                    size: 10,
+                    color: Colors.white,
+                  ),
+                  SizedBox(width: 2),
+                  Text(
+                    'VENC',
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

@@ -26,13 +26,13 @@ class _LandingPageState extends State<LandingPage> {
   final ScrollController _scrollController = ScrollController();
   bool _isDrawerOpen = false;
 
-  // 🔐 SENHA DE ACESSO AO APP (para professores/monitores)
-  final String _senhaAcessoApp = "uai2026app";
+  // 🔐 SENHA DE ACESSO AO APP (agora DINÂMICA - carregada do Firestore)
+  String _senhaAcessoApp = "uai2026app"; // Valor padrão
 
   // Controlador para o campo de senha
   final TextEditingController _senhaController = TextEditingController();
 
-  // Controles de configurações
+  // Controles de configurações existentes
   bool _inscricoesAbertas = false;
   bool _carregandoConfigInscricoes = true;
   bool _portfolioVisivel = false;
@@ -44,11 +44,83 @@ class _LandingPageState extends State<LandingPage> {
   int _totalVisitas = 0;
   bool _carregandoVisitas = true;
 
+  // CONFIGURAÇÕES DO MENU (ordem, textos, visibilidade)
+  List<Map<String, dynamic>> _itensMenu = [];
+  Map<String, dynamic> _textosPersonalizados = {};
+  Map<String, bool> _visibilidadePersonalizada = {};
+  bool _carregandoConfigMenu = true;
+
+  // Lista base de itens do menu (fonte da verdade)
+  final List<Map<String, dynamic>> _itensMenuBase = [
+    {
+      'id': 'inicio',
+      'icone': Icons.home,
+      'label': 'INÍCIO',
+      'index': 0,
+      'isSpecial': false,
+      'fixo': true, // INÍCIO é fixo no topo
+    },
+    {
+      'id': 'regimento',
+      'icone': Icons.description,
+      'label': 'REGIMENTO INTERNO',
+      'index': 1,
+      'isSpecial': false,
+    },
+    {
+      'id': 'biografia',
+      'icone': Icons.auto_stories,
+      'label': 'BIOGRAFIA',
+      'index': 2,
+      'isSpecial': false,
+    },
+    {
+      'id': 'graduacoes',
+      'icone': Icons.emoji_events,
+      'label': 'GRADUAÇÕES',
+      'index': 3,
+      'isSpecial': false,
+    },
+    {
+      'id': 'inscricao',
+      'icone': Icons.app_registration,
+      'label': 'INSCRIÇÃO',
+      'index': 4,
+      'isSpecial': false,
+      'condicional': true, // Depende de _inscricoesAbertas
+    },
+    {
+      'id': 'campeonato',
+      'icone': Icons.emoji_events,
+      'label': 'CAMPEONATO',
+      'index': 5,
+      'isSpecial': false,
+      'condicional': true, // Depende de _campeonatoAtivo
+    },
+    {
+      'id': 'portfolio',
+      'icone': Icons.photo_library, // Ícone de portfólio (não timeline)
+      'label': 'PORTFÓLIO', // Nome correto para o usuário
+      'index': 6,
+      'isSpecial': false,
+      'condicional': true, // Depende de _portfolioVisivel
+    },
+    {
+      'id': 'acessar_app',
+      'icone': Icons.lock_open,
+      'label': 'ACESSAR APP',
+      'index': 7,
+      'isSpecial': true, // Abre diálogo de senha
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
     _carregarConfiguracoes();
     _incrementarContadorVisitas();
+    _carregarSenhaApp();
+    _carregarConfiguracoesMenu();
   }
 
   @override
@@ -58,61 +130,49 @@ class _LandingPageState extends State<LandingPage> {
     super.dispose();
   }
 
-  // 👁️ MÉTODO PARA INCREMENTAR E CARREGAR VISITAS
+  // ==================== MÉTODOS EXISTENTES ====================
+
   Future<void> _incrementarContadorVisitas() async {
     try {
       print('📊 Atualizando contador de visitas...');
-
-      // Referência para o documento de estatísticas
       final docRef = _firestore.collection('estatisticas').doc('visitas');
 
-      // Usando transação para garantir incremento atômico
       await _firestore.runTransaction((transaction) async {
         final docSnapshot = await transaction.get(docRef);
 
         if (docSnapshot.exists) {
-          // Documento existe - incrementa
           final novosDados = {
             'total': (docSnapshot.data()?['total'] ?? 0) + 1,
             'ultima_visita': FieldValue.serverTimestamp(),
           };
           transaction.update(docRef, novosDados);
-
           setState(() {
             _totalVisitas = (docSnapshot.data()?['total'] ?? 0) + 1;
             _carregandoVisitas = false;
           });
         } else {
-          // Primeira visita - cria documento
           final novosDados = {
             'total': 1,
             'ultima_visita': FieldValue.serverTimestamp(),
             'criado_em': FieldValue.serverTimestamp(),
           };
           transaction.set(docRef, novosDados);
-
           setState(() {
             _totalVisitas = 1;
             _carregandoVisitas = false;
           });
         }
       });
-
       print('✅ Contador atualizado: $_totalVisitas visitas');
     } catch (e) {
       print('❌ Erro ao atualizar contador: $e');
-      setState(() {
-        _carregandoVisitas = false;
-      });
+      setState(() => _carregandoVisitas = false);
     }
   }
 
-  // 🔧 MÉTODO PARA FORMATAR NÚMERO (1.234 ou 2.5k)
   String _formatarNumero(int numero) {
-    if (numero < 1000) {
-      return numero.toString();
-    } else if (numero < 1000000) {
-      // Ex: 1.234 ou 15.6k
+    if (numero < 1000) return numero.toString();
+    if (numero < 1000000) {
       final double milhares = numero / 1000;
       if (milhares < 10) {
         return '${milhares.toStringAsFixed(1).replaceAll('.', ',')}k';
@@ -120,7 +180,6 @@ class _LandingPageState extends State<LandingPage> {
         return '${milhares.toStringAsFixed(0)}k';
       }
     } else {
-      // Ex: 1.2M
       final double milhoes = numero / 1000000;
       return '${milhoes.toStringAsFixed(1).replaceAll('.', ',')}M';
     }
@@ -132,48 +191,36 @@ class _LandingPageState extends State<LandingPage> {
 
       // Configuração de inscrições
       final docInscricoes = await _firestore.collection('configuracoes').doc('inscricoes').get();
-      if (docInscricoes.exists) {
-        final data = docInscricoes.data()!;
-        setState(() {
-          _inscricoesAbertas = data['inscricoes_abertas'] ?? false;
-          _carregandoConfigInscricoes = false;
-        });
-      } else {
-        setState(() {
+      setState(() {
+        if (docInscricoes.exists) {
+          _inscricoesAbertas = docInscricoes.data()?['inscricoes_abertas'] ?? false;
+        } else {
           _inscricoesAbertas = false;
-          _carregandoConfigInscricoes = false;
-        });
-      }
+        }
+        _carregandoConfigInscricoes = false;
+      });
 
       // Configuração do portfólio
       final docPortfolio = await _firestore.collection('configuracoes').doc('portfolio_site').get();
-      if (docPortfolio.exists) {
-        final data = docPortfolio.data()!;
-        setState(() {
-          _portfolioVisivel = data['exibir'] ?? false;
-          _carregandoConfigPortfolio = false;
-        });
-      } else {
-        setState(() {
+      setState(() {
+        if (docPortfolio.exists) {
+          _portfolioVisivel = docPortfolio.data()?['exibir'] ?? false;
+        } else {
           _portfolioVisivel = false;
-          _carregandoConfigPortfolio = false;
-        });
-      }
+        }
+        _carregandoConfigPortfolio = false;
+      });
 
       // Configuração do campeonato
       final docCampeonato = await _firestore.collection('configuracoes').doc('campeonato').get();
-      if (docCampeonato.exists) {
-        final data = docCampeonato.data()!;
-        setState(() {
-          _campeonatoAtivo = data['campeonato_ativo'] ?? false;
-          _carregandoConfigCampeonato = false;
-        });
-      } else {
-        setState(() {
+      setState(() {
+        if (docCampeonato.exists) {
+          _campeonatoAtivo = docCampeonato.data()?['campeonato_ativo'] ?? false;
+        } else {
           _campeonatoAtivo = false;
-          _carregandoConfigCampeonato = false;
-        });
-      }
+        }
+        _carregandoConfigCampeonato = false;
+      });
     } catch (e) {
       print('❌ Erro ao carregar configurações: $e');
       setState(() {
@@ -186,6 +233,120 @@ class _LandingPageState extends State<LandingPage> {
       });
     }
   }
+
+  // ==================== NOVOS MÉTODOS ====================
+
+  Future<void> _carregarSenhaApp() async {
+    try {
+      final doc = await _firestore.collection('configuracoes').doc('app').get();
+      if (doc.exists && doc.data()?['senha_acesso'] != null) {
+        setState(() {
+          _senhaAcessoApp = doc.data()!['senha_acesso'];
+          print('🔐 Senha carregada do Firestore: $_senhaAcessoApp');
+        });
+      }
+    } catch (e) {
+      print('⚠️ Erro ao carregar senha, usando padrão: $e');
+    }
+  }
+
+  Future<void> _carregarConfiguracoesMenu() async {
+    try {
+      final doc = await _firestore.collection('configuracoes_site').doc('menu').get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+
+        setState(() {
+          // 1️⃣ CARREGA ORDEM PERSONALIZADA
+          final List<dynamic>? ordem = data['ordem'];
+
+          if (ordem != null && ordem.isNotEmpty) {
+            // Constrói lista na ordem personalizada
+            final List<Map<String, dynamic>> itensOrdenados = [];
+
+            // Primeiro: INÍCIO (sempre primeiro)
+            itensOrdenados.add(_itensMenuBase.firstWhere((item) => item['id'] == 'inicio'));
+
+            // Depois: itens na ordem salva (exceto INÍCIO e ACESSAR APP)
+            for (String id in ordem) {
+              if (id != 'inicio' && id != 'acessar_app') {
+                final item = _itensMenuBase.firstWhere(
+                      (item) => item['id'] == id,
+                  orElse: () => const {},
+                );
+                if (item.isNotEmpty) {
+                  itensOrdenados.add(item);
+                }
+              }
+            }
+
+            // Por último: ACESSAR APP (sempre no final)
+            itensOrdenados.add(_itensMenuBase.firstWhere((item) => item['id'] == 'acessar_app'));
+
+            _itensMenu = itensOrdenados;
+          } else {
+            // Se não tem ordem personalizada, usa a base
+            _itensMenu = List.from(_itensMenuBase);
+          }
+
+          // 2️⃣ CARREGA TEXTOS PERSONALIZADOS
+          if (data['titulos'] != null) {
+            _textosPersonalizados = Map<String, dynamic>.from(data['titulos']);
+          }
+
+          // 3️⃣ CARREGA VISIBILIDADE PERSONALIZADA
+          if (data['visibilidade'] != null) {
+            _visibilidadePersonalizada = Map<String, bool>.from(data['visibilidade']);
+          }
+
+          _carregandoConfigMenu = false;
+        });
+      } else {
+        setState(() {
+          _itensMenu = List.from(_itensMenuBase);
+          _carregandoConfigMenu = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Erro ao carregar configurações do menu: $e');
+      setState(() {
+        _itensMenu = List.from(_itensMenuBase);
+        _carregandoConfigMenu = false;
+      });
+    }
+  }
+
+  // Verifica se um item deve ser mostrado (condicionais + visibilidade)
+  bool _deveMostrarItem(Map<String, dynamic> item) {
+    // Verifica visibilidade personalizada primeiro
+    if (_visibilidadePersonalizada[item['id']] == false) {
+      return false;
+    }
+
+    // Verifica condicionais originais
+    if (item['id'] == 'inscricao') {
+      return _inscricoesAbertas;
+    }
+    if (item['id'] == 'campeonato') {
+      return _campeonatoAtivo;
+    }
+    if (item['id'] == 'portfolio') {
+      return _portfolioVisivel;
+    }
+
+    return true; // Itens sem condicional sempre aparecem
+  }
+
+  // Pega o label personalizado de um item (se existir)
+  String _getLabelItem(Map<String, dynamic> item) {
+    if (_textosPersonalizados[item['id']] != null) {
+      return _textosPersonalizados[item['id']];
+    }
+    return item['label'];
+  }
+
+  // ==================== MÉTODOS DE INTERAÇÃO ====================
 
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
@@ -335,6 +496,8 @@ class _LandingPageState extends State<LandingPage> {
     }
   }
 
+  // ==================== CONSTRUÇÃO DA UI ====================
+
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
@@ -378,7 +541,6 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  // 👁️ WIDGET DO CONTADOR DE VISITAS (REUTILIZÁVEL)
   Widget _buildContadorVisitas({bool comBackground = true}) {
     if (_carregandoVisitas) {
       return Container(
@@ -391,7 +553,7 @@ class _LandingPageState extends State<LandingPage> {
       );
     }
 
-    final container = Container(
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: comBackground ? BoxDecoration(
         color: Colors.red.shade50,
@@ -418,11 +580,14 @@ class _LandingPageState extends State<LandingPage> {
         ],
       ),
     );
-
-    return container;
   }
 
+  // DRAWER COM ORDEM DINÂMICA
   Widget _buildDrawer() {
+    if (_carregandoConfigMenu) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Column(
       children: [
         Container(height: 20, color: Colors.white),
@@ -436,20 +601,25 @@ class _LandingPageState extends State<LandingPage> {
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            children: [
-              _buildDrawerItem(icon: Icons.home, label: 'INÍCIO', index: 0),
-              _buildDrawerItem(icon: Icons.description, label: 'REGIMENTO INTERNO', index: 1),
-              _buildDrawerItem(icon: Icons.auto_stories, label: 'BIOGRAFIA', index: 2),
-              _buildDrawerItem(icon: Icons.emoji_events, label: 'GRADUAÇÕES', index: 3),
-              if (!_carregandoConfigInscricoes && _inscricoesAbertas)
-                _buildDrawerItem(icon: Icons.app_registration, label: 'INSCRIÇÃO', index: 4),
-              if (!_carregandoConfigCampeonato && _campeonatoAtivo)
-                _buildDrawerItem(icon: Icons.emoji_events, label: 'CAMPEONATO', index: 5),
-              if (!_carregandoConfigPortfolio && _portfolioVisivel)
-                _buildDrawerItem(icon: Icons.photo_library, label: 'PORTFÓLIO', index: 6),
-              const Divider(height: 32),
-              _buildDrawerItem(icon: Icons.lock_open, label: 'ACESSAR APP', index: 7, isSpecial: true),
-            ],
+            children: _itensMenu.map((item) {
+              // Só mostra se deve aparecer
+              if (!_deveMostrarItem(item)) {
+                return const SizedBox.shrink();
+              }
+
+              // Pega o label personalizado
+              final label = _getLabelItem(item);
+
+              // Pega o índice real (baseado na posição atual)
+              final index = _itensMenu.indexOf(item);
+
+              return _buildDrawerItem(
+                icon: item['icone'],
+                label: label,
+                index: index,
+                isSpecial: item['isSpecial'] ?? false,
+              );
+            }).toList(),
           ),
         ),
         Container(
@@ -477,7 +647,6 @@ class _LandingPageState extends State<LandingPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              // 👁️ CONTADOR NO DRAWER
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -602,24 +771,38 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Widget _buildSelectedContent() {
-    switch (_selectedIndex) {
-      case 0:
-        return _buildHomeContent();
-      case 1:
-        return const RegimentoScreen();
-      case 2:
-        return const BiografiaScreen();
-      case 3:
-        return const GraduacoesScreen();
-      case 4:
-        return const InscricaoPublicaScreen();
-      case 5:
-        return const InscricaoCampeonatoScreen();
-      case 6:
-        return const PortfolioWebScreen();
-      default:
-        return _buildHomeContent();
+    // Mapeia o índice para a tela correta baseado no ID do item
+    if (_itensMenu.isNotEmpty && _selectedIndex < _itensMenu.length) {
+      final itemId = _itensMenu[_selectedIndex]['id'];
+
+      switch (itemId) {
+        case 'inicio':
+          return _buildHomeContent();
+        case 'regimento':
+          return const RegimentoScreen();
+        case 'biografia':
+          return const BiografiaScreen();
+        case 'graduacoes':
+          return const GraduacoesScreen();
+        case 'inscricao':
+          return const InscricaoPublicaScreen();
+        case 'campeonato':
+          return const InscricaoCampeonatoScreen();
+        case 'portfolio':
+          return const PortfolioWebScreen(); // MANTÉM PortfolioWebScreen (que é a timeline)
+        case 'acessar_app':
+        // Não tem tela, abre diálogo
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _mostrarDialogoSenha();
+            setState(() => _selectedIndex = 0); // Volta pra home
+          });
+          return _buildHomeContent();
+        default:
+          return _buildHomeContent();
+      }
     }
+
+    return _buildHomeContent();
   }
 
   Widget _buildHomeContent() {
@@ -671,60 +854,71 @@ class _LandingPageState extends State<LandingPage> {
           ),
         ),
         const SizedBox(height: 30),
+
+        // 🔥 CARDS DINÂMICOS - GERADOS NA MESMA ORDEM DO MENU
         Wrap(
           spacing: 16,
           runSpacing: 16,
           alignment: WrapAlignment.center,
-          children: [
-            if (!_carregandoConfigInscricoes && _inscricoesAbertas)
-              _buildQuickCard(
-                titulo: 'INSCRIÇÃO',
-                descricao: 'Aula experimental',
-                icone: Icons.app_registration,
-                cor: Colors.purple,
-                onTap: () => setState(() => _selectedIndex = 4),
-              ),
-            if (!_carregandoConfigCampeonato && _campeonatoAtivo)
-              _buildQuickCard(
-                titulo: 'CAMPEONATO',
-                descricao: '1° Campeonato UAI Capoeira',
-                icone: Icons.emoji_events,
-                cor: Colors.amber.shade800,
-                onTap: () => setState(() => _selectedIndex = 5),
-              ),
-            if (!_carregandoConfigPortfolio && _portfolioVisivel)
-              _buildQuickCard(
-                titulo: 'PORTFÓLIO',
-                descricao: 'Nossos eventos',
-                icone: Icons.photo_library,
-                cor: Colors.teal,
-                onTap: () => setState(() => _selectedIndex = 6),
-              ),
-            _buildQuickCard(
-              titulo: 'REGIMENTO',
-              descricao: 'Regras e normas',
-              icone: Icons.description,
-              cor: Colors.blue,
-              onTap: () => setState(() => _selectedIndex = 1),
-            ),
-            _buildQuickCard(
-              titulo: 'BIOGRAFIA',
-              descricao: 'Nossa história',
-              icone: Icons.auto_stories,
-              cor: Colors.green,
-              onTap: () => setState(() => _selectedIndex = 2),
-            ),
-            _buildQuickCard(
-              titulo: 'GRADUAÇÕES',
-              descricao: 'Sistema de cordas',
-              icone: Icons.emoji_events,
-              cor: Colors.orange,
-              onTap: () => setState(() => _selectedIndex = 3),
-            ),
-          ],
+          children: _itensMenu
+              .where((item) =>
+          item['id'] != 'inicio' &&
+              item['id'] != 'acessar_app' &&
+              _deveMostrarItem(item))
+              .map((item) {
+
+            // Define cores e descrições baseadas no ID
+            Color cor;
+            String descricao;
+            IconData icone = item['icone'];
+
+            switch (item['id']) {
+              case 'regimento':
+                cor = Colors.blue;
+                descricao = 'Regras e normas';
+                break;
+              case 'biografia':
+                cor = Colors.green;
+                descricao = 'Nossa história';
+                break;
+              case 'graduacoes':
+                cor = Colors.orange;
+                descricao = 'Sistema de cordas';
+                break;
+              case 'inscricao':
+                cor = Colors.purple;
+                descricao = 'Aula experimental';
+                break;
+              case 'campeonato':
+                cor = Colors.amber.shade800;
+                descricao = '1° Campeonato UAI Capoeira';
+                break;
+              case 'portfolio':
+                cor = Colors.teal;
+                descricao = 'Nossos eventos';
+                break;
+              default:
+                cor = Colors.grey;
+                descricao = '';
+            }
+
+            return _buildQuickCard(
+              titulo: _getLabelItem(item),
+              descricao: descricao,
+              icone: icone,
+              cor: cor,
+              onTap: () {
+                final index = _itensMenu.indexOf(item);
+                setState(() {
+                  _selectedIndex = index;
+                  _isDrawerOpen = false;
+                });
+              },
+            );
+          }).toList(),
         ),
+
         const SizedBox(height: 40),
-        // 👁️ CONTADOR NO RODAPÉ DA HOME
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
           child: Row(

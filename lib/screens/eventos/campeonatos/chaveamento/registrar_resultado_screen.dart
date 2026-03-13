@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 👈 ADICIONADO
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/campeonato_service.dart';
 import 'package:uai_capoeira/models/campeonato_model.dart';
 
@@ -12,8 +12,8 @@ class RegistrarResultadoScreen extends StatefulWidget {
   final String nome2;
   final String apelido1;
   final String apelido2;
-  final String? fotoUrl1; // 👈 NOVO
-  final String? fotoUrl2; // 👈 NOVO
+  final String? fotoUrl1;
+  final String? fotoUrl2;
 
   const RegistrarResultadoScreen({
     super.key,
@@ -129,18 +129,6 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                 ),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // Botão de desistência (W.O.)
-            TextButton.icon(
-              onPressed: _registrarWOLosers,
-              icon: const Icon(Icons.sports_score, color: Colors.orange),
-              label: const Text(
-                'Registrar W.O.',
-                style: TextStyle(color: Colors.orange),
-              ),
-            ),
           ],
         ),
       ),
@@ -162,7 +150,6 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected ? cor : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -180,84 +167,104 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
         ),
         child: Column(
           children: [
-            // Círculo com foto ou ícone
+            // Faixa colorida no topo (sempre visível para identificar o competidor)
             Container(
-              width: 80,
-              height: 80,
+              width: double.infinity,
+              height: 8,
               decoration: BoxDecoration(
-                color: isSelected ? Colors.white : cor.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: cor, width: 3),
-              ),
-              child: fotoUrl != null
-                  ? ClipRRect(
-                borderRadius: BorderRadius.circular(40),
-                child: CachedNetworkImage(
-                  imageUrl: fotoUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  errorWidget: (context, url, error) => Icon(
-                    Icons.person,
-                    size: 40,
-                    color: isSelected ? cor : cor,
-                  ),
+                color: cor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(15),
+                  topRight: Radius.circular(15),
                 ),
-              )
-                  : Icon(
-                Icons.person,
-                size: 40,
-                color: isSelected ? cor : cor,
               ),
             ),
-            const SizedBox(height: 12),
 
-            // Nome
-            Text(
-              nome,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.white : Colors.black,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-
-            // Apelido (se tiver)
-            if (apelido.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                apelido,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isSelected ? Colors.white.withValues(alpha: 0.8) : Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-
-            // Badge de VENCEDOR
-            if (isSelected) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'VENCEDOR',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: cor,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Círculo com foto ou ícone
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white : cor.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cor, width: 3),
+                    ),
+                    child: fotoUrl != null
+                        ? ClipRRect(
+                      borderRadius: BorderRadius.circular(40),
+                      child: CachedNetworkImage(
+                        imageUrl: fotoUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        errorWidget: (context, url, error) => Icon(
+                          Icons.person,
+                          size: 40,
+                          color: isSelected ? cor : cor,
+                        ),
+                      ),
+                    )
+                        : Icon(
+                      Icons.person,
+                      size: 40,
+                      color: isSelected ? cor : cor,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+
+                  // Nome
+                  Text(
+                    nome,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? Colors.white : Colors.black,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  // Apelido (se tiver)
+                  if (apelido.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      apelido,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isSelected ? Colors.white.withValues(alpha: 0.8) : Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+
+                  // Badge de VENCEDOR
+                  if (isSelected) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'VENCEDOR',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: cor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -300,82 +307,6 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
     }
   }
 
-  // Registrar W.O. (Walkover) - um competidor não compareceu
-  Future<void> _registrarWOLosers() async {
-    if (_vencedorId != null) return; // Já tem vencedor
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('⚠️ Registrar W.O.'),
-        content: const Text(
-            'Isso significa que um competidor não compareceu.\n'
-                'Qual competidor está presente?'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, null),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, 'competidor1'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber.shade700,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade700,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(widget.apelido1.isNotEmpty ? widget.apelido1 : 'COMP. 1'),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, 'competidor2'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade700,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(widget.apelido2.isNotEmpty ? widget.apelido2 : 'COMP. 2'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == null) return;
-
-    setState(() {
-      _vencedorId = confirm == 'competidor1'
-          ? widget.competidor1Id
-          : widget.competidor2Id;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _registrarResultado();
-  }
-
   void _mostrarInfo() {
     showDialog(
       context: context,
@@ -387,7 +318,6 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                 '🟡 Amarelo = Competidor 1\n'
                 '🔵 Azul = Competidor 2\n\n'
                 '• O botão verde confirma o resultado\n'
-                '• Use W.O. se um competidor não compareceu\n'
                 '• O vencedor avançará para a próxima rodada'
         ),
         actions: [
