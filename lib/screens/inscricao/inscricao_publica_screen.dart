@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uai_capoeira/screens/inscricao/signature_screen.dart';
-import 'package:uai_capoeira/widgets/regimento_dialog.dart'; // 🔥 IMPORT DO DIALOG DO REGIMENTO
+import 'package:uai_capoeira/widgets/regimento_dialog.dart';
+import 'package:uai_capoeira/screens/site/landing_page.dart';
 
 class InscricaoPublicaScreen extends StatefulWidget {
   const InscricaoPublicaScreen({super.key});
@@ -14,6 +19,7 @@ class InscricaoPublicaScreen extends StatefulWidget {
 
 class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final PageController _pageController = PageController();
   int _currentStep = 0;
 
@@ -49,6 +55,12 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _recolherAssinatura = true;
   String? _assinaturaUrl;
 
+  // FOTO DO ALUNO (usando bytes como na tela de campeonato)
+  Uint8List? _fotoBytes;
+  String? _fotoNome;
+  String? _fotoUrl;
+  bool _uploadingFoto = false;
+
   // MAPA DE VALIDAÇÃO
   final Map<int, bool> _etapaValida = {
     0: false,
@@ -58,10 +70,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     4: true,
     5: false,
   };
-
-  // 🔙 CONTROLE DO BOTÃO VOLTAR
-  DateTime? _ultimoBotaoVoltar;
-  final int _tempoParaSair = 2000; // 2 segundos
 
   @override
   void initState() {
@@ -113,8 +121,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
     }
 
+    // 🔥 FOTO É OBRIGATÓRIA
+    final fotoValida = _fotoBytes != null || _fotoUrl != null;
+
     setState(() {
-      _etapaValida[1] = nomeValido && apelidoValido && dataValida && sexoValido && idadeValida;
+      _etapaValida[1] = nomeValido && apelidoValido && dataValida && sexoValido && idadeValida && fotoValida;
     });
   }
 
@@ -147,7 +158,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   void _validarEtapaFinal() {
     setState(() {
-      // SÓ EXIGE ASSINATURA SE A CONFIGURAÇÃO MANDAR
       _etapaValida[5] = _autorizacao && (_recolherAssinatura ? _assinaturaUrl != null : true);
     });
   }
@@ -225,7 +235,137 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
   }
 
-  // 🔥 TERMO - ASSINATURA SÓ APARECE SE CONFIGURADA
+  // 🔥 MÉTODO PARA SELECIONAR FOTO (usando FilePicker como no campeonato)
+  Future<void> _selecionarFoto() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result != null && result.files.single.bytes != null) {
+        final bytes = result.files.single.bytes!;
+        final nome = result.files.single.name;
+
+        setState(() {
+          _fotoBytes = bytes;
+          _fotoNome = nome;
+          _fotoUrl = null;
+          _uploadingFoto = true;
+        });
+
+        // Fazer upload para o Firebase Storage
+        await _uploadFotoFirebase();
+
+        _validarEtapa1();
+      }
+    } catch (e) {
+      print('❌ Erro ao selecionar foto: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao selecionar foto: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() {
+        _uploadingFoto = false;
+      });
+    }
+  }
+
+  // 🔥 MÉTODO PARA UPLOAD DA FOTO NO FIREBASE STORAGE
+  Future<void> _uploadFotoFirebase() async {
+    if (_fotoBytes == null || _fotoNome == null) return;
+
+    try {
+      // Gerar nome único para a foto
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final nomeAluno = _controllers['nome']!.text.trim().replaceAll(' ', '_');
+      final fileName = '${timestamp}_$nomeAluno.jpg';
+
+      // Referência no Storage
+      final storageRef = _storage.ref();
+      final fotoRef = storageRef.child('fotos_inscricoes/$fileName');
+
+      // Upload da foto (usando bytes)
+      await fotoRef.putData(_fotoBytes!);
+
+      // Obter URL de download
+      final downloadUrl = await fotoRef.getDownloadURL();
+
+      setState(() {
+        _fotoUrl = downloadUrl;
+        _uploadingFoto = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Foto carregada com sucesso!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Erro detalhado do upload: $e');
+      setState(() {
+        _uploadingFoto = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao fazer upload da foto: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔥 MÉTODO PARA REMOVER FOTO
+  void _removerFoto() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remover foto'),
+        content: const Text('Tem certeza que deseja remover esta foto?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCELAR'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _fotoBytes = null;
+                _fotoNome = null;
+                _fotoUrl = null;
+              });
+              Navigator.pop(context);
+              _validarEtapa1();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Foto removida com sucesso'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('REMOVER'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTermoElaborado() {
     final isMaior = _isMaiorIdade();
     final nomeAluno = _controllers['nome']!.text;
@@ -250,7 +390,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TÍTULO DO TERMO
           Center(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -269,8 +408,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
             ),
           ),
           const SizedBox(height: 16),
-
-          // TEXTO DO TERMO
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -300,10 +437,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // DATA E HORA
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -326,12 +460,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // 🔥 SÓ MOSTRA A ASSINATURA SE A CONFIGURAÇÃO MANDAR
           if (_recolherAssinatura) ...[
-            // CAMPO DE ASSINATURA
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -348,8 +478,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-
-                  // ÁREA DA ASSINATURA
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final screenWidth = constraints.maxWidth;
@@ -418,7 +546,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     );
   }
 
-  // 🔥 GERAR TEXTO DO TERMO PARA SALVAR
   String _gerarTermoTexto() {
     final isMaior = _isMaiorIdade();
     final nomeAluno = _controllers['nome']!.text;
@@ -533,6 +660,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         'is_maior_idade': isMaior,
         'assinatura_recolhida': _recolherAssinatura,
       };
+
+      // 🔥 SALVA A URL DA FOTO SE EXISTIR (OBRIGATÓRIA)
+      if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
+        dados['foto_url'] = _fotoUrl;
+      } else {
+        throw Exception('Foto é obrigatória');
+      }
 
       if (_assinaturaUrl != null) {
         dados['assinatura_url'] = _assinaturaUrl;
@@ -740,27 +874,91 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                   ),
                   border: Border(top: BorderSide(color: Colors.grey.shade200)),
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: Column(
+                  children: [
+                    // 🔥 CONTADOR DE 10 SEGUNDOS
+                    _buildContadorRedirecionamento(),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // Fecha o diálogo e volta para a LandingPage
+                          Navigator.of(context).pop();
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LandingPage()),
+                                (route) => false,
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('FINALIZAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
                     ),
-                    child: const Text('FINALIZAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // 🔥 WIDGET DO CONTADOR DE REDIRECIONAMENTO
+  Widget _buildContadorRedirecionamento() {
+    return StatefulBuilder(
+      builder: (context, setStateCounter) {
+        int segundosRestantes = 10;
+
+        // Inicia o timer
+        Future.delayed(Duration.zero, () {
+          Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (segundosRestantes > 1) {
+              segundosRestantes--;
+              setStateCounter(() {});
+            } else {
+              timer.cancel();
+              // Redireciona automaticamente após 10 segundos
+              Navigator.of(context).pop();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LandingPage()),
+                    (route) => false,
+              );
+            }
+          });
+        });
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue.shade200),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.timer, color: Colors.blue, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Redirecionando em $segundosRestantes segundos...',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.blue.shade900,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -790,9 +988,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     }
   }
 
-  // 🔙 FUNÇÃO PARA CONTROLAR O BOTÃO DE VOLTAR
   Future<bool> _onWillPop() async {
-    // Se estiver na primeira etapa, pergunta se quer sair
     if (_currentStep == 0) {
       final shouldExit = await showDialog<bool>(
         context: context,
@@ -852,15 +1048,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       );
 
       if (shouldExit == true) {
-        Navigator.pop(context); // Volta para a LandingPage
-        return false; // Não deixa o sistema fechar
+        Navigator.pop(context);
+        return false;
       }
-      return false; // Não sai da tela
-    }
-    // Se não estiver na primeira etapa, volta uma etapa
-    else {
+      return false;
+    } else {
       _etapaAnterior();
-      return false; // Não deixa o sistema fechar
+      return false;
     }
   }
 
@@ -875,7 +1069,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     if (!_inscricoesAbertas) {
       return WillPopScope(
         onWillPop: () async {
-          Navigator.pop(context); // Volta para a LandingPage
+          Navigator.pop(context);
           return false;
         },
         child: Scaffold(
@@ -966,6 +1160,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  // TELA DE BOAS-VINDAS
   Widget _buildStepWelcome() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -1003,8 +1198,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-
-          // 🔥 NOVO BOTÃO DE REGIMENTO INTERNO
           Container(
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 16),
@@ -1079,7 +1272,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
               ],
             ),
           ),
-
           if (_configuracoesCarregadas)
             Container(
               padding: const EdgeInsets.all(16),
@@ -1127,17 +1319,140 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  // TELA DO ALUNO COM FOTO (OBRIGATÓRIA)
   Widget _buildStepAluno() {
     final idade = _controllers['data_nascimento']!.text.isNotEmpty
         ? _calcularIdade(_controllers['data_nascimento']!.text)
         : 0;
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
+    final temFoto = _fotoBytes != null || _fotoUrl != null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // BOLINHA COM FOTO
+          Center(
+            child: GestureDetector(
+              onTap: _uploadingFoto ? null : _selecionarFoto,
+              onLongPress: temFoto ? _removerFoto : null,
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.grey.shade200,
+                      border: Border.all(
+                        color: _fotoBytes != null || _fotoUrl != null
+                            ? Colors.green.shade700
+                            : Colors.red.shade900,
+                        width: _fotoBytes != null || _fotoUrl != null ? 3 : 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: _fotoUrl != null
+                          ? Image.network(
+                        _fotoUrl!,
+                        fit: BoxFit.cover,
+                        width: 120,
+                        height: 120,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildFotoPlaceholder();
+                        },
+                      )
+                          : _fotoBytes != null
+                          ? Image.memory(
+                        _fotoBytes!,
+                        fit: BoxFit.cover,
+                        width: 120,
+                        height: 120,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildFotoPlaceholder();
+                        },
+                      )
+                          : _buildFotoPlaceholder(),
+                    ),
+                  ),
+                  if (_uploadingFoto)
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.5),
+                      ),
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade900,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        temFoto ? Icons.edit : Icons.camera_alt,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Column(
+              children: [
+                Text(
+                  temFoto
+                      ? '✅ Foto adicionada! Toque para trocar • Segure para remover'
+                      : '⚠️ FOTO OBRIGATÓRIA • Toque para adicionar',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: temFoto ? Colors.green.shade700 : Colors.red.shade700,
+                    fontWeight: temFoto ? FontWeight.normal : FontWeight.bold,
+                  ),
+                ),
+                if (!temFoto)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Uma foto sua é necessária para identificação',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
           const Text(
             '📋 DADOS DO ALUNO',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -1201,6 +1516,32 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  Widget _buildFotoPlaceholder() {
+    return Container(
+      color: Colors.grey.shade200,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.camera_alt,
+            size: 40,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Adicionar\nfoto',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // TELA DE CONTATO
   Widget _buildStepContato() {
     final isMaior = _isMaiorIdade();
     return SingleChildScrollView(
@@ -1236,6 +1577,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  // TELA DE ENDEREÇO
   Widget _buildStepEndereco() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1294,6 +1636,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  // TELA DE CPF
   Widget _buildStepCpf() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1336,6 +1679,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  // TELA DE REVISÃO
   Widget _buildStepRevisao() {
     final isMaior = _isMaiorIdade();
     final nomeResponsavel = isMaior
@@ -1344,13 +1688,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     final nomeAluno = _controllers['nome']!.text;
     final idadeAluno = _calcularIdade(_controllers['data_nascimento']!.text);
     final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null;
+    final temFoto = _fotoBytes != null || _fotoUrl != null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TÍTULO
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: BoxDecoration(
@@ -1367,8 +1711,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             ),
           ),
           const SizedBox(height: 16),
-
-          // CARD DE RESUMO DOS DADOS
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(
@@ -1398,6 +1740,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                     _controllers['contato_aluno']!.text,
                     Colors.green,
                   ),
+                  const Divider(height: 16),
+                  _buildResumoLinhaIcon(
+                    Icons.photo_camera,
+                    'Foto',
+                    temFoto ? '✅ Foto do aluno cadastrada' : '❌ FOTO NÃO CADASTRADA',
+                    temFoto ? Colors.purple : Colors.red,
+                  ),
                   if (!isMaior) ...[
                     const Divider(height: 16),
                     _buildResumoLinhaIcon(
@@ -1412,12 +1761,8 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             ),
           ),
           const SizedBox(height: 24),
-
-          // TERMO DE RESPONSABILIDADE
           _buildTermoElaborado(),
           const SizedBox(height: 16),
-
-          // CHECKBOX DE AUTORIZAÇÃO
           Container(
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
@@ -1446,8 +1791,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             ),
           ),
           const SizedBox(height: 16),
-
-          // ALERTA SE PRECISAR ASSINAR
           if (precisaAssinar)
             Container(
               padding: const EdgeInsets.all(12),
@@ -1469,8 +1812,27 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                 ],
               ),
             ),
-
-          // BOTÃO DE ASSINATURA
+          if (!temFoto)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      '⚠️ Foto obrigatória! Volte e adicione uma foto.',
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_recolherAssinatura) ...[
             const SizedBox(height: 16),
             Container(
@@ -1686,7 +2048,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   }
 }
 
-// FORMATTERS
 class _CpfInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(

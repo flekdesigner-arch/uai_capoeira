@@ -10,6 +10,7 @@ import 'aluno_detalhe_screen.dart';
 import 'package:uai_capoeira/services/sync_service.dart';
 import 'package:uai_capoeira/widgets/sync_indicator.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 // ============================================
 // 🔥 SERVIÇO DE CACHE INTELIGENTE (30 MINUTOS)
@@ -49,6 +50,12 @@ class CacheService {
       return agora.difference(entry.timestamp) >= cacheValidity;
     });
   }
+
+  // 🔥 NOVO MÉTODO: LIMPAR TODO O CACHE
+  void limparTodoCache() {
+    _memoryCache.clear();
+    debugPrint('🗑️ Cache de dados limpo completamente');
+  }
 }
 
 class CacheEntry {
@@ -86,6 +93,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   // ✅ CONTROLE DE CONECTIVIDADE EM TEMPO REAL
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isRefreshing = false; // 🔥 CONTROLE DO RECARREGAMENTO
 
   String? _svgContent;
   String _searchQuery = '';
@@ -173,6 +181,155 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           _isOnline = false;
         });
       }
+    }
+  }
+
+  // 🔥 MÉTODO PARA LIMPAR CACHE DAS IMAGENS
+  Future<void> _limparCacheImagens() async {
+    try {
+      // Usa o cache manager do flutter_cache_manager para limpar todas as imagens
+      final cacheManager = DefaultCacheManager();
+      await cacheManager.emptyCache();
+      debugPrint('✅ Cache de imagens limpo com sucesso');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao limpar cache de imagens: $e');
+    }
+  }
+
+  // 🔥 MÉTODO PARA FORÇAR RECARREGAMENTO DO SERVIDOR
+  Future<void> _forcarRecarregamento() async {
+    if (!_isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🌐 Você precisa estar conectado à internet para recarregar.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isRefreshing = true;
+      _isLoading = true;
+    });
+
+    try {
+      // 🔥 1. LIMPAR CACHE DO SERVIÇO
+      _cache.limparTodoCache();
+
+      // 🔥 2. LIMPAR CACHE DAS GRADUAÇÕES
+      _graduacoesCache.clear();
+      _svgCache.clear();
+      _graduacaoValidaCache.clear();
+
+      // 🔥 3. LIMPAR CACHE DAS IMAGENS
+      await _limparCacheImagens();
+
+      // 🔥 4. FORÇAR RECARREGAMENTO DOS ALUNOS DO SERVIDOR
+      await _carregarAlunosForcado();
+
+      // 🔥 5. RECARREGAR GRADUAÇÕES
+      await _preloadGraduacoes();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('Dados recarregados do servidor com sucesso!'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao recarregar: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao recarregar: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // 🔥 MÉTODO PARA CARREGAR ALUNOS FORÇANDO SERVIDOR
+  Future<void> _carregarAlunosForcado() async {
+    try {
+      // Cancela a subscription anterior
+      _alunosSubscription?.cancel();
+
+      // Força busca no servidor (ignora cache)
+      final snapshot = await _firestore
+          .collection('alunos')
+          .where('turma_id', isEqualTo: widget.turmaId)
+          .where('status_atividade', isEqualTo: 'ATIVO(A)')
+          .get(const GetOptions(source: Source.server)); // 🔥 FORÇA SERVIDOR
+
+      final alunos = snapshot.docs;
+      alunos.sort((a, b) {
+        final nomeA = (a.data()['nome'] ?? '').toLowerCase();
+        final nomeB = (b.data()['nome'] ?? '').toLowerCase();
+        return nomeA.compareTo(nomeB);
+      });
+
+      setState(() {
+        _alunosCache = alunos;
+      });
+
+      debugPrint('✅ ${_alunosCache.length} alunos carregados do SERVIDOR');
+
+      // Restaura o stream listener
+      _alunosSubscription = _firestore
+          .collection('alunos')
+          .where('turma_id', isEqualTo: widget.turmaId)
+          .where('status_atividade', isEqualTo: 'ATIVO(A)')
+          .snapshots(includeMetadataChanges: true)
+          .listen((snapshot) {
+        if (!mounted) return;
+
+        final alunos = snapshot.docs;
+        alunos.sort((a, b) {
+          final nomeA = (a.data()['nome'] ?? '').toLowerCase();
+          final nomeB = (b.data()['nome'] ?? '').toLowerCase();
+          return nomeA.compareTo(nomeB);
+        });
+
+        _syncService.updatePendingCount(snapshot);
+
+        setState(() {
+          _alunosCache = alunos;
+        });
+      }, onError: (error) {
+        debugPrint('❌ ERRO no snapshot: $error');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+      });
+
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar alunos do servidor: $e');
+      rethrow;
     }
   }
 
@@ -791,10 +948,24 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                 : (_isOnline ? 'Sem permissão' : 'Offline - Conecte-se para cadastrar'),
             onPressed: podeAdicionar ? _abrirCadastroAluno : null,
           ),
+          // 🔥 BOTÃO DE RECARREGAR MODIFICADO
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Recarregar',
-            onPressed: _carregarAlunos,
+            icon: _isRefreshing
+                ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+                : const Icon(Icons.refresh),
+            tooltip: _isRefreshing
+                ? 'Recarregando...'
+                : (_isOnline
+                ? 'Recarregar do servidor (limpa cache)'
+                : 'Offline - Conecte-se para recarregar'),
+            onPressed: _isRefreshing ? null : _forcarRecarregamento,
           ),
         ],
         bottom: PreferredSize(

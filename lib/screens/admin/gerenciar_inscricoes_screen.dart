@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/screens/alunos/cadastro_aluno_turma_screen.dart';
 import 'package:uai_capoeira/screens/inscricao/inscricoes_aprovadas_dialog.dart';
 import 'package:uai_capoeira/screens/inscricao/visualizar_termo_screen.dart';
@@ -43,6 +44,94 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     } catch (e) {
       print('Erro ao carregar turmas: $e');
     }
+  }
+
+  // 🔥 MÉTODO PARA ABRIR FOTO EM TELA CHEIA
+  void _abrirFotoTelaCheia(String? fotoUrl, String nomeAluno) {
+    if (fotoUrl == null || fotoUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Esta inscrição não possui foto'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black.withOpacity(0.95),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Center(
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: CachedNetworkImage(
+                        imageUrl: fotoUrl,
+                        fit: BoxFit.contain,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade800,
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image, size: 64, color: Colors.white54),
+                              SizedBox(height: 16),
+                              Text(
+                                'Erro ao carregar imagem',
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person, size: 16, color: Colors.white70),
+                      const SizedBox(width: 8),
+                      Text(
+                        nomeAluno,
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(width: 20),
+                      Icon(Icons.touch_app, size: 16, color: Colors.white70),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Toque para fechar',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // 🔥 MÉTODO COMPLETO DO WHATSAPP
@@ -99,9 +188,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   // 🔥 APROVAR - Abre tela de cadastro com dados preenchidos
   void _aprovarInscricao(String inscricaoId, Map<String, dynamic> dados, String turmaId, String turmaNome, String academiaId, String academiaNome) {
-    // 👇 CRIA UMA CÓPIA DOS DADOS E ADICIONA O ID
     final dadosComId = Map<String, dynamic>.from(dados);
-    dadosComId['id'] = inscricaoId;  // <-- ISSO É CRUCIAL!
+    dadosComId['id'] = inscricaoId;
 
     Navigator.push(
       context,
@@ -111,7 +199,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
           turmaNome: turmaNome,
           academiaId: academiaId,
           academiaNome: academiaNome,
-          dadosIniciais: dadosComId,  // <-- USA A CÓPIA COM O ID
+          dadosIniciais: dadosComId,
         ),
       ),
     ).then((alunoCadastrado) {
@@ -408,8 +496,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  // 🔥 DIÁLOGO DE DETALHES COM 4 BOTÕES E TERMO CLICÁVEL
+  // 🔥 DIÁLOGO DE DETALHES COM FOTO E 4 BOTÕES
   void _mostrarDetalhesInscricao(String docId, Map<String, dynamic> dados) {
+    final fotoUrl = dados['foto_url'];
+    final nomeAluno = dados['nome'] ?? 'Aluno';
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -417,7 +508,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         child: Container(
           width: double.maxFinite,
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
             maxWidth: 500,
           ),
           child: Column(
@@ -434,16 +525,90 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.person, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        dados['nome'] ?? 'Detalhes da Inscrição',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                    // 🔥 BOLINHA COM FOTO CLICÁVEL
+                    GestureDetector(
+                      onTap: () => _abrirFotoTelaCheia(fotoUrl, nomeAluno),
+                      child: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
+                        child: ClipOval(
+                          child: fotoUrl != null && fotoUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                            imageUrl: fotoUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: Colors.grey.shade700,
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey.shade700,
+                              child: const Icon(
+                                Icons.person,
+                                color: Colors.white54,
+                                size: 30,
+                              ),
+                            ),
+                          )
+                              : Container(
+                            color: Colors.grey.shade700,
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.white54,
+                              size: 30,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dados['nome'] ?? 'Detalhes da Inscrição',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          GestureDetector(
+                            onTap: () => _abrirFotoTelaCheia(fotoUrl, nomeAluno),
+                            child: Text(
+                              fotoUrl != null && fotoUrl.isNotEmpty
+                                  ? '👆 Toque na foto para ampliar'
+                                  : '📷 Nenhuma foto anexada',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -454,7 +619,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 ),
               ),
 
-              // CONTEÚDO - AGORA COM ITENS CLICÁVEIS
+              // CONTEÚDO
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.all(16),
@@ -839,7 +1004,6 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         title: const Text('📋 Gerenciar Inscrições'),
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
-        // 🔥 BOTÃO PARA VER INSCRIÇÕES APROVADAS
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -889,6 +1053,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               final doc = inscricoes[index];
               final data = doc.data() as Map<String, dynamic>;
               final dataInscricao = data['data_inscricao'] as Timestamp?;
+              final fotoUrl = data['foto_url'];
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -897,11 +1062,23 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.red.shade100,
-                    child: Text(
-                      (data['nome']?[0] ?? '?').toUpperCase(),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                  leading: GestureDetector(
+                    onTap: () => _abrirFotoTelaCheia(fotoUrl, data['nome'] ?? 'Aluno'),
+                    child: CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.red.shade100,
+                      backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
+                          ? CachedNetworkImageProvider(fotoUrl)
+                          : null,
+                      child: fotoUrl == null || fotoUrl.isEmpty
+                          ? Text(
+                        (data['nome']?[0] ?? '?').toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                          : null,
                     ),
                   ),
                   title: Text(

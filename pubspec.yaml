@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none' # Impede a publicação no pub.dev
-version: 2.0.22+1 # Versão do app (2.0.15) e código interno (1)
+version: 2.0.24+1 # Versão do app (2.0.15) e código interno (1)
 
 # Versões do SDK e Flutter necessárias
 environment:
@@ -32,6 +32,7 @@ dependencies:
   # 📄 VISUALIZADOR DE PDF
   flutter_pdfview: ^1.3.2  # 👈 ADICIONE ESTA LINHA
   webview_flutter: ^4.7.0
+  flutter_cache_manager: ^3.3.0
 
   # 🔥 FIREBASE CORE
   # Obrigatório para qualquer serviço Firebase

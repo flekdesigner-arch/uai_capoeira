@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/google_sheets_oauth_service.dart';
+import 'vincular_certificados_drive_screen.dart'; // 👈 NOVA TELA
 
 class SelecionarParticipantesCsvScreen extends StatefulWidget {
   final String eventoId;
@@ -80,6 +81,7 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           'selecionado': false,
           'cpf': '',
           'foto': fotoUrl,
+          'link_certificado': data['link_certificado']?.toString() ?? '', // 👈 JÁ CARREGA SE TIVER
         };
       }
       setState(() {});
@@ -185,6 +187,31 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
     }
   }
 
+  // 👇 NOVO MÉTODO: Abrir tela de vincular certificados
+  void _abrirVincularCertificados() {
+    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+
+    if (selecionados.isEmpty) {
+      _mostrarMensagem('Selecione pelo menos um participante', Colors.orange);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VincularCertificadosDriveScreen(
+          participantes: selecionados,
+          eventoId: widget.eventoId,
+          eventoNome: widget.eventoNome,
+        ),
+      ),
+    ).then((atualizar) {
+      if (atualizar == true) {
+        _carregarParticipantes(); // Recarrega a lista se voltou com sucesso
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -207,6 +234,22 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          // 👇 NOVO BOTÃO DE CERTIFICADOS (Ícone do Google Drive)
+          if (_selecionadosCount > 0)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.drive_folder_upload, color: Colors.white),
+                onPressed: _abrirVincularCertificados,
+                tooltip: 'Vincular certificados do Drive',
+              ),
+            ),
+
+          // Botão "Todos" existente
           if (_participantes.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -304,25 +347,51 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           if (_selecionadosCount > 0)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      onPressed: _gerarCsv,
-                      isLoading: _isGerandoCsv,
-                      icon: Icons.file_download,
-                      label: 'BAIXAR CSV',
-                      color: Colors.blue,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          onPressed: _gerarCsv,
+                          isLoading: _isGerandoCsv,
+                          icon: Icons.file_download,
+                          label: 'BAIXAR CSV',
+                          color: Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildActionButton(
+                          onPressed: _enviarViaAPI,
+                          isLoading: _isEnviando,
+                          icon: Icons.cloud_upload,
+                          label: 'ENVIAR PLANILHA',
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      onPressed: _enviarViaAPI,
-                      isLoading: _isEnviando,
-                      icon: Icons.cloud_upload,
-                      label: 'ENVIAR PARA PLANILHA',
-                      color: Colors.green,
+
+                  // 👇 BOTÃO EXTRA DE CERTIFICADO (opcional, pode manter ou remover)
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _abrirVincularCertificados,
+                      icon: const Icon(Icons.drive_folder_upload),
+                      label: Text(
+                        'VINCULAR CERTIFICADOS DO DRIVE (${_selecionadosCount})',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -417,6 +486,7 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
 
   Widget _buildParticipantCard(Map<String, dynamic> p, int index) {
     final temGraduacao = p['graduacao_nova'].isNotEmpty;
+    final temCertificado = p['link_certificado'] != null && p['link_certificado'].toString().isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -435,7 +505,7 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 📸 FOTO DO ALUNO (em vez do número)
+              // 📸 FOTO DO ALUNO
               Container(
                 width: 50,
                 height: 50,
@@ -494,12 +564,32 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      p['aluno_nome'],
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            p['aluno_nome'],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (temCertificado)
+                          Container(
+                            margin: const EdgeInsets.only(left: 4),
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(

@@ -2707,14 +2707,20 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
   Widget _buildFiltrosRow() {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildFiltroChip('Semana', Icons.calendar_view_week),
-          _buildFiltroChip('Mês', Icons.calendar_month),
-          _buildFiltroChip('Ano', Icons.calendar_today),
-          _buildFiltroChip('Total', Icons.history),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            _buildFiltroChip('Semana', Icons.calendar_view_week),
+            const SizedBox(width: 8),
+            _buildFiltroChip('Mês', Icons.calendar_month),
+            const SizedBox(width: 8),
+            _buildFiltroChip('Ano', Icons.calendar_today),
+            const SizedBox(width: 8),
+            _buildFiltroChip('Total', Icons.history),
+          ],
+        ),
       ),
     );
   }

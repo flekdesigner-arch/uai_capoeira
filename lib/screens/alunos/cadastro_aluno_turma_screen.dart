@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -65,6 +66,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   bool _turmaCheia = false;
   bool _isMounted = false;
   bool _fotoCarregada = false;
+  bool _salvando = false; // 🔥 CONTROLE DO SPLASH DE SALVAMENTO
+
+  // 🔥 DADOS DO USUÁRIO LOGADO
+  String? _usuarioLogadoNome;
+  String? _usuarioLogadoEmail;
+  String? _usuarioLogadoUid;
 
   // Dados da turma (carregados para verificação)
   Map<String, dynamic> _turmaData = {};
@@ -89,6 +96,40 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   void _safeSetState(VoidCallback callback) {
     if (_isMounted) {
       setState(callback);
+    }
+  }
+
+  // 🔥 MÉTODO PARA CARREGAR USUÁRIO LOGADO
+  Future<void> _carregarUsuarioLogado() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _usuarioLogadoUid = user.uid;
+        _usuarioLogadoEmail = user.email;
+
+        // Tenta buscar o nome do usuário na coleção 'usuarios'
+        final userDoc = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(user.uid)
+            .get();
+
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          _usuarioLogadoNome = userData?['nome']?.toString() ?? user.email;
+        } else {
+          _usuarioLogadoNome = user.email;
+        }
+
+        debugPrint('✅ Usuário logado: $_usuarioLogadoNome ($_usuarioLogadoEmail)');
+      } else {
+        debugPrint('⚠️ Nenhum usuário logado');
+        _usuarioLogadoNome = 'Sistema';
+        _usuarioLogadoEmail = 'sistema@uai.capoeira';
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar usuário logado: $e');
+      _usuarioLogadoNome = 'Sistema';
+      _usuarioLogadoEmail = 'sistema@uai.capoeira';
     }
   }
 
@@ -168,6 +209,9 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
 
   Future<void> _initializeData() async {
     try {
+      // 🔥 CARREGAR USUÁRIO LOGADO PRIMEIRO
+      await _carregarUsuarioLogado();
+
       await _fetchGraduacoes();
       await _loadTurmaData();
 
@@ -650,7 +694,8 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         'academia_id': widget.academiaId,
         'academia_nome': widget.academiaNome,
         'aprovado_em': FieldValue.serverTimestamp(),
-        'aprovado_por': 'admin', // Se tiver controle de usuário
+        'aprovado_por': _usuarioLogadoNome ?? _usuarioLogadoEmail ?? 'Sistema',
+        'aprovado_por_uid': _usuarioLogadoUid,
         'status': 'aprovado',
       };
 
@@ -661,7 +706,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
 
       debugPrint('✅ Inscrição movida para aprovadas: $inscricaoId');
 
-      // 🔥 DELETAR da coleção pendente (opcional - pode manter se quiser)
+      // 🔥 DELETAR da coleção pendente
       await FirebaseFirestore.instance
           .collection('inscricoes')
           .doc(inscricaoId)
@@ -709,96 +754,105 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       return;
     }
 
-    if (_pickedImage != null) {
-      try {
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('foto_alunos')
-            .child('${widget.alunoId ?? UniqueKey().toString()}.jpg');
-        await ref.putFile(File(_pickedImage!.path));
-        _networkImageUrl = await ref.getDownloadURL();
-      } catch (e) {
-        if (_isMounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Erro ao fazer upload da imagem: $e")),
-          );
-        }
-        return;
-      }
-    }
-
-    Map<String, dynamic> dataToSave = {};
-
-    _controllers.forEach((key, controller) {
-      if (key == 'contato_aluno' || key == 'contato_responsavel') {
-        dataToSave[key] = _limparMascara(controller.text.trim());
-      } else if (key == 'cpf') {
-        dataToSave[key] = _limparMascara(controller.text.trim());
-      } else if (dateKeys.contains(key)) {
-        if (controller.text.trim().isNotEmpty) {
-          final date = _parseDate(controller.text.trim());
-          if (date != null) {
-            dataToSave[key] = Timestamp.fromDate(date);
-          }
-        } else if (key == 'tempo_capoeira') {
-          dataToSave[key] = FieldValue.serverTimestamp();
-        }
-      } else if (key != 'rua' && key != 'numero' && key != 'bairro') {
-        final text = controller.text.trim();
-        if (text.isNotEmpty) {
-          dataToSave[key] = text;
-        }
-      }
+    // 🔥 ATIVA O SPLASH DE SALVAMENTO
+    _safeSetState(() {
+      _salvando = true;
     });
 
-    dataToSave['endereco'] = _montarEndereco();
-
-    if (_controllers['cidade']!.text.trim().isNotEmpty) {
-      dataToSave['cidade'] = _controllers['cidade']!.text.trim();
-    }
-
-    dataToSave['academia_id'] = widget.academiaId;
-    dataToSave['academia'] = widget.academiaNome;
-    dataToSave['turma_id'] = widget.turmaId;
-    dataToSave['turma'] = widget.turmaNome;
-
-    final graduacaoRef = _graduacaoId != null
-        ? FirebaseFirestore.instance.collection('graduacoes').doc(_graduacaoId)
-        : null;
-    final graduacaoData = _graduacaoId != null ? _graduacoesData[_graduacaoId] : null;
-
-    final camposObrigatorios = {
-      'sexo': _sexo,
-      'status_atividade': 'ATIVO(A)',
-      'foto_perfil_aluno': _networkImageUrl,
-      'atualizado_em': FieldValue.serverTimestamp(),
-      'editavel': true,
-    };
-
-    if (_graduacaoId != null) {
-      dataToSave['graduacao_id'] = _graduacaoId;
-      dataToSave['graduacao_ref'] = graduacaoRef;
-
-      if (graduacaoData != null) {
-        final camposGraduacao = {
-          'graduacao_nome': graduacaoData['nome_graduacao'],
-          'graduacao_cor1': graduacaoData['hex_cor1'],
-          'graduacao_cor2': graduacaoData['hex_cor2'],
-          'graduacao_ponta1': graduacaoData['hex_ponta1'],
-          'graduacao_ponta2': graduacaoData['hex_ponta2'],
-        };
-        camposGraduacao.removeWhere((key, value) => value == null);
-        dataToSave.addAll(camposGraduacao);
-      }
-    }
-
-    if (_controllers['cpf']!.text.trim().isNotEmpty) {
-      dataToSave['cpf'] = _limparMascara(_controllers['cpf']!.text.trim());
-    }
-
-    dataToSave.addAll(camposObrigatorios);
-
     try {
+      if (_pickedImage != null) {
+        try {
+          final ref = FirebaseStorage.instance
+              .ref()
+              .child('foto_alunos')
+              .child('${widget.alunoId ?? UniqueKey().toString()}.jpg');
+          await ref.putFile(File(_pickedImage!.path));
+          _networkImageUrl = await ref.getDownloadURL();
+        } catch (e) {
+          if (_isMounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Erro ao fazer upload da imagem: $e")),
+            );
+          }
+          _safeSetState(() {
+            _salvando = false;
+          });
+          return;
+        }
+      }
+
+      Map<String, dynamic> dataToSave = {};
+
+      _controllers.forEach((key, controller) {
+        if (key == 'contato_aluno' || key == 'contato_responsavel') {
+          dataToSave[key] = _limparMascara(controller.text.trim());
+        } else if (key == 'cpf') {
+          dataToSave[key] = _limparMascara(controller.text.trim());
+        } else if (dateKeys.contains(key)) {
+          if (controller.text.trim().isNotEmpty) {
+            final date = _parseDate(controller.text.trim());
+            if (date != null) {
+              dataToSave[key] = Timestamp.fromDate(date);
+            }
+          } else if (key == 'tempo_capoeira') {
+            // 🔥 SE TEMPO CAPOEIRA FOR VAZIO, COLOCA A DATA DE HOJE
+            dataToSave[key] = Timestamp.fromDate(DateTime.now());
+          }
+        } else if (key != 'rua' && key != 'numero' && key != 'bairro') {
+          final text = controller.text.trim();
+          if (text.isNotEmpty) {
+            dataToSave[key] = text;
+          }
+        }
+      });
+
+      dataToSave['endereco'] = _montarEndereco();
+
+      if (_controllers['cidade']!.text.trim().isNotEmpty) {
+        dataToSave['cidade'] = _controllers['cidade']!.text.trim();
+      }
+
+      dataToSave['academia_id'] = widget.academiaId;
+      dataToSave['academia'] = widget.academiaNome;
+      dataToSave['turma_id'] = widget.turmaId;
+      dataToSave['turma'] = widget.turmaNome;
+
+      final graduacaoRef = _graduacaoId != null
+          ? FirebaseFirestore.instance.collection('graduacoes').doc(_graduacaoId)
+          : null;
+      final graduacaoData = _graduacaoId != null ? _graduacoesData[_graduacaoId] : null;
+
+      final camposObrigatorios = {
+        'sexo': _sexo,
+        'status_atividade': 'ATIVO(A)',
+        'foto_perfil_aluno': _networkImageUrl,
+        'atualizado_em': FieldValue.serverTimestamp(),
+        'editavel': true,
+      };
+
+      if (_graduacaoId != null) {
+        dataToSave['graduacao_id'] = _graduacaoId;
+        dataToSave['graduacao_ref'] = graduacaoRef;
+
+        if (graduacaoData != null) {
+          final camposGraduacao = {
+            'graduacao_nome': graduacaoData['nome_graduacao'],
+            'graduacao_cor1': graduacaoData['hex_cor1'],
+            'graduacao_cor2': graduacaoData['hex_cor2'],
+            'graduacao_ponta1': graduacaoData['hex_ponta1'],
+            'graduacao_ponta2': graduacaoData['hex_ponta2'],
+          };
+          camposGraduacao.removeWhere((key, value) => value == null);
+          dataToSave.addAll(camposGraduacao);
+        }
+      }
+
+      if (_controllers['cpf']!.text.trim().isNotEmpty) {
+        dataToSave['cpf'] = _limparMascara(_controllers['cpf']!.text.trim());
+      }
+
+      dataToSave.addAll(camposObrigatorios);
+
       if (_isEditing) {
         // EDIÇÃO - não move inscrição
         await FirebaseFirestore.instance
@@ -820,6 +874,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       } else {
         // NOVO ALUNO
         dataToSave['criado_em'] = FieldValue.serverTimestamp();
+        dataToSave['data_do_cadastro'] = FieldValue.serverTimestamp(); // 🔥 DATA DO CADASTRO
+
+        // 🔥 ADICIONA QUEM REALIZOU O CADASTRO
+        dataToSave['cadastro_realizado_por'] = _usuarioLogadoNome ?? _usuarioLogadoEmail ?? 'Sistema';
+        dataToSave['cadastro_realizado_por_uid'] = _usuarioLogadoUid;
+        dataToSave['cadastro_realizado_em'] = FieldValue.serverTimestamp();
 
         if (!dataToSave.containsKey('tempo_capoeira')) {
           dataToSave['tempo_capoeira'] = FieldValue.serverTimestamp();
@@ -868,6 +928,11 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
           ),
         );
       }
+    } finally {
+      // 🔥 DESATIVA O SPLASH DE SALVAMENTO
+      _safeSetState(() {
+        _salvando = false;
+      });
     }
   }
 
@@ -971,7 +1036,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     return Column(
       children: [
         GestureDetector(
-          onTap: _showImageSourceActionSheet,
+          onTap: _salvando ? null : _showImageSourceActionSheet,
           child: CircleAvatar(
             radius: 60,
             backgroundColor: Colors.grey[300],
@@ -1267,7 +1332,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         DropdownButtonFormField<String>(
           value: _graduacaoId,
           items: _graduacaoItems,
-          onChanged: (v) => setState(() => _graduacaoId = v),
+          onChanged: _salvando ? null : (v) => setState(() => _graduacaoId = v),
           decoration: const InputDecoration(
               labelText: 'Graduação Atual (opcional)',
               border: OutlineInputBorder()),
@@ -1332,6 +1397,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   Widget _buildCpfField() {
     return TextFormField(
       controller: _controllers['cpf'],
+      readOnly: _salvando,
       decoration: InputDecoration(
         labelText: 'CPF (opcional)',
         hintText: '000.000.000-00',
@@ -1359,6 +1425,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       {bool isRequired = true}) {
     return TextFormField(
       controller: controller,
+      readOnly: _salvando,
       decoration: InputDecoration(
         labelText: '$label${isRequired ? ' *' : ''}',
         hintText: '(00) 00000-0000',
@@ -1395,6 +1462,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       }) {
     return TextFormField(
       controller: controller,
+      readOnly: _salvando,
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: '$label${isRequired ? ' *' : ''}',
@@ -1418,12 +1486,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       {bool isRequired = true}) {
     return TextFormField(
         controller: controller,
+        readOnly: _salvando,
         decoration: InputDecoration(
             labelText: '$label${isRequired ? ' *' : ''}',
             suffixIcon: const Icon(Icons.calendar_today),
             border: const OutlineInputBorder()),
-        readOnly: true,
-        onTap: () => _selectDate(context, controller),
+        onTap: _salvando ? null : () => _selectDate(context, controller),
         validator: (value) {
           if (isRequired && (value == null || value.isEmpty)) {
             return 'Campo obrigatório';
@@ -1438,6 +1506,45 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
       return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // 🔥 SPLASH DE SALVAMENTO
+    if (_salvando) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Editar Aluno' : 'Cadastrar Novo Aluno'),
+          backgroundColor: Colors.red.shade900,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(
+                color: Colors.red,
+                strokeWidth: 3,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                _isEditing ? 'Salvando alterações...' : 'Cadastrando aluno...',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Por favor, aguarde',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1481,12 +1588,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
               DropdownButtonFormField<String>(
                   value: _sexo,
                   items: [
-                    DropdownMenuItem(value: null, child: Text('Selecione o sexo')),
+                    const DropdownMenuItem(value: null, child: Text('Selecione o sexo')),
                     ...['MASCULINO', 'FEMININO']
                         .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                         .toList(),
                   ],
-                  onChanged: (v) => setState(() => _sexo = v),
+                  onChanged: _salvando ? null : (v) => setState(() => _sexo = v),
                   decoration: const InputDecoration(
                       labelText: 'Sexo', border: OutlineInputBorder()),
                   validator: (v) => v == null ? 'Campo obrigatório' : null),
