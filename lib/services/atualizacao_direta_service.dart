@@ -1,15 +1,39 @@
 // services/atualizacao_direta_service.dart
 import 'dart:io';
+import 'dart:async';
+
+
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class AtualizacaoDiretaService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  final Connectivity _connectivity = Connectivity();
+
+  // 🔥 VERIFICAR CONECTIVIDADE
+  Future<bool> _verificarInternet() async {
+    try {
+      final connectivityResult = await _connectivity.checkConnectivity();
+      final hasInternet = connectivityResult != ConnectivityResult.none;
+
+      if (!hasInternet) {
+        debugPrint('❌ Sem conexão com a internet');
+      } else {
+        debugPrint('✅ Conexão com internet disponível: $connectivityResult');
+      }
+
+      return hasInternet;
+    } catch (e) {
+      debugPrint('❌ Erro ao verificar conectividade: $e');
+      return false;
+    }
+  }
 
   // 🔥 VERIFICAR PERMISSÕES POR VERSÃO DO ANDROID
   Future<bool> _solicitarPermissoes(BuildContext context) async {
@@ -32,8 +56,32 @@ class AtualizacaoDiretaService {
           debugPrint('❌ Permissão de instalação negada');
 
           // Se for Android 8+ (API 26+), podemos abrir as configurações
-          if (sdkInt >= 26) {
-            await openAppSettings();
+          if (sdkInt >= 26 && context.mounted) {
+            final shouldOpenSettings = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Permissão necessária'),
+                content: const Text(
+                    'Para instalar o aplicativo, precisamos de permissão para instalar apps desconhecidos.\n\n'
+                        'Deseja abrir as configurações e conceder a permissão manualmente?'
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Abrir configurações'),
+                  ),
+                ],
+              ),
+            );
+
+            if (shouldOpenSettings == true) {
+              await openAppSettings();
+            }
           }
           return false;
         }
@@ -51,36 +99,33 @@ class AtualizacaoDiretaService {
           debugPrint('📱 Solicitando permissão de storage...');
           status = await Permission.storage.request();
 
-          if (!status.isGranted) {
+          if (!status.isGranted && context.mounted) {
             debugPrint('❌ Permissão de storage negada');
 
-            // 🔥 CORREÇÃO: Verificar se o contexto existe antes de usar
-            if (context.mounted) {
-              final shouldOpenSettings = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Permissão necessária'),
-                  content: const Text(
-                      'Para baixar o APK, precisamos de permissão para acessar o armazenamento. '
-                          'Deseja abrir as configurações e conceder a permissão manualmente?'
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancelar'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Abrir configurações'),
-                    ),
-                  ],
+            final shouldOpenSettings = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Permissão necessária'),
+                content: const Text(
+                    'Para baixar o APK, precisamos de permissão para acessar o armazenamento.\n\n'
+                        'Deseja abrir as configurações e conceder a permissão manualmente?'
                 ),
-              );
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Abrir configurações'),
+                  ),
+                ],
+              ),
+            );
 
-              // 🔥 CORREÇÃO: Verificar se shouldOpenSettings não é null
-              if (shouldOpenSettings == true) {
-                await openAppSettings();
-              }
+            if (shouldOpenSettings == true) {
+              await openAppSettings();
             }
             return false;
           }
@@ -147,29 +192,54 @@ class AtualizacaoDiretaService {
     }
   }
 
-  // 🔥 VERIFICAR SE APK EXISTE
+  // 🔥 VERIFICAR SE APK EXISTE (COM TIMEOUT)
   Future<bool> apkExiste(String versao) async {
     try {
       final ref = _storage.ref().child('apks/uai_capoeira_$versao.apk');
-      await ref.getMetadata();
-      debugPrint('✅ APK versão $versao encontrado');
+
+      // Adicionar timeout de 30 segundos
+      final metadata = await ref.getMetadata().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Timeout ao verificar APK');
+        },
+      );
+
+      debugPrint('✅ APK versão $versao encontrado - Tamanho: ${metadata.size} bytes');
       return true;
+    } on FirebaseException catch (e) {
+      if (e.code == 'object-not-found') {
+        debugPrint('❌ APK versão $versao não encontrado');
+        return false;
+      }
+      debugPrint('❌ Erro Firebase ao verificar APK: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
-      debugPrint('❌ APK não encontrado: $e');
-      return false;
+      debugPrint('❌ Erro ao verificar APK: $e');
+      rethrow;
     }
   }
 
-  // 🔥 LISTAR APKS DISPONÍVEIS
+  // 🔥 LISTAR APKS DISPONÍVEIS (COM TIMEOUT)
   Future<List<String>> listarApksDisponiveis() async {
     try {
       final ref = _storage.ref().child('apks');
-      final result = await ref.listAll();
+
+      // Adicionar timeout de 30 segundos
+      final result = await ref.listAll().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Timeout ao listar APKs');
+        },
+      );
 
       return result.items
           .map((item) => item.name)
           .where((name) => name.endsWith('.apk'))
           .toList();
+    } on FirebaseException catch (e) {
+      debugPrint('❌ Erro Firebase ao listar APKs: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
       debugPrint('❌ Erro ao listar APKs: $e');
       return [];
@@ -184,18 +254,24 @@ class AtualizacaoDiretaService {
     required Function(String status) onStatus,
   }) async {
     try {
+      // Verificar conectividade primeiro
+      onStatus('🔍 Verificando conexão...');
+      if (!await _verificarInternet()) {
+        throw Exception('Sem conexão com a internet. Verifique sua rede e tente novamente.');
+      }
+
       onStatus('🔍 Verificando permissões...');
 
       // 1. Verificar permissões
       if (!await _solicitarPermissoes(context)) {
-        throw Exception('❌ Permissões necessárias negadas');
+        throw Exception('Permissões necessárias negadas. Conceda as permissões nas configurações.');
       }
 
       onStatus('🔍 Verificando disponibilidade...');
 
       // 2. Verificar se APK existe
       if (!await apkExiste(versao)) {
-        throw Exception('❌ APK versão $versao não encontrado');
+        throw Exception('APK versão $versao não encontrado no servidor');
       }
 
       onStatus('📥 Preparando download...');
@@ -203,7 +279,7 @@ class AtualizacaoDiretaService {
       // 3. Obter diretório
       final downloadDir = await _getDownloadDirectory();
       if (downloadDir == null) {
-        throw Exception('❌ Não foi possível acessar o diretório de download');
+        throw Exception('Não foi possível acessar o diretório de download');
       }
 
       final fileName = 'uai_capoeira_$versao.apk';
@@ -220,33 +296,60 @@ class AtualizacaoDiretaService {
 
       onStatus('📥 Baixando APK...');
 
-      // 5. Baixar do Firebase Storage
+      // 5. Baixar do Firebase Storage com timeout
       final ref = _storage.ref().child('apks/uai_capoeira_$versao.apk');
 
-      // Download com acompanhamento de progresso
-      final task = ref.writeToFile(file);
+      // Criar um Completer para controlar o timeout
+      final downloadCompleter = Completer<void>();
+      Timer? timeoutTimer;
 
-      task.snapshotEvents.listen((event) {
-        if (event.totalBytes != null && event.totalBytes! > 0) {
-          final progress = event.bytesTransferred / event.totalBytes!;
-          onProgress(progress.clamp(0.0, 1.0));
-          debugPrint('📊 Download: ${(progress * 100).toStringAsFixed(1)}%');
-        }
-      });
+      try {
+        // Configurar timeout de 5 minutos para download
+        timeoutTimer = Timer(const Duration(minutes: 5), () {
+          if (!downloadCompleter.isCompleted) {
+            downloadCompleter.completeError(
+                TimeoutException('Tempo limite excedido. Verifique sua conexão com a internet.')
+            );
+          }
+        });
 
-      await task;
+        // Download com acompanhamento de progresso
+        final task = ref.writeToFile(file);
+
+        task.snapshotEvents.listen((event) {
+          if (event.totalBytes != null && event.totalBytes! > 0) {
+            final progress = event.bytesTransferred / event.totalBytes!;
+            onProgress(progress.clamp(0.0, 1.0));
+            debugPrint('📊 Download: ${(progress * 100).toStringAsFixed(1)}%');
+          }
+        });
+
+        await task;
+        downloadCompleter.complete();
+        await downloadCompleter.future;
+
+        timeoutTimer?.cancel();
+
+      } catch (e) {
+        timeoutTimer?.cancel();
+        rethrow;
+      }
 
       onStatus('✅ Download concluído!');
 
       // 6. Verificar se o arquivo foi baixado
       if (!await file.exists()) {
-        throw Exception('❌ Falha ao baixar o arquivo');
+        throw Exception('Falha ao baixar o arquivo');
       }
 
       // 7. Verificar tamanho do arquivo
       final fileSize = await file.length();
       if (fileSize == 0) {
-        throw Exception('❌ Arquivo baixado está vazio');
+        throw Exception('Arquivo baixado está vazio');
+      }
+
+      if (fileSize < 1024 * 1024) { // Menos de 1MB
+        throw Exception('Arquivo baixado está muito pequeno (${(fileSize / 1024).toStringAsFixed(0)} KB)');
       }
 
       debugPrint('📦 Tamanho do arquivo: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
@@ -277,8 +380,30 @@ class AtualizacaoDiretaService {
         }
       }
 
+    } on TimeoutException catch (e) {
+      onStatus('⏰ ${e.message}');
+      debugPrint('❌ Timeout: $e');
+      rethrow;
+    } on FirebaseException catch (e) {
+      String mensagemErro;
+      switch (e.code) {
+        case 'permission-denied':
+          mensagemErro = 'Permissão negada no Firebase Storage. Contate o suporte.';
+          break;
+        case 'object-not-found':
+          mensagemErro = 'APK não encontrado no servidor.';
+          break;
+        case 'unauthenticated':
+          mensagemErro = 'Erro de autenticação. Contate o suporte.';
+          break;
+        default:
+          mensagemErro = 'Erro no Firebase: ${e.message ?? e.code}';
+      }
+      onStatus('❌ $mensagemErro');
+      debugPrint('❌ FirebaseException: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
-      onStatus('❌ Erro: $e');
+      onStatus('❌ Erro: ${e.toString()}');
       debugPrint('❌ Erro detalhado: $e');
       rethrow;
     }
@@ -286,25 +411,39 @@ class AtualizacaoDiretaService {
 
   // 🔥 MÉTODO ALTERNATIVO PARA ABRIR APK (caso OpenFilex falhe)
   Future<void> _abrirComIntentAlternativa(String filePath) async {
-    // Usar Process.run para executar comando am start (requer permissões)
     try {
-      await Process.run('am', ['start', '-t', 'application/vnd.android.package-archive', '-d', 'file://$filePath']);
+      // Método alternativo usando Android Intent
+      await Process.run('am', [
+        'start',
+        '-a', 'android.intent.action.VIEW',
+        '-t', 'application/vnd.android.package-archive',
+        '-d', 'file://$filePath'
+      ]);
       debugPrint('✅ Intent alternativa executada');
     } catch (e) {
       debugPrint('❌ Erro na intent alternativa: $e');
-      throw Exception('Não foi possível abrir o instalador');
+      throw Exception('Não foi possível abrir o instalador. Tente abrir manualmente o arquivo em: $filePath');
     }
   }
 
   // 🔥 VERIFICAR SE PODE ATUALIZAR
   Future<Map<String, dynamic>> verificarAtualizacao(String versaoAtual) async {
     try {
+      // Verificar conectividade primeiro
+      if (!await _verificarInternet()) {
+        return {
+          'podeAtualizar': false,
+          'mensagem': 'Sem conexão com a internet. Não foi possível verificar atualizações.',
+          'erro': 'no_internet',
+        };
+      }
+
       final apks = await listarApksDisponiveis();
 
       if (apks.isEmpty) {
         return {
           'podeAtualizar': false,
-          'mensagem': 'Nenhuma atualização disponível',
+          'mensagem': 'Nenhuma atualização disponível no momento.',
         };
       }
 
@@ -318,7 +457,7 @@ class AtualizacaoDiretaService {
       if (versoesDisponiveis.isEmpty) {
         return {
           'podeAtualizar': false,
-          'mensagem': 'Nenhuma versão válida encontrada',
+          'mensagem': 'Nenhuma versão válida encontrada no servidor.',
         };
       }
 
@@ -344,14 +483,21 @@ class AtualizacaoDiretaService {
         'versoesDisponiveis': versoesDisponiveis,
         'mensagem': precisaAtualizar
             ? 'Nova versão $ultimaVersao disponível!'
-            : 'App está atualizado',
+            : 'App está atualizado (versão $versaoAtual)',
       };
 
+    } on FirebaseException catch (e) {
+      debugPrint('❌ Erro Firebase ao verificar atualização: ${e.code} - ${e.message}');
+      return {
+        'podeAtualizar': false,
+        'mensagem': 'Erro ao verificar atualizações: ${e.message ?? e.code}',
+        'erro': e.code,
+      };
     } catch (e) {
       debugPrint('❌ Erro ao verificar atualização: $e');
       return {
         'podeAtualizar': false,
-        'mensagem': 'Erro ao verificar atualizações',
+        'mensagem': 'Erro ao verificar atualizações. Tente novamente mais tarde.',
         'erro': e.toString(),
       };
     }
@@ -380,7 +526,7 @@ class AtualizacaoDiretaService {
       String versao
       ) async {
     // Mostrar diálogo de progresso
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => _DownloadProgressDialog(
@@ -458,7 +604,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
       if (mounted) {
         setState(() {
           _erro = true;
-          _erroMensagem = e.toString();
+          _erroMensagem = e.toString().replaceAll('Exception: ', '');
         });
       }
     }
@@ -481,7 +627,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
               const SizedBox(height: 10),
               Text(
                 '${(_progress * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ] else if (_erro) ...[
               const Icon(Icons.error_outline, color: Colors.red, size: 50),
@@ -510,6 +656,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _erro ? Colors.red : Colors.grey.shade700,
+                fontSize: 12,
               ),
             ),
           ],

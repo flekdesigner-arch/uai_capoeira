@@ -93,8 +93,11 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _buscarCoresPorNome(String nomeGraduacao) async {
-    // Verificar se já está em cache
+    print('🔍 BUSCANDO GRADUAÇÃO: "$nomeGraduacao"');
+
+    // Verificar cache
     if (_cacheCoresPorNome.containsKey(nomeGraduacao)) {
+      print('✅ Usando cache para: $nomeGraduacao');
       setState(() {
         _coresGraduacao = _cacheCoresPorNome[nomeGraduacao];
       });
@@ -103,45 +106,79 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
 
     try {
-      // Buscar todas as graduações
-      final snapshot = await _firestore.collection('graduacoes').get();
+      // Opção 1: Busca exata (mais rápida)
+      final querySnapshot = await _firestore
+          .collection('graduacoes')
+          .where('nome_graduacao', isEqualTo: nomeGraduacao)
+          .limit(1)
+          .get();
 
-      // Procurar por correspondência no nome
-      for (var doc in snapshot.docs) {
+      Map<String, dynamic>? coresEncontradas;
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final doc = querySnapshot.docs.first;
         final data = doc.data();
-        final nome = data['nome_graduacao']?.toString() ?? '';
+        print('✅ Graduação encontrada por busca exata: ${data['nome_graduacao']}');
+        coresEncontradas = {
+          'hex_cor1': data['hex_cor1'] ?? '#FFFFFF',
+          'hex_cor2': data['hex_cor2'] ?? '#FFFFFF',
+          'hex_ponta1': data['hex_ponta1'] ?? '#FFFFFF',
+          'hex_ponta2': data['hex_ponta2'] ?? '#FFFFFF',
+          'nome_graduacao': data['nome_graduacao'],
+        };
+      } else {
+        // Opção 2: Se não achou exato, faz busca flexível
+        print('⚠️ Busca exata falhou, tentando busca flexível...');
+        final allDocs = await _firestore.collection('graduacoes').get();
 
-        // Comparação flexível (case insensitive e contém)
-        if (nome.toLowerCase().contains(nomeGraduacao.toLowerCase()) ||
-            nomeGraduacao.toLowerCase().contains(nome.toLowerCase())) {
+        for (var doc in allDocs.docs) {
+          final data = doc.data();
+          final nome = data['nome_graduacao']?.toString() ?? '';
 
-          _coresGraduacao = {
-            'hex_cor1': data['hex_cor1'] ?? '#FFFFFF',
-            'hex_cor2': data['hex_cor2'] ?? '#FFFFFF',
-            'hex_ponta1': data['hex_ponta1'] ?? '#FFFFFF',
-            'hex_ponta2': data['hex_ponta2'] ?? '#FFFFFF',
-            'nome_graduacao': data['nome_graduacao'],
-          };
+          print('Comparando: "${nome.toLowerCase()}" com "${nomeGraduacao.toLowerCase()}"');
 
-          _cacheCoresPorNome[nomeGraduacao] = _coresGraduacao!;
-          break;
+          if (nome.toLowerCase() == nomeGraduacao.toLowerCase() ||
+              nome.toLowerCase().contains(nomeGraduacao.toLowerCase()) ||
+              nomeGraduacao.toLowerCase().contains(nome.toLowerCase())) {
+
+            print('✅ MATCH encontrado: $nome');
+            coresEncontradas = {
+              'hex_cor1': data['hex_cor1'] ?? '#FFFFFF',
+              'hex_cor2': data['hex_cor2'] ?? '#FFFFFF',
+              'hex_ponta1': data['hex_ponta1'] ?? '#FFFFFF',
+              'hex_ponta2': data['hex_ponta2'] ?? '#FFFFFF',
+              'nome_graduacao': data['nome_graduacao'],
+            };
+            break;
+          }
         }
       }
 
-      // Se não encontrou, usar cores padrão baseadas no texto
-      if (_coresGraduacao == null) {
+      if (coresEncontradas != null) {
+        print('🎨 CORES ENCONTRADAS:');
+        print('   cor1: ${coresEncontradas['hex_cor1']}');
+        print('   cor2: ${coresEncontradas['hex_cor2']}');
+        print('   ponta1: ${coresEncontradas['hex_ponta1']}');
+        print('   ponta2: ${coresEncontradas['hex_ponta2']}');
+
+        _cacheCoresPorNome[nomeGraduacao] = coresEncontradas;
+        setState(() {
+          _coresGraduacao = coresEncontradas;
+        });
+        await _colorirSvg();
+      } else {
+        print('❌ NENHUMA GRADUAÇÃO ENCONTRADA para: $nomeGraduacao');
+        print('🎨 Usando cores padrão');
         _coresGraduacao = _getCoresPadraoPorNome(nomeGraduacao);
+        await _colorirSvg();
       }
 
-      await _colorirSvg();
-
     } catch (e) {
-      debugPrint('Erro ao buscar cores: $e');
+      print('❌ Erro ao buscar cores: $e');
       _coresGraduacao = _getCoresPadraoPorNome(nomeGraduacao);
       await _colorirSvg();
     }
   }
-
   Map<String, dynamic> _getCoresPadraoPorNome(String nome) {
     final nomeLower = nome.toLowerCase();
 
@@ -239,33 +276,87 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _colorirSvg() async {
-    if (_svgContent == null || _coresGraduacao == null) return;
+    if (_svgContent == null) {
+      print('❌ SVG não carregado');
+      return;
+    }
+
+    if (_coresGraduacao == null) {
+      print('❌ Cores não carregadas');
+      return;
+    }
+
+    print('🎨 INICIANDO COLORAÇÃO DO SVG');
+    print('📋 Cores a serem aplicadas:');
+    print('   cor1: ${_coresGraduacao!['hex_cor1']}');
+    print('   cor2: ${_coresGraduacao!['hex_cor2']}');
+    print('   corponta1: ${_coresGraduacao!['hex_ponta1']}');
+    print('   corponta2: ${_coresGraduacao!['hex_ponta2']}');
 
     try {
       final document = xml.XmlDocument.parse(_svgContent!);
 
+      // Listar todos os elementos com ID no SVG
+      final allElements = document.rootElement.descendants
+          .whereType<xml.XmlElement>()
+          .where((e) => e.getAttribute('id') != null)
+          .toList();
+
+      print('📄 Elementos encontrados no SVG:');
+      for (var e in allElements) {
+        print('   - id: ${e.getAttribute('id')}');
+      }
+
       Color colorFromHex(String hexColor) {
-        if (hexColor.isEmpty || hexColor.length < 7) return Colors.grey;
+        if (hexColor.isEmpty) {
+          print('⚠️ Hex vazio, usando cinza');
+          return Colors.grey;
+        }
+
+        String cleanHex = hexColor.replaceAll('#', '');
+        if (cleanHex.length == 6) {
+          cleanHex = 'FF$cleanHex';
+        }
+
         try {
-          return Color(int.parse('FF${hexColor.replaceAll('#', '')}', radix: 16));
+          final color = Color(int.parse(cleanHex, radix: 16));
+          print('✅ Hex $hexColor convertido para RGB: ${color.red},${color.green},${color.blue}');
+          return color;
         } catch (e) {
+          print('❌ Erro ao converter hex $hexColor: $e');
           return Colors.grey;
         }
       }
 
       void changeColor(String id, Color color) {
+        final hex = '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+        print('🎨 Colorindo elemento "$id" com $hex');
+
         final element = document.rootElement.descendants
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
           orElse: () => xml.XmlElement(xml.XmlName('')),
         );
-        if (element.name.local.isNotEmpty) {
-          final style = element.getAttribute('style') ?? '';
-          final hex = '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
-          final newStyle = style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
-          element.setAttribute('style', 'fill:$hex;$newStyle');
+
+        if (element.name.local.isEmpty) {
+          print('⚠️ Elemento com id "$id" NÃO ENCONTRADO no SVG!');
+          return;
         }
+
+        // Método 1: Usar style
+        String style = element.getAttribute('style') ?? '';
+        if (style.isNotEmpty) {
+          // Remove fills existentes
+          style = style.replaceAll(RegExp(r'fill:[^;]+;?'), '');
+          style = 'fill:$hex;${style.replaceAll(';', '')}';
+          element.setAttribute('style', style);
+        } else {
+          // Método 2: Usar atributo fill
+          element.setAttribute('fill', hex);
+        }
+
+        print('✅ Elemento "$id" colorido com sucesso!');
       }
 
       changeColor('cor1', colorFromHex(_coresGraduacao!['hex_cor1']));
@@ -273,15 +364,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       changeColor('corponta1', colorFromHex(_coresGraduacao!['hex_ponta1']));
       changeColor('corponta2', colorFromHex(_coresGraduacao!['hex_ponta2']));
 
+      final svgColorido = document.toXmlString();
+      print('✅ SVG colorido com sucesso! Tamanho: ${svgColorido.length} caracteres');
+
       setState(() {
-        _svgColorido = document.toXmlString();
+        _svgColorido = svgColorido;
       });
 
-    } catch (e) {
-      debugPrint('Erro ao colorir SVG: $e');
+    } catch (e, stackTrace) {
+      print('❌ ERRO AO COLORIR SVG: $e');
+      print('Stack trace: $stackTrace');
     }
   }
-
   Future<void> _abrirLink(String? url) async {
     if (url == null || url.isEmpty) return;
     try {

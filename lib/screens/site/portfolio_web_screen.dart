@@ -315,52 +315,39 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen> with SingleTick
             .toList();
 
         final screenWidth = MediaQuery.of(context).size.width;
-        int crossAxisCount;
-        double childAspectRatio;
-        double horizontalPadding;
 
+        // Define a largura do card baseado no número de colunas
+        int crossAxisCount;
         if (screenWidth > 1200) {
           crossAxisCount = 4;
-          childAspectRatio = 0.75;
-          horizontalPadding = 24;
         } else if (screenWidth > 900) {
           crossAxisCount = 3;
-          childAspectRatio = 0.78;
-          horizontalPadding = 20;
         } else if (screenWidth > 600) {
           crossAxisCount = 2;
-          childAspectRatio = 0.8;
-          horizontalPadding = 16;
         } else {
           crossAxisCount = 2;
-          childAspectRatio = 0.9;
-          horizontalPadding = 8;
         }
 
-        return Container(
-          color: Colors.transparent,
-          child: GridView.builder(
-            padding: EdgeInsets.symmetric(
-              horizontal: horizontalPadding,
-              vertical: 16,
-            ),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              childAspectRatio: childAspectRatio,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: eventos.length,
-            itemBuilder: (context, index) {
-              final evento = eventos[index];
-              return _buildEventoCard(evento);
-            },
+        final cardWidth = (screenWidth - (crossAxisCount * 12 + 32)) / crossAxisCount;
+        final horizontalPadding = screenWidth > 600 ? 24.0 : 12.0;
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.start,
+            children: eventos.map((evento) {
+              return SizedBox(
+                width: cardWidth,
+                child: _buildEventoCard(evento),
+              );
+            }).toList(),
           ),
         );
       },
     );
   }
-
   Widget _buildEmptyState(String mensagem) {
     return Center(
       child: Column(
@@ -399,127 +386,105 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen> with SingleTick
       onTap: () {
         _mostrarDetalhesEvento(context, evento);
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
+        margin: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Imagem (mantém proporção 1:1)
-            AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
-                    child: hasBanner
-                        ? CachedNetworkImage(
-                      imageUrl: evento.linkBanner!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      placeholder: (context, url) => Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.red,
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (hasBanner)
+                      CachedNetworkImage(
+                        imageUrl: evento.linkBanner!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.red,
+                            ),
                           ),
                         ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade200,
+                          child: Icon(
+                            Icons.broken_image,
+                            size: 40,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
                         color: Colors.grey.shade200,
                         child: Icon(
-                          Icons.broken_image,
+                          evento.iconeDoTipo,
                           size: 40,
                           color: Colors.grey.shade400,
                         ),
                       ),
-                    )
-                        : Container(
-                      color: Colors.grey.shade200,
-                      child: Icon(
-                        evento.iconeDoTipo,
-                        size: 40,
-                        color: Colors.grey.shade400,
-                      ),
-                    ),
-                  ),
-                  // Data do evento
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade700,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.orange.shade900.withOpacity(0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.calendar_today, size: 8, color: Colors.white.withOpacity(0.9)),
-                          const SizedBox(width: 4),
-                          Text(
-                            evento.dataFormatada,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade700,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.shade900.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_today, size: 8, color: Colors.white.withOpacity(0.9)),
+                            const SizedBox(width: 4),
+                            Text(
+                              evento.dataFormatada,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-
-            // Apenas o nome do evento
             Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    constraints: const BoxConstraints(
-                      maxHeight: 40,
-                      minHeight: 36,
-                    ),
-                    child: Text(
-                      evento.nome,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: true,
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                evento.nome,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  height: 1.4,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                softWrap: true,
               ),
             ),
           ],
@@ -527,7 +492,6 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen> with SingleTick
       ),
     );
   }
-
   void _mostrarDetalhesEvento(BuildContext context, EventoModel evento) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
