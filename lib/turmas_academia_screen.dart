@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/screens/turmas/tela_turma_screen.dart';
 import 'package:uai_capoeira/vincular_aluno_inativo_turma_screen.dart';
-import 'package:connectivity_plus/connectivity_plus.dart'; // 👈 NOVO
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class TurmasAcademiaScreen extends StatefulWidget {
   final String academiaId;
@@ -24,7 +24,7 @@ class TurmasAcademiaScreen extends StatefulWidget {
 class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final Connectivity _connectivity = Connectivity(); // 👈 NOVO
+  final Connectivity _connectivity = Connectivity();
 
   bool _isLoading = true;
   int _pesoUsuarioLogado = 1;
@@ -36,10 +36,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   bool _forcarAtualizacao = false;
   bool _mostrarInativos = false;
 
-  // 👇 CACHE LOCAL DAS TURMAS
   List<Map<String, dynamic>> _turmasCache = [];
   DateTime? _ultimoCacheTurmas;
-  static const Duration _cacheValidade = Duration(minutes: 30); // Aumentei para 30 minutos para melhor experiência offline
+  static const Duration _cacheValidade = Duration(minutes: 30);
 
   @override
   void initState() {
@@ -47,16 +46,13 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     _carregarDadosIniciais();
   }
 
-  // 👇 VERIFICAR SE PODE USAR CACHE
   bool _podeUsarCache() {
     if (_turmasCache.isEmpty) return false;
     if (_ultimoCacheTurmas == null) return false;
-
     final tempoDecorrido = DateTime.now().difference(_ultimoCacheTurmas!);
     return tempoDecorrido <= _cacheValidade;
   }
 
-  // 👇 VERIFICAR CONEXÃO COM INTERNET
   Future<bool> _temInternet() async {
     try {
       var connectivityResult = await _connectivity.checkConnectivity();
@@ -74,7 +70,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     });
 
     try {
-      // Tenta carregar do cache primeiro
       await _carregarDadosUsuario(forcarAtualizacao: false);
       await _carregarTurmas(forcarAtualizacao: false);
 
@@ -84,8 +79,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       });
     } catch (e) {
       debugPrint('Erro ao carregar dados iniciais: $e');
-
-      // Se tem cache, usa cache mesmo com erro
       if (_turmasCache.isNotEmpty) {
         setState(() {
           _turmas = List.from(_turmasCache);
@@ -111,7 +104,8 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        // SEMPRE usa cache primeiro, a menos que force atualização
+        debugPrint('👤 USUÁRIO LOGADO - ID: ${user.uid}');
+
         DocumentSnapshot userDoc;
         try {
           userDoc = await _firestore
@@ -124,9 +118,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             setState(() {
               _pesoUsuarioLogado = userData['peso_permissao'] ?? 1;
             });
+            debugPrint('👤 PESO DO USUÁRIO (CACHE): $_pesoUsuarioLogado');
           }
         } catch (e) {
-          // Se não tem cache, tenta servidor (quando online)
+          debugPrint('Erro ao carregar usuário do cache: $e');
           if (forcarAtualizacao || await _temInternet()) {
             try {
               userDoc = await _firestore
@@ -139,6 +134,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                 setState(() {
                   _pesoUsuarioLogado = userData['peso_permissao'] ?? 1;
                 });
+                debugPrint('👤 PESO DO USUÁRIO (SERVIDOR): $_pesoUsuarioLogado');
               }
             } catch (e) {
               debugPrint('Erro ao carregar usuário do servidor: $e');
@@ -146,7 +142,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           }
         }
 
-        // CARREGAR PERMISSÕES - SEMPRE usa cache primeiro
+        // CARREGAR PERMISSÕES
         try {
           final permissoesDoc = await _firestore
               .collection('usuarios')
@@ -172,12 +168,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                 'pode_visualizar_relatorios': data['pode_visualizar_relatorios'] ?? false,
               };
             });
-            debugPrint('✅ Permissões carregadas do cache: $_permissoes');
+            debugPrint('✅ Permissões carregadas');
           }
         } catch (e) {
-          debugPrint('❌ Erro ao carregar permissões do cache: $e');
-
-          // Se não tem cache, tenta servidor (quando online)
+          debugPrint('❌ Erro ao carregar permissões: $e');
           if (forcarAtualizacao || await _temInternet()) {
             try {
               final permissoesDoc = await _firestore
@@ -204,7 +198,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                     'pode_visualizar_relatorios': data['pode_visualizar_relatorios'] ?? false,
                   };
                 });
-                debugPrint('✅ Permissões carregadas do servidor: $_permissoes');
+                debugPrint('✅ Permissões carregadas do servidor');
               }
             } catch (e) {
               debugPrint('❌ Erro ao carregar permissões do servidor: $e');
@@ -219,7 +213,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
   Future<void> _carregarTurmas({bool forcarAtualizacao = false}) async {
     try {
-      // 👉 VERIFICAR SE PODE USAR CACHE
+      // Se forçar atualização, ignora cache
       if (!forcarAtualizacao && _podeUsarCache()) {
         debugPrint('📦 Usando cache das turmas (${_turmasCache.length} turmas)');
         setState(() {
@@ -229,53 +223,36 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         return;
       }
 
-      debugPrint('🌐 Tentando carregar turmas...');
+      debugPrint('🌐 Buscando turmas do servidor...');
 
-      // TENTA CACHE PRIMEIRO
-      try {
-        final turmasSnapshot = await _firestore
-            .collection('turmas')
-            .where('academia_id', isEqualTo: widget.academiaId)
-            .where('status', isEqualTo: 'ATIVA')
-            .orderBy('nome')
-            .get(const GetOptions(source: Source.cache));
-
-        if (turmasSnapshot.docs.isNotEmpty) {
-          await _processarTurmas(turmasSnapshot.docs);
+      if (!await _temInternet()) {
+        if (_turmasCache.isNotEmpty) {
+          setState(() {
+            _turmas = List.from(_turmasCache);
+            _erroCarregamento = false;
+          });
           return;
-        }
-      } catch (e) {
-        debugPrint('Cache de turmas vazio ou erro: $e');
-      }
-
-      // Se não tem cache, tenta servidor (apenas se estiver online)
-      if (await _temInternet()) {
-        try {
-          final turmasSnapshot = await _firestore
-              .collection('turmas')
-              .where('academia_id', isEqualTo: widget.academiaId)
-              .where('status', isEqualTo: 'ATIVA')
-              .orderBy('nome')
-              .get(const GetOptions(source: Source.server));
-
-          await _processarTurmas(turmasSnapshot.docs);
-        } catch (e) {
-          debugPrint('Erro ao carregar turmas do servidor: $e');
-          throw Exception('Não foi possível carregar turmas do servidor');
-        }
-      } else {
-        // Se está offline e não tem cache, mostra erro
-        if (_turmasCache.isEmpty) {
+        } else {
           setState(() {
             _erroCarregamento = true;
-            _mensagemErro = 'Você está offline e não há dados em cache. Conecte-se à internet para carregar as turmas.';
+            _mensagemErro = 'Você está offline e não há dados em cache.';
           });
+          return;
         }
       }
+
+      final turmasSnapshot = await _firestore
+          .collection('turmas')
+          .where('academia_id', isEqualTo: widget.academiaId)
+          .where('status', isEqualTo: 'ATIVA')
+          .orderBy('nome')
+          .get(const GetOptions(source: Source.server));
+
+      debugPrint('🌐 Servidor retornou: ${turmasSnapshot.docs.length} turmas');
+      await _processarTurmas(turmasSnapshot.docs);
+
     } catch (e) {
       debugPrint('Erro ao carregar turmas: $e');
-
-      // Se tem cache, usa cache mesmo com erro
       if (_turmasCache.isNotEmpty) {
         setState(() {
           _turmas = List.from(_turmasCache);
@@ -284,22 +261,29 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       } else {
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro = 'Erro ao carregar turmas. Conecte-se à internet para carregar.';
+          _mensagemErro = 'Erro ao carregar turmas. Verifique sua conexão.';
         });
       }
     }
   }
 
   Future<void> _processarTurmas(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    debugPrint('🔍 PROCESSANDO TURMAS - Peso do usuário: $_pesoUsuarioLogado');
+    debugPrint('📊 Total de turmas recebidas: ${docs.length}');
+
     final turmasAcessiveis = <Map<String, dynamic>>[];
 
     for (var doc in docs) {
       final data = doc.data();
-
       final pesoTurma = data['peso_do_usuario_para_acessar'] ?? 1;
       final podeAcessar = _pesoUsuarioLogado >= pesoTurma;
 
-      if (!podeAcessar) continue;
+      debugPrint('   📌 ${data['nome']} | pesoTurma: $pesoTurma | podeAcessar: $podeAcessar');
+
+      if (!podeAcessar) {
+        debugPrint('      ⚠️ Turma "${data['nome']}" FILTRADA por peso');
+        continue;
+      }
 
       String horarioDisplay = '';
       if (data['horario_inicio'] != null && data['horario_fim'] != null) {
@@ -335,12 +319,14 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         'logo_url': data['logo_url'] ?? '',
       };
 
+      debugPrint('      ✅ Turma "${data['nome']}" ADICIONADA');
       turmasAcessiveis.add(turma);
     }
 
     turmasAcessiveis.sort((a, b) => a['nome'].compareTo(b['nome']));
 
-    // 👉 ATUALIZAR CACHE
+    debugPrint('🎯 TOTAL DE TURMAS ACESSÍVEIS: ${turmasAcessiveis.length}');
+
     setState(() {
       _turmas = turmasAcessiveis;
       _turmasCache = List.from(turmasAcessiveis);
@@ -359,7 +345,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           backgroundColor: Colors.orange,
         ),
       );
-
       if (_turmasCache.isNotEmpty) {
         setState(() {
           _turmas = List.from(_turmasCache);
@@ -369,9 +354,18 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
 
     setState(() {
+      _isLoading = true;
       _forcarAtualizacao = forcarServidor;
     });
-    await _carregarDadosIniciais();
+
+    await _carregarDadosUsuario(forcarAtualizacao: forcarServidor);
+    await _carregarTurmas(forcarAtualizacao: forcarServidor);
+
+    setState(() {
+      _ultimaAtualizacao = DateTime.now();
+      _forcarAtualizacao = false;
+      _isLoading = false;
+    });
   }
 
   Future<void> _onRefresh() async {
@@ -439,26 +433,48 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
     try {
       setState(() {
+        _isLoading = true;
         _forcarAtualizacao = true;
-        _ultimoCacheTurmas = null; // Força recarregar
-        _turmasCache = []; // Limpa cache
+        _ultimoCacheTurmas = null;
+        _turmasCache = [];
+        _turmas = [];
       });
 
-      await _recarregarDados(forcarServidor: true);
+      // 🔥 FORÇA BUSCA NO SERVIDOR
+      await _carregarDadosUsuario(forcarAtualizacao: true);
+
+      final turmasSnapshot = await _firestore
+          .collection('turmas')
+          .where('academia_id', isEqualTo: widget.academiaId)
+          .where('status', isEqualTo: 'ATIVA')
+          .orderBy('nome')
+          .get(const GetOptions(source: Source.server));
+
+      debugPrint('🌐 Servidor retornou: ${turmasSnapshot.docs.length} turmas');
+      await _processarTurmas(turmasSnapshot.docs);
+
+      setState(() {
+        _ultimaAtualizacao = DateTime.now();
+        _forcarAtualizacao = false;
+        _isLoading = false;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cache limpo e dados atualizados do servidor'),
+            content: Text('✅ Cache limpo e dados atualizados do servidor'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao limpar cache: $e'),
+            content: Text('❌ Erro ao limpar cache: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -550,7 +566,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          // ✅ FUNCIONA OFFLINE - usa cache
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -719,11 +734,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     );
   }
 
-  // ✅ FUNÇÃO ESPECIAL PARA O BOTÃO INATIVOS (SÓ FUNCIONA ONLINE)
   Future<void> _abrirTelaVincularAluno() async {
     debugPrint('🔑 Verificando permissão: pode_ativar_alunos = ${_permissoes['pode_ativar_alunos']}');
 
-    // 1️⃣ VERIFICAR PERMISSÃO
     if (_permissoes['pode_ativar_alunos'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -735,7 +748,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       return;
     }
 
-    // 2️⃣ VERIFICAR INTERNET (OBRIGATÓRIO PARA ESTE BOTÃO)
     final temInternet = await _temInternet();
     if (!temInternet) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -748,7 +760,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       return;
     }
 
-    // 3️⃣ VERIFICAR SE HÁ TURMAS
     if (_turmas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -759,7 +770,6 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       return;
     }
 
-    // ✅ TUDO OK - ABRIR TELA
     if (_turmas.length == 1) {
       Navigator.push(
         context,
@@ -964,7 +974,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ElevatedButton.icon(
-              onPressed: _abrirTelaVincularAluno, // ✅ FUNÇÃO COM VALIDAÇÃO DE INTERNET
+              onPressed: _abrirTelaVincularAluno,
               icon: const Icon(Icons.person_add, size: 18),
               label: const Text('INATIVOS'),
               style: ElevatedButton.styleFrom(

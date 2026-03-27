@@ -21,7 +21,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
   // Controllers
   final _nomeController = TextEditingController();
-  final _descricaoController = TextEditingController(); // 👈 NOVO!
+  final _descricaoController = TextEditingController();
   final _tipoController = TextEditingController();
   final _dataController = TextEditingController();
   final _horarioController = TextEditingController();
@@ -57,7 +57,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   // Certificado
   bool _temCertificado = false;
 
-  // 🔥 Portfólio Web
+  // Portfólio Web
   bool _mostrarNoPortfolioWeb = false;
 
   // Status
@@ -86,7 +86,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   void _preencherFormulario() {
     final e = widget.evento!;
     _nomeController.text = e.nome;
-    _descricaoController.text = e.descricao; // 👈 NOVO!
+    _descricaoController.text = e.descricao;
     _tipoController.text = e.tipo;
     _dataController.text = e.dataFormatada;
     _horarioController.text = e.horario;
@@ -110,10 +110,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _camisaObrigatoria = e.camisaObrigatoria;
 
     _temCertificado = e.temCertificado;
-
-    // 🔥 Carregar valor do portfólio web
     _mostrarNoPortfolioWeb = e.mostrarNoPortfolioWeb;
-
     _status = e.status;
   }
 
@@ -207,15 +204,25 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     try {
       setState(() => _isUploadingBanner = true);
 
+      final fileName = '${eventoId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('eventos')
           .child('banners')
-          .child('$eventoId-${DateTime.now().millisecondsSinceEpoch}.jpg');
+          .child(fileName);
 
-      final uploadTask = await storageRef.putFile(imageFile);
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
+      await storageRef.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'uploaded_at': DateTime.now().toIso8601String(),
+            'evento_id': eventoId,
+          },
+        ),
+      );
 
+      final downloadUrl = await storageRef.getDownloadURL();
       return downloadUrl;
     } catch (e) {
       debugPrint('Erro no upload: $e');
@@ -226,10 +233,42 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   void _removerBanner() {
-    setState(() {
-      _bannerFile = null;
-      _bannerUrl = null;
-    });
+    if (widget.evento?.linkBanner != null && _bannerUrl != null) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Remover Banner'),
+          content: const Text('Deseja remover o banner permanentemente?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCELAR'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() {
+                  _bannerFile = null;
+                  _bannerUrl = null;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Banner será removido ao salvar'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              },
+              child: const Text('REMOVER'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      setState(() {
+        _bannerFile = null;
+        _bannerUrl = null;
+      });
+    }
   }
 
   void _mostrarOpcoesImagem() {
@@ -332,7 +371,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
-  // Widget do Certificado (simples)
   Widget _buildCertificadoSimples() {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -395,7 +433,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
-  // Widget do Portfólio Web
   Widget _buildPortfolioWebSimples() {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -488,11 +525,53 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           tipo.contains('AULÃO') ||
           _temCertificado;
 
-      // Cria o objeto evento com o campo descrição
+      // Verificar se o banner foi removido
+      final bool bannerFoiRemovido = widget.evento?.linkBanner != null &&
+          _bannerUrl == null &&
+          _bannerFile == null;
+
+      // Se o banner foi removido, deletar do Storage
+      if (bannerFoiRemovido && widget.evento?.linkBanner != null) {
+        try {
+          final oldBannerRef = FirebaseStorage.instance.refFromURL(widget.evento!.linkBanner!);
+          await oldBannerRef.delete();
+          debugPrint('Banner antigo removido do Storage');
+        } catch (e) {
+          debugPrint('Erro ao remover banner antigo: $e');
+        }
+      }
+
+      // Se tem nova imagem, fazer upload PRIMEIRO para ter a URL
+      String? novaBannerUrl = _bannerUrl;
+
+      if (_bannerFile != null) {
+        // Se está editando e tem banner antigo, remove do Storage
+        if (widget.evento?.linkBanner != null && widget.evento!.linkBanner != _bannerUrl) {
+          try {
+            final oldBannerRef = FirebaseStorage.instance.refFromURL(widget.evento!.linkBanner!);
+            await oldBannerRef.delete();
+            debugPrint('Banner antigo removido antes do upload');
+          } catch (e) {
+            debugPrint('Erro ao remover banner antigo: $e');
+          }
+        }
+
+        // Faz upload da nova imagem
+        final tempEventoId = widget.evento?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+        novaBannerUrl = await _uploadBanner(_bannerFile!, tempEventoId);
+
+        if (novaBannerUrl == null) {
+          throw Exception('Erro ao fazer upload do banner');
+        }
+      } else if (bannerFoiRemovido) {
+        novaBannerUrl = null;
+      }
+
+      // Cria o objeto evento com a URL correta
       final evento = EventoModel(
         id: widget.evento?.id,
         nome: _nomeController.text.trim(),
-        descricao: _descricaoController.text.trim(), // 👈 NOVO CAMPO PREENCHIDO!
+        descricao: _descricaoController.text.trim(),
         tipo: tipo,
         data: data,
         horario: _horarioController.text.trim(),
@@ -512,7 +591,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         alteraGraduacao: alteraGraduacao,
         geraCertificado: geraCertificado,
         tipoPublico: 'todos',
-        linkBanner: _bannerUrl,
+        linkBanner: novaBannerUrl,
         linkFotosVideos: _linkFotosController.text.isNotEmpty
             ? _linkFotosController.text.trim()
             : null,
@@ -531,19 +610,31 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         mostrarNoPortfolioWeb: _mostrarNoPortfolioWeb,
       );
 
-      // Salva o evento para obter o ID
+      // Salva o evento no Firestore
       final eventoId = await _eventoService.salvarEvento(evento);
 
       if (eventoId == null) {
         throw Exception('Erro ao salvar evento: ID não gerado');
       }
 
-      // Se tem nova imagem, faz upload e atualiza o evento
-      if (_bannerFile != null) {
-        final bannerUrl = await _uploadBanner(_bannerFile!, eventoId);
+      // Se o upload foi feito com um ID temporário, atualiza o caminho da imagem
+      if (_bannerFile != null && novaBannerUrl != null && widget.evento?.id == null) {
+        try {
+          final storageRef = FirebaseStorage.instance.refFromURL(novaBannerUrl);
+          final newPath = 'eventos/banners/$eventoId-${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final newRef = FirebaseStorage.instance.ref().child(newPath);
 
-        if (bannerUrl != null) {
-          await _eventoService.atualizarBanner(eventoId, bannerUrl);
+          // Copia para o novo local
+          await newRef.putFile(_bannerFile!);
+          final finalUrl = await newRef.getDownloadURL();
+
+          // Atualiza o evento com a URL final
+          await _eventoService.atualizarBanner(eventoId, finalUrl);
+
+          // Remove a imagem temporária
+          await storageRef.delete();
+        } catch (e) {
+          debugPrint('Erro ao renomear banner: $e');
         }
       }
 
@@ -618,7 +709,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // 👇 NOVO CAMPO DESCRIÇÃO
+                      // Descrição
                       TextFormField(
                         controller: _descricaoController,
                         decoration: const InputDecoration(
@@ -631,29 +722,39 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Tipo
-                      DropdownButtonFormField<String>(
-                        value: _tipoController.text.isNotEmpty
-                            ? _tipoController.text
-                            : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Tipo do Evento *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
+                      // Tipo - CORRIGIDO: Adicionado Expanded e SingleChildScrollView para evitar overflow
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Container(
+                          width: MediaQuery.of(context).size.width - 32,
+                          child: DropdownButtonFormField<String>(
+                            value: _tipoController.text.isNotEmpty
+                                ? _tipoController.text
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: 'Tipo do Evento *',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.category),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                            ),
+                            items: _tiposEvento.map((tipo) {
+                              return DropdownMenuItem(
+                                value: tipo,
+                                child: Text(
+                                  tipo,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _tipoController.text = value ?? '';
+                              });
+                            },
+                            validator: (value) =>
+                            value == null ? 'Campo obrigatório' : null,
+                          ),
                         ),
-                        items: _tiposEvento.map((tipo) {
-                          return DropdownMenuItem(
-                            value: tipo,
-                            child: Text(tipo),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _tipoController.text = value ?? '';
-                          });
-                        },
-                        validator: (value) =>
-                        value == null ? 'Campo obrigatório' : null,
                       ),
                       const SizedBox(height: 12),
 
@@ -774,6 +875,18 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                           child: Image.file(
                             _bannerFile!,
                             fit: BoxFit.cover,
+                            errorBuilder: (context, error, stack) {
+                              return const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.broken_image, size: 40),
+                                    SizedBox(height: 8),
+                                    Text('Erro ao carregar imagem'),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
                         )
                             : _bannerUrl != null
@@ -893,32 +1006,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                           ],
                         ],
                       ),
-
-                      if (_bannerUrl != null && _bannerFile == null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info, size: 16, color: Colors.blue.shade700),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Você pode substituir o banner atual selecionando uma nova imagem.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blue.shade700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -1333,7 +1420,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   @override
   void dispose() {
     _nomeController.dispose();
-    _descricaoController.dispose(); // 👈 NOVO!
+    _descricaoController.dispose();
     _tipoController.dispose();
     _dataController.dispose();
     _horarioController.dispose();

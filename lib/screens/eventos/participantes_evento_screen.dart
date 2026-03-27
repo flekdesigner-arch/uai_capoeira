@@ -9,7 +9,7 @@ import '../../services/certificado_service.dart';
 import '../../models/participacao_model.dart';
 import 'detalhe_participacao_screen.dart';
 import 'adicionar_participante_modal.dart';
-import 'selecionar_participantes_csv_screen.dart'; // 👈 NOVO IMPORT!
+import 'selecionar_participantes_csv_screen.dart';
 
 class ParticipantesEventoScreen extends StatefulWidget {
   final String eventoId;
@@ -54,6 +54,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
 
   // Controle para evitar loop
   int _ultimoTotalParticipantes = -1;
+
+  // Cache para dados dos alunos
+  final Map<String, Map<String, dynamic>> _cacheAlunos = {};
 
   // Permissões
   bool _podeAdicionar = false;
@@ -140,6 +143,46 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     } catch (e) {
       debugPrint('Erro ao carregar participantes existentes: $e');
     }
+  }
+
+  // 🔥 NOVO MÉTODO: Buscar dados atualizados do aluno com cache
+  Future<Map<String, dynamic>> _buscarDadosAluno(String alunoId) async {
+    // Verifica se já está no cache
+    if (_cacheAlunos.containsKey(alunoId)) {
+      return _cacheAlunos[alunoId]!;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        final dadosAluno = {
+          'nome': data['nome'] ?? '',
+          'foto': data['foto_perfil_aluno'] as String?,
+          'graduacao': data['graduacao_atual'] ?? '',
+          'turma': data['turma'] as String?,
+          'data_nascimento': data['data_nascimento'],
+        };
+
+        // Armazena no cache
+        _cacheAlunos[alunoId] = dadosAluno;
+        return dadosAluno;
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar dados do aluno $alunoId: $e');
+    }
+
+    return {
+      'nome': '',
+      'foto': null,
+      'graduacao': '',
+      'turma': null,
+      'data_nascimento': null,
+    };
   }
 
   void _calcularEstatisticas(List<ParticipacaoModel> participantes) {
@@ -428,10 +471,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     }
   }
 
-  // 🔥 REMOVIDO O MÉTODO _gerarCertificadoIndividual daqui
-
-  // 🔥 REMOVIDO O MÉTODO _gerarZipCertificados daqui
-
   Future<void> _mostrarModalAdicionar(Map<String, dynamic> aluno) async {
     final evento = widget.evento ?? _eventoCarregado;
     if (evento == null) return;
@@ -492,6 +531,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
         valorInscricao: evento?.valorInscricao ?? 0,
         valorCamisa: evento?.temCamisa == true ? (evento?.valorCamisa ?? 0) : 0,
       );
+
+      // Limpa o cache do aluno adicionado
+      _cacheAlunos.remove(aluno['id']);
 
       setState(() {
         _alunosParticipantesIds.add(aluno['id']);
@@ -557,6 +599,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     if (confirm == true) {
       try {
         await _participacaoService.removerParticipante(participacaoId);
+
+        // Limpa o cache do aluno removido
+        _cacheAlunos.remove(alunoId);
 
         setState(() {
           _alunosParticipantesIds.remove(alunoId);
@@ -677,290 +722,328 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     );
   }
 
+  // 🔥 CARD DO MODO GRADE COM FOTO DINÂMICA
   Widget _buildParticipantCardGrade(ParticipacaoModel participacao) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: () => _abrirDetalheParticipacao(participacao),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _buscarDadosAluno(participacao.alunoId),
+      builder: (context, snapshot) {
+        final dadosAluno = snapshot.data;
+        final fotoUrl = dadosAluno?['foto'];
+        final nomeAluno = dadosAluno?['nome'] ?? participacao.alunoNome;
+        final graduacaoAtual = dadosAluno?['graduacao'] ?? participacao.graduacao;
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: InkWell(
+            onTap: () => _abrirDetalheParticipacao(participacao),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.grey.shade100,
-                    backgroundImage: participacao.alunoFoto != null &&
-                        participacao.alunoFoto!.isNotEmpty
-                        ? NetworkImage(participacao.alunoFoto!)
-                        : null,
-                    child: participacao.alunoFoto == null ||
-                        participacao.alunoFoto!.isEmpty
-                        ? const Icon(Icons.person, size: 32, color: Colors.grey)
-                        : null,
-                  ),
-                  if (participacao.aguardandoFinalizacao)
-                    Positioned(
-                      bottom: -2,
-                      right: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.access_time,
-                          color: Colors.white,
-                          size: 10,
-                        ),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor: Colors.grey.shade100,
+                        backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
+                            ? NetworkImage(fotoUrl)
+                            : null,
+                        child: fotoUrl == null || fotoUrl.isEmpty
+                            ? const Icon(Icons.person, size: 32, color: Colors.grey)
+                            : null,
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 6),
-
-              Text(
-                participacao.alunoNome.split(' ').first,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  participacao.graduacaoNova != null
-                      ? participacao.graduacaoNova!.split(' ').take(2).join(' ')
-                      : (participacao.graduacao ?? '').split(' ').take(2).join(' '),
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.red.shade700,
-                    fontWeight: FontWeight.bold,
+                      if (participacao.aguardandoFinalizacao)
+                        Positioned(
+                          bottom: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.access_time,
+                              color: Colors.white,
+                              size: 10,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 4),
+                  const SizedBox(height: 6),
 
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: participacao.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      participacao.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
-                      size: 10,
-                      color: participacao.estaQuitado ? Colors.green : Colors.orange,
+                  Text(
+                    nomeAluno.split(' ').first,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
                     ),
-                    const SizedBox(width: 2),
-                    Text(
-                      participacao.estaQuitado ? 'Pago' : 'R\$ ${participacao.saldoDevedor.toStringAsFixed(0)}',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      participacao.graduacaoNova != null
+                          ? participacao.graduacaoNova!.split(' ').take(2).join(' ')
+                          : (graduacaoAtual ?? '').split(' ').take(2).join(' '),
                       style: TextStyle(
-                        fontSize: 8,
-                        color: participacao.estaQuitado ? Colors.green : Colors.orange,
+                        fontSize: 9,
+                        color: Colors.red.shade700,
                         fontWeight: FontWeight.bold,
                       ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: participacao.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          participacao.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
+                          size: 10,
+                          color: participacao.estaQuitado ? Colors.green : Colors.orange,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          participacao.estaQuitado ? 'Pago' : 'R\$ ${participacao.saldoDevedor.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            fontSize: 8,
+                            color: participacao.estaQuitado ? Colors.green : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  // CARD DO MODO LISTA - SEM BOTÃO DE CERTIFICADO (AGORA SÓ NO APP BAR)
+  // 🔥 CARD DO MODO LISTA COM FOTO DINÂMICA
   Widget _buildParticipantCardLista(ParticipacaoModel p) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () => _abrirDetalheParticipacao(p),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.grey.shade50,
-                    backgroundImage: p.alunoFoto != null && p.alunoFoto!.isNotEmpty
-                        ? NetworkImage(p.alunoFoto!)
-                        : null,
-                    child: p.alunoFoto == null || p.alunoFoto!.isEmpty
-                        ? Icon(Icons.person, size: 32, color: Colors.grey)
-                        : null,
-                  ),
-                  if (p.aguardandoFinalizacao)
-                    Positioned(
-                      bottom: 0, right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(Icons.access_time, color: Colors.white, size: 12),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(p.alunoNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 4),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                            child: Text(
-                              p.graduacao ?? 'Sem graduação',
-                              style: TextStyle(fontSize: 11, color: Colors.red.shade700),
-                            ),
-                          ),
-                          if (p.graduacaoNova != null) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.arrow_forward, size: 12, color: Colors.grey.shade400),
-                            const SizedBox(width: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                              child: Text(
-                                p.graduacaoNova!,
-                                style: TextStyle(fontSize: 11, color: Colors.green.shade700),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: p.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  p.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
-                                  size: 12,
-                                  color: p.estaQuitado ? Colors.green : Colors.orange,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  p.estaQuitado ? 'Pago' : 'Dev ${_formatarValorResumido(p.saldoDevedor)}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: p.estaQuitado ? Colors.green : Colors.orange,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (p.tamanhoCamisa != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.shopping_bag, size: 12, color: Colors.blue),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    p.tamanhoCamisa!,
-                                    style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_podeRemover)
-                    Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                      child: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                        onPressed: () => _removerParticipante(p.id!, p.alunoNome, p.alunoId),
-                        padding: const EdgeInsets.all(8),
-                      ),
-                    ),
-                  Container(
-                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                    child: IconButton(
-                      icon: Icon(Icons.chevron_right, color: Colors.red.shade900, size: 20),
-                      onPressed: () => _abrirDetalheParticipacao(p),
-                      padding: const EdgeInsets.all(8),
-                    ),
-                  ),
-                ],
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _buscarDadosAluno(p.alunoId),
+      builder: (context, snapshot) {
+        final dadosAluno = snapshot.data;
+        final fotoUrl = dadosAluno?['foto'];
+        final nomeAluno = dadosAluno?['nome'] ?? p.alunoNome;
+        final graduacaoAtual = dadosAluno?['graduacao'] ?? p.graduacao;
+        final turma = dadosAluno?['turma'];
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.shade200,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-        ),
-      ),
+          child: InkWell(
+            onTap: () => _abrirDetalheParticipacao(p),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor: Colors.grey.shade50,
+                        backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
+                            ? NetworkImage(fotoUrl)
+                            : null,
+                        child: fotoUrl == null || fotoUrl.isEmpty
+                            ? Icon(Icons.person, size: 32, color: Colors.grey)
+                            : null,
+                      ),
+                      if (p.aguardandoFinalizacao)
+                        Positioned(
+                          bottom: 0, right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.access_time, color: Colors.white, size: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(nomeAluno, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 4),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                                child: Text(
+                                  graduacaoAtual ?? 'Sem graduação',
+                                  style: TextStyle(fontSize: 11, color: Colors.red.shade700),
+                                ),
+                              ),
+                              if (p.graduacaoNova != null) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.arrow_forward, size: 12, color: Colors.grey.shade400),
+                                const SizedBox(width: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                                  child: Text(
+                                    p.graduacaoNova!,
+                                    style: TextStyle(fontSize: 11, color: Colors.green.shade700),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: p.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      p.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
+                                      size: 12,
+                                      color: p.estaQuitado ? Colors.green : Colors.orange,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      p.estaQuitado ? 'Pago' : 'Dev ${_formatarValorResumido(p.saldoDevedor)}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: p.estaQuitado ? Colors.green : Colors.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (turma != null && turma.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(12)),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.class_, size: 12, color: Colors.purple),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        turma,
+                                        style: TextStyle(fontSize: 11, color: Colors.purple.shade700),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (p.tamanhoCamisa != null) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.shopping_bag, size: 12, color: Colors.blue),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        p.tamanhoCamisa!,
+                                        style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_podeRemover)
+                        Container(
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                          child: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                            onPressed: () => _removerParticipante(p.id!, p.alunoNome, p.alunoId),
+                            padding: const EdgeInsets.all(8),
+                          ),
+                        ),
+                      Container(
+                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                        child: IconButton(
+                          icon: Icon(Icons.chevron_right, color: Colors.red.shade900, size: 20),
+                          onPressed: () => _abrirDetalheParticipacao(p),
+                          padding: const EdgeInsets.all(8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1087,7 +1170,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
           actions: [
             if (_podeGerarCertificados)
               IconButton(
-                icon: const Icon(Icons.table_chart), // Ícone de CSV
+                icon: const Icon(Icons.table_chart),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -1100,7 +1183,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                   );
                 },
                 tooltip: 'Selecionar para CSV',
-              ),          ],
+              ),
+          ],
           bottom: const TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
@@ -1353,6 +1437,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _cacheAlunos.clear();
     super.dispose();
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class ListasChamadaScreen extends StatefulWidget {
   final String turmaId;
@@ -167,7 +168,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         alunos: alunos,
         turmaNome: widget.turmaNome,
         onChamadaEditada: () {
-          _carregarPrimeirasChamadas(); // Recarrega tudo após edição
+          _carregarPrimeirasChamadas();
         },
       ),
     );
@@ -218,18 +219,14 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
     return Card(
       margin: EdgeInsets.fromLTRB(16, index == 0 ? 16 : 8, 16, 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 4,
       shadowColor: Colors.red.shade900.withOpacity(0.1),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.all(20),
         initiallyExpanded: false,
         childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         leading: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -292,19 +289,23 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade100),
-                        ),
-                        child: Text(
-                          tipoAula,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade700,
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade100),
+                          ),
+                          child: Text(
+                            tipoAula,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue.shade700,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ),
@@ -324,6 +325,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                             color: Colors.grey.shade600,
                           ),
                           overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ),
                     ],
@@ -331,7 +333,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 ],
               ),
             ),
-            // ✏️ BOTÃO DE EDITAR (SÓ APARECE COM PERMISSÃO)
             if (podeEditar)
               Container(
                 margin: const EdgeInsets.only(left: 8),
@@ -546,11 +547,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 14,
-          color: color,
-        ),
+        Icon(icon, size: 14, color: color),
         const SizedBox(width: 4),
         Text(
           value,
@@ -580,18 +577,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           children: [
             const Text(
               'Listas de Chamada',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             Text(
               widget.turmaNome,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.normal,
-                color: Colors.white,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white),
             ),
           ],
         ),
@@ -599,9 +589,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(20),
-          ),
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
         actions: [
           IconButton(
@@ -612,10 +600,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 shape: BoxShape.circle,
               ),
               padding: const EdgeInsets.all(6),
-              child: const Icon(
-                Icons.refresh_rounded,
-                size: 20,
-              ),
+              child: const Icon(Icons.refresh_rounded, size: 20),
             ),
             tooltip: 'Atualizar',
           ),
@@ -637,7 +622,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           itemCount: _chamadas.length + (_temMaisChamadas ? 1 : 0),
           itemBuilder: (context, index) {
             if (index == _chamadas.length) {
-              // 📥 ITEM DE CARREGAMENTO (PAGINAÇÃO)
               return _buildLoadingMaisItem();
             }
             return _buildCardChamada(_chamadas[index], index);
@@ -656,9 +640,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         icon: const Icon(Icons.arrow_upward_rounded),
         label: const Text('Topo'),
       )
@@ -677,10 +659,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             const SizedBox(height: 8),
             Text(
               'Carregando mais chamadas...',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
         )
@@ -690,9 +669,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             backgroundColor: Colors.grey.shade100,
             foregroundColor: Colors.red.shade900,
             elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -741,19 +718,12 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           const SizedBox(height: 20),
           Text(
             'Carregando chamadas...',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w500,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 8),
           Text(
             'Preparando experiência premium',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
           ),
         ],
       ),
@@ -783,11 +753,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             const SizedBox(height: 20),
             Text(
               'Ops! Algo deu errado',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.red.shade400,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red.shade400),
             ),
             const SizedBox(height: 12),
             Padding(
@@ -795,10 +761,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               child: Text(
                 'Não foi possível carregar as listas de chamada. Verifique sua conexão e tente novamente.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
             ),
             const SizedBox(height: 25),
@@ -813,9 +776,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -824,11 +785,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     SizedBox(width: 8),
                     Text(
                       'Tentar novamente',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
                     ),
                   ],
                 ),
@@ -863,11 +820,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             const SizedBox(height: 25),
             Text(
               'Nenhuma chamada registrada',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
             ),
             const SizedBox(height: 12),
             Padding(
@@ -875,11 +828,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               child: Text(
                 'Esta turma ainda não possui registros de chamada. Faça a primeira chamada para começar o histórico.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
               ),
             ),
             const SizedBox(height: 30),
@@ -896,9 +845,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -907,11 +854,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     SizedBox(width: 8),
                     Text(
                       'Voltar para turma',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
                     ),
                   ],
                 ),
@@ -925,7 +868,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 }
 
 // =====================================================
-// DIALOG DE EDIÇÃO DE CHAMADA (COM ANIMAÇÃO PREMIUM 1 POR 1)
+// DIALOG DE EDIÇÃO DE CHAMADA
 // =====================================================
 class _EditarChamadaDialog extends StatefulWidget {
   final String chamadaId;
@@ -952,12 +895,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   bool _isSaving = false;
   bool _isDeleting = false;
 
-  // 🔥 ANIMAÇÕES PREMIUM
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  // 🔥 CONTROLE DO QUE ESTÁ ACONTECENDO "DEBAIXO DOS PANOS" (1 POR 1)
   Map<String, dynamic>? _alunoAtualProcessando;
   bool _mostrarProgresso = false;
   int _alunoIndexAtual = 0;
@@ -965,7 +906,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   String _operacaoAtual = 'Preparando...';
   String _detalheOperacao = '';
 
-  // 🔥 STATUS DO ALUNO ATUAL
   String _statusContador = '⏳';
   String _statusLog = '⏳';
   String _statusUltimaPresenca = '⏳';
@@ -975,7 +915,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   Color _corUltimaPresenca = Colors.grey;
   Color _corUltimaChamada = Colors.grey;
 
-  // 🔥 ESTATÍSTICAS EM TEMPO REAL
   int _logsExcluidos = 0;
   int _contadoresDecrementados = 0;
   int _ultimasPresencasAtualizadas = 0;
@@ -988,13 +927,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     _observacaoControllers = {};
     for (var aluno in _alunosEdit) {
       final alunoId = aluno['aluno_id'] as String;
-      _observacaoControllers[alunoId] = TextEditingController(
-        text: aluno['observacao'] ?? '',
-      );
+      _observacaoControllers[alunoId] = TextEditingController(text: aluno['observacao'] ?? '');
     }
     _totalAlunos = widget.alunos.length;
 
-    // Inicializar animações
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -1016,7 +952,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     super.dispose();
   }
 
-  // 🔧 FUNÇÃO AUXILIAR PARA PEGAR ABREVIAÇÃO DO DIA
   String _getDiaSemanaAbrev(DateTime data) {
     switch (data.weekday) {
       case DateTime.monday: return 'seg';
@@ -1030,11 +965,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     }
   }
 
-  // 👁️ MOSTRAR PRÉVIA DA EXCLUSÃO
   Future<void> _mostrarPreviewExclusao() async {
     final dataChamada = (widget.chamadaData['data_chamada'] as Timestamp).toDate();
     final presentes = widget.alunos.where((a) => a['presente'] == true).length;
-    final ausentes = widget.alunos.where((a) => a['presente'] == false).length;
 
     showDialog(
       context: context,
@@ -1046,26 +979,17 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Esta ação irá:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
+              const Text('Esta ação irá:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 16),
               _buildBulletPoint('Deletar a chamada do dia ${DateFormat('dd/MM/yyyy').format(dataChamada)}'),
               _buildBulletPoint('Remover ${widget.alunos.length} registros de log (um por aluno)'),
               _buildBulletPoint('Decrementar contadores de presença dos $presentes alunos presentes'),
               _buildBulletPoint('Recalcular a ÚLTIMA PRESENÇA de cada aluno'),
               _buildBulletPoint('Recalcular a ÚLTIMA CHAMADA de cada aluno'),
-
               const SizedBox(height: 16),
-
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
+                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
                 child: Row(
                   children: [
                     Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
@@ -1073,25 +997,16 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                     Expanded(
                       child: Text(
                         'Esta operação é um "CTRL+Z" completo: tudo volta exatamente como era antes desta chamada.',
-                        style: TextStyle(
-                          color: Colors.blue.shade800,
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: Colors.blue.shade800, fontSize: 13),
                       ),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 16),
-
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
+                decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.shade200)),
                 child: Row(
                   children: [
                     Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
@@ -1099,11 +1014,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                     Expanded(
                       child: Text(
                         'ATENÇÃO: Esta operação NÃO pode ser desfeita!',
-                        style: TextStyle(
-                          color: Colors.orange.shade800,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
                   ],
@@ -1113,19 +1024,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _confirmarExclusao();
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700, foregroundColor: Colors.white),
             child: const Text('Continuar com Exclusão'),
           ),
         ],
@@ -1140,18 +1045,12 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('• ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
         ],
       ),
     );
   }
 
-  // 🗑️ CONFIRMAR E EXCLUIR CHAMADA
   Future<void> _confirmarExclusao() async {
     final bool? confirmar = await showDialog<bool>(
       context: context,
@@ -1165,11 +1064,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.shade200),
-              ),
+              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)),
               child: Row(
                 children: [
                   Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 20),
@@ -1177,10 +1072,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   Expanded(
                     child: Text(
                       'Esta ação não poderá ser desfeita. Todos os dados serão permanentemente removidos.',
-                      style: TextStyle(
-                        color: Colors.red.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -1189,19 +1081,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade600))),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700, foregroundColor: Colors.white),
             child: const Text('Sim, Excluir Permanentemente'),
           ),
         ],
@@ -1213,228 +1096,22 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     }
   }
 
-  // 🎬 EXCLUIR CHAMADA COM ANIMAÇÃO PREMIUM (1 POR 1)
   Future<void> _excluirChamadaComAnimacao() async {
-    // Preparar dados para animação
     setState(() {
       _mostrarProgresso = true;
       _isDeleting = true;
-      _alunoIndexAtual = 0;
-      _alunoAtualProcessando = widget.alunos.isNotEmpty ? widget.alunos[0] : null;
-
-      // Resetar status
-      _statusContador = '⏳';
-      _statusLog = '⏳';
-      _statusUltimaPresenca = '⏳';
-      _statusUltimaChamada = '⏳';
-      _corContador = Colors.grey;
-      _corLog = Colors.grey;
-      _corUltimaPresenca = Colors.grey;
-      _corUltimaChamada = Colors.grey;
-
-      _logsExcluidos = 0;
-      _contadoresDecrementados = 0;
-      _ultimasPresencasAtualizadas = 0;
-      _ultimasChamadasAtualizadas = 0;
+      _operacaoAtual = 'Enviando para exclusão...';
     });
 
     _animationController.forward();
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final batch = firestore.batch();
-
-      // 1️⃣ DELETAR O DOCUMENTO DA CHAMADA
-      setState(() {
-        _operacaoAtual = '🗑️ Deletando documento da chamada...';
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('excluirChamada');
+      await callable.call({
+        'chamadaId': widget.chamadaId,
+        'turmaId': widget.chamadaData['turma_id'],
       });
-      await Future.delayed(const Duration(milliseconds: 500));
 
-      final chamadaRef = firestore.collection('chamadas').doc(widget.chamadaId);
-      batch.delete(chamadaRef);
-
-      // 2️⃣ BUSCAR E DELETAR TODOS OS LOGS
-      setState(() {
-        _operacaoAtual = '📝 Buscando logs para excluir...';
-      });
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final logsQuery = await firestore
-          .collection('log_presenca_alunos')
-          .where('data_formatada', isEqualTo: widget.chamadaData['data_formatada'])
-          .where('turma_id', isEqualTo: widget.chamadaData['turma_id'])
-          .get();
-
-      setState(() {
-        _detalheOperacao = 'Encontrados ${logsQuery.docs.length} logs';
-      });
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      for (var logDoc in logsQuery.docs) {
-        batch.delete(logDoc.reference);
-        setState(() {
-          _logsExcluidos++;
-        });
-        await Future.delayed(const Duration(milliseconds: 50)); // Animação
-      }
-
-      // 3️⃣ PROCESSAR CADA ALUNO (1 POR 1)
-      for (int i = 0; i < widget.alunos.length; i++) {
-        final aluno = widget.alunos[i];
-        final alunoId = aluno['aluno_id'] as String;
-        final alunoNome = aluno['aluno_nome'] as String;
-        final estavaPresente = aluno['presente'] as bool;
-        final dataChamada = (widget.chamadaData['data_chamada'] as Timestamp).toDate();
-        final diaSemanaAbrev = _getDiaSemanaAbrev(dataChamada);
-
-        // Atualizar aluno atual
-        setState(() {
-          _alunoIndexAtual = i + 1;
-          _alunoAtualProcessando = aluno;
-          _operacaoAtual = '👤 Processando: $alunoNome';
-
-          // Resetar status para o novo aluno
-          _statusContador = '⏳';
-          _statusLog = '⏳';
-          _statusUltimaPresenca = '⏳';
-          _statusUltimaChamada = '⏳';
-          _corContador = Colors.grey;
-          _corLog = Colors.grey;
-          _corUltimaPresenca = Colors.grey;
-          _corUltimaChamada = Colors.grey;
-        });
-        await Future.delayed(const Duration(milliseconds: 300));
-
-        // 🔥 DECREMENTAR CONTADOR (se presente)
-        if (estavaPresente) {
-          setState(() {
-            _statusContador = '🔄';
-            _corContador = Colors.orange;
-          });
-          await Future.delayed(const Duration(milliseconds: 200));
-
-          final contadorRef = firestore
-              .collection('contador_presencas_alunos')
-              .doc(alunoId);
-
-          final contadorDoc = await contadorRef.get();
-
-          if (contadorDoc.exists) {
-            final contadorAtual = contadorDoc.data()?[diaSemanaAbrev] as int? ?? 0;
-
-            if (contadorAtual > 0) {
-              batch.update(contadorRef, {
-                diaSemanaAbrev: FieldValue.increment(-1),
-                'atualizado_em': FieldValue.serverTimestamp(),
-              });
-
-              setState(() {
-                _contadoresDecrementados++;
-                _statusContador = '✅ -$contadorAtual→${contadorAtual-1}';
-                _corContador = Colors.green;
-              });
-            }
-          }
-          await Future.delayed(const Duration(milliseconds: 200));
-        } else {
-          setState(() {
-            _statusContador = '⏭️ Ausente';
-            _corContador = Colors.grey;
-          });
-        }
-
-        // 🔥 RECALCULAR ÚLTIMA PRESENÇA
-        setState(() {
-          _statusUltimaPresenca = '🔄';
-          _corUltimaPresenca = Colors.orange;
-        });
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        final ultimaPresencaQuery = await firestore
-            .collection('log_presenca_alunos')
-            .where('aluno_id', isEqualTo: alunoId)
-            .where('presente', isEqualTo: true)
-            .where('data_aula', isLessThan: dataChamada)
-            .orderBy('data_aula', descending: true)
-            .limit(1)
-            .get();
-
-        final alunoRef = firestore.collection('alunos').doc(alunoId);
-
-        if (ultimaPresencaQuery.docs.isNotEmpty) {
-          final ultimaPresenca = ultimaPresencaQuery.docs.first['data_aula'] as Timestamp;
-          batch.update(alunoRef, {
-            'ultimo_dia_presente': ultimaPresenca,
-          });
-          setState(() {
-            _ultimasPresencasAtualizadas++;
-            _statusUltimaPresenca = '✅ ${DateFormat('dd/MM').format(ultimaPresenca.toDate())}';
-            _corUltimaPresenca = Colors.green;
-          });
-        } else {
-          batch.update(alunoRef, {
-            'ultimo_dia_presente': null,
-          });
-          setState(() {
-            _statusUltimaPresenca = '✅ (nenhuma)';
-            _corUltimaPresenca = Colors.grey;
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        // 🔥 RECALCULAR ÚLTIMA CHAMADA
-        setState(() {
-          _statusUltimaChamada = '🔄';
-          _corUltimaChamada = Colors.orange;
-        });
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        final ultimaChamadaQuery = await firestore
-            .collection('log_presenca_alunos')
-            .where('aluno_id', isEqualTo: alunoId)
-            .orderBy('data_aula', descending: true)
-            .limit(1)
-            .get();
-
-        if (ultimaChamadaQuery.docs.isNotEmpty) {
-          final ultimaChamada = ultimaChamadaQuery.docs.first['data_aula'] as Timestamp;
-          final ultimoProfessor = ultimaChamadaQuery.docs.first['professor_nome'] as String? ?? '';
-          final ultimoProfessorId = ultimaChamadaQuery.docs.first['professor_id'] as String? ?? '';
-
-          batch.update(alunoRef, {
-            'ultima_chamada': ultimaChamada,
-            'ultima_chamada_por': ultimoProfessor,
-            'ultima_chamada_por_id': ultimoProfessorId,
-          });
-          setState(() {
-            _ultimasChamadasAtualizadas++;
-            _statusUltimaChamada = '✅ ${DateFormat('dd/MM').format(ultimaChamada.toDate())}';
-            _corUltimaChamada = Colors.green;
-          });
-        } else {
-          batch.update(alunoRef, {
-            'ultima_chamada': null,
-            'ultima_chamada_por': null,
-            'ultima_chamada_por_id': null,
-          });
-          setState(() {
-            _statusUltimaChamada = '✅ (nenhuma)';
-            _corUltimaChamada = Colors.grey;
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-      }
-
-      // 💥 EXECUTAR O BATCH
-      setState(() {
-        _operacaoAtual = '💾 Commitando todas as alterações...';
-        _alunoAtualProcessando = null;
-      });
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      await batch.commit();
-
-      // ✅ FINALIZADO
       setState(() {
         _operacaoAtual = '✅ EXCLUSÃO CONCLUÍDA!';
       });
@@ -1449,9 +1126,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
               children: const [
                 Icon(Icons.delete_forever, color: Colors.white),
                 SizedBox(width: 8),
-                Expanded(
-                  child: Text('Chamada excluída com sucesso! Todos os dados foram revertidos.'),
-                ),
+                Expanded(child: Text('Chamada excluída com sucesso! Todos os dados foram revertidos.')),
               ],
             ),
             backgroundColor: Colors.orange,
@@ -1461,21 +1136,27 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         );
       }
     } catch (e) {
-      debugPrint('❌ ERRO CRÍTICO AO EXCLUIR: $e');
+      debugPrint('❌ Erro ao excluir chamada: $e');
       setState(() {
-        _operacaoAtual = '❌ ERRO!';
+        _isDeleting = false;
+        _mostrarProgresso = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao excluir chamada: $e'),
+            content: Text('Erro ao excluir: ${e.toString()}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isDeleting = false);
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+          _mostrarProgresso = false;
+        });
+      }
     }
   }
 
@@ -1483,23 +1164,17 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     setState(() => _isSaving = true);
 
     try {
-      // Atualizar observações
       for (var aluno in _alunosEdit) {
         final alunoId = aluno['aluno_id'] as String;
         aluno['observacao'] = _observacaoControllers[alunoId]?.text ?? '';
       }
 
-      // Recalcular estatísticas
       final presentes = _alunosEdit.where((a) => a['presente'] == true).length;
       final ausentes = _alunosEdit.where((a) => a['presente'] == false).length;
       final totalAlunos = _alunosEdit.length;
       final porcentagem = totalAlunos > 0 ? ((presentes / totalAlunos) * 100).round() : 0;
 
-      // Atualizar no Firestore
-      await FirebaseFirestore.instance
-          .collection('chamadas')
-          .doc(widget.chamadaId)
-          .update({
+      await FirebaseFirestore.instance.collection('chamadas').doc(widget.chamadaId).update({
         'alunos': _alunosEdit,
         'presentes': presentes,
         'ausentes': ausentes,
@@ -1528,10 +1203,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao salvar: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Erro ao salvar: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1549,31 +1221,20 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
       ),
       child: _mostrarProgresso
           ? FadeTransition(
         opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: _buildProgressScreen(),
-        ),
+        child: SlideTransition(position: _slideAnimation, child: _buildProgressScreen()),
       )
           : _buildEditScreen(presentes, ausentes),
     );
   }
 
-  // 📝 TELA DE EDIÇÃO NORMAL
   Widget _buildEditScreen(int presentes, int ausentes) {
     return Column(
       children: [
-        // HEADER
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -1586,10 +1247,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 child: Container(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1597,56 +1255,28 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 children: [
                   Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.edit_calendar_rounded,
-                      color: Colors.red.shade900,
-                      size: 24,
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    child: Icon(Icons.edit_calendar_rounded, color: Colors.red.shade900, size: 24),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Editar Chamada',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade800,
-                          ),
-                        ),
+                        Text('Editar Chamada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
                         const SizedBox(height: 4),
-                        Text(
-                          widget.turmaNome,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                        Text(widget.turmaNome, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
                       ],
                     ),
                   ),
-                  // 🗑️ BOTÃO DE EXCLUIR COM PRÉVIA
                   if (!_isDeleting && !_isSaving)
                     Container(
                       margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(12)),
                       child: IconButton(
-                        icon: Icon(
-                          Icons.delete_rounded,
-                          color: Colors.red.shade700,
-                          size: 22,
-                        ),
+                        icon: Icon(Icons.delete_rounded, color: Colors.red.shade700, size: 22),
                         onPressed: _mostrarPreviewExclusao,
-                        tooltip: 'Excluir chamada (CTRL+Z reverso)',
+                        tooltip: 'Excluir chamada',
                         padding: const EdgeInsets.all(8),
                         constraints: const BoxConstraints(),
                       ),
@@ -1655,14 +1285,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                     Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.all(8),
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.red.shade700,
-                        ),
-                      ),
+                      child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red.shade700)),
                     ),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -1672,33 +1295,16 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 ],
               ),
               const SizedBox(height: 16),
-              // RESUMO RÁPIDO
               Row(
                 children: [
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
                       child: Column(
                         children: [
-                          Text(
-                            '$presentes',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green.shade700,
-                            ),
-                          ),
-                          Text(
-                            'Presentes',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.green.shade700,
-                            ),
-                          ),
+                          Text('$presentes', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
+                          Text('Presentes', style: TextStyle(fontSize: 11, color: Colors.green.shade700)),
                         ],
                       ),
                     ),
@@ -1707,27 +1313,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
                       child: Column(
                         children: [
-                          Text(
-                            '$ausentes',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red.shade700,
-                            ),
-                          ),
-                          Text(
-                            'Ausentes',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.red.shade700,
-                            ),
-                          ),
+                          Text('$ausentes', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.red.shade700)),
+                          Text('Ausentes', style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
                         ],
                       ),
                     ),
@@ -1737,7 +1327,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             ],
           ),
         ),
-        // LISTA DE ALUNOS EDITÁVEL
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -1750,22 +1339,15 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade200),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     children: [
                       Row(
                         children: [
-                          // CHECKBOX DE PRESENÇA
                           Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: presente ? Colors.green.shade50 : Colors.red.shade50,
-                            ),
+                            decoration: BoxDecoration(shape: BoxShape.circle, color: presente ? Colors.green.shade50 : Colors.red.shade50),
                             child: Checkbox(
                               value: presente,
                               onChanged: _isSaving || _isDeleting
@@ -1781,7 +1363,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                             ),
                           ),
                           const SizedBox(width: 12),
-                          // NOME DO ALUNO
                           Expanded(
                             child: Text(
                               nome,
@@ -1803,27 +1384,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                             enabled: !_isSaving && !_isDeleting,
                             decoration: InputDecoration(
                               hintText: 'Adicionar observação...',
-                              prefixIcon: Icon(
-                                Icons.note_rounded,
-                                size: 16,
-                                color: Colors.amber.shade700,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.blue.shade700),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
+                              prefixIcon: Icon(Icons.note_rounded, size: 16, color: Colors.amber.shade700),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.blue.shade700)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               isDense: true,
                             ),
                             style: const TextStyle(fontSize: 13),
@@ -1837,18 +1402,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             },
           ),
         ),
-        // BOTÕES
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
           ),
           child: Row(
             children: [
@@ -1857,17 +1415,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   onPressed: (_isSaving || _isDeleting) ? null : () => Navigator.pop(context),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: Text(
-                    'Cancelar',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
+                  child: Text('Cancelar', style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1878,26 +1428,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                     backgroundColor: Colors.blue.shade700,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: _isSaving
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                      : const Text(
-                    'Salvar alterações',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Salvar alterações', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -1907,22 +1442,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     );
   }
 
-  // 🎬 TELA DE PROGRESSO PREMIUM (1 POR 1 - SEM OVERFLOW)
   Widget _buildProgressScreen() {
     return Column(
       children: [
-        // HEADER DO PROGRESSO
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.red.shade900,
-                Colors.red.shade700,
-              ],
-            ),
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.red.shade900, Colors.red.shade700]),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
@@ -1931,10 +1457,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 child: Container(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: 20),
@@ -1942,69 +1465,34 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 children: [
                   Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.delete_sweep_rounded,
-                      color: Colors.white,
-                      size: 28,
-                    ),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.delete_sweep_rounded, color: Colors.white, size: 28),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Excluindo Chamada',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        Text('Excluindo Chamada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                         const SizedBox(height: 4),
-                        Text(
-                          widget.turmaNome,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                        ),
+                        Text(widget.turmaNome, style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.8))),
                       ],
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.people_rounded,
-                          size: 14,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
+                        Icon(Icons.people_rounded, size: 14, color: Colors.white.withOpacity(0.9)),
                         const SizedBox(width: 4),
-                        Text(
-                          '$_alunoIndexAtual/$_totalAlunos',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
+                        Text('$_alunoIndexAtual/$_totalAlunos', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              // Barra de progresso global
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
@@ -2017,117 +1505,58 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             ],
           ),
         ),
-
-        // STATUS GLOBAL
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.blue.shade50,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.shade100.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.blue.shade100.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.sync_rounded,
-                  color: Colors.blue.shade700,
-                  size: 20,
-                ),
+                decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: Icon(Icons.sync_rounded, color: Colors.blue.shade700, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _operacaoAtual,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (_detalheOperacao.isNotEmpty)
-                      Text(
-                        _detalheOperacao,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
+                    Text(_operacaoAtual, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    if (_detalheOperacao.isNotEmpty) Text(_detalheOperacao, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                 child: Row(
                   children: [
                     Icon(Icons.data_usage, size: 14, color: Colors.blue.shade700),
                     const SizedBox(width: 4),
-                    Text(
-                      '$_logsExcluidos logs',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
+                    Text('$_logsExcluidos logs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
                   ],
                 ),
               ),
             ],
           ),
         ),
-
-        // ESTATÍSTICAS EM TEMPO REAL
-        Container(
+        // 🔥 ESTATÍSTICAS CORRIGIDAS - SEM OVERFLOW
+        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
-              _buildStatChip(
-                icon: Icons.data_usage,
-                label: 'Logs',
-                value: _logsExcluidos.toString(),
-                color: Colors.purple,
-              ),
-              _buildStatChip(
-                icon: Icons.exposure_minus_1,
-                label: 'Contadores',
-                value: _contadoresDecrementados.toString(),
-                color: Colors.orange,
-              ),
-              _buildStatChip(
-                icon: Icons.history,
-                label: 'Últ. Presença',
-                value: _ultimasPresencasAtualizadas.toString(),
-                color: Colors.green,
-              ),
-              _buildStatChip(
-                icon: Icons.call_received,
-                label: 'Últ. Chamada',
-                value: _ultimasChamadasAtualizadas.toString(),
-                color: Colors.blue,
-              ),
+              _buildStatChip(icon: Icons.data_usage, label: 'Logs', value: _logsExcluidos.toString(), color: Colors.purple),
+              _buildStatChip(icon: Icons.exposure_minus_1, label: 'Contadores', value: _contadoresDecrementados.toString(), color: Colors.orange),
+              _buildStatChip(icon: Icons.history, label: 'Últ. Presença', value: _ultimasPresencasAtualizadas.toString(), color: Colors.green),
+              _buildStatChip(icon: Icons.call_received, label: 'Últ. Chamada', value: _ultimasChamadasAtualizadas.toString(), color: Colors.blue),
             ],
           ),
         ),
-
-        // ALUNO ATUAL EM DESTAQUE (1 POR VEZ)
         if (_alunoAtualProcessando != null)
           Expanded(
             child: Center(
@@ -2137,117 +1566,54 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Card do aluno atual (grande)
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeInOut,
                         margin: const EdgeInsets.symmetric(vertical: 10),
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.red.shade700,
-                              Colors.red.shade500,
-                            ],
-                          ),
+                          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.red.shade700, Colors.red.shade500]),
                           borderRadius: BorderRadius.circular(25),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.red.shade900.withOpacity(0.4),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
+                          boxShadow: [BoxShadow(color: Colors.red.shade900.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 10))],
                         ),
                         child: Column(
                           children: [
-                            const Icon(
-                              Icons.person_rounded,
-                              size: 60,
-                              color: Colors.white,
-                            ),
+                            const Icon(Icons.person_rounded, size: 60, color: Colors.white),
                             const SizedBox(height: 16),
                             Text(
                               _alunoAtualProcessando!['aluno_nome'],
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
                               child: Text(
-                                _alunoAtualProcessando!['presente'] == true
-                                    ? '✅ ESTAVA PRESENTE'
-                                    : '❌ ESTAVA AUSENTE',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
+                                _alunoAtualProcessando!['presente'] == true ? '✅ ESTAVA PRESENTE' : '❌ ESTAVA AUSENTE',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                               ),
                             ),
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 30),
-
-                      // Status das operações para o aluno atual
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.shade300,
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
+                          boxShadow: [BoxShadow(color: Colors.grey.shade300, blurRadius: 10, offset: const Offset(0, 5))],
                         ),
                         child: Column(
                           children: [
-                            _buildStatusRow(
-                              icon: Icons.exposure_minus_1,
-                              label: 'Decrementar contador',
-                              status: _statusContador,
-                              color: _corContador,
-                            ),
+                            _buildStatusRow(icon: Icons.exposure_minus_1, label: 'Decrementar contador', status: _statusContador, color: _corContador),
                             const Divider(height: 20),
-                            _buildStatusRow(
-                              icon: Icons.history,
-                              label: 'Recalcular última presença',
-                              status: _statusUltimaPresenca,
-                              color: _corUltimaPresenca,
-                            ),
+                            _buildStatusRow(icon: Icons.history, label: 'Recalcular última presença', status: _statusUltimaPresenca, color: _corUltimaPresenca),
                             const Divider(height: 20),
-                            _buildStatusRow(
-                              icon: Icons.data_usage,
-                              label: 'Excluir log',
-                              status: _statusLog,
-                              color: _corLog,
-                            ),
+                            _buildStatusRow(icon: Icons.data_usage, label: 'Excluir log', status: _statusLog, color: _corLog),
                             const Divider(height: 20),
-                            _buildStatusRow(
-                              icon: Icons.call_received,
-                              label: 'Recalcular última chamada',
-                              status: _statusUltimaChamada,
-                              color: _corUltimaChamada,
-                            ),
+                            _buildStatusRow(icon: Icons.call_received, label: 'Recalcular última chamada', status: _statusUltimaChamada, color: _corUltimaChamada),
                           ],
                         ),
                       ),
@@ -2261,12 +1627,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     );
   }
 
-  Widget _buildStatChip({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
+  Widget _buildStatChip({required IconData icon, required String label, required String value, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -2279,63 +1640,26 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            '$label: $value',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          Text('$label: $value', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
         ],
       ),
     );
   }
 
-  Widget _buildStatusRow({
-    required IconData icon,
-    required String label,
-    required String status,
-    required Color color,
-  }) {
+  Widget _buildStatusRow({required IconData icon, required String label, required String status, required Color color}) {
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: color,
-          ),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, size: 18, color: color),
         ),
         const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            status,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+          child: Text(status, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
         ),
       ],
     );
@@ -2386,31 +1710,14 @@ class DetalhesChamadaScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Detalhes da Chamada',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            Text(
-              turmaNome,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.normal,
-                color: Colors.white,
-              ),
-            ),
+            const Text('Detalhes da Chamada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(turmaNome, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.white)),
           ],
         ),
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
         elevation: 0,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(20),
-          ),
-        ),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(bottom: Radius.circular(20))),
         centerTitle: false,
       ),
       body: CustomScrollView(
@@ -2423,13 +1730,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.red.shade50,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.red.shade100,
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.red.shade100, blurRadius: 15, offset: const Offset(0, 4))],
               ),
               child: Column(
                 children: [
@@ -2440,44 +1741,19 @@ class DetalhesChamadaScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Chamada Registrada',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade800,
-                              ),
-                            ),
+                            Text('Chamada Registrada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
                             const SizedBox(height: 4),
                             Text(
-                              dataChamada != null
-                                  ? _formatarData(dataChamada)
-                                  : 'Data não registrada',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
+                              dataChamada != null ? _formatarData(dataChamada) : 'Data não registrada',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                             ),
                           ],
                         ),
                       ),
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.red.shade200,
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.assignment_turned_in_rounded,
-                          size: 28,
-                          color: Colors.red.shade900,
-                        ),
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.red.shade200, blurRadius: 10)]),
+                        child: Icon(Icons.assignment_turned_in_rounded, size: 28, color: Colors.red.shade900),
                       ),
                     ],
                   ),
@@ -2486,27 +1762,12 @@ class DetalhesChamadaScreen extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue.shade100),
-                        ),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.shade100)),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.school_rounded,
-                              size: 14,
-                              color: Colors.blue.shade700,
-                            ),
+                            Icon(Icons.school_rounded, size: 14, color: Colors.blue.shade700),
                             const SizedBox(width: 6),
-                            Text(
-                              tipoAula,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.blue.shade700,
-                              ),
-                            ),
+                            Text(tipoAula, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
                           ],
                         ),
                       ),
@@ -2514,27 +1775,15 @@ class DetalhesChamadaScreen extends StatelessWidget {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.purple.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.purple.shade100),
-                          ),
+                          decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.purple.shade100)),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.person,
-                                size: 14,
-                                color: Colors.purple.shade700,
-                              ),
+                              Icon(Icons.person, size: 14, color: Colors.purple.shade700),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   'Prof. $professorNome',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.purple.shade700,
-                                  ),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.purple.shade700),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -2560,21 +1809,8 @@ class DetalhesChamadaScreen extends StatelessWidget {
                       ),
                       Column(
                         children: [
-                          Text(
-                            '${(percentual * 100).toInt()}%',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: _getStatusColor(percentual),
-                            ),
-                          ),
-                          Text(
-                            'Presença',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
+                          Text('${(percentual * 100).toInt()}%', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _getStatusColor(percentual))),
+                          Text('Presença', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                         ],
                       ),
                     ],
@@ -2583,24 +1819,9 @@ class DetalhesChamadaScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildSimpleStatDetail(
-                        value: presentes.toString(),
-                        label: 'Presentes',
-                        color: Colors.green.shade700,
-                        icon: Icons.check_circle_rounded,
-                      ),
-                      _buildSimpleStatDetail(
-                        value: ausentes.toString(),
-                        label: 'Ausentes',
-                        color: Colors.red.shade700,
-                        icon: Icons.cancel_rounded,
-                      ),
-                      _buildSimpleStatDetail(
-                        value: totalAlunos.toString(),
-                        label: 'Total',
-                        color: Colors.blue.shade700,
-                        icon: Icons.people_rounded,
-                      ),
+                      _buildSimpleStatDetail(value: presentes.toString(), label: 'Presentes', color: Colors.green.shade700, icon: Icons.check_circle_rounded),
+                      _buildSimpleStatDetail(value: ausentes.toString(), label: 'Ausentes', color: Colors.red.shade700, icon: Icons.cancel_rounded),
+                      _buildSimpleStatDetail(value: totalAlunos.toString(), label: 'Total', color: Colors.blue.shade700, icon: Icons.people_rounded),
                     ],
                   ),
                 ],
@@ -2612,11 +1833,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
             sliver: SliverToBoxAdapter(
               child: Text(
                 'Alunos Presentes (${alunosPresentes.length})',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade800,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green.shade800),
               ),
             ),
           ),
@@ -2626,12 +1843,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
                 final aluno = alunosPresentes[index];
                 final nome = aluno['aluno_nome']?.toString() ?? 'Sem nome';
                 final observacao = aluno['observacao']?.toString() ?? '';
-
-                return _buildAlunoTile(
-                  nome: nome,
-                  presente: true,
-                  observacao: observacao,
-                );
+                return _buildAlunoTile(nome: nome, presente: true, observacao: observacao);
               },
               childCount: alunosPresentes.length,
             ),
@@ -2642,11 +1854,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
               sliver: SliverToBoxAdapter(
                 child: Text(
                   'Alunos Ausentes (${alunosAusentes.length})',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red.shade800,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red.shade800),
                 ),
               ),
             ),
@@ -2656,20 +1864,13 @@ class DetalhesChamadaScreen extends StatelessWidget {
                   final aluno = alunosAusentes[index];
                   final nome = aluno['aluno_nome']?.toString() ?? 'Sem nome';
                   final observacao = aluno['observacao']?.toString() ?? '';
-
-                  return _buildAlunoTile(
-                    nome: nome,
-                    presente: false,
-                    observacao: observacao,
-                  );
+                  return _buildAlunoTile(nome: nome, presente: false, observacao: observacao);
                 },
                 childCount: alunosAusentes.length,
               ),
             ),
           ],
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 80),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
       floatingActionButton: Padding(
@@ -2679,9 +1880,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
           backgroundColor: Colors.white,
           foregroundColor: Colors.red.shade900,
           elevation: 4,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           icon: const Icon(Icons.arrow_back_rounded),
           label: const Text('Voltar'),
         ),
@@ -2689,12 +1888,7 @@ class DetalhesChamadaScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSimpleStatDetail({
-    required String value,
-    required String label,
-    required Color color,
-    required IconData icon,
-  }) {
+  Widget _buildSimpleStatDetail({required String value, required String label, required Color color, required IconData icon}) {
     return SizedBox(
       width: 70,
       child: Column(
@@ -2702,51 +1896,23 @@ class DetalhesChamadaScreen extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: color,
-            ),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(icon, size: 18, color: color),
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
         ],
       ),
     );
   }
 
-  Widget _buildAlunoTile({
-    required String nome,
-    required bool presente,
-    required String observacao,
-  }) {
+  Widget _buildAlunoTile({required String nome, required bool presente, required String observacao}) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 1,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -2755,15 +1921,8 @@ class DetalhesChamadaScreen extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(
-                  color: presente ? Colors.green.shade50 : Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  presente ? Icons.check_rounded : Icons.close_rounded,
-                  color: presente ? Colors.green.shade700 : Colors.red.shade700,
-                  size: 20,
-                ),
+                decoration: BoxDecoration(color: presente ? Colors.green.shade50 : Colors.red.shade50, shape: BoxShape.circle),
+                child: Icon(presente ? Icons.check_rounded : Icons.close_rounded, color: presente ? Colors.green.shade700 : Colors.red.shade700, size: 20),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -2784,20 +1943,12 @@ class DetalhesChamadaScreen extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.note_rounded,
-                              size: 12,
-                              color: Colors.amber.shade700,
-                            ),
+                            Icon(Icons.note_rounded, size: 12, color: Colors.amber.shade700),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 observacao,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.amber.shade800,
-                                  fontStyle: FontStyle.italic,
-                                ),
+                                style: TextStyle(fontSize: 11, color: Colors.amber.shade800, fontStyle: FontStyle.italic),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -2810,17 +1961,10 @@ class DetalhesChamadaScreen extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: presente ? Colors.green.shade50 : Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: presente ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(20)),
                 child: Text(
                   presente ? 'PRESENTE' : 'AUSENTE',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: presente ? Colors.green.shade700 : Colors.red.shade700,
-                  ),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: presente ? Colors.green.shade700 : Colors.red.shade700),
                 ),
               ),
             ],
