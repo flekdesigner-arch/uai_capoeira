@@ -1,23 +1,29 @@
 {
   "name": "UAI CAPOEIRA",
-  "short_name": "UAI Capoeira",
-  "start_url": ".",
+  "short_name": "UAI",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#B71C1C",
   "theme_color": "#B71C1C",
   "description": "UAI CAPOEIRA - União, Amizade e Inteligência",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
+  "scope": "/",
+  "id": "/",
+  "lang": "pt-BR",
+  "categories": ["education", "sports", "lifestyle"],
   "icons": [
     {
       "src": "icons/Icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/Icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/Icon-maskable-192.png",

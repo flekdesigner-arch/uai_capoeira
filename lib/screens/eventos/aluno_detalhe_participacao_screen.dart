@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../models/participacao_model.dart';
 import '../../models/pagamento_model.dart';
 import '../../services/participacao_service.dart';
@@ -53,6 +54,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   // Dados do aluno para cálculo de graduação
   Map<String, dynamic>? _dadosAluno;
 
+  // 🔥 Cache para dados do aluno (evita múltiplas chamadas)
+  final Map<String, Map<String, dynamic>> _cacheAluno = {};
+
   // 🔥 ÚLTIMO NÍVEL INFANTIL
   final int _ultimoNivelInfantil = 8;
 
@@ -95,6 +99,47 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     debugPrint('   - valorInscricao: ${_participacao.valorInscricao}');
     debugPrint('   - valorCamisa: ${_participacao.valorCamisa}');
     debugPrint('   - valorTotal: ${_participacao.valorTotal}');
+  }
+
+  // 🔥 NOVO MÉTODO: Buscar dados atualizados do aluno com cache
+  Future<Map<String, dynamic>> _buscarDadosAlunoAtualizados() async {
+    final alunoId = _participacao.alunoId;
+
+    // Verifica cache
+    if (_cacheAluno.containsKey(alunoId)) {
+      return _cacheAluno[alunoId]!;
+    }
+
+    try {
+      final alunoDoc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
+
+      if (alunoDoc.exists) {
+        final data = alunoDoc.data()!;
+        final dadosAluno = {
+          'foto': data['foto_perfil_aluno'] as String?,
+          'nome': data['nome'] ?? '',
+          'graduacao': data['graduacao_atual'] ?? '',
+          'turma': data['turma'] as String?,
+          'nivel_graduacao': data['nivel_graduacao'],
+          'graduacao_id': data['graduacao_atual_id'],
+          'data_nascimento': data['data_nascimento'],
+          'tipo_publico': data['tipo_publico'],
+          'contato_aluno': data['contato_aluno'] as String? ?? '',
+          'contato_responsavel': data['contato_responsavel'] as String?,
+        };
+
+        // Armazena no cache
+        _cacheAluno[alunoId] = dadosAluno;
+        return dadosAluno;
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao buscar dados do aluno: $e');
+    }
+
+    return {'foto': null, 'contato_aluno': '', 'contato_responsavel': null};
   }
 
   Future<void> _carregarDadosAluno() async {
@@ -178,6 +223,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       // 🔥 4º - Recalcula totais usando o MODEL
       _calcularTotais();
+
+      // 🔥 Limpa o cache do aluno para forçar recarregar
+      _cacheAluno.remove(_participacao.alunoId);
 
     } catch (e) {
       debugPrint('❌ Erro ao carregar dados: $e');
@@ -590,7 +638,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       pagamento: pagamento,
     );
 
-    // 🔥 ATUALIZA O MODEL COM O NOVO TOTAL PAGO
+    // ATUALIZA O MODEL COM O NOVO TOTAL PAGO
     final novoTotalPago = _participacao.totalPago + pagamento.valor;
 
     setState(() {
@@ -601,7 +649,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       _saldo = _participacao.valorTotal - novoTotalPago;
     });
 
-    // 🔥 Atualiza o saldo do patrocinador
+    // 🔥 FIX: VERIFICA SE ZEROU O SALDO E ATUALIZA O STATUS
+    if (_saldo <= 0.01) {
+      await _participacaoService.atualizarStatus(
+        widget.participacaoId,
+        'quitado',
+      );
+      setState(() {
+        _participacao = _participacao.copyWith(status: 'quitado');
+      });
+    }
+
+    // Atualiza o saldo do patrocinador
     final patrocinadoresSnapshot = await FirebaseFirestore.instance
         .collection('patrocinadores_eventos')
         .where('evento_id', isEqualTo: widget.eventoId)
@@ -803,6 +862,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
     }
   }
+
   Future<void> _finalizarParticipacao() async {
     if (!_podeFinalizarAgora()) return;
 
@@ -959,6 +1019,177 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Colors.grey;
   }
 
+  // 📞 FUNÇÕES DE WHATSAPP COM SVG (IGUAL AO DA REFERÊNCIA)
+  Widget _buildWhatsAppIcon({required bool enabled, required Color color}) {
+    return SvgPicture.asset(
+      'assets/images/whatsapp.svg',
+      width: 20,
+      height: 20,
+      color: enabled ? color : Colors.grey.shade400,
+    );
+  }
+
+  String _formatarNumeroWhatsApp(String numero) {
+    String cleanedPhone = numero.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanedPhone.startsWith('0')) {
+      cleanedPhone = cleanedPhone.substring(1);
+    }
+    if (!cleanedPhone.startsWith('55')) {
+      cleanedPhone = '55$cleanedPhone';
+    }
+    return cleanedPhone;
+  }
+
+  Future<void> _abrirWhatsApp(String numero, {String? mensagem}) async {
+    try {
+      String cleanedPhone = _formatarNumeroWhatsApp(numero);
+      String url = 'https://wa.me/$cleanedPhone';
+
+      if (mensagem != null && mensagem.isNotEmpty) {
+        final encodedMessage = Uri.encodeComponent(mensagem);
+        url += '?text=$encodedMessage';
+      }
+
+      final uri = Uri.parse(url);
+
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+
+        if (!launched) {
+          throw Exception('Não foi possível abrir o app do WhatsApp');
+        }
+      } catch (appError) {
+        final webUrl = Uri.parse('https://web.whatsapp.com/send?phone=$cleanedPhone' +
+            (mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''));
+
+        await launchUrl(
+          webUrl,
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o WhatsApp.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildWhatsAppButtons(Map<String, dynamic> dadosAluno) {
+    final contatoAluno = dadosAluno['contato_aluno'] as String? ?? '';
+    final contatoResponsavel = dadosAluno['contato_responsavel'] as String?;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _buildWhatsAppButton(
+            label: 'WhatsApp\nAluno',  // 🔥 COM QUEBRA DE LINHA
+            onPressed: contatoAluno.isNotEmpty
+                ? () => _abrirWhatsApp(contatoAluno)
+                : null,
+            color: Colors.green,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildWhatsAppButton(
+            label: 'WhatsApp\nResponsável',  // 🔥 COM QUEBRA DE LINHA
+            onPressed: contatoResponsavel != null && contatoResponsavel.isNotEmpty
+                ? () => _abrirWhatsApp(contatoResponsavel)
+                : null,
+            color: Colors.teal,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWhatsAppButton({
+    required String label,
+    required VoidCallback? onPressed,
+    required Color color,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+            child: Column(  // 🔥 MUDEI DE ROW PARA COLUMN
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildWhatsAppIcon(
+                  enabled: onPressed != null,
+                  color: color,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: onPressed != null ? Colors.black87 : Colors.grey.shade400,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,  // 🔥 PERMITE 2 LINHAS
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🔥 MÉTODO: Widget da foto do aluno
+  Widget _buildFotoAluno() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _buscarDadosAlunoAtualizados(),
+      builder: (context, snapshot) {
+        final fotoUrl = snapshot.data?['foto'];
+
+        return CircleAvatar(
+          radius: 40,
+          backgroundColor: Colors.white,
+          backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
+              ? NetworkImage(fotoUrl)
+              : null,
+          child: fotoUrl == null || fotoUrl.isEmpty
+              ? Text(
+            _participacao.alunoNome[0].toUpperCase(),
+            style: TextStyle(
+              fontSize: 32,
+              color: Colors.red.shade900,
+              fontWeight: FontWeight.bold,
+            ),
+          )
+              : null,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1020,25 +1251,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.white,
-                      backgroundImage: _participacao.alunoFoto != null &&
-                          _participacao.alunoFoto!.isNotEmpty
-                          ? NetworkImage(_participacao.alunoFoto!)
-                          : null,
-                      child: _participacao.alunoFoto == null ||
-                          _participacao.alunoFoto!.isEmpty
-                          ? Text(
-                        _participacao.alunoNome[0].toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 32,
-                          color: Colors.red.shade900,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                          : null,
-                    ),
+                    _buildFotoAluno(),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -1090,6 +1303,43 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     ),
                   ],
                 ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // === SEÇÃO DE WHATSAPP (APENAS 2 BOTÕES COM SVG) ===
+              FutureBuilder<Map<String, dynamic>>(
+                future: _buscarDadosAlunoAtualizados(),
+                builder: (context, snapshot) {
+                  final dadosAluno = snapshot.data ?? {};
+
+                  return Container(
+                    margin: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: Colors.red.shade100,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Contatos Rápidos',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red[900],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildWhatsAppButtons(dadosAluno),
+                      ],
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 20),
@@ -1787,5 +2037,11 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     } catch (e) {
       debugPrint('Erro ao abrir link: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _cacheAluno.clear();
+    super.dispose();
   }
 }

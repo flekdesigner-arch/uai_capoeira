@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/services/permissao_service.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
+import 'package:uai_capoeira/services/remessa_service.dart';
 import 'package:uai_capoeira/services/usuario_service.dart';
 
 // Widgets
@@ -12,6 +13,7 @@ import 'item_estoque_card.dart';
 import 'venda_card.dart';
 import 'pendencia_card.dart';
 import 'pedido_card.dart';
+import 'remessa_card.dart';
 
 // Telas
 import 'adicionar_estoque_screen.dart';
@@ -20,6 +22,8 @@ import 'novo_pedido_screen.dart';
 import 'relatorio_financeiro_screen.dart';
 import 'editar_venda_screen.dart';
 import 'editar_pedido_screen.dart';
+import 'remessa_form_screen.dart';
+import 'remessa_detalhes_screen.dart';
 
 // Dialogs
 import 'dialogs/quantidade_dialog.dart';
@@ -38,13 +42,13 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final PermissaoService _permissaoService = PermissaoService();
   final UniformesService _uniformesService = UniformesService();
+  final RemessaService _remessaService = RemessaService();
   final UsuarioService _usuarioService = UsuarioService();
   final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Permissões
   bool _podeEditar = false;
   bool _podeExcluir = false;
   bool _carregandoPermissoes = true;
@@ -52,7 +56,8 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(() => setState(() {})); // para atualizar o botão +
     _verificarPermissoes();
     _verificarPermissoesEdicao();
   }
@@ -72,28 +77,23 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
 
   Future<void> _verificarPermissoesEdicao() async {
     final uid = currentUser?.uid;
-
     if (uid != null) {
       try {
-        // Buscar permissões específicas
         final permissoesDoc = await FirebaseFirestore.instance
             .collection('usuarios')
             .doc(uid)
             .collection('permissoes_usuario')
             .doc('configuracoes')
             .get();
-
         if (permissoesDoc.exists) {
           final permissoes = permissoesDoc.data()!;
           _podeEditar = permissoes['pode_editar_venda'] ?? false;
           _podeExcluir = permissoes['pode_excluir_venda'] ?? false;
         } else {
-          // Fallback para peso_permissao
           final userDoc = await FirebaseFirestore.instance
               .collection('usuarios')
               .doc(uid)
               .get();
-
           if (userDoc.exists) {
             final userData = userDoc.data()!;
             final peso = userData['peso_permissao'] ?? 0;
@@ -105,12 +105,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
         print('Erro ao verificar permissões: $e');
       }
     }
-
-    if (mounted) {
-      setState(() {
-        _carregandoPermissoes = false;
-      });
-    }
+    if (mounted) setState(() => _carregandoPermissoes = false);
   }
 
   @override
@@ -118,6 +113,26 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // 🔥 Função que retorna a ação do botão + de acordo com a aba atual
+  void _onAddPressed() {
+    switch (_tabController.index) {
+      case 0: // Estoque
+        _abrirAdicionarEstoque();
+        break;
+      case 1: // Vendas
+        _abrirNovaVenda();
+        break;
+      case 2: // Pendências (sem ação)
+        break;
+      case 3: // Pedidos
+        _abrirNovoPedido();
+        break;
+      case 4: // Remessas
+        _abrirNovaRemessa();
+        break;
+    }
   }
 
   @override
@@ -144,19 +159,17 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
             Tab(icon: Icon(Icons.sell), text: 'VENDAS'),
             Tab(icon: Icon(Icons.payment), text: 'PENDÊNCIAS'),
             Tab(icon: Icon(Icons.shopping_cart), text: 'PEDIDOS'),
+            Tab(icon: Icon(Icons.local_shipping), text: 'REMESSAS'),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add_shopping_cart),
-            tooltip: 'Nova Venda',
-            onPressed: () => _abrirNovaVenda(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_box),
-            tooltip: 'Adicionar ao Estoque',
-            onPressed: () => _abrirAdicionarEstoque(),
-          ),
+          // Botão + único (exceto na aba pendências)
+          if (_tabController.index != 2)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 28),
+              tooltip: _getAddTooltip(),
+              onPressed: _onAddPressed,
+            ),
           IconButton(
             icon: const Icon(Icons.bar_chart),
             tooltip: 'Relatório Financeiro',
@@ -180,21 +193,23 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
                 _buildVendasTab(),
                 _buildPendenciasTab(),
                 _buildPedidosTab(),
+                _buildRemessasTab(),
               ],
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirNovaVenda,
-        backgroundColor: Colors.green.shade900,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'NOVA VENDA',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
     );
+  }
+
+  String _getAddTooltip() {
+    switch (_tabController.index) {
+      case 0: return 'Adicionar ao Estoque';
+      case 1: return 'Nova Venda';
+      case 3: return 'Novo Pedido';
+      case 4: return 'Nova Remessa';
+      default: return 'Adicionar';
+    }
   }
 
   Widget _buildSearchBar() {
@@ -529,6 +544,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           }).toList();
         }
 
+        // 🔥 Apenas a lista, sem botão extra no final
         return ListView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: pedidos.length,
@@ -553,75 +569,228 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       },
     );
   }
+  // ==================== ABA REMESSAS ====================
+  Widget _buildRemessasTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _remessaService.getTodasRemessas(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('Erro: ${snapshot.error}'));
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-  // ==================== MÉTODOS DE NAVEGAÇÃO ====================
+        var remessas = snapshot.data?.docs ?? [];
+        if (remessas.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.local_shipping_outlined, size: 80, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhuma remessa cadastrada',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: _abrirNovaRemessa,
+                  icon: const Icon(Icons.add),
+                  label: const Text('NOVA REMESSA'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.brown,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
+        if (_searchQuery.isNotEmpty) {
+          remessas = remessas.where((doc) {
+            var data = doc.data() as Map<String, dynamic>;
+            return (data['nome'] ?? '')
+                .toLowerCase()
+                .contains(_searchQuery.toLowerCase());
+          }).toList();
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: remessas.length,
+          itemBuilder: (context, index) {
+            var doc = remessas[index];
+            var data = doc.data() as Map<String, dynamic>;
+            return RemessaCard(
+              remessaId: doc.id,
+              data: data,
+              onTap: () => _abrirDetalhesRemessa(doc.id, data),
+              onEditar: () => _editarRemessa(doc.id, data),
+              onExcluir: () => _excluirRemessa(doc.id, data),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==================== NAVEGAÇÃO ====================
   void _abrirNovaVenda() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const NovaVendaScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const NovaVendaScreen()),
     );
-
-    if (result == true && mounted) {
-      setState(() {});
-    }
+    if (result == true && mounted) setState(() {});
   }
 
   void _abrirAdicionarEstoque() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AdicionarEstoqueScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AdicionarEstoqueScreen()),
     );
-
-    if (result == true && mounted) {
-      setState(() {});
-    }
+    if (result == true && mounted) setState(() {});
   }
 
   void _abrirRelatorioFinanceiro() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const RelatorioFinanceiroScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const RelatorioFinanceiroScreen()),
     );
   }
 
   void _abrirNovoPedido() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const NovoPedidoScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const NovoPedidoScreen()),
     );
-
-    if (result == true && mounted) {
-      setState(() {});
-    }
+    if (result == true && mounted) setState(() {});
   }
 
   void _editarItemEstoque(String docId, Map<String, dynamic> data) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AdicionarEstoqueScreen(
-          itemId: docId,
-          itemData: data,
-        ),
+        builder: (_) => AdicionarEstoqueScreen(itemId: docId, itemData: data),
       ),
     );
+    if (result == true && mounted) setState(() {});
+  }
 
-    if (result == true && mounted) {
-      setState(() {});
+  void _abrirNovaRemessa() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RemessaFormScreen()),
+    );
+    if (result == true) setState(() {});
+  }
+
+  void _editarRemessa(String remessaId, Map<String, dynamic> data) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            RemessaFormScreen(remessaId: remessaId, remessaData: data),
+      ),
+    );
+    if (result == true) setState(() {});
+  }
+
+  void _abrirDetalhesRemessa(String remessaId, Map<String, dynamic> data) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            RemessaDetalhesScreen(remessaId: remessaId, remessaData: data),
+      ),
+    );
+    setState(() {});
+  }
+
+  // 🔥 EXCLUIR REMESSA (com verificação de pedidos finalizados/pagos)
+  void _excluirRemessa(String remessaId, Map<String, dynamic> data) async {
+    final podeExcluir = await _verificarSePodeFinalizarRemessa(remessaId);
+    if (!podeExcluir) {
+      _mostrarDialogoPedidosPendentes('excluir');
+      return;
+    }
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Remessa'),
+        content: const Text('Tem certeza que deseja excluir esta remessa? Os pedidos não serão excluídos.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Excluir')),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+    try {
+      await _remessaService.excluirRemessa(remessaId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Remessa excluída')));
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
-  // ==================== MÉTODOS DE ESTOQUE ====================
+  // ==================== REGRAS DE REMESSA ↔ PEDIDOS ====================
 
+  /// Altera o status da remessa e, se for "em_confeccao", atualiza todos os pedidos vinculados
+  Future<void> _alterarStatusRemessa(String remessaId, String novoStatus) async {
+    if (novoStatus == 'em_confeccao') {
+      // Atualiza todos os pedidos vinculados para "em_confeccao"
+      final pedidos = await FirebaseFirestore.instance
+          .collection('pedidos_uniformes')
+          .where('remessa_id', isEqualTo: remessaId)
+          .get();
+      for (var doc in pedidos.docs) {
+        await doc.reference.update({'status': 'em_confeccao'});
+      }
+    }
+    await _remessaService.atualizarRemessa(remessaId, {'status': novoStatus});
+    setState(() {});
+  }
+
+  /// Verifica se todos os pedidos da remessa estão finalizados e pagos
+  Future<bool> _verificarSePodeFinalizarRemessa(String remessaId) async {
+    final pedidos = await FirebaseFirestore.instance
+        .collection('pedidos_uniformes')
+        .where('remessa_id', isEqualTo: remessaId)
+        .get();
+    if (pedidos.docs.isEmpty) return true; // sem pedidos, pode excluir
+    for (var doc in pedidos.docs) {
+      final data = doc.data();
+      final status = data['status'] as String?;
+      final statusPgto = data['status_pagamento'] as String?;
+      if (status != 'finalizado' || statusPgto != 'pago') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _mostrarDialogoPedidosPendentes(String acao) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ação não permitida'),
+        content: const Text('Todos os pedidos vinculados devem estar finalizados e pagos antes de finalizar/excluir a remessa.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendi')),
+        ],
+      ),
+    );
+  }
+
+  // ==================== ESTOQUE (mantidos) ====================
   void _registrarEntrada(String docId, Map<String, dynamic> data) {
     _showQuantidadeDialog(
       titulo: 'Registrar Entrada',
@@ -636,7 +805,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           'quantidade': novaQuantidade,
           'ultima_atualizacao': FieldValue.serverTimestamp(),
         });
-
         await _uniformesService.registrarMovimentacao(
           itemId: docId,
           itemNome: data['nome'],
@@ -644,7 +812,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           quantidade: quantidade,
           quantidadeAnterior: data['quantidade'] ?? 0,
         );
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -674,7 +841,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           );
           return;
         }
-
         await FirebaseFirestore.instance
             .collection('uniformes_estoque')
             .doc(docId)
@@ -682,7 +848,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           'quantidade': novaQuantidade,
           'ultima_atualizacao': FieldValue.serverTimestamp(),
         });
-
         await _uniformesService.registrarMovimentacao(
           itemId: docId,
           itemNome: data['nome'],
@@ -690,7 +855,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           quantidade: quantidade,
           quantidadeAnterior: data['quantidade'] ?? 0,
         );
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -712,7 +876,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   }) {
     showDialog(
       context: context,
-      builder: (context) => QuantidadeDialog(
+      builder: (_) => QuantidadeDialog(
         titulo: titulo,
         itemNome: itemNome,
         onConfirm: onConfirm,
@@ -722,8 +886,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     );
   }
 
-  // ==================== MÉTODOS DE PAGAMENTO ====================
-
+  // ==================== PAGAMENTOS ====================
   void _registrarPagamento(String docId, Map<String, dynamic> data, double valorRestante) {
     if (valorRestante <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -734,10 +897,9 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       );
       return;
     }
-
     showDialog(
       context: context,
-      builder: (context) => PagamentoDialog(
+      builder: (_) => PagamentoDialog(
         alunoNome: data['aluno_nome'] ?? 'Aluno',
         valorTotal: data['valor_total']?.toDouble() ?? 0,
         valorPago: data['valor_pago']?.toDouble() ?? 0,
@@ -750,7 +912,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
               formaPagamento: formaPagamento,
               vendaData: data,
             );
-
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -778,7 +939,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     double total = (data['valor_total'] ?? 0).toDouble();
     double pago = (data['valor_pago'] ?? 0).toDouble();
     double restante = total - pago;
-
     if (restante <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -788,10 +948,9 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       );
       return;
     }
-
     showDialog(
       context: context,
-      builder: (context) => PagamentoDialog(
+      builder: (_) => PagamentoDialog(
         alunoNome: data['aluno_nome'] ?? 'Aluno',
         valorTotal: total,
         valorPago: pago,
@@ -804,7 +963,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
               formaPagamento: formaPagamento,
               pedidoData: data,
             );
-
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -828,8 +986,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     );
   }
 
-  // ==================== MÉTODOS DE DETALHES ====================
-
+  // ==================== DETALHES ====================
   void _abrirDetalhesVenda(String docId, Map<String, dynamic> data) {
     showModalBottomSheet(
       context: context,
@@ -837,7 +994,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => DetalhesVendaBottomSheet(
+      builder: (_) => DetalhesVendaBottomSheet(
         docId: docId,
         data: data,
         realFormat: _realFormat,
@@ -851,7 +1008,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   }
 
   void _abrirDetalhesPedido(String docId, Map<String, dynamic> data) {
-    // TODO: Implementar bottom sheet de detalhes do pedido
+    // TODO: implementar
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Detalhes do pedido em desenvolvimento'),
@@ -860,35 +1017,26 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     );
   }
 
-  // ==================== MÉTODOS DE EDIÇÃO/EXCLUSÃO CORRIGIDOS ====================
-
+  // ==================== EDIÇÃO/EXCLUSÃO ====================
   void _editarVenda(String docId, Map<String, dynamic> data) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditarVendaScreen(
-          vendaId: docId,
-          vendaData: data,
-        ),
+        builder: (_) => EditarVendaScreen(vendaId: docId, vendaData: data),
       ),
     );
-
     if (result == true && mounted) {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Venda atualizada!'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('✅ Venda atualizada!'), backgroundColor: Colors.green),
       );
     }
   }
 
-  // ✅ MÉTODO CORRIGIDO - EXCLUIR VENDA
   void _excluirVenda(String docId, Map<String, dynamic> data) async {
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('🗑️ Confirmar Exclusão'),
         content: Text(
           'Tem certeza que deseja excluir esta venda?\n\n'
@@ -896,45 +1044,30 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
               'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('EXCLUIR'),
           ),
         ],
       ),
     );
-
     if (confirmar != true) return;
-
     try {
       await FirebaseFirestore.instance
           .collection('vendas_uniformes')
           .doc(docId)
           .delete();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Venda excluída com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('✅ Venda excluída com sucesso!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erro ao excluir: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Erro ao excluir: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -944,29 +1077,21 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditarPedidoScreen(
-          pedidoId: docId,
-          pedidoData: data,
-        ),
+        builder: (_) => EditarPedidoScreen(pedidoId: docId, pedidoData: data),
       ),
     );
-
     if (result == true && mounted) {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Pedido atualizado!'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('✅ Pedido atualizado!'), backgroundColor: Colors.green),
       );
     }
   }
 
-  // ✅ MÉTODO CORRIGIDO - EXCLUIR PEDIDO
   void _excluirPedido(String docId, Map<String, dynamic> data) async {
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('🗑️ Confirmar Exclusão'),
         content: Text(
           'Tem certeza que deseja excluir este pedido?\n\n'
@@ -975,56 +1100,39 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
               'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('EXCLUIR'),
           ),
         ],
       ),
     );
-
     if (confirmar != true) return;
-
     try {
       await FirebaseFirestore.instance
           .collection('pedidos_uniformes')
           .doc(docId)
           .delete();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Pedido excluído com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('✅ Pedido excluído com sucesso!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erro ao excluir: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Erro ao excluir: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
-  // ==================== MÉTODOS DE PEDIDOS ====================
-
+  // ==================== STATUS DE PEDIDOS ====================
   Future<void> _marcarPedidoComoConfeccao(String docId, Map<String, dynamic> data) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'em_confeccao');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1048,7 +1156,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   Future<void> _marcarPedidoComoFinalizado(String docId, Map<String, dynamic> data) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'finalizado');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

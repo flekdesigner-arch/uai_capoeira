@@ -702,6 +702,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       }
 
       final alunoData = alunoDoc.data() as Map<String, dynamic>;
+      final nomeAluno = alunoData['nome'] ?? 'Aluno';
       final turmaId = alunoData['turma_id'] as String?;
 
       String mensagemConvite = 'Olá! Aqui está o link para entrar no nosso grupo:';
@@ -710,15 +711,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         final turmaDoc = await _firestore.collection('turmas').doc(turmaId).get();
         if (turmaDoc.exists) {
           final turmaData = turmaDoc.data() as Map<String, dynamic>?;
-          final msgConvite = turmaData?['msg_convite_grupo_whatsapp'] as String?;
+          String msgConvite = turmaData?['msg_convite_grupo_whatsapp'] as String? ?? '';
 
-          if (msgConvite != null && msgConvite.isNotEmpty) {
-            mensagemConvite = msgConvite;
+          if (msgConvite.isNotEmpty) {
+            // 🔥 SUBSTITUI O {nome_aluno} PELO NOME REAL DO ALUNO
+            mensagemConvite = msgConvite.replaceAll('{nome_aluno}', nomeAluno);
           }
         }
       }
 
-      final mensagem = '$mensagemConvite $linkGrupo';
+      final mensagem = '$mensagemConvite\n\n👇 ENTRE NO GRUPO PELO LINK ABAIXO:\n$linkGrupo';
 
       await showDialog<void>(
         context: context,

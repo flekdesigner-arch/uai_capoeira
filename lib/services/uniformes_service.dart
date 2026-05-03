@@ -1,28 +1,37 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // ← IMPORTANTE: Adicionar esta importação
+import 'package:intl/intl.dart';
 
 class UniformesService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final User? currentUser = FirebaseAuth.instance.currentUser;
 
-  // Operações de Estoque
-  Future<void> adicionarItemEstoque(Map<String, dynamic> dados, {String? itemId}) async {
+  // 📦 ADICIONAR/EDITAR ITEM NO ESTOQUE
+  // Agora retorna o ID do documento (String) para ser usado em fluxos com variações.
+  Future<String> adicionarItemEstoque(
+      Map<String, dynamic> dados, {
+        String? itemId,
+      }) async {
     if (itemId == null) {
+      // Criação
       dados.addAll({
         'criado_em': FieldValue.serverTimestamp(),
         'criado_por': currentUser?.uid,
       });
-      await _firestore.collection('uniformes_estoque').add(dados);
+      final docRef = await _firestore.collection('uniformes_estoque').add(dados);
+      return docRef.id;
     } else {
+      // Edição
       dados.addAll({
         'ultima_atualizacao': FieldValue.serverTimestamp(),
         'atualizado_por': currentUser?.uid,
       });
       await _firestore.collection('uniformes_estoque').doc(itemId).update(dados);
+      return itemId; // retorna o ID que já existia
     }
   }
 
+  // 📋 REGISTRAR MOVIMENTAÇÃO DE ESTOQUE
   Future<void> registrarMovimentacao({
     required String itemId,
     required String itemNome,
@@ -44,11 +53,11 @@ class UniformesService {
     });
   }
 
-  // Operações de Vendas
+  // 💰 REGISTRAR VENDA
   Future<String> registrarVenda(Map<String, dynamic> dadosVenda) async {
     final docRef = await _firestore.collection('vendas_uniformes').add(dadosVenda);
 
-    // Atualizar estoque
+    // Atualizar estoque (decrementar quantidade)
     for (var item in dadosVenda['itens']) {
       if (item['controla_estoque'] == true) {
         await _firestore
@@ -63,6 +72,7 @@ class UniformesService {
     return docRef.id;
   }
 
+  // 💳 REGISTRAR PAGAMENTO DE VENDA
   Future<void> registrarPagamentoVenda({
     required String vendaId,
     required double valorPagamento,
@@ -70,7 +80,8 @@ class UniformesService {
     required Map<String, dynamic> vendaData,
   }) async {
     double novoValorPago = (vendaData['valor_pago'] ?? 0) + valorPagamento;
-    String novoStatus = novoValorPago >= (vendaData['valor_total'] ?? 0) ? 'pago' : 'parcial';
+    String novoStatus =
+    novoValorPago >= (vendaData['valor_total'] ?? 0) ? 'pago' : 'parcial';
 
     await _firestore.collection('vendas_uniformes').doc(vendaId).update({
       'valor_pago': novoValorPago,
@@ -86,16 +97,16 @@ class UniformesService {
     });
   }
 
-  // Operações de Pedidos
+  // 🛒 CRIAR PEDIDO
   Future<String> criarPedido(Map<String, dynamic> dadosPedido) async {
-    final docRef = await _firestore.collection('pedidos_uniformes').add(dadosPedido);
+    final docRef =
+    await _firestore.collection('pedidos_uniformes').add(dadosPedido);
     return docRef.id;
   }
 
+  // 📌 ATUALIZAR STATUS DO PEDIDO
   Future<void> atualizarStatusPedido(String pedidoId, String status) async {
-    Map<String, dynamic> updates = {
-      'status': status,
-    };
+    Map<String, dynamic> updates = {'status': status};
 
     if (status == 'em_confeccao') {
       updates['data_inicio_confeccao'] = FieldValue.serverTimestamp();
@@ -103,9 +114,13 @@ class UniformesService {
       updates['data_finalizacao'] = FieldValue.serverTimestamp();
     }
 
-    await _firestore.collection('pedidos_uniformes').doc(pedidoId).update(updates);
+    await _firestore
+        .collection('pedidos_uniformes')
+        .doc(pedidoId)
+        .update(updates);
   }
 
+  // 💸 REGISTRAR PAGAMENTO DE PEDIDO
   Future<void> registrarPagamentoPedido({
     required String pedidoId,
     required double valorPagamento,
@@ -130,10 +145,9 @@ class UniformesService {
     });
   }
 
-  // Métodos auxiliares
+  // 🧾 GERAR ID CUSTOMIZADO DO PEDIDO
   String gerarIdPedido() {
     DateTime now = DateTime.now();
-    // CORREÇÃO: Criar instâncias de DateFormat
     final DateFormat dateFormat = DateFormat('yyyyMMdd');
     final DateFormat timeFormat = DateFormat('HHmmss');
 

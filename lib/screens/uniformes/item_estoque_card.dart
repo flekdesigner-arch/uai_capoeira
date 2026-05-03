@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ItemEstoqueCard extends StatelessWidget {
   final String docId;
@@ -60,6 +61,37 @@ class ItemEstoqueCard extends StatelessWidget {
     }
   }
 
+  /// Abre diálogo em tela cheia para visualizar foto com zoom
+  void _mostrarFotoAmpliada(BuildContext context, String? fotoUrl) {
+    if (fotoUrl == null || fotoUrl.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (_) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          color: Colors.black87,
+          child: Center(
+            child: InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 5.0,
+              child: CachedNetworkImage(
+                imageUrl: fotoUrl,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+                errorWidget: (_, __, ___) => const Center(
+                  child: Icon(Icons.broken_image, color: Colors.white, size: 80),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int quantidade = data['quantidade'] ?? 0;
@@ -67,21 +99,43 @@ class ItemEstoqueCard extends StatelessWidget {
     bool baixoEstoque = quantidade <= estoqueMinimo;
     double precoVenda = (data['preco_venda'] ?? 0).toDouble();
     bool controlaEstoque = data['controla_estoque'] ?? true;
+    final String? fotoUrl = data['foto_url'];
+    final String categoria = data['categoria'] ?? 'Outro';
+    final Color corCat = _getCategoriaColor(categoria);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: _getCategoriaColor(data['categoria']).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            _getCategoriaIcon(data['categoria']),
-            color: _getCategoriaColor(data['categoria']),
+        leading: GestureDetector(
+          onLongPress: () => _mostrarFotoAmpliada(context, fotoUrl),
+          child: Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: corCat.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: fotoUrl != null && fotoUrl.isNotEmpty
+                ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => Icon(
+                  _getCategoriaIcon(categoria),
+                  color: corCat,
+                ),
+                errorWidget: (_, __, ___) => Icon(
+                  _getCategoriaIcon(categoria),
+                  color: corCat,
+                ),
+              ),
+            )
+                : Icon(
+              _getCategoriaIcon(categoria),
+              color: corCat,
+            ),
           ),
         ),
         title: Row(
@@ -116,7 +170,7 @@ class ItemEstoqueCard extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${data['categoria'] ?? 'Sem categoria'} - ${data['tamanho'] ?? 'Tam. Único'}'),
+            Text('$categoria - ${data['tamanho'] ?? 'Tam. Único'}'),
             Text(
               'Preço: ${realFormat.format(precoVenda)}',
               style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w500),

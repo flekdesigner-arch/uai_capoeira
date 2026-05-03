@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#B71C1C">
+    <title>UAI CAPOEIRA - Offline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #B71C1C 0%, #8B1A1A 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            color: white;
+            max-width: 400px;
+        }
+
+        .icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .logo {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 30px;
+            background: white;
+            border-radius: 30px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        p {
+            font-size: 16px;
+            opacity: 0.9;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .retry-btn {
+            background: white;
+            color: #B71C1C;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border: 2px solid transparent;
+        }
+
+        .retry-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .retry-btn:active {
+            transform: scale(0.98);
+        }
+
+        .status {
+            margin-top: 30px;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+            margin: 20px auto 0;
+            overflow: hidden;
+        }
+
+        .loading-bar::after {
+            content: '';
+            display: block;
+            width: 30%;
+            height: 100%;
+            background: #FFD700;
+            border-radius: 2px;
+            animation: loading 1.5s infinite;
+        }
+
+        @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="icon">📡</div>
+    <div class="logo">
+        <img src="icons/Icon-192.png" alt="UAI Capoeira" onerror="this.src='favicon.png'">
+    </div>
+    <h1>Você está offline</h1>
+    <p>Conecte-se à internet para acessar todas as funcionalidades do UAI Capoeira.</p>
+    <button class="retry-btn" onclick="location.reload()">
+        🔄 Tentar novamente
+    </button>
+    <div class="loading-bar"></div>
+    <div class="status">
+        UAI CAPOEIRA - União, Amizade e Inteligência
+    </div>
+</div>
+
+<script>
+    // Tenta reconectar automaticamente
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    function checkConnection() {
+        if (navigator.onLine) {
+            location.reload();
+            return;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+            setTimeout(checkConnection, 3000);
+        }
+    }
+
+    window.addEventListener('online', function() {
+        location.reload();
+    });
+
+    setTimeout(checkConnection, 5000);
+</script>
+</body>
+</html>

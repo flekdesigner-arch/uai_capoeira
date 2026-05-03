@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
+import 'package:uai_capoeira/services/remessa_service.dart';
 import 'dialogs/selecionar_aluno_dialog.dart';
-import 'dialogs/selecionar_item_dialog.dart';
 
 class NovoPedidoScreen extends StatefulWidget {
   const NovoPedidoScreen({super.key});
@@ -16,10 +17,12 @@ class NovoPedidoScreen extends StatefulWidget {
 class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
+  final RemessaService _remessaService = RemessaService();
   final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   String? _alunoSelecionadoId;
   String? _alunoSelecionadoNome;
+  String? _fotoAlunoUrl;
 
   List<Map<String, dynamic>> _itensPedido = [];
   double _valorTotal = 0;
@@ -28,6 +31,9 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final TextEditingController _dataPrevisaoController = TextEditingController();
 
   bool _isLoading = false;
+
+  String? _remessaId;
+  String? _remessaNome;
 
   @override
   void dispose() {
@@ -65,7 +71,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   }
 
   Future<void> _selecionarAluno() async {
-    final selecionado = await showDialog<Map<String, String>>(  // ← Tipo explícito
+    final selecionado = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => const SelecionarAlunoDialog(
         corTema: Colors.purple,
@@ -76,9 +82,11 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
       setState(() {
         _alunoSelecionadoId = selecionado['id'];
         _alunoSelecionadoNome = selecionado['nome'];
+        _fotoAlunoUrl = selecionado['foto_url'];
       });
     }
   }
+
   Future<void> _selecionarDataPrevisao() async {
     DateTime? data = await showDatePicker(
       context: context,
@@ -93,6 +101,36 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         _dataPrevisaoController.text = DateFormat('dd/MM/yyyy', 'pt_BR').format(data);
       });
     }
+  }
+
+  // 🔥 Selecionar remessa (CORRIGIDO)
+  Future<void> _selecionarRemessa() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _SelecionarRemessaDialog(),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _remessaId = result['id'] as String?;
+        _remessaNome = result['nome'] as String?;
+
+        // Preencher data de previsão automaticamente se a remessa tiver data prevista
+        final dataPrevista = result['data_prevista'];
+        if (dataPrevista is Timestamp) {
+          final dataFormatada = DateFormat('dd/MM/yyyy', 'pt_BR').format(dataPrevista.toDate());
+          _dataPrevisaoController.text = dataFormatada;
+        } else if (dataPrevista is String && dataPrevista.isNotEmpty) {
+          _dataPrevisaoController.text = dataPrevista;
+        }
+      });
+    }
+  }
+
+  void _removerRemessa() {
+    setState(() {
+      _remessaId = null;
+      _remessaNome = null;
+    });
   }
 
   Future<void> _salvarPedido() async {
@@ -134,9 +172,14 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         'observacoes': _observacoesController.text,
         'data_pedido': FieldValue.serverTimestamp(),
         'criado_por': currentUser?.uid,
+        'remessa_id': _remessaId,
       };
 
-      await _uniformesService.criarPedido(dadosPedido);
+      final pedidoIdCriado = await _uniformesService.criarPedido(dadosPedido);
+
+      if (_remessaId != null) {
+        await _remessaService.vincularPedido(pedidoIdCriado, _remessaId!);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -179,8 +222,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-            )
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.save, color: Colors.white),
             label: Text(
               _isLoading ? 'SALVANDO...' : 'SALVAR',
@@ -195,7 +237,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Seleção de Aluno
+            // Aluno (com foto)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -203,13 +245,11 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'ALUNO',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    const Text('ALUNO', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: _selecionarAluno,
+                      borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -218,15 +258,32 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.person, color: Colors.grey.shade600),
-                            const SizedBox(width: 8),
+                            _fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty
+                                ? CachedNetworkImage(
+                              imageUrl: _fotoAlunoUrl!,
+                              imageBuilder: (ctx, imageProvider) => CircleAvatar(
+                                backgroundImage: imageProvider,
+                                radius: 16,
+                              ),
+                              placeholder: (_, __) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Colors.grey.shade200,
+                                child: const Icon(Icons.person, size: 18),
+                              ),
+                              errorWidget: (_, __, ___) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Colors.grey.shade100,
+                                child: Icon(Icons.person, color: Colors.grey.shade600),
+                              ),
+                            )
+                                : Icon(Icons.person, color: Colors.grey.shade600),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 _alunoSelecionadoNome ?? 'Selecionar aluno',
                                 style: TextStyle(
-                                  color: _alunoSelecionadoNome == null
-                                      ? Colors.grey
-                                      : Colors.black,
+                                  color: _alunoSelecionadoNome == null ? Colors.grey : Colors.black,
+                                  fontWeight: _alunoSelecionadoNome != null ? FontWeight.w500 : FontWeight.normal,
                                 ),
                               ),
                             ),
@@ -239,10 +296,9 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // Itens do Pedido
+            // Itens
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -253,10 +309,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'ITENS DO PEDIDO',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        const Text('ITENS DO PEDIDO', style: TextStyle(fontWeight: FontWeight.bold)),
                         TextButton.icon(
                           onPressed: _adicionarItem,
                           icon: const Icon(Icons.add),
@@ -265,7 +318,6 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                       ],
                     ),
                     const Divider(),
-
                     if (_itensPedido.isEmpty)
                       Center(
                         child: Padding(
@@ -274,10 +326,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                             children: [
                               Icon(Icons.shopping_cart_outlined, size: 48, color: Colors.grey.shade400),
                               const SizedBox(height: 8),
-                              Text(
-                                'Nenhum item adicionado',
-                                style: TextStyle(color: Colors.grey.shade600),
-                              ),
+                              Text('Nenhum item adicionado', style: TextStyle(color: Colors.grey.shade600)),
                             ],
                           ),
                         ),
@@ -290,6 +339,8 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         separatorBuilder: (_, __) => const Divider(),
                         itemBuilder: (context, index) {
                           final item = _itensPedido[index];
+                          final tamanho = item['tamanho'] as String?;
+                          final nomeExibicao = tamanho != null ? '${item['nome']} - Tam. $tamanho' : item['nome'];
                           return ListTile(
                             leading: Container(
                               width: 40,
@@ -300,7 +351,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                               ),
                               child: const Icon(Icons.shopping_bag, color: Colors.purple),
                             ),
-                            title: Text(item['nome']),
+                            title: Text(nomeExibicao ?? 'Item'),
                             subtitle: Text('${item['quantidade']} x ${_realFormat.format(item['preco_unitario'])}'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -318,23 +369,14 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                           );
                         },
                       ),
-
                     const Divider(),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'TOTAL',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
+                        const Text('TOTAL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         Text(
                           _realFormat.format(_valorTotal),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.purple,
-                          ),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple),
                         ),
                       ],
                     ),
@@ -342,10 +384,9 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // Informações Adicionais
+            // Remessa
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -353,13 +394,63 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'INFORMAÇÕES ADICIONAIS',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    const Text('REMESSA (opcional)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _selecionarRemessa,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.local_shipping, color: Colors.brown.shade300),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _remessaNome ?? 'Vincular a uma remessa',
+                                style: TextStyle(color: _remessaNome == null ? Colors.grey : Colors.black),
+                              ),
+                            ),
+                            if (_remessaId != null)
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.red),
+                                onPressed: _removerRemessa,
+                                tooltip: 'Remover vínculo',
+                              )
+                            else
+                              const Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
+                      ),
                     ),
-                    const Divider(),
+                    if (_remessaNome != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'O pedido será vinculado automaticamente à remessa $_remessaNome.',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
-                    // Data de Previsão
+            // Informações adicionais
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('INFORMAÇÕES ADICIONAIS', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Divider(),
                     InkWell(
                       onTap: _selecionarDataPrevisao,
                       child: Container(
@@ -388,10 +479,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
-                    // Observações
                     TextField(
                       controller: _observacoesController,
                       maxLines: 3,
@@ -402,10 +490,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         alignLabelWithHint: true,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
-                    // Dica
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -419,10 +504,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                           Expanded(
                             child: Text(
                               'O status do pedido será "PENDENTE". Você poderá alterar para "EM CONFECÇÃO" e "FINALIZADO" depois.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.purple.shade700,
-                              ),
+                              style: TextStyle(fontSize: 12, color: Colors.purple.shade700),
                             ),
                           ),
                         ],
@@ -432,10 +514,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
-
-            // Botão de Salvar (rodapé)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: ElevatedButton(
@@ -444,14 +523,9 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                   backgroundColor: Colors.purple,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text(
-                  'CRIAR PEDIDO',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: const Text('CRIAR PEDIDO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -461,7 +535,90 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   }
 }
 
-// Dialog específico para selecionar item em pedidos (sem restrição de estoque)
+// =============================================================================
+// DIÁLOGO DE SELEÇÃO DE REMESSA (CORRIGIDO)
+// =============================================================================
+class _SelecionarRemessaDialog extends StatefulWidget {
+  @override
+  State<_SelecionarRemessaDialog> createState() => _SelecionarRemessaDialogState();
+}
+
+class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
+  String _search = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Pesquisar remessa...',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (v) => setState(() => _search = v.toLowerCase()),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('remessas')
+                    .orderBy('criado_em', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  var docs = snapshot.data!.docs;
+                  if (_search.isNotEmpty) {
+                    docs = docs.where((d) {
+                      final nome = (d.data() as Map<String, dynamic>)['nome'] ?? '';
+                      return nome.toLowerCase().contains(_search);
+                    }).toList();
+                  }
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('Nenhuma remessa encontrada'));
+                  }
+                  return ListView.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final data = docs[i].data() as Map<String, dynamic>;
+                      return ListTile(
+                        leading: Icon(Icons.local_shipping, color: Colors.brown.shade300),
+                        title: Text(data['nome'] ?? 'Sem nome'),
+                        subtitle: Text('Status: ${data['status']}'),
+                        onTap: () {
+                          // Retorna um Map<String, dynamic> com os dados da remessa
+                          Navigator.pop(context, {
+                            'id': docs[i].id,
+                            'nome': data['nome'],
+                            'data_prevista': data['data_prevista'], // pode ser Timestamp ou String
+                          });
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// DIÁLOGO DE SELEÇÃO DE ITEM (COM VARIAÇÕES)
+// =============================================================================
 class SelecionarItemPedidoDialog extends StatefulWidget {
   const SelecionarItemPedidoDialog({super.key});
 
@@ -478,6 +635,134 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _showQuantidadeDialog(
+      BuildContext context,
+      String itemId,
+      Map<String, dynamic> data, {
+        String? tamanho,
+      }) {
+    final quantidadeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(data['nome'] ?? 'Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}'),
+              if (tamanho != null) Text('Tamanho: $tamanho'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: quantidadeController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantidade',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
+                if (quantidade <= 0) quantidade = 1;
+
+                Navigator.pop(ctx);
+                Navigator.pop(context, {
+                  'item_id': itemId,
+                  'nome': data['nome'],
+                  'tamanho': tamanho,
+                  'quantidade': quantidade,
+                  'preco_unitario': data['preco_venda'] ?? 0,
+                });
+              },
+              child: const Text('Adicionar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _mostrarDialogoVariacoes(
+      BuildContext context,
+      String baseId,
+      Map<String, dynamic> baseData,
+      ) {
+    FirebaseFirestore.instance
+        .collection('uniformes_estoque')
+        .where('item_base_id', isEqualTo: baseId)
+        .get()
+        .then((snapshot) {
+      if (!mounted) return;
+
+      if (snapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nenhuma variação encontrada para este item')),
+        );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Tamanhos disponíveis - ${baseData['nome']}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: snapshot.docs.length,
+              itemBuilder: (_, i) {
+                final variacao = snapshot.docs[i].data();
+                final tamanho = variacao['tamanho'] ?? '?';
+                final quantidadeEstoque = variacao['quantidade'] ?? 0;
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.purple.shade50,
+                    child: Text(
+                      tamanho.toString().toUpperCase(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  title: Text('Tamanho $tamanho'),
+                  subtitle: Text('Estoque: $quantidadeEstoque un'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showQuantidadeDialog(
+                      context,
+                      snapshot.docs[i].id,
+                      variacao,
+                      tamanho: tamanho.toString(),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        ),
+      );
+    }).catchError((e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao carregar variações: $e')),
+        );
+      }
+    });
   }
 
   @override
@@ -512,9 +797,7 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                 decoration: InputDecoration(
                   hintText: 'Pesquisar item...',
                   prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true,
                   fillColor: Colors.grey.shade50,
                   suffixIcon: _searchQuery.isNotEmpty
@@ -537,19 +820,23 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                     .where('status', isEqualTo: 'ativo')
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                  var itens = snapshot.data!.docs.where((doc) {
-                    if (_searchQuery.isEmpty) return true;
-                    var data = doc.data() as Map<String, dynamic>;
-                    return (data['nome'] ?? '')
-                        .toLowerCase()
-                        .contains(_searchQuery.toLowerCase());
+                  var docs = snapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final tipo = data['tipo'] as String?;
+                    return (tipo == null || tipo == 'base');
                   }).toList();
 
-                  if (itens.isEmpty) {
+                  if (_searchQuery.isNotEmpty) {
+                    docs = docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final nome = data['nome']?.toString().toLowerCase() ?? '';
+                      return nome.contains(_searchQuery.toLowerCase());
+                    }).toList();
+                  }
+
+                  if (docs.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -557,7 +844,7 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                           Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey.shade400),
                           const SizedBox(height: 16),
                           Text(
-                            'Nenhum item encontrado',
+                            _searchQuery.isEmpty ? 'Nenhum item cadastrado' : 'Nenhum item encontrado',
                             style: TextStyle(color: Colors.grey.shade600),
                           ),
                           const SizedBox(height: 8),
@@ -571,10 +858,12 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                   }
 
                   return ListView.builder(
-                    itemCount: itens.length,
+                    itemCount: docs.length,
                     itemBuilder: (context, index) {
-                      var doc = itens[index];
+                      var doc = docs[index];
                       var data = doc.data() as Map<String, dynamic>;
+                      final bool possuiVariacoes = data['possui_variacoes'] == true;
+                      final String? fotoUrl = data['foto_url'];
 
                       return ListTile(
                         leading: Container(
@@ -584,14 +873,29 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                             color: Colors.purple.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.shopping_bag, color: Colors.purple),
+                          child: fotoUrl != null && fotoUrl.isNotEmpty
+                              ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: fotoUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => const Icon(Icons.shopping_bag, color: Colors.purple),
+                              errorWidget: (_, __, ___) => const Icon(Icons.shopping_bag, color: Colors.purple),
+                            ),
+                          )
+                              : const Icon(Icons.shopping_bag, color: Colors.purple),
                         ),
                         title: Text(data['nome'] ?? 'Sem nome'),
-                        subtitle: Text(
-                          'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                        ),
+                        subtitle: Text('Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}'),
+                        trailing: possuiVariacoes
+                            ? const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey)
+                            : null,
                         onTap: () {
-                          _showQuantidadeDialog(context, doc.id, data);
+                          if (possuiVariacoes) {
+                            _mostrarDialogoVariacoes(context, doc.id, data);
+                          } else {
+                            _showQuantidadeDialog(context, doc.id, data);
+                          }
                         },
                       );
                     },
@@ -602,59 +906,6 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
           ],
         ),
       ),
-    );
-  }
-
-  void _showQuantidadeDialog(
-      BuildContext context,
-      String itemId,
-      Map<String, dynamic> data,
-      ) {
-    final quantidadeController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(data['nome'] ?? 'Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: quantidadeController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantidade',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
-                if (quantidade <= 0) quantidade = 1;
-
-                Navigator.pop(context); // Fecha dialog de quantidade
-                Navigator.pop(context, { // Fecha dialog de seleção e retorna item
-                  'item_id': itemId,
-                  'nome': data['nome'],
-                  'quantidade': quantidade,
-                  'preco_unitario': data['preco_venda'] ?? 0,
-                });
-              },
-              child: const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
     );
   }
 }

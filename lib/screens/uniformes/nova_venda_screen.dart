@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
-import 'dialogs/selecionar_aluno_dialog.dart';  // ← CORRIGIDO: caminho relativo
-import 'dialogs/selecionar_item_dialog.dart';  // ← CORRIGIDO: caminho relativo
+import 'dialogs/selecionar_aluno_dialog.dart';
+import 'dialogs/selecionar_item_dialog.dart';
 
-// ... resto do código continua igual
 class NovaVendaScreen extends StatefulWidget {
   const NovaVendaScreen({super.key});
 
@@ -22,6 +22,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
 
   String? _alunoSelecionadoId;
   String? _alunoSelecionadoNome;
+  String? _fotoAlunoUrl; // 🔥 NOVA VARIÁVEL
   String? _statusPagamento = 'pendente';
 
   List<Map<String, dynamic>> _itensVenda = [];
@@ -122,7 +123,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
   }
 
   Future<void> _selecionarAluno() async {
-    final selecionado = await showDialog<Map<String, String>>(  // ← Tipo explícito
+    final selecionado = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => const SelecionarAlunoDialog(
         corTema: Colors.green,
@@ -131,8 +132,9 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
 
     if (selecionado != null && mounted) {
       setState(() {
-        _alunoSelecionadoId = selecionado['id'];      // ← Agora é String com certeza
-        _alunoSelecionadoNome = selecionado['nome'];  // ← Agora é String com certeza
+        _alunoSelecionadoId = selecionado['id'];
+        _alunoSelecionadoNome = selecionado['nome'];
+        _fotoAlunoUrl = selecionado['foto_url']; // 🔥 RECEBE URL DA FOTO
       });
     }
   }
@@ -175,6 +177,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: _selecionarAluno,
+                      borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -183,8 +186,27 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.person, color: Colors.grey.shade600),
-                            const SizedBox(width: 8),
+                            // 🔥 EXIBE AVATAR COM FOTO OU INICIAL
+                            _fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty
+                                ? CachedNetworkImage(
+                              imageUrl: _fotoAlunoUrl!,
+                              imageBuilder: (ctx, imageProvider) => CircleAvatar(
+                                backgroundImage: imageProvider,
+                                radius: 16,
+                              ),
+                              placeholder: (_, __) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Colors.grey.shade200,
+                                child: const Icon(Icons.person, size: 18),
+                              ),
+                              errorWidget: (_, __, ___) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Colors.grey.shade100,
+                                child: Icon(Icons.person, color: Colors.grey.shade600),
+                              ),
+                            )
+                                : Icon(Icons.person, color: Colors.grey.shade600),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 _alunoSelecionadoNome ?? 'Selecionar aluno',
@@ -192,6 +214,9 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                                   color: _alunoSelecionadoNome == null
                                       ? Colors.grey
                                       : Colors.black,
+                                  fontWeight: _alunoSelecionadoNome != null
+                                      ? FontWeight.w500
+                                      : FontWeight.normal,
                                 ),
                               ),
                             ),
@@ -207,7 +232,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
 
             const SizedBox(height: 16),
 
-            // Itens da Venda
+            // Itens da Venda (mantido igual)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -310,7 +335,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
 
             const SizedBox(height: 16),
 
-            // Status do Pagamento
+            // Status do Pagamento (mantido igual)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(

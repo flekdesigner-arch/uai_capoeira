@@ -1,15 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../../models/evento_model.dart';
 import '../../services/participacao_service.dart';
 import '../../services/permissao_service.dart';
 import '../../services/graduacao_service.dart';
 import '../../services/certificado_service.dart';
 import '../../models/participacao_model.dart';
-import 'detalhe_participacao_screen.dart';
+import 'aluno_detalhe_participacao_screen.dart';
 import 'adicionar_participante_modal.dart';
 import 'selecionar_participantes_csv_screen.dart';
+
+// 🔥 Cache com TTL de 3 minutos
+class CachedAlunoData {
+  final Map<String, dynamic> data;
+  final DateTime timestamp;
+
+  CachedAlunoData(this.data) : timestamp = DateTime.now();
+
+  bool get isExpired => DateTime.now().difference(timestamp) > const Duration(minutes: 3);
+}
+
+// 🔥 Widget de avatar robusto (sem dependências)
+class RobustAvatar extends StatelessWidget {
+  final String? fotoUrl;
+  final double radius;
+
+  const RobustAvatar({super.key, required this.fotoUrl, required this.radius});
+
+  bool _isValidUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isValidUrl(fotoUrl)) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey.shade100,
+        child: Icon(Icons.person, size: radius * 0.8, color: Colors.grey),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.grey.shade100,
+      child: ClipOval(
+        child: Image.network(
+          fotoUrl!,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            // Mostra um placeholder vazio enquanto carrega, sem spinner piscando
+            return const SizedBox.shrink();
+          },
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('❌ Erro ao carregar avatar: $error');
+            return Icon(Icons.person, size: radius * 0.8, color: Colors.grey);
+          },
+        ),
+      ),
+    );
+  }
+}
 
 class ParticipantesEventoScreen extends StatefulWidget {
   final String eventoId;
@@ -44,8 +101,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   bool _isGridView = true;
   String _filtroStatus = 'todos';
   bool _isLoadingCertificados = false;
+  bool _isRefreshing = false;
 
-  // Dados do dashboard (só para modo grade)
+  // Dados do dashboard
   double _totalArrecadado = 0;
   double _totalInscricoes = 0;
   int _totalParticipantes = 0;
@@ -55,8 +113,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   // Controle para evitar loop
   int _ultimoTotalParticipantes = -1;
 
-  // Cache para dados dos alunos
-  final Map<String, Map<String, dynamic>> _cacheAlunos = {};
+  // Cache para dados dos alunos com TTL de 3 minutos
+  final Map<String, CachedAlunoData> _cacheAlunos = {};
+
+  // Debounce timer para busca
+  Timer? _debounceTimer;
 
   // Permissões
   bool _podeAdicionar = false;
@@ -81,8 +142,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     super.initState();
 
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.toLowerCase();
+      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _searchQuery = _searchController.text.toLowerCase();
+          });
+        }
       });
     });
 
@@ -127,7 +193,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     _podeMarcarPresenca = permissoes['pode_gerenciar_participantes'] ?? false;
     _podeGerarCertificados = permissoes['pode_gerar_certificados'] ?? false;
 
-    debugPrint('📊 Permissões carregadas: $permissoes');
+    debugPrint('📊 Permissões carregadas');
     debugPrint('   - pode_remover_alunos_de_eventos: $_podeRemover');
 
     if (mounted) setState(() {});
@@ -145,11 +211,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     }
   }
 
-  // 🔥 NOVO MÉTODO: Buscar dados atualizados do aluno com cache
   Future<Map<String, dynamic>> _buscarDadosAluno(String alunoId) async {
-    // Verifica se já está no cache
-    if (_cacheAlunos.containsKey(alunoId)) {
-      return _cacheAlunos[alunoId]!;
+    final cached = _cacheAlunos[alunoId];
+    if (cached != null && !cached.isExpired) {
+      return cached.data;
     }
 
     try {
@@ -168,8 +233,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
           'data_nascimento': data['data_nascimento'],
         };
 
-        // Armazena no cache
-        _cacheAlunos[alunoId] = dadosAluno;
+        _cacheAlunos[alunoId] = CachedAlunoData(dadosAluno);
         return dadosAluno;
       }
     } catch (e) {
@@ -183,6 +247,49 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
       'turma': null,
       'data_nascimento': null,
     };
+  }
+
+  // 🔥 NOVO: Calcula idade a partir da data de nascimento
+  int? _calcularIdade(dynamic dataNascimento) {
+    if (dataNascimento == null) return null;
+    DateTime nasc;
+    if (dataNascimento is Timestamp) {
+      nasc = dataNascimento.toDate();
+    } else if (dataNascimento is DateTime) {
+      nasc = dataNascimento;
+    } else {
+      return null;
+    }
+    final hoje = DateTime.now();
+    int idade = hoje.year - nasc.year;
+    if (hoje.month < nasc.month || (hoje.month == nasc.month && hoje.day < nasc.day)) {
+      idade--;
+    }
+    return idade;
+  }
+
+  Future<void> _limparCacheERecarregar() async {
+    setState(() {
+      _cacheAlunos.clear(); // 🔥 Limpa todo o cache ao puxar para baixo
+      _isRefreshing = true;
+    });
+
+    await _carregarParticipantesExistentes();
+    await _carregarAlunos();
+
+    setState(() {
+      _isRefreshing = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Lista atualizada do servidor!'),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   void _calcularEstatisticas(List<ParticipacaoModel> participantes) {
@@ -233,10 +340,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.red.shade900,
-            Colors.red.shade700,
-          ],
+          colors: [Colors.red.shade900, Colors.red.shade700],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -251,90 +355,32 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: _buildDashboardItem(
-                  icon: Icons.people,
-                  value: '$_totalParticipantes',
-                  label: 'Participantes',
-                  color: Colors.white,
-                ),
-              ),
-              Container(
-                height: 40,
-                width: 1,
-                color: Colors.white.withOpacity(0.3),
-              ),
-              Expanded(
-                child: _buildDashboardItem(
-                  icon: Icons.paid,
-                  value: '$_participantesPagos',
-                  label: 'Pagos',
-                  color: Colors.white,
-                ),
-              ),
-              Container(
-                height: 40,
-                width: 1,
-                color: Colors.white.withOpacity(0.3),
-              ),
-              Expanded(
-                child: _buildDashboardItem(
-                  icon: Icons.percent,
-                  value: '$percentualPago%',
-                  label: 'Taxa',
-                  color: Colors.white,
-                ),
-              ),
+              Expanded(child: _buildDashboardItem(icon: Icons.people, value: '$_totalParticipantes', label: 'Participantes', color: Colors.white)),
+              Container(height: 40, width: 1, color: Colors.white.withOpacity(0.3)),
+              Expanded(child: _buildDashboardItem(icon: Icons.paid, value: '$_participantesPagos', label: 'Pagos', color: Colors.white)),
+              Container(height: 40, width: 1, color: Colors.white.withOpacity(0.3)),
+              Expanded(child: _buildDashboardItem(icon: Icons.percent, value: '$percentualPago%', label: 'Taxa', color: Colors.white)),
             ],
           ),
-
           const SizedBox(height: 16),
           Divider(color: Colors.white.withOpacity(0.3), height: 1),
           const SizedBox(height: 16),
-
           Row(
             children: [
-              Expanded(
-                child: _buildDashboardItem(
-                  icon: Icons.attach_money,
-                  value: 'R\$ ${_totalArrecadado.toStringAsFixed(2)}',
-                  label: 'Arrecadado',
-                  color: Colors.white,
-                ),
-              ),
-              Container(
-                height: 40,
-                width: 1,
-                color: Colors.white.withOpacity(0.3),
-              ),
-              Expanded(
-                child: _buildDashboardItem(
-                  icon: Icons.warning,
-                  value: 'R\$ ${saldoDevedor.toStringAsFixed(2)}',
-                  label: 'A Receber',
-                  color: Colors.white,
-                ),
-              ),
+              Expanded(child: _buildDashboardItem(icon: Icons.attach_money, value: 'R\$ ${_totalArrecadado.toStringAsFixed(2)}', label: 'Arrecadado', color: Colors.white)),
+              Container(height: 40, width: 1, color: Colors.white.withOpacity(0.3)),
+              Expanded(child: _buildDashboardItem(icon: Icons.warning, value: 'R\$ ${saldoDevedor.toStringAsFixed(2)}', label: 'A Receber', color: Colors.white)),
             ],
           ),
-
           if (temCamisa && _camisasPorTamanho.isNotEmpty) ...[
             const SizedBox(height: 16),
             Divider(color: Colors.white.withOpacity(0.3), height: 1),
             const SizedBox(height: 12),
-
             Row(
               children: [
                 Icon(Icons.shopping_bag, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  'Camisas:',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
+                Text('Camisas:', style: TextStyle(color: Colors.white.withOpacity(0.9), fontWeight: FontWeight.w600, fontSize: 14)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: SingleChildScrollView(
@@ -344,18 +390,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                         return Container(
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${entry.key}: ${entry.value}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                          child: Text('${entry.key}: ${entry.value}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                         );
                       }).toList(),
                     ),
@@ -369,31 +405,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     );
   }
 
-  Widget _buildDashboardItem({
-    required IconData icon,
-    required String value,
-    required String label,
-    required Color color,
-  }) {
+  Widget _buildDashboardItem({required IconData icon, required String value, required String label, required Color color}) {
     return Column(
       children: [
         Icon(icon, color: color.withOpacity(0.9), size: 20),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            color: color.withOpacity(0.8),
-            fontSize: 11,
-          ),
-        ),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: TextStyle(color: color.withOpacity(0.8), fontSize: 11)),
       ],
     );
   }
@@ -412,14 +430,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .get();
 
-      final alunosFiltrados = snapshot.docs.where((doc) {
-        return !_alunosParticipantesIds.contains(doc.id);
-      }).toList();
+      final alunosFiltrados = snapshot.docs.where((doc) => !_alunosParticipantesIds.contains(doc.id)).toList();
 
       setState(() {
         _alunosDisponiveis = alunosFiltrados.map((doc) {
           final data = doc.data();
-
           final String graduacaoId = data['graduacao_atual_id'] ?? '';
           final Map<String, dynamic>? graduacaoAtual = mapaGraduacoes[graduacaoId];
 
@@ -450,21 +465,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
             'data_nascimento': data['data_nascimento'],
           };
         }).toList();
-
         _alunosDisponiveis.sort((a, b) => a['nome'].compareTo(b['nome']));
       });
-
       debugPrint('✅ Alunos disponíveis: ${_alunosDisponiveis.length}');
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar alunos: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao carregar alunos: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao carregar alunos: ${e.toString()}'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _isLoadingAlunos = false);
@@ -480,32 +487,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => AdicionarParticipanteModal(
-        aluno: aluno,
-        evento: evento,
-        isBatizado: _isBatizado,
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => AdicionarParticipanteModal(aluno: aluno, evento: evento, isBatizado: _isBatizado),
     );
 
     if (result != null) {
-      await _adicionarParticipante(
-        aluno,
-        tamanhoCamisa: result['tamanhoCamisa'],
-        novaGraduacao: result['graduacao']?['nome_graduacao'],
-        novaGraduacaoId: result['graduacaoId'],
-      );
+      await _adicionarParticipante(aluno,
+          tamanhoCamisa: result['tamanhoCamisa'],
+          novaGraduacao: result['graduacao']?['nome_graduacao'],
+          novaGraduacaoId: result['graduacaoId']);
     }
   }
 
-  Future<void> _adicionarParticipante(
-      Map<String, dynamic> aluno, {
-        String? tamanhoCamisa,
-        String? novaGraduacao,
-        String? novaGraduacaoId,
-      }) async {
+  Future<void> _adicionarParticipante(Map<String, dynamic> aluno, {String? tamanhoCamisa, String? novaGraduacao, String? novaGraduacaoId}) async {
     if (!_podeAdicionar) {
       _mostrarSemPermissao();
       return;
@@ -513,7 +507,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
 
     try {
       final evento = widget.evento ?? _eventoCarregado;
-
       await _participacaoService.adicionarParticipante(
         alunoId: aluno['id'],
         alunoNome: aluno['nome'],
@@ -532,35 +525,22 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
         valorCamisa: evento?.temCamisa == true ? (evento?.valorCamisa ?? 0) : 0,
       );
 
-      // Limpa o cache do aluno adicionado
       _cacheAlunos.remove(aluno['id']);
-
       setState(() {
         _alunosParticipantesIds.add(aluno['id']);
         _alunosDisponiveis.removeWhere((a) => a['id'] == aluno['id']);
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isBatizado && novaGraduacao != null
-                  ? '✅ ${aluno['nome']} será graduado para $novaGraduacao!'
-                  : '✅ ${aluno['nome']} adicionado ao evento!',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isBatizado && novaGraduacao != null ? '✅ ${aluno['nome']} será graduado para $novaGraduacao!' : '✅ ${aluno['nome']} adicionado ao evento!'),
+          backgroundColor: Colors.green,
+        ));
       }
     } catch (e) {
       debugPrint('Erro ao adicionar participante: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: ${e.toString()}'), backgroundColor: Colors.red));
       }
     }
   }
@@ -577,21 +557,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
         title: const Text('Remover Participante'),
         content: Text('Remover $nomeAluno do evento?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('REMOVER'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('CANCELAR')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), child: const Text('REMOVER')),
         ],
       ),
     );
@@ -599,32 +566,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     if (confirm == true) {
       try {
         await _participacaoService.removerParticipante(participacaoId);
-
-        // Limpa o cache do aluno removido
         _cacheAlunos.remove(alunoId);
-
         setState(() {
           _alunosParticipantesIds.remove(alunoId);
           _carregarAlunos();
         });
-
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('🗑️ $nomeAluno removido do evento!'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🗑️ $nomeAluno removido do evento!'), backgroundColor: Colors.orange));
         }
       } catch (e) {
         debugPrint('Erro ao remover participante: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Erro ao remover: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao remover: ${e.toString()}'), backgroundColor: Colors.red));
         }
       }
     }
@@ -635,69 +588,36 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
       _mostrarSemPermissao();
       return;
     }
-
     try {
       await _participacaoService.marcarPresenca(participacaoId, presente);
     } catch (e) {
       debugPrint('Erro ao marcar presença: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao marcar presença: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao marcar presença: ${e.toString()}'), backgroundColor: Colors.red));
       }
     }
   }
 
   void _mostrarSemPermissao() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Você não tem permissão para esta ação'),
-        backgroundColor: Colors.red,
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Você não tem permissão para esta ação'), backgroundColor: Colors.red));
   }
 
   void _abrirDetalheParticipacao(ParticipacaoModel participacao) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DetalheParticipacaoScreen(
-          participacao: participacao.toMap(),
-          participacaoId: participacao.id!,
-          eventoId: widget.eventoId,
-        ),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => DetalheParticipacaoScreen(participacao: participacao.toMap(), participacaoId: participacao.id!, eventoId: widget.eventoId)));
   }
 
   String _formatarValorResumido(double valor) {
-    if (valor >= 100) {
-      return 'R\$${valor.toStringAsFixed(0)}';
-    }
+    if (valor >= 100) return 'R\$${valor.toStringAsFixed(0)}';
     return 'R\$${valor.toStringAsFixed(2)}';
   }
 
-  Widget _buildViewModeButton({
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildViewModeButton({required IconData icon, required bool isSelected, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.red.shade900 : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          color: isSelected ? Colors.white : Colors.grey.shade600,
-          size: 20,
-        ),
+        decoration: BoxDecoration(color: isSelected ? Colors.red.shade900 : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: isSelected ? Colors.white : Colors.grey.shade600, size: 20),
       ),
     );
   }
@@ -707,22 +627,15 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     return FilterChip(
       label: Text(label),
       selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          _filtroStatus = selected ? valor : 'todos';
-        });
-      },
+      onSelected: (selected) => setState(() => _filtroStatus = selected ? valor : 'todos'),
       backgroundColor: Colors.grey.shade100,
       selectedColor: Colors.red.shade100,
       checkmarkColor: Colors.red.shade900,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.red.shade900 : Colors.grey.shade700,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-      ),
+      labelStyle: TextStyle(color: isSelected ? Colors.red.shade900 : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
     );
   }
 
-  // 🔥 CARD DO MODO GRADE COM FOTO DINÂMICA
+  // 🔥 CARD DO MODO GRADE - AGORA COM RobustAvatar
   Widget _buildParticipantCardGrade(ParticipacaoModel participacao) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _buscarDadosAluno(participacao.alunoId),
@@ -734,9 +647,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
 
         return Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: InkWell(
             onTap: () => _abrirDetalheParticipacao(participacao),
             borderRadius: BorderRadius.circular(12),
@@ -749,95 +660,42 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor: Colors.grey.shade100,
-                        backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
-                            ? NetworkImage(fotoUrl)
-                            : null,
-                        child: fotoUrl == null || fotoUrl.isEmpty
-                            ? const Icon(Icons.person, size: 32, color: Colors.grey)
-                            : null,
-                      ),
+                      RobustAvatar(fotoUrl: fotoUrl, radius: 32),
                       if (participacao.aguardandoFinalizacao)
                         Positioned(
-                          bottom: -2,
-                          right: -2,
+                          bottom: -2, right: -2,
                           child: Container(
                             padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.orange,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Icon(
-                              Icons.access_time,
-                              color: Colors.white,
-                              size: 10,
-                            ),
+                            decoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                            child: const Icon(Icons.access_time, color: Colors.white, size: 10),
                           ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 6),
-
-                  Text(
-                    nomeAluno.split(' ').first,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(nomeAluno.split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
-
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
                     child: Text(
-                      participacao.graduacaoNova != null
-                          ? participacao.graduacaoNova!.split(' ').take(2).join(' ')
-                          : (graduacaoAtual ?? '').split(' ').take(2).join(' '),
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.red.shade700,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      participacao.graduacaoNova != null ? participacao.graduacaoNova!.split(' ').take(2).join(' ') : (graduacaoAtual ?? '').split(' ').take(2).join(' '),
+                      style: TextStyle(fontSize: 9, color: Colors.red.shade700, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(height: 4),
-
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: participacao.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: participacao.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          participacao.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
-                          size: 10,
-                          color: participacao.estaQuitado ? Colors.green : Colors.orange,
-                        ),
+                        Icon(participacao.estaQuitado ? Icons.check_circle : Icons.hourglass_empty, size: 10, color: participacao.estaQuitado ? Colors.green : Colors.orange),
                         const SizedBox(width: 2),
-                        Text(
-                          participacao.estaQuitado ? 'Pago' : 'R\$ ${participacao.saldoDevedor.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontSize: 8,
-                            color: participacao.estaQuitado ? Colors.green : Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        Text(participacao.estaQuitado ? 'Pago' : 'R\$ ${participacao.saldoDevedor.toStringAsFixed(0)}', style: TextStyle(fontSize: 8, color: participacao.estaQuitado ? Colors.green : Colors.orange, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -850,7 +708,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     );
   }
 
-  // 🔥 CARD DO MODO LISTA COM FOTO DINÂMICA
+  // 🔥 CARD DO MODO LISTA - AGORA COM RobustAvatar
   Widget _buildParticipantCardLista(ParticipacaoModel p) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _buscarDadosAluno(p.alunoId),
@@ -863,17 +721,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.shade200,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 8, offset: const Offset(0, 2))]),
           child: InkWell(
             onTap: () => _abrirDetalheParticipacao(p),
             borderRadius: BorderRadius.circular(16),
@@ -883,26 +731,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                 children: [
                   Stack(
                     children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor: Colors.grey.shade50,
-                        backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
-                            ? NetworkImage(fotoUrl)
-                            : null,
-                        child: fotoUrl == null || fotoUrl.isEmpty
-                            ? Icon(Icons.person, size: 32, color: Colors.grey)
-                            : null,
-                      ),
+                      RobustAvatar(fotoUrl: fotoUrl, radius: 32),
                       if (p.aguardandoFinalizacao)
                         Positioned(
                           bottom: 0, right: 0,
                           child: Container(
                             padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.orange,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
+                            decoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
                             child: const Icon(Icons.access_time, color: Colors.white, size: 12),
                           ),
                         ),
@@ -922,10 +757,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                                child: Text(
-                                  graduacaoAtual ?? 'Sem graduação',
-                                  style: TextStyle(fontSize: 11, color: Colors.red.shade700),
-                                ),
+                                child: Text(graduacaoAtual ?? 'Sem graduação', style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
                               ),
                               if (p.graduacaoNova != null) ...[
                                 const SizedBox(width: 4),
@@ -934,10 +766,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                                  child: Text(
-                                    p.graduacaoNova!,
-                                    style: TextStyle(fontSize: 11, color: Colors.green.shade700),
-                                  ),
+                                  child: Text(p.graduacaoNova!, style: TextStyle(fontSize: 11, color: Colors.green.shade700)),
                                 ),
                               ],
                             ],
@@ -950,26 +779,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: p.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                                decoration: BoxDecoration(color: p.estaQuitado ? Colors.green.shade50 : Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      p.estaQuitado ? Icons.check_circle : Icons.hourglass_empty,
-                                      size: 12,
-                                      color: p.estaQuitado ? Colors.green : Colors.orange,
-                                    ),
+                                    Icon(p.estaQuitado ? Icons.check_circle : Icons.hourglass_empty, size: 12, color: p.estaQuitado ? Colors.green : Colors.orange),
                                     const SizedBox(width: 4),
-                                    Text(
-                                      p.estaQuitado ? 'Pago' : 'Dev ${_formatarValorResumido(p.saldoDevedor)}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: p.estaQuitado ? Colors.green : Colors.orange,
-                                      ),
-                                    ),
+                                    Text(p.estaQuitado ? 'Pago' : 'Dev ${_formatarValorResumido(p.saldoDevedor)}', style: TextStyle(fontSize: 11, color: p.estaQuitado ? Colors.green : Colors.orange)),
                                   ],
                                 ),
                               ),
@@ -978,17 +794,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(12)),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.class_, size: 12, color: Colors.purple),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        turma,
-                                        style: TextStyle(fontSize: 11, color: Colors.purple.shade700),
-                                      ),
-                                    ],
-                                  ),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.class_, size: 12, color: Colors.purple), const SizedBox(width: 4), Text(turma, style: TextStyle(fontSize: 11, color: Colors.purple.shade700))]),
                                 ),
                               ],
                               if (p.tamanhoCamisa != null) ...[
@@ -996,17 +802,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.shopping_bag, size: 12, color: Colors.blue),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        p.tamanhoCamisa!,
-                                        style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
-                                      ),
-                                    ],
-                                  ),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.shopping_bag, size: 12, color: Colors.blue), const SizedBox(width: 4), Text(p.tamanhoCamisa!, style: TextStyle(fontSize: 11, color: Colors.blue.shade700))]),
                                 ),
                               ],
                             ],
@@ -1022,19 +818,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                         Container(
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                          child: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                            onPressed: () => _removerParticipante(p.id!, p.alunoNome, p.alunoId),
-                            padding: const EdgeInsets.all(8),
-                          ),
+                          child: IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => _removerParticipante(p.id!, p.alunoNome, p.alunoId), padding: const EdgeInsets.all(8)),
                         ),
                       Container(
                         decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                        child: IconButton(
-                          icon: Icon(Icons.chevron_right, color: Colors.red.shade900, size: 20),
-                          onPressed: () => _abrirDetalheParticipacao(p),
-                          padding: const EdgeInsets.all(8),
-                        ),
+                        child: IconButton(icon: Icon(Icons.chevron_right, color: Colors.red.shade900, size: 20), onPressed: () => _abrirDetalheParticipacao(p), padding: const EdgeInsets.all(8)),
                       ),
                     ],
                   ),
@@ -1048,7 +836,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   }
 
   Widget _buildGridView(List<ParticipacaoModel> participantes) {
-    List<ParticipacaoModel> participantesFiltrados = participantes.where((p) {
+    final participantesFiltrados = participantes.where((p) {
       if (_filtroStatus == 'todos') return true;
       if (_filtroStatus == 'pagos') return p.estaQuitado;
       if (_filtroStatus == 'pendentes') return !p.estaQuitado;
@@ -1058,35 +846,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildDashboard()),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Row(
-              children: [
-                Icon(Icons.info, size: 16, color: Colors.grey.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  '${participantesFiltrados.length} participantes (filtrados)',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
+        SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: Row(children: [Icon(Icons.info, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text('${participantesFiltrados.length} participantes (filtrados)', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))]))),
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
         SliverPadding(
           padding: const EdgeInsets.all(12),
           sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) => _buildParticipantCardGrade(participantesFiltrados[index]),
-              childCount: participantesFiltrados.length,
-            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.75, crossAxisSpacing: 8, mainAxisSpacing: 8),
+            delegate: SliverChildBuilderDelegate((context, index) => _buildParticipantCardGrade(participantesFiltrados[index]), childCount: participantesFiltrados.length),
           ),
         ),
       ],
@@ -1094,7 +860,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   }
 
   Widget _buildListView(List<ParticipacaoModel> participantes) {
-    List<ParticipacaoModel> participantesFiltrados = participantes.where((p) {
+    final participantesFiltrados = participantes.where((p) {
       if (_filtroStatus == 'todos') return true;
       if (_filtroStatus == 'pagos') return p.estaQuitado;
       if (_filtroStatus == 'pendentes') return !p.estaQuitado;
@@ -1103,55 +869,20 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
 
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Row(
-              children: [
-                Icon(Icons.info, size: 16, color: Colors.grey.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  '${participantesFiltrados.length} participantes (filtrados)',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
+        SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: Row(children: [Icon(Icons.info, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text('${participantesFiltrados.length} participantes (filtrados)', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))]))),
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
         SliverPadding(
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                if (index == participantesFiltrados.length) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Text(
-                          '🔹 MAIS PARTICIPANTES...',
-                          style: TextStyle(
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                return _buildParticipantCardLista(participantesFiltrados[index]);
-              },
-              childCount: participantesFiltrados.length + 1,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              if (index == participantesFiltrados.length) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.red.shade200)), child: Text('🔹 MAIS PARTICIPANTES...', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600, fontSize: 13)))),
+                );
+              }
+              return _buildParticipantCardLista(participantesFiltrados[index]);
+            }, childCount: participantesFiltrados.length + 1),
           ),
         ),
       ],
@@ -1168,150 +899,102 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
           backgroundColor: Colors.red.shade900,
           foregroundColor: Colors.white,
           actions: [
+            IconButton(
+              icon: _isRefreshing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _limparCacheERecarregar,
+              tooltip: 'Atualizar lista',
+            ),
             if (_podeGerarCertificados)
               IconButton(
                 icon: const Icon(Icons.table_chart),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SelecionarParticipantesCsvScreen(
-                        eventoId: widget.eventoId,
-                        eventoNome: widget.eventoNome,
-                      ),
-                    ),
-                  );
-                },
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SelecionarParticipantesCsvScreen(eventoId: widget.eventoId, eventoNome: widget.eventoNome))),
                 tooltip: 'Selecionar para CSV',
               ),
           ],
-          bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: 'PARTICIPANTES', icon: Icon(Icons.people)),
-              Tab(text: 'ADICIONAR', icon: Icon(Icons.person_add)),
-            ],
-          ),
+          bottom: const TabBar(labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: Colors.white, tabs: [Tab(text: 'PARTICIPANTES', icon: Icon(Icons.people)), Tab(text: 'ADICIONAR', icon: Icon(Icons.person_add))]),
         ),
-        body: TabBarView(
-          children: [
-            _buildParticipantesList(),
-            _buildAdicionarParticipantes(),
-          ],
-        ),
+        body: TabBarView(children: [_buildParticipantesList(), _buildAdicionarParticipantes()]),
       ),
     );
   }
 
   Widget _buildParticipantesList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('participacoes_eventos_em_andamento')
-          .where('evento_id', isEqualTo: widget.eventoId)
-          .orderBy('aluno_nome')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: _limparCacheERecarregar,
+      color: Colors.red.shade900,
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('participacoes_eventos_em_andamento').where('evento_id', isEqualTo: widget.eventoId).orderBy('aluno_nome').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
+                const SizedBox(height: 16),
+                Text('Erro: ${snapshot.error}'),
+                const SizedBox(height: 16),
+                ElevatedButton(onPressed: _limparCacheERecarregar, child: const Text('Tentar novamente')),
+              ]),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          final docs = snapshot.data!.docs;
+          if (docs.isEmpty) {
+            return Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.people_outline, size: 60, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                const Text('Nenhum participante ainda', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                const SizedBox(height: 8),
+                Text('Adicione participantes na aba "ADICIONAR"', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
+              ]),
+            );
+          }
+          final participantes = docs.map((doc) => ParticipacaoModel.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>)).toList();
+          if (_isGridView && _ultimoTotalParticipantes != participantes.length) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _calcularEstatisticas(participantes);
+            });
+          }
+          return Column(
             children: [
-              Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
-              const SizedBox(height: 16),
-              Text('Erro: ${snapshot.error}'),
-            ],
-          ));
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final docs = snapshot.data!.docs;
-
-        if (docs.isEmpty) {
-          return Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.people_outline, size: 60, color: Colors.grey.shade300),
-              const SizedBox(height: 16),
-              const Text('Nenhum participante ainda', style: TextStyle(fontSize: 16, color: Colors.grey)),
-              const SizedBox(height: 8),
-              Text('Adicione participantes na aba "ADICIONAR"', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
-            ],
-          ));
-        }
-
-        final participantes = docs.map((doc) =>
-            ParticipacaoModel.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>)
-        ).toList();
-
-        if (_isGridView && _ultimoTotalParticipantes != participantes.length) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _calcularEstatisticas(participantes);
-            }
-          });
-        }
-
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [_buildFiltroChip('TODOS', 'todos'), const SizedBox(width: 8), _buildFiltroChip('💰 PAGOS', 'pagos'), const SizedBox(width: 8), _buildFiltroChip('⏳ PENDENTES', 'pendentes')])),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildFiltroChip('TODOS', 'todos'),
-                    const SizedBox(width: 8),
-                    _buildFiltroChip('💰 PAGOS', 'pagos'),
-                    const SizedBox(width: 8),
-                    _buildFiltroChip('⏳ PENDENTES', 'pendentes'),
+                    Text('${participantes.length} participantes', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                    Container(
+                      decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                      child: Row(children: [_buildViewModeButton(icon: Icons.grid_view, isSelected: _isGridView, onTap: () => setState(() => _isGridView = true)), _buildViewModeButton(icon: Icons.list, isSelected: !_isGridView, onTap: () => setState(() => _isGridView = false))]),
+                    ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('${participantes.length} participantes', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
-                  Container(
-                    decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      children: [
-                        _buildViewModeButton(icon: Icons.grid_view, isSelected: _isGridView, onTap: () => setState(() => _isGridView = true)),
-                        _buildViewModeButton(icon: Icons.list, isSelected: !_isGridView, onTap: () => setState(() => _isGridView = false)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _isGridView
-                  ? _buildGridView(participantes)
-                  : _buildListView(participantes),
-            ),
-          ],
-        );
-      },
+              Expanded(child: _isGridView ? _buildGridView(participantes) : _buildListView(participantes)),
+            ],
+          );
+        },
+      ),
     );
   }
 
+  // 🔥 ABA ADICIONAR - AGORA COM IDADE DO ALUNO
   Widget _buildAdicionarParticipantes() {
     if (!_podeAdicionar) {
-      return Center(child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+      return Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.lock, size: 60, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text('Você não tem permissão para adicionar participantes', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
-        ],
-      ));
+        ]),
+      );
     }
+
+    final alunosFiltrados = _alunosDisponiveis.where((aluno) => _searchQuery.isEmpty ? true : aluno['nome'].toLowerCase().contains(_searchQuery)).toList();
 
     return Column(
       children: [
@@ -1323,9 +1006,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
               hintText: 'Buscar alunos...',
               prefixIcon: Icon(Icons.search, color: Colors.red),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(icon: Icon(Icons.clear, color: Colors.red), onPressed: () => _searchController.clear())
-                  : null,
+              suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: Icon(Icons.clear, color: Colors.red), onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); }) : null,
             ),
           ),
         ),
@@ -1333,24 +1014,31 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
           child: _isLoadingAlunos
               ? const Center(child: CircularProgressIndicator())
               : _alunosDisponiveis.isEmpty
-              ? Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+              ? Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(Icons.people_outline, size: 60, color: Colors.grey.shade300),
               const SizedBox(height: 16),
               const Text('Nenhum aluno disponível', style: TextStyle(fontSize: 16, color: Colors.grey)),
               const SizedBox(height: 8),
               Text('Todos os alunos já estão participando!', style: TextStyle(fontSize: 14, color: Colors.grey.shade500), textAlign: TextAlign.center),
-            ],
-          ))
+            ]),
+          )
+              : alunosFiltrados.isEmpty
+              ? Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.search_off, size: 60, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text('Nenhum aluno encontrado para "$_searchQuery"', style: TextStyle(color: Colors.grey.shade600, fontSize: 16), textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              TextButton.icon(onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); }, icon: const Icon(Icons.clear), label: const Text('Limpar busca')),
+            ]),
+          )
               : ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: _alunosDisponiveis.length,
+            itemCount: alunosFiltrados.length,
             itemBuilder: (context, index) {
-              final aluno = _alunosDisponiveis[index];
-              if (_searchQuery.isNotEmpty && !aluno['nome'].toLowerCase().contains(_searchQuery)) {
-                return const SizedBox.shrink();
-              }
+              final aluno = alunosFiltrados[index];
+              final idade = _calcularIdade(aluno['data_nascimento']);
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 elevation: 2,
@@ -1362,16 +1050,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: 28,
-                          backgroundColor: Colors.red.shade50,
-                          backgroundImage: aluno['foto'] != null && aluno['foto'].toString().isNotEmpty
-                              ? NetworkImage(aluno['foto'])
-                              : null,
-                          child: aluno['foto'] == null || aluno['foto'].toString().isEmpty
-                              ? Icon(Icons.person, color: Colors.red, size: 28)
-                              : null,
-                        ),
+                        RobustAvatar(fotoUrl: aluno['foto'], radius: 28),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(
@@ -1379,25 +1058,35 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                             children: [
                               Text(aluno['nome'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               const SizedBox(height: 4),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
+                              Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                                    child: Text(aluno['graduacao'], style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
+                                  ),
+                                  if (aluno['turma'] != null && aluno['turma'].toString().isNotEmpty)
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                                      child: Text(aluno['graduacao'], style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
+                                      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                                      child: Text(aluno['turma'], style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
                                     ),
-                                    if (aluno['turma'] != null && aluno['turma'].toString().isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
-                                        child: Text(aluno['turma'], style: TextStyle(fontSize: 11, color: Colors.blue.shade700)),
+                                  if (idade != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(12)),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.cake, size: 12, color: Colors.teal),
+                                          const SizedBox(width: 4),
+                                          Text('$idade anos', style: TextStyle(fontSize: 11, color: Colors.teal.shade700)),
+                                        ],
                                       ),
-                                    ],
-                                  ],
-                                ),
+                                    ),
+                                ],
                               ),
                             ],
                           ),
@@ -1406,20 +1095,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
                           margin: const EdgeInsets.only(left: 8),
                           child: ElevatedButton(
                             onPressed: () => _mostrarModalAdicionar(aluno),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.add, size: 18),
-                                SizedBox(width: 4),
-                                Text('ADICIONAR'),
-                              ],
-                            ),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                            child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add, size: 18), SizedBox(width: 4), Text('ADICIONAR')]),
                           ),
                         ),
                       ],
@@ -1437,6 +1114,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _debounceTimer?.cancel();
     _cacheAlunos.clear();
     super.dispose();
   }

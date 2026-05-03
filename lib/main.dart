@@ -1,4 +1,6 @@
-// 📱 TELAS DO APP
+// =====================================================
+// 📱 IMPORTAÇÕES - TELAS DO APP
+// =====================================================
 import 'package:uai_capoeira/screens/turmas/tela_turma_screen.dart';
 import 'package:uai_capoeira/vincular_aluno_turma_screen.dart';
 import 'package:uai_capoeira/screens/admin/admin_screen.dart';
@@ -11,51 +13,60 @@ import 'package:uai_capoeira/screens/eventos/eventos_screen.dart';
 import 'screens/uniformes/uniformes_screen.dart';
 import 'package:uai_capoeira/widgets/drawer_widget.dart';
 import 'package:uai_capoeira/screens/home_page.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // 🔥 UMA ÚNICA VEZ
 import 'screens/site/landing_page.dart';
 
+// =====================================================
 // 🖼️ IMAGENS E CACHE
+// =====================================================
 import 'package:cached_network_image/cached_network_image.dart';
 
+// =====================================================
 // 🔥 FIREBASE CORE
+// =====================================================
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
 
+// =====================================================
 // 🎨 FLUTTER CORE
+// =====================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
+// =====================================================
 // 📅 DATAS E INTERNACIONALIZAÇÃO
+// =====================================================
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// 🎯 CONFIGURAÇÃO DO FIREBASE
-import 'firebase_options.dart';
-
+// =====================================================
 // 🔔 NOTIFICAÇÕES PUSH
+// =====================================================
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/notification_badge_service.dart';
 
-// 💬 SERVIÇO DE MENSAGENS DE ANIVERSÁRIO
+// =====================================================
+// 💬 SERVIÇOS
+// =====================================================
 import 'services/mensagem_aniversario_service.dart';
-
-// ==================== SERVIÇOS ====================
 import 'screens/em_desenvolvimento_screen.dart';
 import 'services/permissao_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uai_capoeira/services/atualizacao_direta_service.dart';
-import 'package:uai_capoeira/services/atualizacao_dialog_service.dart'; // 🔥 IMPORT ADICIONADO!
-// ====================================================
+import 'package:uai_capoeira/services/atualizacao_dialog_service.dart';
 
 // =====================================================
-// CHAVE GLOBAL PARA NAVEGAÇÃO
+// 🔑 CHAVE GLOBAL PARA NAVEGAÇÃO
 // =====================================================
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// =====================================================
 // 🔔 HANDLER PARA NOTIFICAÇÕES EM BACKGROUND
+// =====================================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('📨 Background message: ${message.messageId}');
@@ -82,6 +93,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
 }
 
+// =====================================================
+// 🚀 FUNÇÃO PRINCIPAL
+// =====================================================
 Future<void> main() async {
   try {
     print('🚀 INICIANDO APP - PASSO 1');
@@ -98,11 +112,26 @@ Future<void> main() async {
     );
     print('✅ Firebase inicializado');
 
-    // 🔥 FORÇAR PERSISTÊNCIA NO WEB
+    // =====================================================
+    // 🔐 PERSISTÊNCIA DE LOGIN - CONFIGURAÇÃO CRÍTICA
+    // =====================================================
     if (kIsWeb) {
       print('💾 Configurando persistência LOCAL para web...');
       await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
-      print('✅ Persistência configurada');
+      print('✅ Persistência LOCAL configurada');
+    }
+
+    // Aguarda a restauração da sessão
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Verifica se a sessão foi restaurada
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      print('✅ Sessão restaurada automaticamente: ${currentUser.email}');
+      print('   UID: ${currentUser.uid}');
+      print('   Email verificado: ${currentUser.emailVerified}');
+    } else {
+      print('ℹ️ Nenhuma sessão ativa - usuário precisa fazer login');
     }
 
     print('📦 Configurando Firestore...');
@@ -121,7 +150,6 @@ Future<void> main() async {
     }
 
     if (!kIsWeb) {
-      // Código de notificações só para mobile
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
@@ -136,9 +164,22 @@ Future<void> main() async {
   } catch (e, stack) {
     print('❌❌❌ ERRO FATAL NO MAIN: $e');
     print(stack);
+    runApp(ErrorApp(error: e, stack: stack));
+  }
+}
 
-    // Mesmo com erro, tenta rodar algo
-    runApp(MaterialApp(
+// =====================================================
+// 🚨 TELA DE ERRO (Fallback)
+// =====================================================
+class ErrorApp extends StatelessWidget {
+  final Object error;
+  final StackTrace stack;
+
+  const ErrorApp({super.key, required this.error, required this.stack});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
       home: Scaffold(
         body: Center(
           child: Padding(
@@ -146,31 +187,31 @@ Future<void> main() async {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, color: Colors.red, size: 80),
-                SizedBox(height: 20),
-                Text(
+                const Icon(Icons.error_outline, color: Colors.red, size: 80),
+                const SizedBox(height: 20),
+                const Text(
                   'Erro ao inicializar o app',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 Container(
-                  padding: EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '$e',
+                    '$error',
                     style: TextStyle(color: Colors.red.shade900),
                     textAlign: TextAlign.center,
                   ),
                 ),
-                SizedBox(height: 20),
-                Text(
+                const SizedBox(height: 20),
+                const Text(
                   'Detalhes técnicos:',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Text(
@@ -184,16 +225,47 @@ Future<void> main() async {
           ),
         ),
       ),
-    ));
+    );
   }
 }
 
-class UaiCapoeiraApp extends StatelessWidget {
+// =====================================================
+// 🏢 APP PRINCIPAL
+// =====================================================
+class UaiCapoeiraApp extends StatefulWidget {
   const UaiCapoeiraApp({super.key});
+
+  @override
+  State<UaiCapoeiraApp> createState() => _UaiCapoeiraAppState();
+}
+
+class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    // =====================================================
+    // 🔐 MONITORA MUDANÇAS NA AUTENTICAÇÃO
+    // =====================================================
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      if (user != null) {
+        print('🔐 Auth State: Usuário LOGADO - ${user.email}');
+      } else {
+        print('🔐 Auth State: Usuário DESLOGADO');
+      }
+    });
+
+    // Verifica o usuário atual ao iniciar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = FirebaseAuth.instance.currentUser;
+      print('👤 Usuário atual no build: ${user?.email ?? "Nenhum"}');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     print('🏢 UaiCapoeiraApp.build()');
+
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
@@ -228,13 +300,19 @@ class UaiCapoeiraApp extends StatelessWidget {
         Locale('en', 'US'),
       ],
       locale: const Locale('pt', 'BR'),
-      home: kIsWeb ? const LandingPage() : const AuthCheck(),
+
+      // =====================================================
+      // 🏠 HOME - RESPEITA A SESSÃO ATIVA
+      // =====================================================
+      home: kIsWeb
+          ? const LandingPage()
+          : const AuthCheck(),
     );
   }
 }
 
 // =====================================================
-// WIDGET DO BOTÃO DE ANIVERSARIANTE COM CONTADOR
+// 🎂 WIDGET DO BOTÃO DE ANIVERSARIANTE COM CONTADOR
 // =====================================================
 class AniversariantesTab extends StatelessWidget {
   final int selectedIndex;
@@ -259,11 +337,7 @@ class AniversariantesTab extends StatelessWidget {
           .collection('academias')
           .where('professores_ids', arrayContains: user.uid)
           .snapshots()
-          .map((snapshot) {
-        final temVinculo = snapshot.docs.isNotEmpty;
-        print('🔍 AniversariantesTab - Tem vínculo: $temVinculo');
-        return temVinculo;
-      })
+          .map((snapshot) => snapshot.docs.isNotEmpty)
           : Stream.value(false),
       builder: (context, snapshot) {
         final bool temVinculo = snapshot.data ?? false;
@@ -353,6 +427,9 @@ class AniversariantesTab extends StatelessWidget {
   }
 }
 
+// =====================================================
+// 📱 TELA PRINCIPAL (APÓS LOGIN)
+// =====================================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -362,12 +439,10 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  int _selectedIndex = 0;
   final PermissaoService _permissaoService = PermissaoService();
 
-  // 🔥 FLAG PARA CONTROLAR SE JÁ MOSTROU O DIÁLOGO
+  int _selectedIndex = 0;
   bool _dialogoAtualizacaoVerificado = false;
 
   static const List<Widget> _widgetOptions = <Widget>[
@@ -455,14 +530,9 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  // 🔥 MÉTODO PARA VERIFICAR ATUALIZAÇÃO AO ENTRAR
   Future<void> _verificarAtualizacaoAoEntrar() async {
-    // Evita verificar múltiplas vezes
     if (_dialogoAtualizacaoVerificado) return;
-
-    // Pequeno delay para a tela carregar completamente
     await Future.delayed(const Duration(seconds: 2));
-
     if (mounted) {
       debugPrint('🔍 Verificando atualização ao entrar...');
       await AtualizacaoDialogService().verificarEMostrarDialogo(context);
@@ -476,8 +546,6 @@ class _MainScreenState extends State<MainScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (FirebaseAuth.instance.currentUser != null) {
         NotificationService().initNotifications();
-
-        // 🔥 CHAMAR VERIFICAÇÃO DE ATUALIZAÇÃO
         _verificarAtualizacaoAoEntrar();
       }
     });
@@ -551,6 +619,7 @@ class _MainScreenState extends State<MainScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            // Botão INÍCIO
             InkWell(
               onTap: () => _onItemTapped(0),
               child: Container(
@@ -589,6 +658,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
 
+            // Botão ANIVERSARIANTES
             AniversariantesTab(
               selectedIndex: _selectedIndex,
               index: 1,

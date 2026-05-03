@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -17,14 +18,15 @@ class _AlunosScreenState extends State<AlunosScreen> {
   String? _svgContent;
   String _searchQuery = '';
   String _statusFilter = 'ATIVO(A)';
-  int _viewMode = 0; // 0 = Lista, 1 = Grade, 2 = Compacta
+  int _viewMode = 0;
   final List<IconData> _viewModeIcons = [Icons.view_list, Icons.grid_view, Icons.format_list_bulleted];
   final List<String> _viewModeTooltips = ['Visualizar em Lista', 'Visualizar em Grade', 'Visualização Compacta'];
 
-  // ✅ MAPA EM MEMÓRIA PARA CACHE DE CORES DAS GRADUAÇÕES - AGORA INDEXADO POR NOME
-  final Map<String, Map<String, dynamic>> _graduacoesCache = {}; // Key: nome_graduacao
-  final Map<String, String> _svgCache = {}; // Key: nome_graduacao
-  final Map<String, bool> _graduacaoValidaCache = {}; // Key: nome_graduacao
+  Timer? _searchDebounce; // 🔥 Debounce para otimizar busca
+
+  final Map<String, Map<String, dynamic>> _graduacoesCache = {};
+  final Map<String, String> _svgCache = {};
+  final Map<String, bool> _graduacaoValidaCache = {};
 
   @override
   void initState() {
@@ -33,21 +35,60 @@ class _AlunosScreenState extends State<AlunosScreen> {
     _preloadGraduacoes();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  // 🔥 Normalização de texto (remove acentos)
+  String _normalizeString(String text) {
+    if (text.isEmpty) return '';
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
+    String normalized = text;
+    for (int i = 0; i < withAccents.length; i++) {
+      normalized = normalized.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    normalized = normalized.replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '');
+    return normalized.toLowerCase().trim();
+  }
+
+  // 🔥 Busca inteligente (funciona nos bastidores)
+  bool _alunoCorrespondeBusca(Map<String, dynamic> data, String termoBusca) {
+    if (termoBusca.isEmpty) return true;
+
+    final termoNormalizado = _normalizeString(termoBusca);
+    if (termoNormalizado.isEmpty) return true;
+
+    final camposParaBuscar = [
+      _normalizeString(data['nome'] ?? ''),
+      _normalizeString(data['apelido'] ?? ''),
+      _normalizeString(data['nome_responsavel'] ?? ''),
+      _normalizeString(data['contato_aluno'] ?? ''),
+      _normalizeString(data['contato_responsavel'] ?? ''),
+    ];
+
+    // Busca numérica (telefone)
+    if (RegExp(r'^\d+$').hasMatch(termoNormalizado)) {
+      return camposParaBuscar.any((campo) => campo.contains(termoNormalizado));
+    }
+
+    final palavrasBusca = termoNormalizado.split(RegExp(r'\s+'));
+    return palavrasBusca.every((palavra) {
+      if (palavra.length <= 2 && !RegExp(r'^\d+$').hasMatch(palavra)) return true;
+      return camposParaBuscar.any((campo) => campo.contains(palavra));
+    });
+  }
+
   Future<void> _loadSvg() async {
     final content = await DefaultAssetBundle.of(context).loadString('assets/images/corda.svg');
-    if (mounted) {
-      setState(() {
-        _svgContent = content;
-      });
-    }
+    if (mounted) setState(() => _svgContent = content);
   }
 
   Future<void> _preloadGraduacoes() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('graduacoes')
-          .get();
-
+      final snapshot = await FirebaseFirestore.instance.collection('graduacoes').get();
       for (var doc in snapshot.docs) {
         final nomeGraduacao = doc['nome_graduacao']?.toString();
         if (nomeGraduacao != null && nomeGraduacao.isNotEmpty) {
@@ -61,7 +102,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
           };
         }
       }
-      debugPrint('✅ ${_graduacoesCache.length} graduações carregadas em cache (indexadas por nome)');
+      debugPrint('✅ ${_graduacoesCache.length} graduações carregadas');
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar graduações: $e');
     }
@@ -72,68 +113,41 @@ class _AlunosScreenState extends State<AlunosScreen> {
     final today = DateTime.now();
     final birth = birthDate.toDate();
     int age = today.year - birth.year;
-    if (today.month < birth.month || (today.month == birth.month && today.day < birth.day)) {
-      age--;
-    }
+    if (today.month < birth.month || (today.month == birth.month && today.day < birth.day)) age--;
     return age;
   }
 
-  // 🔍 NOVO MÉTODO: OBTER NOME DA GRADUAÇÃO DO ALUNO
   String _obterNomeGraduacaoAluno(Map<String, dynamic> data) {
-    // Prioridade 1: Nome da graduação vindo do cache/graduacoes
     final graduacaoId = data['graduacao_id']?.toString();
     if (graduacaoId != null && graduacaoId.isNotEmpty) {
-      // Se temos o ID, tenta encontrar no cache por ID (mas vamos converter para nome)
       for (var entry in _graduacoesCache.entries) {
-        if (entry.value['id'] == graduacaoId) {
-          return entry.key; // Retorna o nome (que é a chave do cache)
-        }
+        if (entry.value['id'] == graduacaoId) return entry.key;
       }
     }
-
-    // Prioridade 2: Campo graduacao_nome direto
     final graduacaoNome = data['graduacao_nome']?.toString();
-    if (graduacaoNome != null && graduacaoNome.isNotEmpty) {
-      return graduacaoNome;
-    }
-
-    // Prioridade 3: Campo graduacao_atual
+    if (graduacaoNome != null && graduacaoNome.isNotEmpty) return graduacaoNome;
     final graduacaoAtual = data['graduacao_atual']?.toString();
-    if (graduacaoAtual != null && graduacaoAtual.isNotEmpty) {
-      return graduacaoAtual;
-    }
-
-    // Prioridade 4: Graduação padrão
+    if (graduacaoAtual != null && graduacaoAtual.isNotEmpty) return graduacaoAtual;
     return 'SEM GRADUAÇÃO';
   }
 
-  // ✅ MODIFICAÇÃO: Buscar cores pelo nome da graduação
   Future<String?> _getModifiedSvg(Map<String, dynamic> data) async {
     final nomeGraduacao = _obterNomeGraduacaoAluno(data);
-
-    if (nomeGraduacao.isEmpty || nomeGraduacao == 'SEM GRADUAÇÃO' || _svgContent == null) {
-      return null;
-    }
+    if (nomeGraduacao.isEmpty || nomeGraduacao == 'SEM GRADUAÇÃO' || _svgContent == null) return null;
 
     final cacheKey = 'svg_$nomeGraduacao';
-    if (_svgCache.containsKey(cacheKey)) {
-      return _svgCache[cacheKey];
-    }
+    if (_svgCache.containsKey(cacheKey)) return _svgCache[cacheKey];
 
-    // Busca as cores da graduação pelo nome
     Map<String, dynamic>? coresGraduacao;
-
     if (_graduacoesCache.containsKey(nomeGraduacao)) {
       coresGraduacao = _graduacoesCache[nomeGraduacao];
     } else {
-      // Se não está no cache, busca no Firestore pelo nome
       try {
         final querySnapshot = await FirebaseFirestore.instance
             .collection('graduacoes')
             .where('nome_graduacao', isEqualTo: nomeGraduacao)
             .limit(1)
             .get();
-
         if (querySnapshot.docs.isNotEmpty) {
           final doc = querySnapshot.docs.first;
           coresGraduacao = {
@@ -146,19 +160,16 @@ class _AlunosScreenState extends State<AlunosScreen> {
           };
           _graduacoesCache[nomeGraduacao] = coresGraduacao;
         } else {
-          // Graduação não existe na coleção
           return null;
         }
       } catch (e) {
-        debugPrint('❌ Erro ao buscar graduação por nome "$nomeGraduacao": $e');
+        debugPrint('❌ Erro ao buscar graduação: $e');
         return null;
       }
     }
-
     if (coresGraduacao == null) return null;
 
     final document = xml.XmlDocument.parse(_svgContent!);
-
     Color colorFromHex(String? hexColor) {
       if (hexColor == null || hexColor.length < 7) return Colors.grey;
       try {
@@ -167,11 +178,10 @@ class _AlunosScreenState extends State<AlunosScreen> {
         return Colors.grey;
       }
     }
-
     void changeColor(String id, Color color) {
       final element = document.rootElement.descendants.whereType<xml.XmlElement>().firstWhere(
-              (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName(''))
+            (e) => e.getAttribute('id') == id,
+        orElse: () => xml.XmlElement(xml.XmlName('')),
       );
       if (element.name.local.isNotEmpty) {
         final style = element.getAttribute('style') ?? '';
@@ -180,7 +190,6 @@ class _AlunosScreenState extends State<AlunosScreen> {
         element.setAttribute('style', 'fill:$hex;$newStyle');
       }
     }
-
     changeColor('cor1', colorFromHex(coresGraduacao['hex_cor1']));
     changeColor('cor2', colorFromHex(coresGraduacao['hex_cor2']));
     changeColor('corponta1', colorFromHex(coresGraduacao['hex_ponta1']));
@@ -188,39 +197,25 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
     final svgString = document.toXmlString();
     _svgCache[cacheKey] = svgString;
-
     return svgString;
   }
 
-  // ✅ Verificar se aluno tem graduação VÁLIDA - AGORA POR NOME
   Future<bool> _hasValidGraduation(Map<String, dynamic> data) async {
     final nomeGraduacao = _obterNomeGraduacaoAluno(data);
-
-    if (nomeGraduacao.isEmpty || nomeGraduacao == 'SEM GRADUAÇÃO') {
-      return false;
-    }
-
-    if (_graduacaoValidaCache.containsKey(nomeGraduacao)) {
-      return _graduacaoValidaCache[nomeGraduacao]!;
-    }
-
-    // Verificar no cache primeiro
+    if (nomeGraduacao.isEmpty || nomeGraduacao == 'SEM GRADUAÇÃO') return false;
+    if (_graduacaoValidaCache.containsKey(nomeGraduacao)) return _graduacaoValidaCache[nomeGraduacao]!;
     if (_graduacoesCache.containsKey(nomeGraduacao)) {
       _graduacaoValidaCache[nomeGraduacao] = true;
       return true;
     }
-
-    // Se não está no cache, verificar no Firestore pelo nome
     try {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('graduacoes')
           .where('nome_graduacao', isEqualTo: nomeGraduacao)
           .limit(1)
           .get();
-
       final isValid = querySnapshot.docs.isNotEmpty;
       _graduacaoValidaCache[nomeGraduacao] = isValid;
-
       if (isValid) {
         final doc = querySnapshot.docs.first;
         _graduacoesCache[nomeGraduacao] = {
@@ -232,19 +227,15 @@ class _AlunosScreenState extends State<AlunosScreen> {
           'nome_graduacao': nomeGraduacao,
         };
       }
-
       return isValid;
     } catch (e) {
-      debugPrint('Erro ao verificar graduação por nome "$nomeGraduacao": $e');
+      debugPrint('Erro ao verificar graduação: $e');
       _graduacaoValidaCache[nomeGraduacao] = false;
       return false;
     }
   }
 
-  // ✅ Função para obter o nome da graduação corretamente (simplificada)
-  String _getGraduacaoNome(Map<String, dynamic> data) {
-    return _obterNomeGraduacaoAluno(data);
-  }
+  String _getGraduacaoNome(Map<String, dynamic> data) => _obterNomeGraduacaoAluno(data);
 
   @override
   Widget build(BuildContext context) {
@@ -278,10 +269,21 @@ class _AlunosScreenState extends State<AlunosScreen> {
                       hintText: 'Buscar por nome...',
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
                       prefixIcon: const Icon(Icons.search, color: Colors.white),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white),
+                        onPressed: () => setState(() => _searchQuery = ''),
+                      )
+                          : null,
                       enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
                       focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
                     ),
-                    onChanged: (value) => setState(() => _searchQuery = value),
+                    onChanged: (value) {
+                      if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                        setState(() => _searchQuery = value);
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -289,11 +291,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
                   icon: const Icon(Icons.filter_list, color: Colors.white),
                   tooltip: 'Filtrar por Status',
                   onSelected: (value) => setState(() => _statusFilter = value),
-                  itemBuilder: (BuildContext context) {
-                    return ['ATIVO(A)', 'INATIVO(A)', 'TODOS'].map((String choice) {
-                      return PopupMenuItem<String>(value: choice, child: Text(choice));
-                    }).toList();
-                  },
+                  itemBuilder: (context) => ['ATIVO(A)', 'INATIVO(A)', 'TODOS'].map((choice) {
+                    return PopupMenuItem<String>(value: choice, child: Text(choice));
+                  }).toList(),
                 ),
               ],
             ),
@@ -310,15 +310,34 @@ class _AlunosScreenState extends State<AlunosScreen> {
             return const Center(child: Text("Nenhum aluno encontrado."));
           }
 
+          // 🔥 FILTRO INTELIGENTE (BUSCA NOS BASTIDORES)
           var filteredDocs = snapshot.data!.docs.where((doc) {
             final data = doc.data();
-            final nome = (data['nome'] as String? ?? '').toLowerCase();
             final status = data['status_atividade'] as String? ?? '';
-            return nome.contains(_searchQuery.toLowerCase()) && (_statusFilter == 'TODOS' || status == _statusFilter);
+            if (_statusFilter != 'TODOS' && status != _statusFilter) return false;
+            return _alunoCorrespondeBusca(data, _searchQuery);
           }).toList();
 
-          if (filteredDocs.isEmpty) {
-            return const Center(child: Text("Nenhum resultado encontrado para os filtros aplicados."));
+          if (filteredDocs.isEmpty && _searchQuery.isNotEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.search_off, size: 80, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Nenhum resultado encontrado para "$_searchQuery"',
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _searchQuery = ''),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade900),
+                    child: const Text('LIMPAR BUSCA'),
+                  ),
+                ],
+              ),
+            );
           }
 
           return AnimatedSwitcher(
@@ -332,14 +351,10 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
   Widget _getCurrentView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     switch (_viewMode) {
-      case 0:
-        return _buildListView(docs);
-      case 1:
-        return _buildGridView(docs);
-      case 2:
-        return _buildCompactView(docs);
-      default:
-        return _buildListView(docs);
+      case 0: return _buildListView(docs);
+      case 1: return _buildGridView(docs);
+      case 2: return _buildCompactView(docs);
+      default: return _buildListView(docs);
     }
   }
 
@@ -360,13 +375,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
           future: _hasValidGraduation(data),
           builder: (context, graduationSnapshot) {
             final hasValidGraduation = graduationSnapshot.data ?? false;
-
             return FutureBuilder<String?>(
               future: hasValidGraduation ? _getModifiedSvg(data) : Future.value(null),
               builder: (context, svgSnapshot) {
                 final modifiedSvg = svgSnapshot.data;
                 final isLoadingSvg = svgSnapshot.connectionState == ConnectionState.waiting;
-
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   elevation: 3,
@@ -376,7 +389,6 @@ class _AlunosScreenState extends State<AlunosScreen> {
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AlunoDetalheScreen(alunoId: aluno.id))),
                     child: Row(
                       children: [
-                        // FOTO COM TAG DE IDADE
                         Stack(
                           children: [
                             Container(
@@ -384,14 +396,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               height: 100,
                               color: Colors.grey[200],
                               child: fotoUrl != null && fotoUrl.isNotEmpty
-                                  ? CachedNetworkImage(
-                                imageUrl: fotoUrl,
-                                fit: BoxFit.cover,
-                                errorWidget: (c, u, e) => _placeholderIcon(),
-                              )
+                                  ? CachedNetworkImage(imageUrl: fotoUrl, fit: BoxFit.cover, errorWidget: (c, u, e) => _placeholderIcon())
                                   : _placeholderIcon(),
                             ),
-                            // TAG DE IDADE
                             Positioned(
                               bottom: 0,
                               left: 0,
@@ -399,21 +406,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               child: Container(
                                 height: 24,
                                 color: Colors.red.shade900.withOpacity(0.9),
-                                child: Center(
-                                  child: Text(
-                                    '$idade ANOS',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
+                                child: Center(child: Text('$idade ANOS', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold))),
                               ),
                             ),
                           ],
                         ),
-
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -421,39 +418,20 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  nomeAluno,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                Text(nomeAluno, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
                                 if (graduacaoNome.isNotEmpty && graduacaoNome != 'SEM GRADUAÇÃO') ...[
                                   const SizedBox(height: 4),
-                                  Text(
-                                    graduacaoNome,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
+                                  Text(graduacaoNome, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700)),
                                 ],
                               ],
                             ),
                           ),
                         ),
-
-                        // SVG DA CORDA (apenas se tiver graduação válida)
                         if (hasValidGraduation)
                           Container(
                             width: 60,
                             padding: const EdgeInsets.only(right: 12),
-                            child: isLoadingSvg
-                                ? const CircularProgressIndicator(strokeWidth: 2)
-                                : (modifiedSvg != null
-                                ? SvgPicture.string(modifiedSvg, height: 60)
-                                : const SizedBox.shrink()
-                            ),
+                            child: isLoadingSvg ? const CircularProgressIndicator(strokeWidth: 2) : (modifiedSvg != null ? SvgPicture.string(modifiedSvg, height: 60) : const SizedBox.shrink()),
                           ),
                       ],
                     ),
@@ -471,12 +449,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
     return GridView.builder(
       key: const ValueKey('gridView'),
       padding: const EdgeInsets.all(16.0),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.75,
-      ),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.75),
       itemCount: docs.length,
       itemBuilder: (context, index) {
         final aluno = docs[index];
@@ -485,7 +458,6 @@ class _AlunosScreenState extends State<AlunosScreen> {
         final fotoUrl = data['foto_perfil_aluno'] as String?;
         final idade = _calculateAge(data['data_nascimento']);
         final graduacaoNome = _getGraduacaoNome(data);
-
         return Card(
           elevation: 4,
           clipBehavior: Clip.antiAlias,
@@ -495,74 +467,34 @@ class _AlunosScreenState extends State<AlunosScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // FOTO QUE PREENCHE TODO O ESPAÇO
                 Expanded(
                   child: Stack(
                     children: [
                       Container(
                         color: Colors.grey[200],
                         child: fotoUrl != null && fotoUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                          imageUrl: fotoUrl,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorWidget: (c, u, e) => _placeholderIcon(size: 80),
-                        )
+                            ? CachedNetworkImage(imageUrl: fotoUrl, fit: BoxFit.cover, width: double.infinity, height: double.infinity, errorWidget: (c, u, e) => _placeholderIcon(size: 80))
                             : _placeholderIcon(size: 80),
                       ),
-                      // TAG DE IDADE
                       Positioned(
                         bottom: 0,
                         left: 0,
                         right: 0,
-                        child: Container(
-                          height: 28,
-                          color: Colors.red.shade900.withOpacity(0.9),
-                          child: Center(
-                            child: Text(
-                              '$idade ANOS',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
+                        child: Container(height: 28, color: Colors.red.shade900.withOpacity(0.9), child: Center(child: Text('$idade ANOS', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))),
                       ),
                     ],
                   ),
                 ),
-
-                // INFORMAÇÕES DO ALUNO
                 Container(
                   padding: const EdgeInsets.all(12.0),
                   color: Colors.white,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        nomeAluno.toUpperCase(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          height: 1.2,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(nomeAluno.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis),
                       if (graduacaoNome.isNotEmpty && graduacaoNome != 'SEM GRADUAÇÃO') ...[
                         const SizedBox(height: 4),
-                        Text(
-                          graduacaoNome,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        Text(graduacaoNome, style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
                       ],
                     ],
                   ),
@@ -585,7 +517,6 @@ class _AlunosScreenState extends State<AlunosScreen> {
         final data = aluno.data();
         final nomeAluno = data['nome'] ?? 'Nome não informado';
         final fotoUrl = data['foto_perfil_aluno'] as String?;
-
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           elevation: 1,
@@ -596,41 +527,16 @@ class _AlunosScreenState extends State<AlunosScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  // FOTO PEQUENA
                   Container(
                     width: 48,
                     height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.grey[200],
-                    ),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey[200]),
                     child: fotoUrl != null && fotoUrl.isNotEmpty
-                        ? ClipOval(
-                      child: CachedNetworkImage(
-                        imageUrl: fotoUrl,
-                        fit: BoxFit.cover,
-                        errorWidget: (c, u, e) => Icon(Icons.person, size: 30, color: Colors.grey[400]),
-                      ),
-                    )
+                        ? ClipOval(child: CachedNetworkImage(imageUrl: fotoUrl, fit: BoxFit.cover, errorWidget: (c, u, e) => Icon(Icons.person, size: 30, color: Colors.grey[400])))
                         : Icon(Icons.person, size: 30, color: Colors.grey[400]),
                   ),
-
                   const SizedBox(width: 12),
-
-                  // NOME DO ALUNO
-                  Expanded(
-                    child: Text(
-                      nomeAluno,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-
-                  // ÍCONE DE SETA
+                  Expanded(child: Text(nomeAluno, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)),
                   const Icon(Icons.chevron_right, color: Colors.grey),
                 ],
               ),
@@ -641,9 +547,5 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _placeholderIcon({double size = 50}) {
-    return Center(
-      child: Icon(Icons.person, size: size, color: Colors.white),
-    );
-  }
+  Widget _placeholderIcon({double size = 50}) => Center(child: Icon(Icons.person, size: size, color: Colors.white));
 }

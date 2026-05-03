@@ -2,26 +2,33 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- PERMISSÕES DE INTERNET E NOTIFICAÇÕES -->
+    <!-- ============================================= -->
+    <!-- 🌐 PERMISSÕES DE INTERNET E REDE -->
+    <!-- ============================================= -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- ============================================= -->
+    <!-- 🔔 PERMISSÕES DE NOTIFICAÇÕES -->
+    <!-- ============================================= -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- 🔥 PERMISSÃO CRÍTICA PARA INSTALAÇÃO DE APK! -->
+    <!-- ============================================= -->
+    <!-- 📦 PERMISSÕES PARA INSTALAÇÃO DE APK -->
+    <!-- ============================================= -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- PERMISSÕES PARA DOWNLOAD DE ARQUIVOS - Versões específicas -->
+    <!-- ============================================= -->
+    <!-- 💾 PERMISSÕES PARA DOWNLOAD DE ARQUIVOS -->
+    <!-- ============================================= -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-
-    <!-- PARA ANDROID 10+ (API 29+) - ACESSO A MÍDIA -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
-
-    <!-- PARA ANDROID 11+ (API 30+) - GERENCIAMENTO DE ARQUIVOS -->
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
@@ -33,7 +40,9 @@
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
 
+        <!-- ============================================= -->
         <!-- 🔥 PROVIDER PARA INSTALAÇÃO DE APK -->
+        <!-- ============================================= -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -44,7 +53,9 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- META-DADOS DAS NOTIFICAÇÕES -->
+        <!-- ============================================= -->
+        <!-- 📊 META-DADOS DAS NOTIFICAÇÕES -->
+        <!-- ============================================= -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_notification" />
@@ -52,7 +63,9 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color" />
 
-        <!-- ACTIVITY PRINCIPAL -->
+        <!-- ============================================= -->
+        <!-- 📱 ACTIVITY PRINCIPAL -->
+        <!-- ============================================= -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -85,9 +98,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
     </application>
 
-    <!-- QUERIES PARA PROCESSAMENTO DE TEXTO -->
+    <!-- ============================================= -->
+    <!-- 🔍 QUERIES PARA PROCESSAMENTO DE TEXTO -->
+    <!-- ============================================= -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

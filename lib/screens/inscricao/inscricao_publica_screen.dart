@@ -21,9 +21,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final PageController _pageController = PageController();
+
   int _currentStep = 0;
 
-  // Controladores
   final Map<String, TextEditingController> _controllers = {
     'nome': TextEditingController(),
     'apelido': TextEditingController(),
@@ -45,7 +45,6 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   String _mensagem = '';
   bool _autorizacao = false;
 
-  // CONFIGURAÇÕES
   int _idadeMinima = 5;
   int _idadeMaxima = 16;
   int _vagasDisponiveis = 0;
@@ -55,13 +54,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _recolherAssinatura = true;
   String? _assinaturaUrl;
 
-  // FOTO DO ALUNO (usando bytes como na tela de campeonato)
   Uint8List? _fotoBytes;
   String? _fotoNome;
   String? _fotoUrl;
   bool _uploadingFoto = false;
 
-  // MAPA DE VALIDAÇÃO
   final Map<int, bool> _etapaValida = {
     0: false,
     1: false,
@@ -71,32 +68,56 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     5: false,
   };
 
+  final Map<int, List<String>> _errosPorEtapa = {
+    0: [],
+    1: [],
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+  };
+
   @override
   void initState() {
     super.initState();
+
     _controllers['cidade']!.text = 'BOCAIÚVA-MG';
 
     _controllers['nome']!.addListener(_validarEtapa1);
     _controllers['apelido']!.addListener(_validarEtapa1);
     _controllers['data_nascimento']!.addListener(_validarEtapa1);
+
     _controllers['contato_aluno']!.addListener(_validarEtapa2);
     _controllers['nome_responsavel']!.addListener(_validarEtapa2);
     _controllers['contato_responsavel']!.addListener(_validarEtapa2);
+
     _controllers['rua']!.addListener(_validarEtapa3);
     _controllers['numero']!.addListener(_validarEtapa3);
     _controllers['bairro']!.addListener(_validarEtapa3);
+    _controllers['cidade']!.addListener(_validarEtapa3);
 
     _verificarInscricoes();
   }
 
   @override
   void dispose() {
-    _controllers.forEach((_, controller) {
-      controller.removeListener(_validarEtapa1);
-      controller.removeListener(_validarEtapa2);
-      controller.removeListener(_validarEtapa3);
+    _controllers['nome']!.removeListener(_validarEtapa1);
+    _controllers['apelido']!.removeListener(_validarEtapa1);
+    _controllers['data_nascimento']!.removeListener(_validarEtapa1);
+
+    _controllers['contato_aluno']!.removeListener(_validarEtapa2);
+    _controllers['nome_responsavel']!.removeListener(_validarEtapa2);
+    _controllers['contato_responsavel']!.removeListener(_validarEtapa2);
+
+    _controllers['rua']!.removeListener(_validarEtapa3);
+    _controllers['numero']!.removeListener(_validarEtapa3);
+    _controllers['bairro']!.removeListener(_validarEtapa3);
+    _controllers['cidade']!.removeListener(_validarEtapa3);
+
+    for (final controller in _controllers.values) {
       controller.dispose();
-    });
+    }
+
     _pageController.dispose();
     super.dispose();
   }
@@ -104,127 +125,426 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _isMaiorIdade() {
     final dataNasc = _controllers['data_nascimento']!.text;
     if (dataNasc.isEmpty) return false;
-    final idade = _calcularIdade(dataNasc);
-    return idade >= 18;
+    return _calcularIdade(dataNasc) >= 18;
   }
 
-  void _validarEtapa1() {
-    if (!mounted) return;
-    final nomeValido = _controllers['nome']!.text.isNotEmpty && _validarNome(_controllers['nome']!.text);
-    final apelidoValido = _controllers['apelido']!.text.isNotEmpty && _validarNome(_controllers['apelido']!.text);
-    final dataValida = _controllers['data_nascimento']!.text.isNotEmpty;
-    final sexoValido = _sexo != null;
+  bool _temFoto() => _fotoBytes != null || _fotoUrl != null;
 
-    bool idadeValida = true;
-    if (dataValida) {
-      final idade = _calcularIdade(_controllers['data_nascimento']!.text);
-      idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
-    }
+  bool _telefoneCompleto(String value) => value.trim().length >= 15;
 
-    // 🔥 FOTO É OBRIGATÓRIA
-    final fotoValida = _fotoBytes != null || _fotoUrl != null;
-
-    setState(() {
-      _etapaValida[1] = nomeValido && apelidoValido && dataValida && sexoValido && idadeValida && fotoValida;
-    });
-  }
-
-  void _validarEtapa2() {
-    if (!mounted) return;
-    final contatoAlunoValido = _controllers['contato_aluno']!.text.length >= 14;
-    bool nomeRespValido = true;
-    bool contatoRespValido = true;
-
-    if (!_isMaiorIdade()) {
-      nomeRespValido = _controllers['nome_responsavel']!.text.isNotEmpty && _validarNome(_controllers['nome_responsavel']!.text);
-      contatoRespValido = _controllers['contato_responsavel']!.text.length >= 14;
-    }
-
-    setState(() {
-      _etapaValida[2] = contatoAlunoValido && nomeRespValido && contatoRespValido;
-    });
-  }
-
-  void _validarEtapa3() {
-    if (!mounted) return;
-    final ruaValida = _controllers['rua']!.text.isNotEmpty && _validarNome(_controllers['rua']!.text);
-    final numeroValido = _controllers['numero']!.text.length <= 5 && _controllers['numero']!.text.isNotEmpty;
-    final bairroValido = _controllers['bairro']!.text.isNotEmpty && _validarNome(_controllers['bairro']!.text);
-
-    setState(() {
-      _etapaValida[3] = ruaValida && numeroValido && bairroValido;
-    });
-  }
-
-  void _validarEtapaFinal() {
-    setState(() {
-      _etapaValida[5] = _autorizacao && (_recolherAssinatura ? _assinaturaUrl != null : true);
-    });
-  }
-
-  bool _validarNome(String nome) {
-    if (nome.isEmpty) return false;
+  bool _validarNomePessoa(String valor) {
+    if (valor.trim().isEmpty) return false;
     final regex = RegExp(r'^[A-Za-zÀ-ÖØ-öø-ÿ\s]+$');
-    return regex.hasMatch(nome);
+    return regex.hasMatch(valor.trim());
+  }
+
+  bool _validarEnderecoTexto(String valor) {
+    if (valor.trim().isEmpty) return false;
+    final regex = RegExp(r'^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,\-ºª/]+$');
+    return regex.hasMatch(valor.trim());
   }
 
   int _calcularIdade(String dataNascimento) {
     try {
       final data = DateFormat('dd/MM/yyyy').parse(dataNascimento);
       final hoje = DateTime.now();
+
       int idade = hoje.year - data.year;
-      if (hoje.month < data.month || (hoje.month == data.month && hoje.day < data.day)) idade--;
+      if (hoje.month < data.month ||
+          (hoje.month == data.month && hoje.day < data.day)) {
+        idade--;
+      }
+
       return idade;
-    } catch (e) {
+    } catch (_) {
       return 0;
     }
   }
 
   String _getPrimeiroNome(String? nomeCompleto) {
-    if (nomeCompleto == null || nomeCompleto.isEmpty) return '...';
-    return nomeCompleto.split(' ')[0];
+    if (nomeCompleto == null || nomeCompleto.trim().isEmpty) return '...';
+    return nomeCompleto.trim().split(' ').first;
   }
 
   String _toUpperCase(String? text) {
     return text?.toUpperCase().trim() ?? '';
   }
 
+  void _showSuccessSnackbar(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  void _showErrorSnackbar(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
+  void _showCustomErrorDialog({
+    required String titulo,
+    required List<String> erros,
+  }) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFF5F5), Colors.white],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.red.shade700,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                titulo,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: erros
+                      .map(
+                        (erro) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '• ',
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              erro,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'ENTENDI',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _mostrarFeedbackErros() {
+    final erros = _errosPorEtapa[_currentStep] ?? [];
+    if (erros.isEmpty) {
+      _showErrorSnackbar('Preencha os campos obrigatórios.');
+      return;
+    }
+
+    if (erros.length == 1) {
+      _showErrorSnackbar(erros.first);
+      return;
+    }
+
+    _showCustomErrorDialog(
+      titulo: '⚠️ Campos pendentes',
+      erros: erros,
+    );
+  }
+
+  void _validarEtapa1() {
+    if (!mounted) return;
+
+    final erros = <String>[];
+
+    final nome = _controllers['nome']!.text.trim();
+    final apelido = _controllers['apelido']!.text.trim();
+    final dataNascimento = _controllers['data_nascimento']!.text.trim();
+
+    final nomeValido = _validarNomePessoa(nome);
+    if (!nomeValido) {
+      erros.add(nome.isEmpty
+          ? 'Preencha o nome completo.'
+          : 'O nome completo deve conter apenas letras.');
+    }
+
+    final apelidoValido = _validarNomePessoa(apelido);
+    if (!apelidoValido) {
+      erros.add(apelido.isEmpty
+          ? 'Preencha o apelido.'
+          : 'O apelido deve conter apenas letras.');
+    }
+
+    final dataValida = dataNascimento.isNotEmpty;
+    if (!dataValida) {
+      erros.add('Informe a data de nascimento.');
+    }
+
+    final sexoValido = _sexo != null;
+    if (!sexoValido) {
+      erros.add('Selecione o sexo.');
+    }
+
+    bool idadeValida = true;
+    if (dataValida) {
+      final idade = _calcularIdade(dataNascimento);
+      idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
+      if (!idadeValida) {
+        erros.add('A idade permitida é de $_idadeMinima a $_idadeMaxima anos.');
+      }
+    }
+
+    final fotoValida = _temFoto();
+    if (!fotoValida) {
+      erros.add('Adicione a foto do aluno.');
+    }
+
+    setState(() {
+      _etapaValida[1] = nomeValido &&
+          apelidoValido &&
+          dataValida &&
+          sexoValido &&
+          idadeValida &&
+          fotoValida;
+      _errosPorEtapa[1] = erros;
+    });
+  }
+
+  void _validarEtapa2() {
+    if (!mounted) return;
+
+    final erros = <String>[];
+
+    final contatoAlunoValido =
+    _telefoneCompleto(_controllers['contato_aluno']!.text);
+    if (!contatoAlunoValido) {
+      erros.add('Informe o telefone completo do aluno.');
+    }
+
+    bool nomeRespValido = true;
+    bool contatoRespValido = true;
+
+    if (!_isMaiorIdade()) {
+      final nomeResp = _controllers['nome_responsavel']!.text.trim();
+      nomeRespValido = _validarNomePessoa(nomeResp);
+      if (!nomeRespValido) {
+        erros.add(nomeResp.isEmpty
+            ? 'Preencha o nome do responsável.'
+            : 'O nome do responsável deve conter apenas letras.');
+      }
+
+      contatoRespValido =
+          _telefoneCompleto(_controllers['contato_responsavel']!.text);
+      if (!contatoRespValido) {
+        erros.add('Informe o telefone completo do responsável.');
+      }
+    }
+
+    setState(() {
+      _etapaValida[2] =
+          contatoAlunoValido && nomeRespValido && contatoRespValido;
+      _errosPorEtapa[2] = erros;
+    });
+  }
+
+  void _validarEtapa3() {
+    if (!mounted) return;
+
+    final erros = <String>[];
+
+    final rua = _controllers['rua']!.text.trim();
+    final numero = _controllers['numero']!.text.trim();
+    final bairro = _controllers['bairro']!.text.trim();
+    final cidade = _controllers['cidade']!.text.trim();
+
+    final ruaValida = _validarEnderecoTexto(rua);
+    if (!ruaValida) {
+      erros.add(rua.isEmpty
+          ? 'Preencha a rua.'
+          : 'A rua contém caracteres inválidos.');
+    }
+
+    final numeroValido = numero.isNotEmpty && numero.length <= 5;
+    if (!numeroValido) {
+      erros.add(numero.isEmpty
+          ? 'Preencha o número do endereço.'
+          : 'O número deve ter no máximo 5 dígitos.');
+    }
+
+    final bairroValido = _validarEnderecoTexto(bairro);
+    if (!bairroValido) {
+      erros.add(bairro.isEmpty
+          ? 'Preencha o bairro.'
+          : 'O bairro contém caracteres inválidos.');
+    }
+
+    final cidadeValida = _validarEnderecoTexto(cidade);
+    if (!cidadeValida) {
+      erros.add(cidade.isEmpty
+          ? 'Preencha a cidade.'
+          : 'A cidade contém caracteres inválidos.');
+    }
+
+    setState(() {
+      _etapaValida[3] =
+          ruaValida && numeroValido && bairroValido && cidadeValida;
+      _errosPorEtapa[3] = erros;
+    });
+  }
+
+  void _validarEtapaFinal() {
+    final erros = <String>[];
+
+    if (!_autorizacao) {
+      erros.add('Aceite os termos de responsabilidade.');
+    }
+
+    if (_recolherAssinatura && _assinaturaUrl == null) {
+      erros.add('Assine o termo digitalmente.');
+    }
+
+    if (!_temFoto()) {
+      erros.add('A foto do aluno é obrigatória.');
+    }
+
+    setState(() {
+      _etapaValida[5] =
+          _autorizacao && (_recolherAssinatura ? _assinaturaUrl != null : true) && _temFoto();
+      _errosPorEtapa[5] = erros;
+    });
+  }
+
   Future<void> _verificarInscricoes() async {
     try {
-      final doc = await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final doc =
+      await _firestore.collection('configuracoes').doc('inscricoes').get();
 
-      if (doc.exists) {
-        final data = doc.data()!;
-        final inscricoesSnapshot = await _firestore
-            .collection('inscricoes')
-            .where('status', isEqualTo: 'pendente')
-            .get();
-
-        final vagasTotal = data['vagas_disponiveis'] ?? 0;
-        final inscricoesPendentes = inscricoesSnapshot.docs.length;
-        final vagasRestantes = vagasTotal - inscricoesPendentes;
-
-        setState(() {
-          _inscricoesAbertas = data['inscricoes_abertas'] ?? false;
-          _vagasDisponiveis = vagasTotal;
-          _vagasRestantes = vagasRestantes;
-          _temVagas = vagasRestantes > 0;
-          _idadeMinima = data['idade_minima'] ?? 5;
-          _idadeMaxima = data['idade_maxima'] ?? 16;
-          _recolherAssinatura = data['recolher_assinatura'] ?? true;
-          _configuracoesCarregadas = true;
-          _etapaValida[0] = _inscricoesAbertas && _temVagas;
-          _carregando = false;
-        });
-      } else {
+      if (!doc.exists) {
         setState(() {
           _inscricoesAbertas = false;
           _configuracoesCarregadas = true;
           _etapaValida[0] = false;
           _carregando = false;
         });
+        return;
       }
-    } catch (e) {
+
+      final data = doc.data()!;
+      final inscricoesSnapshot = await _firestore
+          .collection('inscricoes')
+          .where('status', isEqualTo: 'pendente')
+          .get();
+
+      final vagasTotal = data['vagas_disponiveis'] ?? 0;
+      final inscricoesPendentes = inscricoesSnapshot.docs.length;
+      final vagasRestantes = vagasTotal - inscricoesPendentes;
+
+      setState(() {
+        _inscricoesAbertas = data['inscricoes_abertas'] ?? false;
+        _vagasDisponiveis = vagasTotal;
+        _vagasRestantes = vagasRestantes;
+        _temVagas = vagasRestantes > 0;
+        _idadeMinima = data['idade_minima'] ?? 5;
+        _idadeMaxima = data['idade_maxima'] ?? 16;
+        _recolherAssinatura = data['recolher_assinatura'] ?? true;
+        _configuracoesCarregadas = true;
+        _etapaValida[0] = _inscricoesAbertas && _temVagas;
+        _carregando = false;
+      });
+    } catch (_) {
       setState(() {
         _inscricoesAbertas = false;
         _configuracoesCarregadas = true;
@@ -235,99 +555,55 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
   }
 
-  // 🔥 MÉTODO PARA SELECIONAR FOTO (usando FilePicker como no campeonato)
   Future<void> _selecionarFoto() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
         withData: true,
       );
 
-      if (result != null && result.files.single.bytes != null) {
-        final bytes = result.files.single.bytes!;
-        final nome = result.files.single.name;
+      if (result == null || result.files.single.bytes == null) return;
 
-        setState(() {
-          _fotoBytes = bytes;
-          _fotoNome = nome;
-          _fotoUrl = null;
-          _uploadingFoto = true;
-        });
-
-        // Fazer upload para o Firebase Storage
-        await _uploadFotoFirebase();
-
-        _validarEtapa1();
-      }
-    } catch (e) {
-      print('❌ Erro ao selecionar foto: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao selecionar foto: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
       setState(() {
-        _uploadingFoto = false;
+        _fotoBytes = result.files.single.bytes!;
+        _fotoNome = result.files.single.name;
+        _fotoUrl = null;
+        _uploadingFoto = true;
       });
+
+      await _uploadFotoFirebase();
+      _validarEtapa1();
+      _showSuccessSnackbar('📸 Foto carregada com sucesso!');
+    } catch (e) {
+      setState(() => _uploadingFoto = false);
+      _showErrorSnackbar('Erro ao selecionar foto: $e');
     }
   }
 
-  // 🔥 MÉTODO PARA UPLOAD DA FOTO NO FIREBASE STORAGE
   Future<void> _uploadFotoFirebase() async {
     if (_fotoBytes == null || _fotoNome == null) return;
 
     try {
-      // Gerar nome único para a foto
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final nomeAluno = _controllers['nome']!.text.trim().replaceAll(' ', '_');
-      final fileName = '${timestamp}_$nomeAluno.jpg';
+      final fileName = '${timestamp}_${nomeAluno.isEmpty ? 'aluno' : nomeAluno}.jpg';
 
-      // Referência no Storage
-      final storageRef = _storage.ref();
-      final fotoRef = storageRef.child('fotos_inscricoes/$fileName');
+      final fotoRef = _storage.ref().child('fotos_inscricoes/$fileName');
 
-      // Upload da foto (usando bytes)
       await fotoRef.putData(_fotoBytes!);
-
-      // Obter URL de download
       final downloadUrl = await fotoRef.getDownloadURL();
 
       setState(() {
         _fotoUrl = downloadUrl;
         _uploadingFoto = false;
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Foto carregada com sucesso!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
-      print('❌ Erro detalhado do upload: $e');
-      setState(() {
-        _uploadingFoto = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao fazer upload da foto: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
+      setState(() => _uploadingFoto = false);
+      _showErrorSnackbar('Erro ao fazer upload da foto: $e');
     }
   }
 
-  // 🔥 MÉTODO PARA REMOVER FOTO
   void _removerFoto() {
     showDialog(
       context: context,
@@ -348,12 +624,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
               });
               Navigator.pop(context);
               _validarEtapa1();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Foto removida com sucesso'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
+              _showSuccessSnackbar('Foto removida com sucesso');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -366,190 +637,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     );
   }
 
-  Widget _buildTermoElaborado() {
-    final isMaior = _isMaiorIdade();
-    final nomeAluno = _controllers['nome']!.text;
-    final nomeResp = isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
-    final dataHora = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'TERMO DE RESPONSABILIDADE',
-                style: TextStyle(
-                  color: Colors.red.shade900,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isMaior) ...[
-                  _buildTermoLinha('📌', 'Eu, $nomeAluno, declaro para os devidos fins que:'),
-                  const SizedBox(height: 8),
-                  _buildTermoLinha('1️⃣', 'ESTOU CIENTE de que a Capoeira é uma arte marcial que envolve atividades físicas de médio a alto impacto, podendo resultar em lesões.'),
-                  _buildTermoLinha('2️⃣', 'ASSUMO total responsabilidade por qualquer dano físico que possa ocorrer durante a prática, isentando o Grupo UAI CAPOEIRA de qualquer ônus.'),
-                  _buildTermoLinha('3️⃣', 'COMPROMETO-ME a informar previamente qualquer condição de saúde ou limitação física.'),
-                  _buildTermoLinha('4️⃣', 'AUTORIZO a participação na aula experimental de Capoeira.'),
-                  _buildTermoLinha('5️⃣', 'CONCORDO com as filmagens e fotografias para fins institucionais.'),
-                ] else ...[
-                  _buildTermoLinha('📌', 'Eu, $nomeResp, responsável legal por $nomeAluno, declaro para os devidos fins que:'),
-                  const SizedBox(height: 8),
-                  _buildTermoLinha('1️⃣', 'AUTORIZO a participação do(a) menor acima identificado(a) na aula experimental de Capoeira oferecida pelo Grupo UAI CAPOEIRA.'),
-                  _buildTermoLinha('2️⃣', 'ESTOU CIENTE dos riscos da prática esportiva e assumo total responsabilidade.'),
-                  _buildTermoLinha('3️⃣', 'COMPROMETO-ME a informar previamente qualquer condição de saúde ou limitação física do aluno.'),
-                  _buildTermoLinha('4️⃣', 'CONCORDO com as filmagens e fotografias para fins institucionais.'),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.calendar_today, size: 16, color: Colors.blue.shade900),
-                const SizedBox(width: 8),
-                Text(
-                  'Data e hora: $dataHora',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.blue.shade900,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (_recolherAssinatura) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Assinatura:',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final screenWidth = constraints.maxWidth;
-                      final isMobile = screenWidth < 600;
-
-                      return Center(
-                        child: Container(
-                          width: isMobile ? screenWidth * 0.8 : 300,
-                          height: isMobile ? 60 : 100,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade400),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.withOpacity(0.1),
-                                blurRadius: 2,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: _assinaturaUrl != null
-                              ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              _assinaturaUrl!,
-                              fit: BoxFit.contain,
-                              width: double.infinity,
-                              height: double.infinity,
-                            ),
-                          )
-                              : const Center(
-                            child: Text(
-                              '____________________________',
-                              style: TextStyle(fontSize: 16, color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTermoLinha(String bullet, String texto) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('$bullet ', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          Expanded(
-            child: Text(
-              texto,
-              style: const TextStyle(fontSize: 12, height: 1.3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _gerarTermoTexto() {
     final isMaior = _isMaiorIdade();
     final nomeAluno = _controllers['nome']!.text;
-    final nomeResp = isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
+    final nomeResp =
+    isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
     final dataHora = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     if (isMaior) {
@@ -572,8 +664,9 @@ Data e hora: $dataHora
 
 Assinatura: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : '_____________________________'}
 ''';
-    } else {
-      return '''
+    }
+
+    return '''
 TERMO DE RESPONSABILIDADE
 
 Eu, $nomeResp, responsável legal por $nomeAluno, declaro para os devidos fins que:
@@ -590,14 +683,12 @@ Data e hora: $dataHora
 
 Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : '_____________________________'}
 ''';
-    }
   }
 
   Future<void> _abrirTelaAssinatura() async {
     final isMaior = _isMaiorIdade();
-    final nomeResponsavel = isMaior
-        ? _controllers['nome']!.text
-        : _controllers['nome_responsavel']!.text;
+    final nomeResponsavel =
+    isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
 
     final result = await Navigator.push(
       context,
@@ -609,25 +700,32 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           onConfirm: (imageUrl) {
             setState(() {
               _assinaturaUrl = imageUrl;
-              _validarEtapaFinal();
             });
+            _validarEtapaFinal();
+            _showSuccessSnackbar('✅ Termo assinado com sucesso!');
           },
         ),
       ),
     );
 
     if (result == true && mounted) {
-      setState(() {
-        _validarEtapaFinal();
-      });
+      _validarEtapaFinal();
     }
   }
 
   Future<void> _enviarInscricao() async {
+    _validarEtapaFinal();
+
+    if (!(_etapaValida[5] ?? false)) {
+      _mostrarFeedbackErros();
+      return;
+    }
+
     setState(() => _enviando = true);
 
     try {
-      final configDoc = await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final configDoc =
+      await _firestore.collection('configuracoes').doc('inscricoes').get();
       final config = configDoc.data() ?? {};
       final vagasDisponiveis = config['vagas_disponiveis'] ?? 0;
 
@@ -636,23 +734,25 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           .where('status', isEqualTo: 'pendente')
           .get();
 
-      if (vagasDisponiveis > 0 && inscricoesSnapshot.docs.length >= vagasDisponiveis) {
+      if (vagasDisponiveis > 0 &&
+          inscricoesSnapshot.docs.length >= vagasDisponiveis) {
         setState(() {
           _mensagem = 'Desculpe, as vagas para inscrições estão esgotadas.';
           _enviando = false;
         });
+        _showErrorSnackbar('❌ Vagas esgotadas!');
         return;
       }
 
       final isMaior = _isMaiorIdade();
-      final nomeResponsavel = isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
 
-      Map<String, dynamic> dados = {
+      final dados = <String, dynamic>{
         'nome': _toUpperCase(_controllers['nome']!.text),
         'apelido': _toUpperCase(_controllers['apelido']!.text),
         'data_nascimento': _controllers['data_nascimento']!.text.trim(),
         'sexo': _sexo,
-        'contato_aluno': _controllers['contato_aluno']!.text.replaceAll(RegExp(r'[^0-9]'), ''),
+        'contato_aluno':
+        _controllers['contato_aluno']!.text.replaceAll(RegExp(r'[^0-9]'), ''),
         'autorizacao': _autorizacao,
         'termo_autorizacao': _gerarTermoTexto(),
         'status': 'pendente',
@@ -661,7 +761,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         'assinatura_recolhida': _recolherAssinatura,
       };
 
-      // 🔥 SALVA A URL DA FOTO SE EXISTIR (OBRIGATÓRIA)
       if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
         dados['foto_url'] = _fotoUrl;
       } else {
@@ -673,25 +772,40 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       }
 
       if (!isMaior) {
-        dados['nome_responsavel'] = _toUpperCase(_controllers['nome_responsavel']!.text);
-        dados['contato_responsavel'] = _controllers['contato_responsavel']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['nome_responsavel'] =
+            _toUpperCase(_controllers['nome_responsavel']!.text);
+        dados['contato_responsavel'] = _controllers['contato_responsavel']!
+            .text
+            .replaceAll(RegExp(r'[^0-9]'), '');
       } else {
         dados['nome_responsavel'] = _toUpperCase(_controllers['nome']!.text);
-        dados['contato_responsavel'] = _controllers['contato_aluno']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['contato_responsavel'] = _controllers['contato_aluno']!
+            .text
+            .replaceAll(RegExp(r'[^0-9]'), '');
       }
 
       if (_controllers['cpf']!.text.trim().isNotEmpty) {
-        dados['cpf'] = _controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['cpf'] =
+            _controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), '');
       }
 
-      List<String> enderecoParts = [];
+      final enderecoParts = <String>[];
+
       if (_controllers['rua']!.text.isNotEmpty) {
-        String ruaNumero = _toUpperCase(_controllers['rua']!.text);
-        if (_controllers['numero']!.text.isNotEmpty) ruaNumero += ' - ${_toUpperCase(_controllers['numero']!.text)}';
+        var ruaNumero = _toUpperCase(_controllers['rua']!.text);
+        if (_controllers['numero']!.text.isNotEmpty) {
+          ruaNumero += ' - ${_toUpperCase(_controllers['numero']!.text)}';
+        }
         enderecoParts.add(ruaNumero);
       }
-      if (_controllers['bairro']!.text.isNotEmpty) enderecoParts.add(_toUpperCase(_controllers['bairro']!.text));
-      if (_controllers['cidade']!.text.isNotEmpty) enderecoParts.add(_toUpperCase(_controllers['cidade']!.text));
+
+      if (_controllers['bairro']!.text.isNotEmpty) {
+        enderecoParts.add(_toUpperCase(_controllers['bairro']!.text));
+      }
+      if (_controllers['cidade']!.text.isNotEmpty) {
+        enderecoParts.add(_toUpperCase(_controllers['cidade']!.text));
+      }
+
       dados['endereco'] = enderecoParts.join(', ');
 
       await _firestore.collection('inscricoes').add(dados);
@@ -701,12 +815,15 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         'total_inscricoes': novoTotal,
       }, SetOptions(merge: true));
 
-      if (mounted) _mostrarDialogSucesso(dados);
+      if (mounted) {
+        _mostrarDialogSucesso(dados);
+      }
     } catch (e) {
       setState(() {
         _mensagem = 'Erro ao enviar inscrição: $e';
         _enviando = false;
       });
+      _showErrorSnackbar('Erro ao enviar inscrição: $e');
     }
   }
 
@@ -749,12 +866,20 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                         color: Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.check_circle, color: Colors.white, size: 60),
+                      child: const Icon(
+                        Icons.check_circle,
+                        color: Colors.white,
+                        size: 60,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
                       'INSCRIÇÃO REALIZADA!',
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -777,11 +902,17 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                             const SizedBox(height: 8),
                             Text(
                               isMaior ? 'Olá, $nomeAluno!' : 'Olá, $nomeResponsavel!',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              isMaior ? 'Sua inscrição foi recebida com sucesso!' : 'Inscrição de $nomeAluno recebida com sucesso!',
+                              isMaior
+                                  ? 'Sua inscrição foi recebida com sucesso!'
+                                  : 'Inscrição de $nomeAluno recebida com sucesso!',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: Colors.blue.shade900),
                             ),
@@ -801,7 +932,8 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                             _buildInfoDialog('Aluno', dados['nome']),
                             _buildInfoDialog('Idade', '$idadeAluno anos'),
                             _buildInfoDialog('Contato', dados['contato_aluno']),
-                            if (!isMaior) _buildInfoDialog('Responsável', dados['nome_responsavel']),
+                            if (!isMaior)
+                              _buildInfoDialog('Responsável', dados['nome_responsavel']),
                           ],
                         ),
                       ),
@@ -810,14 +942,18 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: _assinaturaUrl != null ? Colors.green.shade50 : Colors.purple.shade50,
+                            color: _assinaturaUrl != null
+                                ? Colors.green.shade50
+                                : Colors.purple.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 _assinaturaUrl != null ? Icons.draw : Icons.gavel,
-                                color: _assinaturaUrl != null ? Colors.green.shade700 : Colors.purple.shade700,
+                                color: _assinaturaUrl != null
+                                    ? Colors.green.shade700
+                                    : Colors.purple.shade700,
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
@@ -828,7 +964,9 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                                       : '📝 Termo de responsabilidade aceito',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: _assinaturaUrl != null ? Colors.green.shade800 : Colors.purple.shade800,
+                                    color: _assinaturaUrl != null
+                                        ? Colors.green.shade800
+                                        : Colors.purple.shade800,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -851,9 +989,15 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('🔔 Próximos passos:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(
+                                    '🔔 Próximos passos:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
                                   SizedBox(height: 4),
-                                  Text('1️⃣ Aguarde contato do professor (até 48h)\n2️⃣ Agendamento da aula experimental', style: TextStyle(fontSize: 12)),
+                                  Text(
+                                    '1️⃣ Aguarde contato do professor (até 48h)\n2️⃣ Agendamento da aula experimental',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ],
                               ),
                             ),
@@ -876,18 +1020,18 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                 ),
                 child: Column(
                   children: [
-                    // 🔥 CONTADOR DE 10 SEGUNDOS
                     _buildContadorRedirecionamento(),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          // Fecha o diálogo e volta para a LandingPage
                           Navigator.of(context).pop();
                           Navigator.pushAndRemoveUntil(
                             context,
-                            MaterialPageRoute(builder: (context) => const LandingPage()),
+                            MaterialPageRoute(
+                              builder: (context) => const LandingPage(),
+                            ),
                                 (route) => false,
                           );
                         },
@@ -895,9 +1039,17 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                           backgroundColor: Colors.green.shade700,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                        child: const Text('FINALIZAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'FINALIZAR',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -910,13 +1062,11 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
-  // 🔥 WIDGET DO CONTADOR DE REDIRECIONAMENTO
   Widget _buildContadorRedirecionamento() {
     return StatefulBuilder(
       builder: (context, setStateCounter) {
         int segundosRestantes = 10;
 
-        // Inicia o timer
         Future.delayed(Duration.zero, () {
           Timer.periodic(const Duration(seconds: 1), (timer) {
             if (segundosRestantes > 1) {
@@ -924,7 +1074,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
               setStateCounter(() {});
             } else {
               timer.cancel();
-              // Redireciona automaticamente após 10 segundos
               Navigator.of(context).pop();
               Navigator.pushAndRemoveUntil(
                 context,
@@ -967,25 +1116,54 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SizedBox(width: 70, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
-          Expanded(child: Text(value ?? 'Não informado', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
+          SizedBox(
+            width: 70,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value ?? 'Não informado',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
         ],
       ),
     );
   }
 
   void _proximaEtapa() {
-    if (_currentStep < 5 && _etapaValida[_currentStep] == true) {
-      setState(() => _currentStep++);
-      _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    if (_currentStep >= 5) return;
+
+    if (_currentStep == 1) _validarEtapa1();
+    if (_currentStep == 2) _validarEtapa2();
+    if (_currentStep == 3) _validarEtapa3();
+    if (_currentStep == 5) _validarEtapaFinal();
+
+    final isValido = _etapaValida[_currentStep] ?? false;
+
+    if (!isValido) {
+      _mostrarFeedbackErros();
+      return;
     }
+
+    setState(() => _currentStep++);
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _etapaAnterior() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
-      _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-    }
+    if (_currentStep <= 0) return;
+
+    setState(() => _currentStep--);
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<bool> _onWillPop() async {
@@ -1013,10 +1191,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
               const SizedBox(height: 16),
               const Text(
                 'Sair da inscrição?',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1049,13 +1224,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
 
       if (shouldExit == true) {
         Navigator.pop(context);
-        return false;
       }
-      return false;
-    } else {
-      _etapaAnterior();
+
       return false;
     }
+
+    _etapaAnterior();
+    return false;
   }
 
   @override
@@ -1160,7 +1335,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
-  // TELA DE BOAS-VINDAS
   Widget _buildStepWelcome() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -1215,17 +1389,11 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                       color: Colors.amber.shade100,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      Icons.menu_book,
-                      color: Colors.amber.shade900,
-                    ),
+                    child: Icon(Icons.menu_book, color: Colors.amber.shade900),
                   ),
                   title: const Text(
                     'REGIMENTO INTERNO',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   subtitle: const Text(
                     'Leia as regras e diretrizes do grupo',
@@ -1286,7 +1454,9 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                 children: [
                   Icon(
                     _temVagas ? Icons.info : Icons.error,
-                    color: _temVagas ? Colors.blue.shade900 : Colors.red.shade900,
+                    color: _temVagas
+                        ? Colors.blue.shade900
+                        : Colors.red.shade900,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1299,14 +1469,19 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                               : '❌ Vagas esgotadas!',
                           style: TextStyle(
                             fontSize: 14,
-                            color: _temVagas ? Colors.blue.shade900 : Colors.red.shade900,
+                            color: _temVagas
+                                ? Colors.blue.shade900
+                                : Colors.red.shade900,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         if (_temVagas)
                           Text(
                             '🎯 $_vagasRestantes vagas disponíveis',
-                            style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade700,
+                            ),
                           ),
                       ],
                     ),
@@ -1319,20 +1494,18 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
-  // TELA DO ALUNO COM FOTO (OBRIGATÓRIA)
   Widget _buildStepAluno() {
     final idade = _controllers['data_nascimento']!.text.isNotEmpty
         ? _calcularIdade(_controllers['data_nascimento']!.text)
         : 0;
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
-    final temFoto = _fotoBytes != null || _fotoUrl != null;
+    final temFoto = _temFoto();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // BOLINHA COM FOTO
           Center(
             child: GestureDetector(
               onTap: _uploadingFoto ? null : _selecionarFoto,
@@ -1347,10 +1520,8 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                       shape: BoxShape.circle,
                       color: Colors.grey.shade200,
                       border: Border.all(
-                        color: _fotoBytes != null || _fotoUrl != null
-                            ? Colors.green.shade700
-                            : Colors.red.shade900,
-                        width: _fotoBytes != null || _fotoUrl != null ? 3 : 2,
+                        color: temFoto ? Colors.green.shade700 : Colors.red.shade900,
+                        width: temFoto ? 3 : 2,
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -1365,21 +1536,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                           ? Image.network(
                         _fotoUrl!,
                         fit: BoxFit.cover,
-                        width: 120,
-                        height: 120,
-                        errorBuilder: (context, error, stackTrace) {
-                          return _buildFotoPlaceholder();
-                        },
+                        errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
                       )
                           : _fotoBytes != null
                           ? Image.memory(
                         _fotoBytes!,
                         fit: BoxFit.cover,
-                        width: 120,
-                        height: 120,
-                        errorBuilder: (context, error, stackTrace) {
-                          return _buildFotoPlaceholder();
-                        },
+                        errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
                       )
                           : _buildFotoPlaceholder(),
                     ),
@@ -1393,9 +1556,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                         color: Colors.black.withOpacity(0.5),
                       ),
                       child: const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(color: Colors.white),
                       ),
                     ),
                   Positioned(
@@ -1406,10 +1567,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                       decoration: BoxDecoration(
                         color: Colors.red.shade900,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2,
-                        ),
+                        border: Border.all(color: Colors.white, width: 2),
                       ),
                       child: Icon(
                         temFoto ? Icons.edit : Icons.camera_alt,
@@ -1466,39 +1624,68 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           _buildTextField(
             _controllers['nome']!,
             'Nome Completo *',
-            validator: (value) => value == null || value.isEmpty
-                ? 'Campo obrigatório'
-                : (!_validarNome(value) ? 'Use apenas letras' : null),
+            validator: (value) {
+              final v = value?.trim() ?? '';
+              if (v.isEmpty) return 'Campo obrigatório';
+              if (!_validarNomePessoa(v)) return 'Use apenas letras';
+              return null;
+            },
+            personNameOnly: true,
           ),
           const SizedBox(height: 16),
           _buildTextField(
             _controllers['apelido']!,
             'Apelido *',
-            validator: (value) => value == null || value.isEmpty
-                ? 'Campo obrigatório'
-                : (!_validarNome(value) ? 'Use apenas letras' : null),
+            validator: (value) {
+              final v = value?.trim() ?? '';
+              if (v.isEmpty) return 'Campo obrigatório';
+              if (!_validarNomePessoa(v)) return 'Use apenas letras';
+              return null;
+            },
+            personNameOnly: true,
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: _buildDateField(_controllers['data_nascimento']!, 'Data Nasc. *'),
+                child: _buildDateField(
+                  _controllers['data_nascimento']!,
+                  'Data Nasc. *',
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _sexo,
+                  decoration: InputDecoration(
+                    labelText: 'Sexo *',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    errorText: _sexo == null ? 'Campo obrigatório' : null,
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.red, width: 2),
+                    ),
+                  ),
                   items: const [
-                    DropdownMenuItem(value: null, child: Text('Sexo *')),
-                    DropdownMenuItem(value: 'MASCULINO', child: Text('MASCULINO')),
-                    DropdownMenuItem(value: 'FEMININO', child: Text('FEMININO')),
+                    DropdownMenuItem(
+                      value: 'MASCULINO',
+                      child: Text('MASCULINO'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'FEMININO',
+                      child: Text('FEMININO'),
+                    ),
                   ],
                   onChanged: (v) {
                     setState(() => _sexo = v);
                     _validarEtapa1();
                   },
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                  validator: (v) => v == null ? 'Campo obrigatório' : null,
                 ),
               ),
             ],
@@ -1506,9 +1693,32 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           if (_controllers['data_nascimento']!.text.isNotEmpty && !idadeValida)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '❌ Idade não permitida. Aceitamos de $_idadeMinima a $_idadeMaxima anos.',
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.red.shade700,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Idade não permitida. Aceitamos de $_idadeMinima a $_idadeMaxima anos.',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -1522,28 +1732,21 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.camera_alt,
-            size: 40,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.camera_alt, size: 40, color: Colors.grey.shade400),
           const SizedBox(height: 4),
           Text(
             'Adicionar\nfoto',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey.shade500,
-            ),
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
           ),
         ],
       ),
     );
   }
 
-  // TELA DE CONTATO
   Widget _buildStepContato() {
     final isMaior = _isMaiorIdade();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1565,19 +1768,25 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             _buildTextField(
               _controllers['nome_responsavel']!,
               'Nome do Responsável *',
-              validator: (value) => value == null || value.isEmpty
-                  ? 'Campo obrigatório'
-                  : (!_validarNome(value) ? 'Use apenas letras' : null),
+              validator: (value) {
+                final v = value?.trim() ?? '';
+                if (v.isEmpty) return 'Campo obrigatório';
+                if (!_validarNomePessoa(v)) return 'Use apenas letras';
+                return null;
+              },
+              personNameOnly: true,
             ),
             const SizedBox(height: 16),
-            _buildPhoneField(_controllers['contato_responsavel']!, 'Telefone do Responsável *'),
+            _buildPhoneField(
+              _controllers['contato_responsavel']!,
+              'Telefone do Responsável *',
+            ),
           ],
         ],
       ),
     );
   }
 
-  // TELA DE ENDEREÇO
   Widget _buildStepEndereco() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1597,9 +1806,13 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           _buildTextField(
             _controllers['rua']!,
             'Rua *',
-            validator: (value) => value == null || value.isEmpty
-                ? 'Campo obrigatório'
-                : (!_validarNome(value) ? 'Use apenas letras' : null),
+            validator: (value) {
+              final v = value?.trim() ?? '';
+              if (v.isEmpty) return 'Campo obrigatório';
+              if (!_validarEnderecoTexto(v)) return 'Texto inválido';
+              return null;
+            },
+            addressText: true,
           ),
           const SizedBox(height: 16),
           Row(
@@ -1611,9 +1824,12 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                   'Número *',
                   isNumberOnly: true,
                   maxLength: 5,
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Campo obrigatório'
-                      : (value.length > 5 ? 'Máximo 5 dígitos' : null),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.isEmpty) return 'Campo obrigatório';
+                    if (v.length > 5) return 'Máximo 5 dígitos';
+                    return null;
+                  },
                 ),
               ),
               const SizedBox(width: 12),
@@ -1622,21 +1838,34 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                 child: _buildTextField(
                   _controllers['bairro']!,
                   'Bairro *',
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Campo obrigatório'
-                      : (!_validarNome(value) ? 'Use apenas letras' : null),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.isEmpty) return 'Campo obrigatório';
+                    if (!_validarEnderecoTexto(v)) return 'Texto inválido';
+                    return null;
+                  },
+                  addressText: true,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _buildTextField(_controllers['cidade']!, 'Cidade *'),
+          _buildTextField(
+            _controllers['cidade']!,
+            'Cidade *',
+            validator: (value) {
+              final v = value?.trim() ?? '';
+              if (v.isEmpty) return 'Campo obrigatório';
+              if (!_validarEnderecoTexto(v)) return 'Texto inválido';
+              return null;
+            },
+            addressText: true,
+          ),
         ],
       ),
     );
   }
 
-  // TELA DE CPF
   Widget _buildStepCpf() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1656,8 +1885,9 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: Colors.blue.shade50,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
             ),
             child: const Row(
               children: [
@@ -1679,16 +1909,14 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
-  // TELA DE REVISÃO
   Widget _buildStepRevisao() {
     final isMaior = _isMaiorIdade();
-    final nomeResponsavel = isMaior
-        ? _controllers['nome']!.text
-        : _controllers['nome_responsavel']!.text;
+    final nomeResponsavel =
+    isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
     final nomeAluno = _controllers['nome']!.text;
     final idadeAluno = _calcularIdade(_controllers['data_nascimento']!.text);
     final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null;
-    final temFoto = _fotoBytes != null || _fotoUrl != null;
+    final temFoto = _temFoto();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1713,26 +1941,14 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           const SizedBox(height: 16),
           Card(
             elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _buildResumoLinhaIcon(
-                    Icons.person,
-                    'Aluno',
-                    nomeAluno,
-                    Colors.blue,
-                  ),
+                  _buildResumoLinhaIcon(Icons.person, 'Aluno', nomeAluno, Colors.blue),
                   const Divider(height: 16),
-                  _buildResumoLinhaIcon(
-                    Icons.cake,
-                    'Idade',
-                    '$idadeAluno anos',
-                    Colors.orange,
-                  ),
+                  _buildResumoLinhaIcon(Icons.cake, 'Idade', '$idadeAluno anos', Colors.orange),
                   const Divider(height: 16),
                   _buildResumoLinhaIcon(
                     Icons.phone,
@@ -1767,21 +1983,25 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(
+                color: _autorizacao ? Colors.green : Colors.grey.shade300,
+                width: _autorizacao ? 2 : 1,
+              ),
             ),
             child: CheckboxListTile(
               value: _autorizacao,
               onChanged: (value) {
-                setState(() {
-                  _autorizacao = value ?? false;
-                  _validarEtapaFinal();
-                });
+                setState(() => _autorizacao = value ?? false);
+                _validarEtapaFinal();
               },
               title: Text(
                 isMaior
                     ? '☑️ Li e concordo com todos os termos acima'
                     : '☑️ Li e concordo com todos os termos acima como responsável',
-                style: const TextStyle(fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: _autorizacao ? Colors.green.shade800 : Colors.black87,
+                ),
               ),
               controlAffinity: ListTileControlAffinity.leading,
               activeColor: Colors.green,
@@ -1814,6 +2034,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             ),
           if (!temFoto)
             Container(
+              margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.red.shade50,
@@ -1835,7 +2056,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             ),
           if (_recolherAssinatura) ...[
             const SizedBox(height: 16),
-            Container(
+            SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _assinaturaUrl == null ? _abrirTelaAssinatura : null,
@@ -1866,7 +2087,223 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
-  Widget _buildResumoLinhaIcon(IconData icon, String label, String valor, Color cor) {
+  Widget _buildTermoElaborado() {
+    final isMaior = _isMaiorIdade();
+    final nomeAluno = _controllers['nome']!.text;
+    final nomeResp =
+    isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
+    final dataHora = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'TERMO DE RESPONSABILIDADE',
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isMaior) ...[
+                  _buildTermoLinha('📌', 'Eu, $nomeAluno, declaro para os devidos fins que:'),
+                  const SizedBox(height: 8),
+                  _buildTermoLinha(
+                    '1️⃣',
+                    'ESTOU CIENTE de que a Capoeira é uma arte marcial que envolve atividades físicas de médio a alto impacto, podendo resultar em lesões.',
+                  ),
+                  _buildTermoLinha(
+                    '2️⃣',
+                    'ASSUMO total responsabilidade por qualquer dano físico que possa ocorrer durante a prática, isentando o Grupo UAI CAPOEIRA de qualquer ônus.',
+                  ),
+                  _buildTermoLinha(
+                    '3️⃣',
+                    'COMPROMETO-ME a informar previamente qualquer condição de saúde ou limitação física.',
+                  ),
+                  _buildTermoLinha(
+                    '4️⃣',
+                    'AUTORIZO a participação na aula experimental de Capoeira.',
+                  ),
+                  _buildTermoLinha(
+                    '5️⃣',
+                    'CONCORDO com as filmagens e fotografias para fins institucionais.',
+                  ),
+                ] else ...[
+                  _buildTermoLinha(
+                    '📌',
+                    'Eu, $nomeResp, responsável legal por $nomeAluno, declaro para os devidos fins que:',
+                  ),
+                  const SizedBox(height: 8),
+                  _buildTermoLinha(
+                    '1️⃣',
+                    'AUTORIZO a participação do(a) menor acima identificado(a) na aula experimental de Capoeira oferecida pelo Grupo UAI CAPOEIRA.',
+                  ),
+                  _buildTermoLinha(
+                    '2️⃣',
+                    'ESTOU CIENTE dos riscos da prática esportiva e assumo total responsabilidade.',
+                  ),
+                  _buildTermoLinha(
+                    '3️⃣',
+                    'COMPROMETO-ME a informar previamente qualquer condição de saúde ou limitação física do aluno.',
+                  ),
+                  _buildTermoLinha(
+                    '4️⃣',
+                    'CONCORDO com as filmagens e fotografias para fins institucionais.',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.calendar_today, size: 16, color: Colors.blue.shade900),
+                const SizedBox(width: 8),
+                Text(
+                  'Data e hora: $dataHora',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade900,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_recolherAssinatura)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Assinatura:',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final screenWidth = constraints.maxWidth;
+                      final isMobile = screenWidth < 600;
+
+                      return Center(
+                        child: Container(
+                          width: isMobile ? screenWidth * 0.8 : 300,
+                          height: isMobile ? 60 : 100,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade400),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: _assinaturaUrl != null
+                              ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              _assinaturaUrl!,
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                              : const Center(
+                            child: Text(
+                              '____________________________',
+                              style: TextStyle(fontSize: 16, color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTermoLinha(String bullet, String texto) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$bullet ',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              texto,
+              style: const TextStyle(fontSize: 12, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResumoLinhaIcon(
+      IconData icon,
+      String label,
+      String valor,
+      Color cor,
+      ) {
     return Row(
       children: [
         Container(
@@ -1882,10 +2319,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
+              Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               Text(
                 valor,
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
@@ -1898,8 +2332,6 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   }
 
   Widget _buildNavigationButtons() {
-    final bool podeAvancar = _etapaValida[_currentStep] ?? false;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1930,9 +2362,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           Expanded(
             flex: _currentStep == 0 ? 2 : 1,
             child: ElevatedButton.icon(
-              onPressed: _currentStep == 5
-                  ? (podeAvancar ? _enviarInscricao : null)
-                  : (podeAvancar ? _proximaEtapa : null),
+              onPressed: _currentStep == 5 ? _enviarInscricao : _proximaEtapa,
               icon: Icon(_currentStep == 5 ? Icons.send : Icons.arrow_forward),
               label: Text(
                 _currentStep == 5 ? 'ENVIAR INSCRIÇÃO' : 'CONTINUAR',
@@ -1954,23 +2384,48 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       TextEditingController controller,
       String label, {
         bool isNumberOnly = false,
+        bool personNameOnly = false,
+        bool addressText = false,
         int? maxLength,
         String? Function(String?)? validator,
       }) {
+    List<TextInputFormatter> formatters = [];
+
+    if (isNumberOnly) {
+      formatters = [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(maxLength ?? 5),
+      ];
+    } else if (personNameOnly) {
+      formatters = [
+        FilteringTextInputFormatter.allow(RegExp(r"[A-Za-zÀ-ÖØ-öø-ÿ\s]")),
+      ];
+    } else if (addressText) {
+      formatters = [
+        FilteringTextInputFormatter.allow(RegExp(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,\-ºª/]")),
+      ];
+    }
+
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        errorText: validator != null ? validator(controller.text) : null,
+        errorText: validator?.call(controller.text),
         counterText: '',
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
       ),
       keyboardType: isNumberOnly ? TextInputType.number : TextInputType.text,
-      inputFormatters: isNumberOnly
-          ? [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(maxLength ?? 5)]
-          : [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ\s]'))],
+      inputFormatters: formatters,
       textCapitalization: TextCapitalization.characters,
-      onChanged: (value) {
+      onChanged: (_) {
         if (_currentStep == 1) _validarEtapa1();
         if (_currentStep == 2) _validarEtapa2();
         if (_currentStep == 3) _validarEtapa3();
@@ -1979,14 +2434,23 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   }
 
   Widget _buildPhoneField(TextEditingController controller, String label) {
+    final hasError = controller.text.isNotEmpty && !_telefoneCompleto(controller.text);
+
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
         hintText: '(00) 00000-0000',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        errorText:
-        controller.text.isNotEmpty && controller.text.length < 14 ? 'Telefone incompleto' : null,
+        errorText: hasError ? 'Telefone incompleto' : null,
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
       ),
       keyboardType: TextInputType.phone,
       inputFormatters: [
@@ -1994,7 +2458,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         LengthLimitingTextInputFormatter(11),
         _PhoneInputFormatter(),
       ],
-      onChanged: (value) {
+      onChanged: (_) {
         if (_currentStep == 2) _validarEtapa2();
       },
     );
@@ -2025,14 +2489,25 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         suffixIcon: const Icon(Icons.calendar_today),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         errorText: controller.text.isEmpty ? 'Campo obrigatório' : null,
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
       ),
       readOnly: true,
       onTap: () => _selectDate(context, controller),
     );
   }
 
-  Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
-    final DateTime? picked = await showDatePicker(
+  Future<void> _selectDate(
+      BuildContext context,
+      TextEditingController controller,
+      ) async {
+    final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now().subtract(const Duration(days: 3650)),
       firstDate: DateTime(1920),
@@ -2042,8 +2517,8 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     if (picked != null) {
       setState(() {
         controller.text = DateFormat('dd/MM/yyyy').format(picked);
-        _validarEtapa1();
       });
+      _validarEtapa1();
     }
   }
 }
@@ -2051,7 +2526,9 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
 class _CpfInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+      TextEditingValue oldValue,
+      TextEditingValue newValue,
+      ) {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
 
@@ -2061,10 +2538,13 @@ class _CpfInputFormatter extends TextInputFormatter {
     } else if (digits.length <= 6) {
       formatted = '${digits.substring(0, 3)}.${digits.substring(3)}';
     } else if (digits.length <= 9) {
-      formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+      formatted =
+      '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
     } else {
-      formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
+      formatted =
+      '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
     }
+
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -2075,7 +2555,9 @@ class _CpfInputFormatter extends TextInputFormatter {
 class _PhoneInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+      TextEditingValue oldValue,
+      TextEditingValue newValue,
+      ) {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
 
@@ -2085,10 +2567,13 @@ class _PhoneInputFormatter extends TextInputFormatter {
     } else if (digits.length <= 6) {
       formatted = '(${digits.substring(0, 2)}) ${digits.substring(2)}';
     } else if (digits.length <= 10) {
-      formatted = '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
+      formatted =
+      '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
     } else {
-      formatted = '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
+      formatted =
+      '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
     }
+
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),

@@ -1,131 +1,156 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
-publish_to: 'none' # Impede a publicação no pub.dev
-version: 2.0.25+1 # Versão do app (2.0.15) e código interno (1)
+publish_to: 'none'
+version: 2.0.34+1
 
-# Versões do SDK e Flutter necessárias
+# =============================================
+# 🔧 VERSÕES DO SDK
+# =============================================
 environment:
   sdk: ">=3.10.8 <4.0.0"  # Versão do Dart
-  flutter: ">=3.22.0"       # Versão mínima do Flutter
+  flutter: ">=3.22.0"     # Versão do Flutter
 
-# DEPENDÊNCIAS PRINCIPAIS (usadas no app em produção)
+# =============================================
+# 📦 DEPENDÊNCIAS PRINCIPAIS (PRODUÇÃO)
+# =============================================
 dependencies:
+  # 🌍 FLUTTER SDK
   flutter:
     sdk: flutter
-
-  # 🌍 INTERNACIONALIZAÇÃO
-  # Permite tradução do app para vários idiomas
   flutter_localizations:
-    sdk: flutter
+    sdk: flutter      # Tradução do app (português, inglês, etc)
 
-  # 🎉 ANIMAÇÕES E EFEITOS
-  confetti: ^0.7.0                # Efeito de confetes para comemorações
-  flutter_animate: ^4.5.0         # Animações simplificadas e performáticas
-  shimmer: ^3.0.0                 # Efeito de brilho (loading skeleton)
-  animations: ^2.0.11              # Animações pré-prontas (fade, scale, etc)
+  # =============================================
+  # 🔥 FIREBASE (Backend completo)
+  # =============================================
+  firebase_core: ^3.5.0               # 🧠 NÚCLEO - Obrigatório para qualquer serviço Firebase
+  firebase_auth: ^5.3.0               # 🔐 Autenticação (email/senha, Google, etc)
+  cloud_firestore: ^5.0.1             # 📊 Banco de dados NoSQL (onde ficam alunos, eventos, etc)
+  firebase_storage: ^12.0.1           # 📁 Armazenamento de arquivos (fotos, PDFs, vídeos)
+  firebase_messaging: ^15.2.4         # 🔔 Notificações push (avisos de eventos, mensagens)
+  firebase_app_check: ^0.3.2+1        # 🛡️ Segurança extra contra bots e ataques
+  firebase_analytics: ^11.3.0         # 📈 Estatísticas de uso do app
+  cloud_functions: ^5.0.0             # ⚡ Funções serverless (regras de negócio no backend)
 
-  # 📄 GERAÇÃO DE DOCUMENTOS E CERTIFICADOS
-  pdf: ^3.10.7                    # Criação de arquivos PDF
-  printing: ^5.11.1               # Impressão de documentos
-  archive: ^3.4.10                # Manipulação de arquivos ZIP
-  flutter_svg: ^2.0.10+1          # Exibição de imagens SVG
-  # 📄 VISUALIZADOR DE PDF
-  flutter_pdfview: ^1.3.2  # 👈 ADICIONE ESTA LINHA
-  webview_flutter: ^4.7.0
-  flutter_cache_manager: ^3.3.0
+  # 🔐 Login com Google
+  google_sign_in: ^6.1.5              # 🅱️ Botão "Entrar com Google"
 
-  # 🔥 FIREBASE CORE
-  # Obrigatório para qualquer serviço Firebase
-  firebase_core: ^3.5.0
+  # =============================================
+  # 🎨 INTERFACE E ANIMAÇÕES
+  # =============================================
+  cupertino_icons: ^1.0.8             # 🍎 Ícones no estilo iOS
+  flutter_svg: ^2.0.10+1              # 🖼️ Mostrar imagens SVG (logo vetorizada)
+  shimmer: ^3.0.0                     # ✨ Efeito de brilho (loading skeleton do Facebook)
+  flutter_animate: ^4.5.0             # 🎬 Animações fáceis (fade, slide, scale)
+  animations: ^2.0.11                 # 🎪 Animações prontas (transições entre telas)
+  confetti: ^0.7.0                    # 🎉 Chuva de confetes (celebrações)
+  flutter_colorpicker: ^1.1.0         # 🎨 Seletor de cores (personalização)
 
-  # 🔥 FIREBASE SERVICES
-  firebase_auth: ^5.3.0            # Autenticação (email, google, etc)
-  cloud_firestore: ^5.0.1          # Banco de dados NoSQL
-  firebase_storage: ^12.0.1        # Armazenamento de arquivos (imagens, docs)
-  firebase_messaging: ^15.2.4      # Notificações push
-  firebase_app_check: ^0.3.2+1     # Segurança contra abusos
-  google_sign_in: ^6.1.5           # Login com Google
+  # =============================================
+  # 📄 MANIPULAÇÃO DE DOCUMENTOS
+  # =============================================
+  pdf: ^3.10.7                        # 📑 Criar arquivos PDF (certificados, relatórios)
+  printing: ^5.11.1                   # 🖨️ Imprimir documentos direto do app
+  flutter_pdfview: ^1.3.2             # 👁️ Visualizar PDF dentro do app
+  excel: ^2.0.0                       # 📊 Criar/ler planilhas Excel (relatórios)
+  csv: ^6.0.0                         # 📋 Manipular arquivos CSV (importar/exportar dados)
+  xml: ^6.3.0                         # 📄 Ler arquivos XML
+  archive: ^3.4.10                    # 📦 Criar/extrair arquivos ZIP
 
-  cloud_functions: ^5.0.0
-  # 🎨 UI & DESIGN
-  cupertino_icons: ^1.0.8          # Ícones estilo iOS
+  # =============================================
+  # 🖼️ IMAGENS E ARQUIVOS
+  # =============================================
+  image_picker: ^1.1.2                # 📸 Tirar foto ou escolher da galeria
+  cached_network_image: ^3.3.1        # 🖼️ Carregar imagens da internet com cache
+  file_picker: ^8.1.2                 # 📂 Selecionar arquivos do celular
+  flutter_cache_manager: ^3.3.0       # 💾 Cache de arquivos em geral
 
-  # 🖼️ MANIPULAÇÃO DE IMAGENS
-  image_picker: ^1.1.2             # Selecionar fotos da galeria/câmera
-  cached_network_image: ^3.3.1     # Cache de imagens da internet
-  file_picker: ^8.1.2              # Selecionar arquivos do dispositivo
+  # =============================================
+  # 🌐 INTERNET E REDE
+  # =============================================
+  http: ^1.2.1                        # 🌍 Fazer requisições HTTP (APIs externas)
+  connectivity_plus: ^6.0.0           # 📶 Verificar se tem internet (WiFi/4G/5G)
+  webview_flutter: ^4.7.0             # 🌐 Abrir páginas web dentro do app
+  universal_html: ^2.2.4
 
-  # 🎨 FORMULÁRIOS E INPUTS
-  flutter_colorpicker: ^1.1.0      # Seletor de cores
+  # =============================================
+  # 📁 ARQUIVOS E PERMISSÕES
+  # =============================================
+  path_provider: ^2.1.3               # 📍 Descobrir pastas do sistema (Documentos, Cache)
+  permission_handler: ^11.3.1         # 🔓 Pedir permissões (câmera, armazenamento)
+  open_filex: ^4.4.0                  # 📂 Abrir arquivos em outros apps
 
-  # 🌐 REQUISIÇÕES E DADOS
-  http: ^1.2.1                     # Requisições HTTP
-  csv: ^6.0.0                      # Leitura/escrita de arquivos CSV
-  xml: ^6.3.0                      # Parse de arquivos XML
-  connectivity_plus: ^6.0.0        # Verificar conexão com internet
+  # =============================================
+  # 📱 INFORMAÇÕES DO DISPOSITIVO
+  # =============================================
+  package_info_plus: ^8.0.0           # 📦 Info do app (versão, nome do pacote)
+  device_info_plus: ^9.1.0            # 📱 Info do celular (modelo, Android/iOS)
 
-  # 📁 ACESSO A ARQUIVOS E PERMISSÕES
-  path_provider: ^2.1.3            # Caminhos de diretórios do sistema
-  permission_handler: ^11.3.1      # Gerenciar permissões (armazenamento, etc)
-  open_filex: ^4.4.0               # Abrir arquivos com apps externos
-  package_info_plus: ^8.0.0        # Informações do app (versão, pacote)
-  device_info_plus: ^9.1.0         # Informações do dispositivo (Android/iOS)
+  # =============================================
+  # 📅 DATAS E FORMATAÇÃO
+  # =============================================
+  intl: ^0.20.2                       # 📆 Formatar datas, números, moedas (R$)
 
-  # 📅 DATAS E LOCALIZAÇÃO
-  intl: ^0.20.2                    # Formatação de datas, números, moedas
+  # =============================================
+  # 🔗 INTEGRAÇÕES
+  # =============================================
+  url_launcher: ^6.3.0                # 🔗 Abrir links (WhatsApp, telefone, email, maps)
+  share_plus: ^10.0.0                 # 📤 Compartilhar conteúdo (texto, imagens)
 
-  # 📱 INTEGRAÇÃO COM O DISPOSITIVO
-  url_launcher: ^6.3.0             # Abrir links (web, tel, email, maps)
-
+  # =============================================
   # 🔔 NOTIFICAÇÕES
-  flutter_local_notifications: ^17.2.0  # Notificações locais agendadas
+  # =============================================
+  flutter_local_notifications: ^17.2.0  # 🔔 Notificações locais (lembretes agendados)
 
-  # 📊 GRÁFICOS E RELATÓRIOS
-  fl_chart: ^0.68.0                # Gráficos (barras, linhas, pizza)
-  excel: ^2.0.0                    # Manipulação de arquivos Excel
-  share_plus: ^10.0.0              # Compartilhar conteúdo com outros apps
+  # =============================================
+  # 📊 GRÁFICOS
+  # =============================================
+  fl_chart: ^0.68.0                   # 📈 Gráficos (linha, barra, pizza)
 
-  # ✅ UTILITÁRIOS GERAIS
-  collection: ^1.18.0              # Funções extras para coleções
-  async: ^2.11.0                   # Programação assíncrona avançada
-  uuid: ^4.4.0                     # Geração de IDs únicos
+  # =============================================
+  # 🛠️ UTILITÁRIOS
+  # =============================================
+  collection: ^1.18.0                 # 🧰 Funções extras para Listas/Mapas
+  async: ^2.11.0                      # ⏳ Programação assíncrona avançada
+  uuid: ^4.4.0                        # 🎫 Gerar IDs únicos
 
-  # 🆕 INTEGRAÇÃO COM GOOGLE SHEETS
-  googleapis: ^13.0.0              # API do Google (Sheets, Drive, etc)
-  googleapis_auth: ^1.5.0          # Autenticação para Google APIs
+  # =============================================
+  # 📊 GOOGLE SHEETS (Integração)
+  # =============================================
+  googleapis: ^13.0.0                 # 📊 API do Google (Sheets, Drive, etc)
+  googleapis_auth: ^1.5.0             # 🔑 Autenticar com APIs do Google
 
-  # ========== 🆕 NOVAS DEPENDÊNCIAS ADICIONADAS ==========
-  # 📦 CACHE PERSISTENTE (para dados offline)
-  hive: ^2.2.3                     # Banco de dados NoSQL local
-  hive_flutter: ^1.1.0             # Integração do Hive com Flutter
+  # =============================================
+  # 💾 BANCO DE DADOS LOCAL (Offline)
+  # =============================================
+  hive: ^2.2.3                        # 📦 Banco NoSQL local (cache offline)
+  hive_flutter: ^1.1.0                # 🔌 Integração do Hive com Flutter
 
-# DEPENDÊNCIAS DE DESENVOLVIMENTO (usadas apenas durante o desenvolvimento)
+# =============================================
+# 🛠️ DEPENDÊNCIAS DE DESENVOLVIMENTO
+# =============================================
 dev_dependencies:
   flutter_test:
-    sdk: flutter                   # Testes unitários
-  flutter_lints: ^6.0.0            # Regras de boas práticas de código
-  image: ^4.1.7                    # Manipulação avançada de imagens
+    sdk: flutter                      # 🧪 Testes unitários
+  flutter_lints: ^6.0.0               # 📏 Boas práticas de código
+  image: ^4.1.7                       # 🖼️ Manipular imagens (gerar ícones)
+  flutter_launcher_icons: ^0.14.1     # 🎨 Gerar ícones do app
 
-  # 🔥 GERAÇÃO DE ÍCONES E SPLASH SCREEN
-  flutter_launcher_icons: ^0.14.1  # Gerar ícones do app automaticamente
-  flutter_native_splash: ^2.3.5    # Gerar splash screen nativa
-
-  # 🛠️ FERRAMENTAS PARA HIVE (geração de adapters - opcional)
-  hive_generator: ^2.0.1            # Gerador de código para Hive (opcional)
-  build_runner: ^2.4.9              # Executar geradores de código (opcional)
-
-# CONFIGURAÇÃO DO FLUTTER
+# =============================================
+# 🎨 CONFIGURAÇÃO DO FLUTTER
+# =============================================
 flutter:
-  uses-material-design: true  # Habilita ícones Material Design
+  uses-material-design: true
 
-  # 🔥 ARQUIVOS ESTÁTICOS (IMAGENS, JSON, CSV)
+  # 📁 ARQUIVOS ESTÁTICOS
   assets:
-    # Imagens gerais
-    - assets/images/               # Todas as imagens da pasta
-    - assets/images/fundo_aniversario_app_flutter.png  # Fundo de aniversário
-    - assets/images/logo_uai.png    # Logo do app
+    # 🖼️ Imagens
+    - assets/images/
+    - assets/images/fundo_aniversario_app_flutter.png
+    - assets/images/logo_uai.png
+    - assets/images/google_logo.png
 
-    # Dados e migrações (arquivos para inicializar/carregar dados)
+    # 📊 Dados de migração
     - assets/dadosalunos.csv
     - assets/alunos.json
     - assets/log_presenca_alunos_1.json
@@ -135,29 +160,20 @@ flutter:
     - assets/participacao_alunos_eventos.json
     - assets/graduacoes.csv
 
-    # 🆕 CREDENCIAIS DA GOOGLE
-    - assets/credentials.json      # Chave de API para Google Sheets
+    # 🔑 Credenciais
+    - assets/credentials.json
 
-# 🔥 CONFIGURAÇÃO DE ÍCONES DO APP
+# =============================================
+# 🎨 CONFIGURAÇÃO DE ÍCONES DO APP
+# =============================================
 flutter_launcher_icons:
-  android: true                    # Gera ícones para Android
-  ios: true                        # Gera ícones para iOS
+  android: true
+  ios: true
   web:
-    generate: true                  # Gera ícones para Web
-    background_color: "#B71C1C"     # Cor de fundo (vermelho UAI)
-    theme_color: "#B71C1C"          # Cor do tema
-  image_path: "assets/images/logo_uai.png"  # Imagem original
-  adaptive_icon_background: "#B71C1C"       # Fundo do ícone adaptativo (Android)
-  adaptive_icon_foreground: "assets/images/logo_uai.png"  # Imagem do ícone adaptativo
-  min_sdk_android: 21               # Versão mínima do Android (Android 5.0)
-
-# 🔥 CONFIGURAÇÃO DA TELA DE SPLASH
-flutter_native_splash:
-  color: "#B71C1C"                  # Cor de fundo (vermelho UAI)
-  image: assets/images/logo_uai.png  # Logo na splash screen
-  android: true                      # Habilita para Android
-  ios: true                          # Habilita para iOS
-  web: true                          # Habilita para Web
-  android_gravity: center             # Posição da imagem no Android
-  ios_content_mode: center            # Posição da imagem no iOS
-  web_image_mode: center              # Posição da imagem na Web
+    generate: true
+    background_color: "#B71C1C"
+    theme_color: "#B71C1C"
+  image_path: "assets/images/logo_uai.png"
+  adaptive_icon_background: "#B71C1C"
+  adaptive_icon_foreground: "assets/images/logo_uai.png"
+  min_sdk_android: 21

@@ -1,7 +1,12 @@
+require('dotenv').config();
+
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { Storage } = require('@google-cloud/storage');
+const { DateTime } = require('luxon');
+const axios = require('axios');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 admin.initializeApp();
 
@@ -11,14 +16,13 @@ const bucketName = 'uai-capoeira-52753.firebasestorage.app';
 
 // ============================================
 // FUNÇÃO 1: NOTIFICAÇÕES DE ANIVERSARIANTES
-// Executa todo dia às 8h
 // ============================================
-exports.sendBirthdayNotifications = onSchedule('0 8 * * *', async (event) => {
-    const today = new Date();
-    const month = today.getMonth() + 1;
-    const day = today.getDate();
+exports.sendBirthdayNotifications = onSchedule('0 11 * * *', async (event) => {
+    const hojeBrasilia = DateTime.now().setZone('America/Sao_Paulo');
+    const month = hojeBrasilia.month;
+    const day = hojeBrasilia.day;
 
-    console.log(`🔔 Verificando aniversariantes para ${day}/${month}...`);
+    console.log(`🔔 Verificando aniversariantes para ${day}/${month} (Horário BR)...`);
 
     try {
         const alunosSnapshot = await db
@@ -98,10 +102,8 @@ exports.sendBirthdayNotifications = onSchedule('0 8 * * *', async (event) => {
 
 // ============================================
 // FUNÇÃO 2: PROCESSAR CHAMADA EM LOTE
-// Chamada pelo app Flutter
 // ============================================
 exports.processarChamada = onCall(async (request) => {
-    // Verificar autenticação
     if (!request.auth) {
         throw new Error('Usuário não autenticado');
     }
@@ -123,22 +125,20 @@ exports.processarChamada = onCall(async (request) => {
     const batch = db.batch();
     const chamadaRef = db.collection('chamadas').doc();
     
-    // Formatar data
-    const dataObj = new Date(dataChamada);
-    const dataFormatada = dataObj.toISOString().split('T')[0];
+    const dataBrasilia = DateTime.fromISO(dataChamada, { zone: 'America/Sao_Paulo' });
+    const dataFormatada = dataBrasilia.toFormat('yyyy-MM-dd');
+    const timestampBrasilia = admin.firestore.Timestamp.fromDate(dataBrasilia.toJSDate());
     
-    // Contar presentes
     const presentes = alunos.filter(a => a.presente).length;
     const ausentes = alunos.length - presentes;
     const porcentagem = alunos.length > 0 ? Math.round((presentes / alunos.length) * 100) : 0;
     
-    // Dados da chamada principal
     const chamadaData = {
         turma_id: turmaId,
         turma_nome: turmaNome,
         academia_id: academiaId,
         academia_nome: academiaNome,
-        data_chamada: admin.firestore.Timestamp.fromDate(dataObj),
+        data_chamada: timestampBrasilia,
         data_formatada: dataFormatada,
         tipo_aula: tipoAula,
         total_alunos: alunos.length,
@@ -158,33 +158,29 @@ exports.processarChamada = onCall(async (request) => {
     
     batch.set(chamadaRef, chamadaData);
     
-    // Processar cada aluno
     const logs = [];
     const updates = [];
     
     for (const aluno of alunos) {
         const alunoId = aluno.id;
         const presente = aluno.presente;
-        const mesAno = dataFormatada.substring(0, 7); // YYYY-MM
+        const mesAno = dataFormatada.substring(0, 7);
         
-        // 1. Atualizar contador de presença mensal
         updates.push(
             db.collection('alunos').doc(alunoId).update({
                 [`contadores.${mesAno}`]: admin.firestore.FieldValue.increment(presente ? 1 : 0)
             }).catch(err => console.error(`Erro ao atualizar contador ${alunoId}:`, err))
         );
         
-        // 2. Atualizar última presença (se presente)
         if (presente) {
             updates.push(
                 db.collection('alunos').doc(alunoId).update({
-                    ultima_presenca: admin.firestore.Timestamp.fromDate(dataObj),
+                    ultima_presenca: timestampBrasilia,
                     ultimo_dia_presente: dataFormatada
                 }).catch(err => console.error(`Erro ao atualizar ultima_presenca ${alunoId}:`, err))
             );
         }
         
-        // 3. Criar log de presença
         logs.push({
             log_id: `log_${alunoId}_${dataFormatada}`,
             aluno_id: alunoId,
@@ -193,7 +189,7 @@ exports.processarChamada = onCall(async (request) => {
             turma_nome: turmaNome,
             academia_id: academiaId,
             academia_nome: academiaNome,
-            data_aula: admin.firestore.Timestamp.fromDate(dataObj),
+            data_aula: timestampBrasilia,
             data_formatada: dataFormatada,
             presente: presente,
             observacao: aluno.observacao || '',
@@ -203,7 +199,6 @@ exports.processarChamada = onCall(async (request) => {
             tipo_registro: 'chamada_turma'
         });
         
-        // 4. Atualizar última chamada
         updates.push(
             db.collection('alunos').doc(alunoId).update({
                 ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
@@ -213,14 +208,12 @@ exports.processarChamada = onCall(async (request) => {
         );
     }
     
-    // Executar tudo em paralelo
     await Promise.all([
         batch.commit(),
         ...updates,
         ...logs.map(log => db.collection('log_presenca_alunos').add(log))
     ]);
     
-    // Limpar lock da chamada
     await db.collection('locks_chamada').doc(turmaId).delete().catch(() => {});
     
     return {
@@ -233,10 +226,9 @@ exports.processarChamada = onCall(async (request) => {
 });
 
 // ============================================
-// FUNÇÃO 3: EXCLUIR CHAMADA (COM REVERSÃO COMPLETA)
+// FUNÇÃO 3: EXCLUIR CHAMADA
 // ============================================
 exports.excluirChamada = onCall(async (request) => {
-    // Verificar autenticação
     if (!request.auth) {
         throw new Error('Usuário não autenticado');
     }
@@ -249,7 +241,6 @@ exports.excluirChamada = onCall(async (request) => {
 
     const batch = db.batch();
 
-    // 1️⃣ BUSCAR DADOS DA CHAMADA
     const chamadaDoc = await db.collection('chamadas').doc(chamadaId).get();
 
     if (!chamadaDoc.exists) {
@@ -261,14 +252,12 @@ exports.excluirChamada = onCall(async (request) => {
     const dataFormatada = chamadaData.data_formatada;
     const dataChamada = chamadaData.data_chamada.toDate();
 
-    // 2️⃣ BUSCAR TODOS OS LOGS DESTA CHAMADA
     const logsQuery = await db
         .collection('log_presenca_alunos')
         .where('data_formatada', '==', dataFormatada)
         .where('turma_id', '==', turmaId)
         .get();
 
-    // 3️⃣ PROCESSAR CADA ALUNO
     const updates = [];
 
     for (const aluno of alunos) {
@@ -276,7 +265,6 @@ exports.excluirChamada = onCall(async (request) => {
         const estavaPresente = aluno.presente;
         const mesAno = dataFormatada.substring(0, 7);
 
-        // 🔥 DECREMENTAR CONTADOR (se estava presente)
         if (estavaPresente) {
             updates.push(
                 db.collection('alunos').doc(alunoId).update({
@@ -285,7 +273,6 @@ exports.excluirChamada = onCall(async (request) => {
             );
         }
 
-        // 🔥 RECALCULAR ÚLTIMA PRESENÇA
         const ultimaPresencaQuery = await db
             .collection('log_presenca_alunos')
             .where('aluno_id', '==', alunoId)
@@ -297,8 +284,8 @@ exports.excluirChamada = onCall(async (request) => {
 
         const alunoRef = db.collection('alunos').doc(alunoId);
 
-        if (ultimaPresencaQuery.docs.isNotEmpty) {
-            const ultimaPresenca = ultimaPresencaQuery.docs.first.data().data_aula;
+        if (ultimaPresencaQuery.docs.length > 0) {
+            const ultimaPresenca = ultimaPresencaQuery.docs[0].data().data_aula;
             updates.push(
                 alunoRef.update({
                     ultimo_dia_presente: ultimaPresenca
@@ -312,7 +299,6 @@ exports.excluirChamada = onCall(async (request) => {
             );
         }
 
-        // 🔥 RECALCULAR ÚLTIMA CHAMADA
         const ultimaChamadaQuery = await db
             .collection('log_presenca_alunos')
             .where('aluno_id', '==', alunoId)
@@ -320,8 +306,8 @@ exports.excluirChamada = onCall(async (request) => {
             .limit(1)
             .get();
 
-        if (ultimaChamadaQuery.docs.isNotEmpty) {
-            const ultimaChamada = ultimaChamadaQuery.docs.first.data();
+        if (ultimaChamadaQuery.docs.length > 0) {
+            const ultimaChamada = ultimaChamadaQuery.docs[0].data();
             updates.push(
                 alunoRef.update({
                     ultima_chamada: ultimaChamada.data_aula,
@@ -340,13 +326,11 @@ exports.excluirChamada = onCall(async (request) => {
         }
     }
 
-    // 4️⃣ DELETAR CHAMADA E LOGS
     batch.delete(chamadaDoc.ref);
     for (const logDoc of logsQuery.docs) {
         batch.delete(logDoc.ref);
     }
 
-    // 5️⃣ EXECUTAR TUDO
     await Promise.all([
         batch.commit(),
         ...updates
@@ -360,15 +344,14 @@ exports.excluirChamada = onCall(async (request) => {
 });
 
 // ============================================
-// FUNÇÃO 4: RESTAURAR FOTOS DO BACKUP (COM TIMEOUT AUMENTADO)
+// FUNÇÃO 4: RESTAURAR FOTOS DO BACKUP
 // ============================================
 exports.restaurarFotosDoBackup = onRequest(
     {
-        timeoutSeconds: 540, // 9 minutos (máximo permitido)
-        memory: '1GiB'       // 1GB de memória para processar mais rápido
+        timeoutSeconds: 540,
+        memory: '1GiB'
     },
     async (req, res) => {
-        // Permitir CORS
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Access-Control-Allow-Methods', 'GET, POST');
         res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -384,7 +367,6 @@ exports.restaurarFotosDoBackup = onRequest(
         try {
             console.log('🚀 Iniciando restauração de fotos...');
 
-            // 1️⃣ LISTAR TODAS AS FOTOS DO BACKUP
             const [files] = await bucket.getFiles({ prefix: pastaBackup });
             
             if (files.length === 0) {
@@ -398,10 +380,8 @@ exports.restaurarFotosDoBackup = onRequest(
 
             console.log(`📸 Encontradas ${files.length} fotos no backup`);
 
-            // 2️⃣ BUSCAR TODOS OS ALUNOS DO FIRESTORE
             const alunosSnapshot = await db.collection('alunos').get();
             
-            // Criar mapa: nome do aluno (normalizado) -> dados do aluno
             const mapaAlunos = new Map();
             alunosSnapshot.docs.forEach(doc => {
                 const data = doc.data();
@@ -421,7 +401,6 @@ exports.restaurarFotosDoBackup = onRequest(
 
             console.log(`👥 ${mapaAlunos.size} alunos encontrados no Firestore`);
 
-            // 3️⃣ PROCESSAR CADA FOTO
             const resultados = {
                 totalFotos: files.length,
                 atualizadas: 0,
@@ -495,4 +474,346 @@ exports.restaurarFotosDoBackup = onRequest(
             });
         }
     }
+);
+
+// ============================================
+// FUNÇÃO 5: REGISTRAR LOCALIZAÇÃO DE ACESSO
+// ============================================
+exports.registrarLocalizacaoAcesso = onCall(async (request) => {
+    const { ip } = request.data;
+    
+    try {
+        const response = await axios.get(`http://ip-api.com/json/${ip}`);
+        const location = response.data;
+        
+        if (location.status === 'success') {
+            const cidade = location.city;
+            const estado = location.regionName;
+            const pais = location.country;
+            
+            const docRef = await db.collection('estatisticas_acessos').add({
+                ip: ip,
+                cidade: cidade,
+                estado: estado,
+                pais: pais,
+                latitude: location.lat,
+                longitude: location.lon,
+                data_acesso: admin.firestore.FieldValue.serverTimestamp(),
+                origem: 'landing_page',
+                isp: location.isp,
+                timezone: location.timezone,
+                eventos: [],
+                total_eventos: 0,
+                ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            
+            const statsRef = db.collection('estatisticas').doc('contadores_agregados');
+            
+            await statsRef.set({
+                total_visitas: admin.firestore.FieldValue.increment(1),
+                [`paises.${pais}.total`]: admin.firestore.FieldValue.increment(1),
+                [`paises.${pais}.nome`]: pais,
+                [`paises.${pais}.estados.${estado}.total`]: admin.firestore.FieldValue.increment(1),
+                [`paises.${pais}.estados.${estado}.nome`]: estado,
+                [`paises.${pais}.estados.${estado}.cidades.${cidade}.total`]: admin.firestore.FieldValue.increment(1),
+                [`paises.${pais}.estados.${estado}.cidades.${cidade}.nome`]: cidade,
+                ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            console.log(`📍 Acesso registrado com ID: ${docRef.id} - ${cidade}/${estado}`);
+            
+            return { 
+                success: true,
+                docId: docRef.id,
+                cidade: cidade,
+                estado: estado,
+                pais: pais,
+                latitude: location.lat,
+                longitude: location.lon,
+                isp: location.isp,
+                timezone: location.timezone
+            };
+        }
+        
+        return { success: false, error: 'Localização não encontrada' };
+        
+    } catch (error) {
+        console.error('❌ Erro:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// ============================================
+// 🔥 FUNÇÃO PARA BUSCAR TURMAS E HORÁRIOS (ATUALIZADA)
+// ============================================
+async function getRespostaHorarios() {
+  try {
+    const turmasSnapshot = await db.collection('turmas').get();
+    
+    const configDoc = await db.collection('config_site_assistente').doc('config').get();
+    const turmasSelecionadas = configDoc.data()?.turmas_selecionadas || {};
+    
+    const turmas = [];
+    
+    // 🔥 ORDEM CORRETA DOS DIAS
+    const ordemDias = ['SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO', 'DOMINGO'];
+    
+    for (const doc of turmasSnapshot.docs) {
+      const id = doc.id;
+      
+      if (turmasSelecionadas[id] !== true) continue;
+      
+      const data = doc.data();
+      
+      const diasConfig = data.dias_configuracao || {};
+      const diasComHorarios = [];
+      
+      // 🔥 PERCORRE OS DIAS NA ORDEM CORRETA
+      for (const dia of ordemDias) {
+        const config = diasConfig[dia];
+        if (config && config.selecionado === true) {
+          diasComHorarios.push({
+            dia: traduzirDia(dia),
+            horarioInicio: config.horario_inicio || '19:00',
+            horarioFim: config.horario_fim || '20:30',
+            tipoAula: config.tipoAula || 'OBJETIVA'
+          });
+        }
+      }
+      
+      if (diasComHorarios.length === 0) continue;
+      
+      turmas.push({
+        nome: data.nome || 'Sem nome',
+        nivel: data.nivel || '',
+        diasComHorarios: diasComHorarios,
+        local: data.nucleo || 'Não informado',
+        vagasTotal: data.capacidade_maxima || 0,
+        alunosAtivos: data.alunos_ativos || 0,
+        cor: data.cor_turma || '#EF4444'
+      });
+    }
+    
+    if (turmas.length === 0) {
+      return "No momento não temos turmas disponíveis para exibir. Em breve divulgaremos novos horários!";
+    }
+    
+    let resposta = "🏫 **HORÁRIOS DE TREINO** 🏫\n\n";
+    
+    for (const turma of turmas) {
+      const vagasRestantes = turma.vagasTotal - turma.alunosAtivos;
+      const statusVagas = vagasRestantes > 0 ? `✅ ${vagasRestantes} vagas disponíveis` : "❌ Lotado";
+      
+      resposta += `**${turma.nome}** ${turma.nivel ? `(${turma.nivel})` : ''}\n`;
+      resposta += `📍 Local: ${turma.local}\n`;
+      
+      for (const diaInfo of turma.diasComHorarios) {
+        resposta += `📅 ${diaInfo.dia}: ${diaInfo.horarioInicio} às ${diaInfo.horarioFim}`;
+        if (diaInfo.tipoAula && diaInfo.tipoAula !== 'OBJETIVA') {
+          resposta += ` (${diaInfo.tipoAula})`;
+        }
+        resposta += `\n`;
+      }
+      
+      resposta += `🎯 ${statusVagas}\n\n`;
+    }
+    
+    // 🔥 SÓ PERGUNTA "QUAL TURMA" SE TIVER MAIS DE 1 TURMA
+    if (turmas.length === 1) {
+      resposta += "👉 Clique no botão abaixo para fazer sua inscrição! [ACAO:inscricao]";
+    } else {
+      resposta += "👉 Qual turma você tem interesse? Posso te ajudar com mais informações ou com a inscrição! [ACAO:inscricao]";
+    }
+    
+    return resposta;
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar turmas:', error);
+    return "Os treinos acontecem às terças e quintas, das 19h às 21h, no Centro Cultural de Bocaiuva. Em breve teremos mais informações sobre outras turmas!";
+  }
+}
+
+// ============================================
+// FUNÇÃO PARA BUSCAR CONFIGURAÇÕES DE INSCRIÇÃO
+// ============================================
+async function getRespostaInscricao() {
+  try {
+    const doc = await db.collection('configuracoes').doc('inscricoes').get();
+    
+    if (!doc.exists) {
+      return "As inscrições estão abertas! Clique no botão abaixo para se inscrever. [ACAO:inscricao]";
+    }
+    
+    const data = doc.data();
+    const abertas = data?.inscricoes_abertas ?? false;
+    const vagas = data?.vagas_disponiveis ?? 0;
+    const totalInscricoes = data?.total_inscricoes ?? 0;
+    const idadeMin = data?.idade_minima ?? 5;
+    const idadeMax = data?.idade_maxima ?? 100;
+    const assinatura = data?.recolher_assinatura ?? true;
+    
+    if (!abertas) {
+      return "⚠️ As inscrições estão FECHADAS no momento. Fique de olho nas nossas redes sociais para saber quando reabriremos!";
+    }
+    
+    const vagasRestantes = vagas - totalInscricoes;
+    
+    if (vagasRestantes <= 0) {
+      return "😢 Infelizmente as vagas estão ESGOTADAS. Temos " + totalInscricoes + " inscrições para " + vagas + " vagas. Mas não desanima! Em breve abriremos novas turmas.";
+    }
+    
+    let resposta = "✅ **INSCRIÇÕES ABERTAS!** ✅\n\n";
+    resposta += `📊 Temos ${vagasRestantes} vaga${vagasRestantes > 1 ? 's' : ''} disponível${vagasRestantes > 1 ? 'is' : ''}.\n\n`;
+    resposta += `👧🧒 Idade permitida: ${idadeMin} a ${idadeMax} anos.\n\n`;
+    
+    if (assinatura) {
+      resposta += "✍️ Será necessário assinar digitalmente no final do formulário.\n\n";
+    }
+    
+    resposta += "👉 Clique no botão abaixo para fazer sua inscrição! [ACAO:inscricao]";
+    
+    return resposta;
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar inscrições:', error);
+    return "As inscrições estão abertas! Clique no botão abaixo para se inscrever. [ACAO:inscricao]";
+  }
+}
+
+// ============================================
+// FUNÇÃO AUXILIAR: TRADUZIR DIAS
+// ============================================
+function traduzirDia(dia) {
+  const dias = {
+    'DOMINGO': 'Domingo',
+    'SEGUNDA': 'Segunda',
+    'TERCA': 'Terça',
+    'QUARTA': 'Quarta',
+    'QUINTA': 'Quinta',
+    'SEXTA': 'Sexta',
+    'SABADO': 'Sábado'
+  };
+  return dias[dia] || dia;
+}
+
+// ============================================
+// 🔥 FUNÇÃO PRINCIPAL: CHAT ASSISTENTE
+// ============================================
+exports.chatAssistente = onCall(
+  { 
+    cors: true,
+    invoker: 'public'
+  },
+  async (request) => {
+    console.log('🚀 Função chatAssistente foi chamada!');
+    
+    const data = request.data || {};
+    const mensagem = data.mensagem ? String(data.mensagem) : '';
+    
+    console.log('📩 Mensagem recebida:', mensagem);
+    
+    if (!mensagem || mensagem.trim().length === 0) {
+      return { 
+        resposta: "Olá! Sou o assistente da UAI Capoeira. Como posso ajudar você hoje? Digite sua pergunta!" 
+      };
+    }
+    
+    const msgLower = mensagem.toLowerCase();
+    
+    if (msgLower.includes('horário') || msgLower.includes('horario') || 
+        msgLower.includes('quando') || msgLower.includes('dias') ||
+        msgLower.includes('treino') || msgLower.includes('aula') ||
+        msgLower.includes('funciona')) {
+      console.log('📅 Detectada pergunta sobre horários');
+      const respostaHorarios = await getRespostaHorarios();
+      return { resposta: respostaHorarios };
+    }
+    
+    if (msgLower.includes('inscrição') || msgLower.includes('inscricao') || 
+        msgLower.includes('quero treinar') || msgLower.includes('matrícula') ||
+        msgLower.includes('aula experimental')) {
+      console.log('📝 Detectada pergunta sobre inscrições');
+      const respostaInscricao = await getRespostaInscricao();
+      return { resposta: respostaInscricao };
+    }
+    
+    if (msgLower.includes('endereço') || msgLower.includes('local') || msgLower.includes('onde fica')) {
+      return { 
+        resposta: "Estamos na Rua das Flores, 123 - Centro, Bocaiuva/MG. Clique no botão para ver no mapa! [ACAO:maps]" 
+      };
+    }
+    
+    if (msgLower.includes('campeonato') || msgLower.includes('competição') || msgLower.includes('torneio')) {
+      return { 
+        resposta: "Sim! Estamos com o 1° Campeonato UAI Capoeira. Clique abaixo para mais informações! [ACAO:campeonato]" 
+      };
+    }
+    
+    if (msgLower.includes('whatsapp') || msgLower.includes('contato') || msgLower.includes('telefone')) {
+      return { 
+        resposta: "Você pode falar conosco pelo WhatsApp! Clique no botão abaixo para conversar. [ACAO:whatsapp]" 
+      };
+    }
+    
+    if (msgLower.includes('mensalidade') || msgLower.includes('valor') || msgLower.includes('quanto custa')) {
+      return { 
+        resposta: "A mensalidade é R$ 80,00. A primeira aula experimental é gratuita!" 
+      };
+    }
+    
+    if (msgLower.includes('obrigado') || msgLower.includes('valeu') || msgLower.includes('gratidão')) {
+      return { 
+        resposta: "Por nada! Estamos aqui para ajudar. Qualquer dúvida é só chamar. Axé! 🙏" 
+      };
+    }
+    
+    if (msgLower.includes('olá') || msgLower.includes('oi') || msgLower.includes('opa') || msgLower.includes('bom dia')) {
+      return { 
+        resposta: "Olá! Seja bem-vindo(a) ao site da UAI Capoeira! 🇧🇷\n\nComo posso ajudar você hoje?" 
+      };
+    }
+    
+    return { 
+      resposta: "Olá! Sou o assistente da UAI Capoeira. Posso ajudar com:\n\n• 📝 Inscrições\n• ⏰ Horários de treino\n• 🏆 Campeonato\n• 📍 Localização\n• 📱 Contato via WhatsApp\n• 💰 Mensalidade\n\nO que você gostaria de saber?" 
+    };
+  }
+);
+
+// ============================================
+// FUNÇÃO 7: REGISTRAR EVENTO DO ASSISTENTE
+// ============================================
+exports.registrarEventoAssistente = onCall(
+  { 
+    cors: true,
+    invoker: 'public'
+  },
+  async (request) => {
+    const { docId, tipo, nome, origem, metadata } = request.data;
+    
+    if (!docId) {
+        return { success: false, error: 'docId é obrigatório' };
+    }
+    
+    try {
+        const evento = {
+            tipo: tipo,
+            nome: nome,
+            origem: origem || 'chat',
+            metadata: metadata || {},
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        
+        await admin.firestore().collection('estatisticas_acessos').doc(docId).update({
+            eventos: admin.firestore.FieldValue.arrayUnion(evento),
+            total_eventos: admin.firestore.FieldValue.increment(1),
+            ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        return { success: true };
+        
+    } catch (error) {
+        console.error('❌ Erro ao registrar evento:', error);
+        return { success: false, error: error.message };
+    }
+  }
 );

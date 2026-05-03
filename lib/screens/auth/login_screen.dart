@@ -22,6 +22,42 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  String _versaoApp = 'Carregando...';
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarVersao();
+  }
+
+  // Carrega a versão do Firebase Firestore
+  Future<void> _carregarVersao() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('configuracoes')
+          .doc('app')
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final versao = data['versao_atual'] ?? '1.0.0';
+        setState(() {
+          _versaoApp = versao;
+        });
+        print('✅ Versão carregada do Firestore: $_versaoApp');
+      } else {
+        setState(() {
+          _versaoApp = '1.0.0';
+        });
+        print('⚠️ Documento "configuracoes/app" não encontrado, usando versão padrão');
+      }
+    } catch (e) {
+      print('❌ Erro ao carregar versão: $e');
+      setState(() {
+        _versaoApp = '1.0.0';
+      });
+    }
+  }
 
   // Login com Email/Senha
   Future<void> _login() async {
@@ -39,19 +75,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Verificar se usuário tem acesso
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final hasAccess = await UserService.hasAccess(user.uid);
 
         if (!hasAccess) {
-          // Mostrar mensagem amigável para contas pendentes/bloqueadas
           _showPendingAccountDialog();
           return;
         }
       }
 
-      // Login bem-sucedido
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const AuthCheck()),
@@ -100,7 +133,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Configuração específica para Web
       final GoogleSignIn _googleSignIn = kIsWeb
           ? GoogleSignIn(clientId: AppConfig.googleWebClientId)
           : GoogleSignIn();
@@ -109,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (googleUser == null) {
         setState(() => _isLoading = false);
-        return; // Usuário cancelou
+        return;
       }
 
       final GoogleSignInAuthentication googleAuth =
@@ -125,7 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final user = userCredential.user!;
 
-      // Usa o serviço unificado para criar/atualizar documento
       await UserService.createOrUpdateUserDocument(
         user: user,
         isGoogleLogin: true,
@@ -133,7 +164,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Verificar acesso
       final hasAccess = await UserService.hasAccess(user.uid);
 
       if (!hasAccess) {
@@ -141,7 +171,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Login bem-sucedido
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const AuthCheck()),
@@ -193,8 +222,8 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Fecha dialog
-              FirebaseAuth.instance.signOut(); // Faz logout
+              Navigator.pop(context);
+              FirebaseAuth.instance.signOut();
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.red.shade900,
@@ -331,9 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: _isLoading ? null : () {
-                          // TODO: Implementar recuperação de senha
-                        },
+                        onPressed: _isLoading ? null : () {},
                         child: Text(
                           'Esqueceu a senha?',
                           style: TextStyle(
@@ -380,12 +407,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       children: [
                         Expanded(child: Divider(color: Colors.grey[400])),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'OU',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text('OU'),
                         ),
                         Expanded(child: Divider(color: Colors.grey[400])),
                       ],
@@ -447,9 +471,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Versão do app
+                    // Versão do app vindo do Firestore
                     Text(
-                      'v1.0.0',
+                      'Versão $_versaoApp',
                       style: TextStyle(
                         color: Colors.grey[500],
                         fontSize: 12,
@@ -461,7 +485,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-          // Overlay de loading para toda a tela
+          // Overlay de loading
           if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.3),

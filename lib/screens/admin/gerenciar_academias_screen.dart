@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'editar_academia_screen.dart';
 import '../../gerenciar_turmas_screen.dart';
 import 'usuario_detalhe_screen.dart';
+import '../../core/utils/responsive_utils.dart';
 
 class GerenciarAcademiasScreen extends StatefulWidget {
   const GerenciarAcademiasScreen({super.key});
@@ -97,7 +98,7 @@ class _GerenciarAcademiasScreenState
             );
           }
         },
-        avatar: const Icon(Icons.location_city, size: 18),
+        avatar: const Icon(Icons.location_city, size: 18, color: Colors.red),
       ),
     );
   }
@@ -138,7 +139,7 @@ class _GerenciarAcademiasScreenState
           );
         }
       },
-      avatar: const Icon(Icons.sports_martial_arts, size: 18),
+      avatar: const Icon(Icons.sports_martial_arts, size: 18, color: Colors.red),
     );
   }
 
@@ -148,7 +149,6 @@ class _GerenciarAcademiasScreenState
       _calculandoContadores = true;
     });
 
-    // Mostrar modal de carregamento
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -156,8 +156,8 @@ class _GerenciarAcademiasScreenState
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade900),
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
             ),
             const SizedBox(height: 16),
             const Text('Calculando contadores...'),
@@ -173,20 +173,16 @@ class _GerenciarAcademiasScreenState
     );
 
     try {
-      // Buscar todas as academias
       final academiasSnapshot = await _firestore
           .collection('academias')
           .get();
 
       int academiasProcessadas = 0;
-      int totalAcademias = academiasSnapshot.docs.length;
 
-      // Para cada academia
       for (var academiaDoc in academiasSnapshot.docs) {
         final academiaId = academiaDoc.id;
         final academiaRef = academiaDoc.reference;
 
-        // Buscar turmas da academia
         final turmasSnapshot = await _firestore
             .collection('turmas')
             .where('academia_id', isEqualTo: academiaId)
@@ -195,12 +191,10 @@ class _GerenciarAcademiasScreenState
         int totalAlunosAcademia = 0;
         int totalTurmasAtivas = 0;
 
-        // Para cada turma da academia
         for (var turmaDoc in turmasSnapshot.docs) {
           final turmaId = turmaDoc.id;
           final turmaRef = turmaDoc.reference;
 
-          // Buscar alunos ativos da turma
           final alunosAtivosSnapshot = await _firestore
               .collection('alunos')
               .where('turma_id', isEqualTo: turmaId)
@@ -209,7 +203,6 @@ class _GerenciarAcademiasScreenState
 
           final alunosAtivosCount = alunosAtivosSnapshot.docs.length;
 
-          // Buscar alunos inativos da turma
           final alunosInativosSnapshot = await _firestore
               .collection('alunos')
               .where('turma_id', isEqualTo: turmaId)
@@ -221,13 +214,11 @@ class _GerenciarAcademiasScreenState
 
           totalAlunosAcademia += alunosAtivosCount;
 
-          // Verificar se turma está ativa
           final statusTurma = turmaDoc['status'] as String?;
           if (statusTurma == 'ATIVA') {
             totalTurmasAtivas++;
           }
 
-          // Atualizar contadores da turma
           await turmaRef.update({
             'alunos_ativos': alunosAtivosCount,
             'alunos_inativos': alunosInativosCount,
@@ -237,7 +228,6 @@ class _GerenciarAcademiasScreenState
           });
         }
 
-        // Atualizar contadores da academia
         await academiaRef.update({
           'turmas_count': turmasSnapshot.docs.length,
           'turmas_ativas_count': totalTurmasAtivas,
@@ -249,12 +239,10 @@ class _GerenciarAcademiasScreenState
         academiasProcessadas++;
       }
 
-      // Fechar modal de carregamento
       if (context.mounted) {
         Navigator.pop(context);
       }
 
-      // Mostrar mensagem de sucesso
       if (context.mounted) {
         showDialog(
           context: context,
@@ -280,12 +268,10 @@ class _GerenciarAcademiasScreenState
         );
       }
     } catch (e) {
-      // Fechar modal de carregamento
       if (context.mounted) {
         Navigator.pop(context);
       }
 
-      // Mostrar mensagem de erro
       if (context.mounted) {
         showDialog(
           context: context,
@@ -316,414 +302,491 @@ class _GerenciarAcademiasScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gerenciar Academias'),
-        backgroundColor: Colors.red.shade900,
-        foregroundColor: Colors.white,
-        actions: [
-          // Botão para calcular contadores
-          IconButton(
-            onPressed: _calculandoContadores ? null : _calcularAtualizarContadores,
-            icon: _calculandoContadores
-                ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
-                : const Icon(Icons.calculate),
-            tooltip: 'Calcular contadores de alunos',
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final isDesktop = ResponsiveUtils.isDesktop(context);
+    final padding = ResponsiveUtils.getResponsivePadding(context);
+
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            'Gerenciar Academias',
+            style: TextStyle(
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 20),
+            ),
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(100),
-          child: Column(
-            children: [
-              // Barra de busca
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Buscar academia...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.2),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+          backgroundColor: Colors.red.shade900,
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              onPressed: _calculandoContadores ? null : _calcularAtualizarContadores,
+              icon: _calculandoContadores
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+                  : const Icon(Icons.calculate),
+              tooltip: 'Calcular contadores de alunos',
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(100),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Buscar academia...',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.2),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
-                    contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16),
+                    onChanged: (value) =>
+                        setState(() => _searchQuery = value),
                   ),
-                  onChanged: (value) =>
-                      setState(() => _searchQuery = value),
                 ),
-              ),
-              // Filtros
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  children: [
-                    _buildFiltroCidade(),
-                    _buildFiltroModalidade(),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      _buildFiltroCidade(),
+                      _buildFiltroModalidade(),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('academias').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+        body: StreamBuilder<QuerySnapshot>(
+          stream: _firestore.collection('academias').snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.business,
-                    size: 80,
-                    color: Colors.grey.shade300,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Nenhuma academia cadastrada',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Clique no botão + para adicionar',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          var academias = snapshot.data!.docs;
-
-          // Aplicar filtros
-          if (_searchQuery.isNotEmpty) {
-            academias = academias.where((doc) {
-              final nome = doc['nome']?.toString().toLowerCase() ?? '';
-              final cidade = doc['cidade']?.toString().toLowerCase() ?? '';
-              final modalidade = doc['modalidade']?.toString().toLowerCase() ?? '';
-              return nome.contains(_searchQuery.toLowerCase()) ||
-                  cidade.contains(_searchQuery.toLowerCase()) ||
-                  modalidade.contains(_searchQuery.toLowerCase());
-            }).toList();
-          }
-
-          if (_filterCidade != 'Todas') {
-            academias = academias
-                .where((doc) => doc['cidade'] == _filterCidade)
-                .toList();
-          }
-
-          if (_filterModalidade != 'Todas') {
-            academias = academias
-                .where((doc) => doc['modalidade'] == _filterModalidade)
-                .toList();
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: academias.length,
-            itemBuilder: (context, index) {
-              final academia = academias[index];
-              final data = academia.data() as Map<String, dynamic>;
-              final nome = data['nome'] ?? 'Sem nome';
-              final cidade = data['cidade'] ?? 'Sem cidade';
-              final modalidade = data['modalidade'] ?? 'Sem modalidade';
-              final responsavelNome = data['responsavel'] ?? 'Sem responsável';
-              final responsavelId = data['responsavel_id'] as String?;
-              final status = data['status'] ?? 'ativa';
-              final turmasCount = data['turmas_count'] ?? 0;
-              final alunosCount = data['alunos_count'] ?? 0;
-              final turmasAtivasCount = data['turmas_ativas_count'] ?? 0;
-              final ultimaAtualizacao = data['ultima_atualizacao'] as Timestamp?;
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade900.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
                       Icons.business,
-                      size: 32,
-                      color: status == 'ativa' ? Colors.red : Colors.grey,
+                      size: 80,
+                      color: Colors.grey.shade300,
                     ),
-                  ),
-                  title: Text(
-                    nome,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: status == 'ativa' ? Colors.black : Colors.grey,
+                    const SizedBox(height: 16),
+                    Text(
+                      'Nenhuma academia cadastrada',
+                      style: TextStyle(
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 18),
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.location_on,
-                              size: 14, color: Colors.grey.shade600),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              '$cidade • $modalidade',
-                              style: TextStyle(color: Colors.grey.shade600),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Clique no botão + para adicionar',
+                      style: TextStyle(
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+                        color: Colors.grey.shade500,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.group,
-                              size: 14, color: Colors.grey.shade600),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$turmasCount turma${turmasCount != 1 ? 's' : ''}',
-                            style: TextStyle(color: Colors.grey.shade600),
-                          ),
-                          if (turmasAtivasCount > 0) ...[
-                            Container(
-                              margin: const EdgeInsets.only(left: 4),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.green.shade100,
-                                ),
-                              ),
-                              child: Text(
-                                '$turmasAtivasCount ativa${turmasAtivasCount != 1 ? 's' : ''}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green.shade800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.person,
-                              size: 14, color: Colors.grey.shade600),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$alunosCount aluno${alunosCount != 1 ? 's' : ''}',
-                            style: TextStyle(color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(width: 16),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: status == 'ativa'
-                                  ? Colors.green.shade50
-                                  : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: status == 'ativa'
-                                    ? Colors.green.shade100
-                                    : Colors.grey.shade300,
-                              ),
-                            ),
-                            child: Text(
-                              status.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: status == 'ativa'
-                                    ? Colors.green.shade800
-                                    : Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (responsavelNome.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          onTap: responsavelId != null ? () {
-                            // Navegar para detalhes do usuário responsável
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => UsuarioDetalheScreen(
-                                  userId: responsavelId,
-                                ),
-                              ),
-                            );
-                          } : null,
-                          child: Row(
-                            children: [
-                              Icon(Icons.person_outline,
-                                  size: 14,
-                                  color: responsavelId != null
-                                      ? Colors.blue.shade600
-                                      : Colors.grey.shade600),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Resp: $responsavelNome',
-                                style: TextStyle(
-                                  color: responsavelId != null
-                                      ? Colors.blue.shade600
-                                      : Colors.grey.shade600,
-                                  fontWeight: responsavelId != null
-                                      ? FontWeight.w500
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                              if (responsavelId != null) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.open_in_new,
-                                    size: 12,
-                                    color: Colors.blue.shade600),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (ultimaAtualizacao != null) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.update,
-                                size: 12, color: Colors.grey.shade500),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Atualizado: ${_formatarData(ultimaAtualizacao)}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) {
-                      if (value == 'editar') {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => EditarAcademiaScreen(
-                              academiaId: academia.id,
-                            ),
-                          ),
-                        );
-                      } else if (value == 'turmas') {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => GerenciarTurmasScreen(
-                              academiaId: academia.id,
-                              academiaNome: nome,
-                            ),
-                          ),
-                        );
-                      } else if (value == 'calcular') {
-                        _calcularContadoresAcademia(academia.id, nome);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'editar',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text('Editar Academia'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'turmas',
-                        child: Row(
-                          children: [
-                            Icon(Icons.group, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text('Gerenciar Turmas'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'calcular',
-                        child: Row(
-                          children: [
-                            Icon(Icons.calculate, color: Colors.orange),
-                            const SizedBox(width: 8),
-                            const Text('Recalcular Contadores'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => EditarAcademiaScreen(
-                          academiaId: academia.id,
-                        ),
-                      ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               );
-            },
-          );
-        },
+            }
+
+            var academias = snapshot.data!.docs;
+
+            if (_searchQuery.isNotEmpty) {
+              academias = academias.where((doc) {
+                final nome = doc['nome']?.toString().toLowerCase() ?? '';
+                final cidade = doc['cidade']?.toString().toLowerCase() ?? '';
+                final modalidade = doc['modalidade']?.toString().toLowerCase() ?? '';
+                return nome.contains(_searchQuery.toLowerCase()) ||
+                    cidade.contains(_searchQuery.toLowerCase()) ||
+                    modalidade.contains(_searchQuery.toLowerCase());
+              }).toList();
+            }
+
+            if (_filterCidade != 'Todas') {
+              academias = academias
+                  .where((doc) => doc['cidade'] == _filterCidade)
+                  .toList();
+            }
+
+            if (_filterModalidade != 'Todas') {
+              academias = academias
+                  .where((doc) => doc['modalidade'] == _filterModalidade)
+                  .toList();
+            }
+
+            return SingleChildScrollView(
+              padding: padding,
+              child: SizedBox(
+                width: double.infinity,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            int crossAxisCount = 1;
+                            if (isDesktop) {
+                              crossAxisCount = 3;
+                            } else if (isTablet) {
+                              crossAxisCount = 2;
+                            } else {
+                              crossAxisCount = 1;
+                            }
+
+                            final spacing = 12.0;
+                            final itemWidth = (constraints.maxWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount;
+
+                            return Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: spacing,
+                              runSpacing: spacing,
+                              children: academias.map((academia) {
+                                final data = academia.data() as Map<String, dynamic>;
+                                final nome = data['nome'] ?? 'Sem nome';
+                                final cidade = data['cidade'] ?? 'Sem cidade';
+                                final modalidade = data['modalidade'] ?? 'Sem modalidade';
+                                final responsavelNome = data['responsavel'] ?? 'Sem responsável';
+                                final responsavelId = data['responsavel_id'] as String?;
+                                final status = data['status'] ?? 'ativa';
+                                final turmasCount = data['turmas_count'] ?? 0;
+                                final alunosCount = data['alunos_count'] ?? 0;
+                                final turmasAtivasCount = data['turmas_ativas_count'] ?? 0;
+                                final ultimaAtualizacao = data['ultima_atualizacao'] as Timestamp?;
+
+                                return SizedBox(
+                                  width: itemWidth,
+                                  child: Card(
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => EditarAcademiaScreen(
+                                              academiaId: academia.id,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 50,
+                                                  height: 50,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red.shade900.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(10),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.business,
+                                                    size: 28,
+                                                    color: status == 'ativa' ? Colors.red : Colors.grey,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        nome,
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 16),
+                                                          color: status == 'ativa' ? Colors.black : Colors.grey,
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Row(
+                                                        children: [
+                                                          Icon(Icons.location_on,
+                                                              size: 14, color: Colors.grey.shade600),
+                                                          const SizedBox(width: 4),
+                                                          Expanded(
+                                                            child: Text(
+                                                              '$cidade • $modalidade',
+                                                              style: TextStyle(color: Colors.grey.shade600),
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuButton<String>(
+                                                  icon: const Icon(Icons.more_vert),
+                                                  onSelected: (value) {
+                                                    if (value == 'editar') {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (context) => EditarAcademiaScreen(
+                                                            academiaId: academia.id,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    } else if (value == 'turmas') {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (context) => GerenciarTurmasScreen(
+                                                            academiaId: academia.id,
+                                                            academiaNome: nome,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    } else if (value == 'calcular') {
+                                                      _calcularContadoresAcademia(academia.id, nome);
+                                                    }
+                                                  },
+                                                  itemBuilder: (context) => [
+                                                    const PopupMenuItem(
+                                                      value: 'editar',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.edit, color: Colors.blue),
+                                                          SizedBox(width: 8),
+                                                          Text('Editar Academia'),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const PopupMenuItem(
+                                                      value: 'turmas',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(Icons.group, color: Colors.green),
+                                                          SizedBox(width: 8),
+                                                          Text('Gerenciar Turmas'),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    PopupMenuItem(
+                                                      value: 'calcular',
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(Icons.calculate, color: Colors.orange),
+                                                          const SizedBox(width: 8),
+                                                          const Text('Recalcular Contadores'),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                _buildInfoChip(
+                                                  icon: Icons.group,
+                                                  label: '$turmasCount turma${turmasCount != 1 ? 's' : ''}',
+                                                  color: Colors.blue.shade700,
+                                                ),
+                                                if (turmasAtivasCount > 0)
+                                                  _buildInfoChip(
+                                                    icon: Icons.check_circle,
+                                                    label: '$turmasAtivasCount ativa${turmasAtivasCount != 1 ? 's' : ''}',
+                                                    color: Colors.green.shade700,
+                                                  ),
+                                                _buildInfoChip(
+                                                  icon: Icons.person,
+                                                  label: '$alunosCount aluno${alunosCount != 1 ? 's' : ''}',
+                                                  color: Colors.red.shade700,
+                                                ),
+                                                _buildStatusChip(status),
+                                              ],
+                                            ),
+                                            if (responsavelNome.isNotEmpty) ...[
+                                              const SizedBox(height: 8),
+                                              GestureDetector(
+                                                onTap: responsavelId != null ? () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) => UsuarioDetalheScreen(
+                                                        userId: responsavelId,
+                                                      ),
+                                                    ),
+                                                  );
+                                                } : null,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.person_outline,
+                                                        size: 14,
+                                                        color: responsavelId != null
+                                                            ? Colors.blue.shade600
+                                                            : Colors.grey.shade600),
+                                                    const SizedBox(width: 4),
+                                                    Expanded(
+                                                      child: Text(
+                                                        'Resp: $responsavelNome',
+                                                        style: TextStyle(
+                                                          color: responsavelId != null
+                                                              ? Colors.blue.shade600
+                                                              : Colors.grey.shade600,
+                                                          fontWeight: responsavelId != null
+                                                              ? FontWeight.w500
+                                                              : FontWeight.normal,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                    if (responsavelId != null) ...[
+                                                      const SizedBox(width: 4),
+                                                      Icon(Icons.open_in_new,
+                                                          size: 12,
+                                                          color: Colors.blue.shade600),
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                            if (ultimaAtualizacao != null) ...[
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.update,
+                                                      size: 12, color: Colors.grey.shade500),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Atualizado: ${_formatarData(ultimaAtualizacao)}',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.grey.shade500,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const EditarAcademiaScreen(),
+              ),
+            );
+          },
+          backgroundColor: Colors.red.shade900,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const EditarAcademiaScreen(),
+    );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
-          );
-        },
-        backgroundColor: Colors.red.shade900,
-        child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String status) {
+    final isActive = status == 'ativa';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isActive ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActive ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isActive ? Icons.check_circle : Icons.block,
+            size: 12,
+            color: isActive ? Colors.green.shade800 : Colors.grey.shade600,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            status.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: isActive ? Colors.green.shade800 : Colors.grey.shade600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -750,7 +813,6 @@ class _GerenciarAcademiasScreenState
     }
   }
 
-  // Função para calcular contadores de uma academia específica
   Future<void> _calcularContadoresAcademia(String academiaId, String academiaNome) async {
     showDialog(
       context: context,
@@ -759,8 +821,8 @@ class _GerenciarAcademiasScreenState
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade900),
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
             ),
             const SizedBox(height: 16),
             Text('Calculando $academiaNome...'),
@@ -772,7 +834,6 @@ class _GerenciarAcademiasScreenState
     try {
       final academiaRef = _firestore.collection('academias').doc(academiaId);
 
-      // Buscar turmas da academia
       final turmasSnapshot = await _firestore
           .collection('turmas')
           .where('academia_id', isEqualTo: academiaId)
@@ -781,12 +842,10 @@ class _GerenciarAcademiasScreenState
       int totalAlunosAcademia = 0;
       int totalTurmasAtivas = 0;
 
-      // Para cada turma da academia
       for (var turmaDoc in turmasSnapshot.docs) {
         final turmaId = turmaDoc.id;
         final turmaRef = turmaDoc.reference;
 
-        // Buscar alunos ativos da turma
         final alunosAtivosSnapshot = await _firestore
             .collection('alunos')
             .where('turma_id', isEqualTo: turmaId)
@@ -795,7 +854,6 @@ class _GerenciarAcademiasScreenState
 
         final alunosAtivosCount = alunosAtivosSnapshot.docs.length;
 
-        // Buscar alunos inativos da turma
         final alunosInativosSnapshot = await _firestore
             .collection('alunos')
             .where('turma_id', isEqualTo: turmaId)
@@ -807,13 +865,11 @@ class _GerenciarAcademiasScreenState
 
         totalAlunosAcademia += alunosAtivosCount;
 
-        // Verificar se turma está ativa
         final statusTurma = turmaDoc['status'] as String?;
         if (statusTurma == 'ATIVA') {
           totalTurmasAtivas++;
         }
 
-        // Atualizar contadores da turma
         await turmaRef.update({
           'alunos_ativos': alunosAtivosCount,
           'alunos_inativos': alunosInativosCount,
@@ -823,7 +879,6 @@ class _GerenciarAcademiasScreenState
         });
       }
 
-      // Atualizar contadores da academia
       await academiaRef.update({
         'turmas_count': turmasSnapshot.docs.length,
         'turmas_ativas_count': totalTurmasAtivas,
@@ -832,12 +887,10 @@ class _GerenciarAcademiasScreenState
         'atualizado_em': FieldValue.serverTimestamp(),
       });
 
-      // Fechar modal
       if (context.mounted) {
         Navigator.pop(context);
       }
 
-      // Mostrar mensagem de sucesso
       if (context.mounted) {
         showDialog(
           context: context,
@@ -865,7 +918,6 @@ class _GerenciarAcademiasScreenState
         );
       }
 
-      // Atualizar a tela
       setState(() {});
     } catch (e) {
       if (context.mounted) {
