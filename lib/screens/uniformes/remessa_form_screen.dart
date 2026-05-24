@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/services/remessa_service.dart';
+import 'package:uai_capoeira/services/fornecedor_service.dart';
 
 class RemessaFormScreen extends StatefulWidget {
   final String? remessaId;
@@ -15,6 +16,7 @@ class RemessaFormScreen extends StatefulWidget {
 class _RemessaFormScreenState extends State<RemessaFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final RemessaService _remessaService = RemessaService();
+  final FornecedorService _fornecedorService = FornecedorService();
 
   final _nomeController = TextEditingController();
   final _observacoesController = TextEditingController();
@@ -22,8 +24,11 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
   DateTime? _dataPrevista;
   String _status = 'pendente';
   List<String> _pedidosSelecionados = [];
-  List<Map<String, dynamic>> _itensEstoque = [];
   bool _isLoading = false;
+
+  String? _fornecedorId;
+  String? _fornecedorNome;
+  Map<String, dynamic>? _fornecedorDetalhes;
 
   @override
   void initState() {
@@ -39,7 +44,21 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         _dataPrevista = (widget.remessaData!['data_prevista'] as Timestamp).toDate();
       }
       _pedidosSelecionados = List<String>.from(widget.remessaData!['pedidos_ids'] ?? []);
-      _itensEstoque = List<Map<String, dynamic>>.from(widget.remessaData!['itens_estoque'] ?? []);
+      _fornecedorId = widget.remessaData!['fornecedor_id'];
+      if (_fornecedorId != null) {
+        _carregarFornecedor(_fornecedorId!);
+      }
+    }
+  }
+
+  Future<void> _carregarFornecedor(String fornecedorId) async {
+    final doc = await _fornecedorService.getFornecedor(fornecedorId);
+    if (doc.exists) {
+      final data = doc.data() as Map<String, dynamic>;
+      setState(() {
+        _fornecedorDetalhes = data;
+        _fornecedorNome = data['nome'] ?? 'Fornecedor sem nome';
+      });
     }
   }
 
@@ -61,7 +80,7 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         'status': _status,
         'observacoes': _observacoesController.text.trim(),
         'pedidos_ids': _pedidosSelecionados,
-        'itens_estoque': _itensEstoque,
+        'fornecedor_id': _fornecedorId,
       };
 
       if (widget.remessaId == null) {
@@ -124,21 +143,26 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
     }
   }
 
-  Future<void> _adicionarItemEstoque() async {
-    final item = await showDialog<Map<String, dynamic>>(
+  // 🔧 CORREÇÃO: showDialog agora usa Map<String, String>
+  Future<void> _selecionarFornecedor() async {
+    final result = await showDialog<Map<String, String>>(
       context: context,
-      builder: (_) => const _ItemEstoqueDialog(),
+      builder: (_) => _SelecionarFornecedorDialog(),
     );
-    if (item != null) {
+    if (result != null) {
       setState(() {
-        _itensEstoque.add(item);
+        _fornecedorId = result['id'];
+        _fornecedorNome = result['nome'];
+        _fornecedorDetalhes = null;
       });
     }
   }
 
-  void _removerItemEstoque(int index) {
+  void _removerFornecedor() {
     setState(() {
-      _itensEstoque.removeAt(index);
+      _fornecedorId = null;
+      _fornecedorNome = null;
+      _fornecedorDetalhes = null;
     });
   }
 
@@ -191,6 +215,51 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            // FORNECEDOR
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Fornecedor', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextButton.icon(
+                          onPressed: _selecionarFornecedor,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: Text(_fornecedorId == null ? 'Selecionar' : 'Trocar'),
+                        ),
+                      ],
+                    ),
+                    if (_fornecedorNome != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.business, size: 16, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(_fornecedorNome!, style: const TextStyle(fontWeight: FontWeight.w500))),
+                          IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.red, size: 18),
+                            onPressed: _removerFornecedor,
+                          ),
+                        ],
+                      ),
+                      if (_fornecedorDetalhes != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Contato: ${_fornecedorDetalhes!['contato'] ?? 'N/I'} • ${_fornecedorDetalhes!['telefone'] ?? ''}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ] else
+                      const Text('Nenhum fornecedor selecionado', style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
@@ -246,35 +315,6 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
                   );
                 },
               )),
-            ],
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Itens para estoque',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                TextButton.icon(
-                  onPressed: _adicionarItemEstoque,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Adicionar'),
-                ),
-              ],
-            ),
-            if (_itensEstoque.isNotEmpty) ...[
-              const Divider(),
-              ..._itensEstoque.asMap().entries.map((entry) {
-                final index = entry.key;
-                final item = entry.value;
-                return ListTile(
-                  dense: true,
-                  title: Text('${item['nome']} (${item['tamanho'] ?? 'Único'})'),
-                  subtitle: Text('Qtd: ${item['quantidade']} - R\$ ${item['preco_venda']}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.remove_circle, color: Colors.red),
-                    onPressed: () => _removerItemEstoque(index),
-                  ),
-                );
-              }),
             ],
           ],
         ),
@@ -387,92 +427,76 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
   }
 }
 
-// ─── Diálogo para novo item de estoque ─────────────────────────
-class _ItemEstoqueDialog extends StatefulWidget {
-  const _ItemEstoqueDialog();
-
+// 🔧 Diálogo de seleção de fornecedor – retorna Map<String, String>
+class _SelecionarFornecedorDialog extends StatefulWidget {
   @override
-  State<_ItemEstoqueDialog> createState() => _ItemEstoqueDialogState();
+  State<_SelecionarFornecedorDialog> createState() => _SelecionarFornecedorDialogState();
 }
 
-class _ItemEstoqueDialogState extends State<_ItemEstoqueDialog> {
-  final _form = GlobalKey<FormState>();
-  final _nomeCtrl = TextEditingController();
-  final _tamanhoCtrl = TextEditingController(text: 'Único');
-  final _qtdCtrl = TextEditingController(text: '1');
-  final _precoCtrl = TextEditingController();
-  final _corCtrl = TextEditingController();
+class _SelecionarFornecedorDialogState extends State<_SelecionarFornecedorDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  String _search = '';
 
   @override
   void dispose() {
-    _nomeCtrl.dispose();
-    _tamanhoCtrl.dispose();
-    _qtdCtrl.dispose();
-    _precoCtrl.dispose();
-    _corCtrl.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Novo item para estoque'),
-      content: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nomeCtrl,
-                decoration: const InputDecoration(labelText: 'Nome *'),
-                validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+    return Dialog(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Pesquisar fornecedor...',
+                prefixIcon: Icon(Icons.search),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _tamanhoCtrl,
-                decoration: const InputDecoration(labelText: 'Tamanho'),
+              onChanged: (v) => setState(() => _search = v.toLowerCase()),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('fornecedores')
+                    .where('status', isEqualTo: 'ativo')
+                    .orderBy('nome')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  var docs = snapshot.data!.docs;
+                  if (_search.isNotEmpty) {
+                    docs = docs.where((d) {
+                      final nome = (d.data() as Map<String, dynamic>)['nome'] ?? '';
+                      return nome.toLowerCase().contains(_search);
+                    }).toList();
+                  }
+                  if (docs.isEmpty) return const Center(child: Text('Nenhum fornecedor encontrado'));
+                  return ListView.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final data = docs[i].data() as Map<String, dynamic>;
+                      return ListTile(
+                        leading: const Icon(Icons.business),
+                        title: Text(data['nome'] ?? ''),
+                        subtitle: Text(data['contato'] ?? ''),
+                        onTap: () => Navigator.pop(context, <String, String>{
+                          'id': docs[i].id,
+                          'nome': (data['nome'] ?? '').toString(),
+                        }),
+                      );
+                    },
+                  );
+                },
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _qtdCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Quantidade *'),
-                validator: (v) => v!.isEmpty || int.tryParse(v) == null ? 'Número inválido' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _precoCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Preço venda (R\$)'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _corCtrl,
-                decoration: const InputDecoration(labelText: 'Cor (opcional)'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () {
-            if (_form.currentState!.validate()) {
-              final item = <String, dynamic>{
-                'nome': _nomeCtrl.text.trim(),
-                'tamanho': _tamanhoCtrl.text.trim(),
-                'quantidade': int.tryParse(_qtdCtrl.text) ?? 1,
-                'preco_venda': double.tryParse(_precoCtrl.text.replaceAll(',', '.')) ?? 0,
-                'cor': _corCtrl.text.trim(),
-              };
-              Navigator.pop(context, item);
-            }
-          },
-          child: const Text('Adicionar'),
-        ),
-      ],
     );
   }
 }

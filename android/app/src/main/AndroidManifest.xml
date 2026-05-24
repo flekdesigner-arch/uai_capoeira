@@ -38,7 +38,18 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        tools:replace="android:allowBackup,android:fullBackupContent">
+
+        <!--
+          IMPORTANTE:
+          allowBackup=false impede o Android/Google de restaurar dados antigos do app
+          depois de desinstalar/reinstalar. Isso ajuda no bug onde só funciona
+          depois de limpar dados manualmente nas informações do app.
+        -->
 
         <!-- ============================================= -->
         <!-- 🔥 PROVIDER PARA INSTALAÇÃO DE APK -->

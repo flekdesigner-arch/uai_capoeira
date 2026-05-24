@@ -324,6 +324,15 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       'cor': Colors.orange.shade900,
     },
 
+    {
+      'titulo': 'Avaliar aluno',
+      'descricao': 'Permite avaliar comportamento, disciplina e evolução dos alunos',
+      'chave': 'pode_avaliar_aluno',
+      'icone': Icons.star_rate_rounded,
+      'categoria': 'AVALIAÇÕES',
+      'cor': Colors.deepPurple.shade900,
+    },
+
     // ===== AÇÕES - USUÁRIOS =====
     {
       'titulo': 'Gerenciar usuários',
@@ -523,10 +532,11 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       'AÇÕES - ALUNOS',
       'AÇÕES - CHAMADA',
       'AÇÕES - RELATÓRIOS',
+      'AVALIAÇÕES',
       'AÇÕES - USUÁRIOS',
       'EVENTOS',
       'VISIBILIDADE',
-      'UNIFORMES',  // 🆕 NOVA CATEGORIA
+      'UNIFORMES',
     ];
 
     return showDialog(

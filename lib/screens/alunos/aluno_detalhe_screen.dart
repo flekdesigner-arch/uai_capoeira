@@ -771,6 +771,279 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     }
   }
 
+
+  String _iniciaisAreaAluno(String nomeCompleto) {
+    const ignorar = {'DE', 'DA', 'DO', 'DAS', 'DOS', 'E'};
+
+    final partes = nomeCompleto
+        .trim()
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.trim().isNotEmpty && !ignorar.contains(p.trim()))
+        .toList();
+
+    if (partes.isEmpty) return '';
+
+    return partes
+        .map((p) => p.characters.first)
+        .join()
+        .replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
+  }
+
+  String _formatarDataNascimentoAreaAluno(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    } else if (value is String) {
+      final raw = value.trim();
+
+      if (RegExp(r'^\d{2}/\d{2}/\d{4}$').hasMatch(raw)) {
+        return raw;
+      }
+
+      date = DateTime.tryParse(raw);
+    }
+
+    if (date == null) return '';
+
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
+  String _ultimosQuatroDigitos(String? value) {
+    final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+
+    if (digits.length <= 4) return digits;
+
+    return digits.substring(digits.length - 4);
+  }
+
+  Future<Map<String, dynamic>> _configAreaAlunoAtual() async {
+    try {
+      final doc = await _firestore
+          .collection('configuracoes_site')
+          .doc('area_aluno')
+          .get(const GetOptions(source: Source.server));
+
+      return doc.data() ?? {};
+    } catch (_) {
+      try {
+        final doc = await _firestore
+            .collection('configuracoes_site')
+            .doc('area_aluno')
+            .get(const GetOptions(source: Source.cache));
+
+        return doc.data() ?? {};
+      } catch (_) {
+        return {};
+      }
+    }
+  }
+
+  bool _areaAlunoVisivel(Map<String, dynamic> config) {
+    final value = config['visivel_site'];
+    return value == true;
+  }
+
+  Future<void> _enviarAcessoAreaAlunoWhatsApp({
+    required String nomeAluno,
+    required String contatoAluno,
+    required String? contatoResponsavel,
+    required String nomeResponsavel,
+  }) async {
+    try {
+      final config = await _configAreaAlunoAtual();
+
+      if (!_areaAlunoVisivel(config)) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('A Área do Aluno não está ativa no site.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final alunoDoc = await _firestore.collection('alunos').doc(widget.alunoId).get();
+
+      if (!alunoDoc.exists) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aluno não encontrado.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final alunoData = alunoDoc.data() ?? {};
+      final nome = alunoData['nome']?.toString() ?? nomeAluno;
+      final dataNascimento = _formatarDataNascimentoAreaAluno(alunoData['data_nascimento']);
+      final iniciais = _iniciaisAreaAluno(nome);
+      final exigeTelefone = config['exigir_telefone_confirmacao'] != false;
+
+      final contatoAlunoAtual = alunoData['contato_aluno']?.toString() ?? contatoAluno;
+      final contatoResponsavelAtual = alunoData['contato_responsavel']?.toString() ?? contatoResponsavel;
+
+      final telefoneBase = _temContatoValido(contatoAlunoAtual)
+          ? contatoAlunoAtual
+          : (contatoResponsavelAtual ?? '');
+      final telefoneFinal = _ultimosQuatroDigitos(telefoneBase);
+
+      if (dataNascimento.isEmpty || iniciais.isEmpty || (exigeTelefone && telefoneFinal.length != 4)) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dados insuficientes para montar o acesso da Área do Aluno.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final linhas = <String>[
+        '🥋 *ÁREA DO ALUNO - UAI CAPOEIRA* 🥋',
+        '',
+        'Olá! Seguem as instruções para acessar a Área do Aluno de *$nome*.',
+        '',
+        '🌐 Acesse o site:',
+        'http://uaicapoeira.com.br',
+        '',
+        'No site, toque em *Área do Aluno* e preencha:',
+        '',
+        '📅 *Data de nascimento:* $dataNascimento',
+        '🔤 *Iniciais do nome:* $iniciais',
+      ];
+
+      if (exigeTelefone) {
+        linhas.add('📱 *Últimos 4 dígitos do telefone:* $telefoneFinal');
+      }
+
+      linhas.addAll([
+        '',
+        '✅ Depois de entrar, o aluno poderá consultar dados, turma, frequência, eventos e certificados.',
+        '',
+        '⚠️ Não compartilhe esses dados com outras pessoas.',
+      ]);
+
+      final mensagem = linhas.join('\n');
+
+      final destinos = <Map<String, String>>[];
+
+      if (_temContatoValido(contatoAlunoAtual)) {
+        destinos.add({
+          'label': 'Aluno',
+          'numero': contatoAlunoAtual,
+        });
+      }
+
+      if (_temContatoValido(contatoResponsavelAtual) &&
+          _limparNumeroContato(contatoResponsavelAtual) != _limparNumeroContato(contatoAlunoAtual)) {
+        destinos.add({
+          'label': nomeResponsavel.trim().isNotEmpty ? nomeResponsavel : 'Responsável',
+          'numero': contatoResponsavelAtual!,
+        });
+      }
+
+      if (destinos.isEmpty) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nenhum WhatsApp válido cadastrado para o aluno ou responsável.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: Row(
+              children: [
+                Icon(Icons.school_rounded, color: Colors.indigo.shade700),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Enviar acesso da Área do Aluno')),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Escolha para quem enviar as instruções de acesso:',
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.indigo.shade100),
+                  ),
+                  child: Text(
+                    'Iniciais: $iniciais\nData: $dataNascimento${exigeTelefone ? '\nFinal do telefone: $telefoneFinal' : ''}',
+                    style: TextStyle(
+                      color: Colors.indigo.shade900,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCELAR'),
+              ),
+              ...destinos.map((destino) {
+                return ElevatedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _abrirWhatsApp(destino['numero']!, mensagem: mensagem);
+                  },
+                  icon: const Icon(Icons.send_rounded, size: 18),
+                  label: Text(destino['label']!),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: destino['label'] == 'Aluno'
+                        ? Colors.green.shade700
+                        : Colors.blue.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                );
+              }),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao enviar acesso da Área do Aluno: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // 🔐 FUNÇÕES DE GERENCIAMENTO COM VALIDAÇÃO DE PERMISSÃO E INTERNET
   Future<void> _editarAluno(BuildContext context) async {
     final temPermissao = await _verificarPermissaoEOnline(
@@ -1722,6 +1995,738 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     );
   }
 
+
+
+  // ============================================
+  // 🚨 CONTATOS DE EMERGÊNCIA - UI PREMIUM
+  // ============================================
+  String _limparNumeroContato(String? numero) {
+    if (numero == null) return '';
+    return numero.replaceAll(RegExp(r'[^0-9+]'), '').trim();
+  }
+
+  bool _temContatoValido(String? numero) {
+    final limpo = _limparNumeroContato(numero);
+    return limpo.length >= 8;
+  }
+
+  String _formatarTelefoneVisual(String? numero) {
+    final limpo = _limparNumeroContato(numero).replaceAll('+55', '').replaceAll('+', '');
+
+    if (limpo.length == 11) {
+      return '(${limpo.substring(0, 2)}) ${limpo.substring(2, 7)}-${limpo.substring(7)}';
+    }
+
+    if (limpo.length == 10) {
+      return '(${limpo.substring(0, 2)}) ${limpo.substring(2, 6)}-${limpo.substring(6)}';
+    }
+
+    return numero?.trim().isNotEmpty == true ? numero!.trim() : 'Não cadastrado';
+  }
+
+  Future<void> _mostrarOpcoesContatoEmergencia({
+    required String nomeAluno,
+    required String contatoAluno,
+    required String nomeResponsavel,
+    required String? contatoResponsavel,
+    required String nomeContatoEmergencia,
+    required String contatoEmergencia,
+  }) async {
+    final contatos = <Map<String, dynamic>>[];
+
+    if (_temContatoValido(contatoResponsavel)) {
+      contatos.add({
+        'titulo': nomeResponsavel,
+        'subtitulo': 'Responsável principal',
+        'numero': contatoResponsavel!,
+        'cor': Colors.red.shade800,
+        'icone': Icons.family_restroom_rounded,
+        'prioridade': 'PRIORIDADE 1',
+      });
+    }
+
+    if (_temContatoValido(contatoEmergencia) &&
+        _limparNumeroContato(contatoEmergencia) != _limparNumeroContato(contatoResponsavel)) {
+      contatos.add({
+        'titulo': nomeContatoEmergencia,
+        'subtitulo': 'Contato de emergência',
+        'numero': contatoEmergencia,
+        'cor': Colors.orange.shade800,
+        'icone': Icons.emergency_share_rounded,
+        'prioridade': 'EMERGÊNCIA',
+      });
+    }
+
+    if (_temContatoValido(contatoAluno) &&
+        _limparNumeroContato(contatoAluno) != _limparNumeroContato(contatoResponsavel) &&
+        _limparNumeroContato(contatoAluno) != _limparNumeroContato(contatoEmergencia)) {
+      contatos.add({
+        'titulo': nomeAluno,
+        'subtitulo': 'Contato do aluno',
+        'numero': contatoAluno,
+        'cor': Colors.blue.shade700,
+        'icone': Icons.person_rounded,
+        'prioridade': 'ALUNO',
+      });
+    }
+
+    if (contatos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhum contato válido cadastrado para emergência.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(Icons.sos_rounded, color: Colors.red.shade900, size: 30),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Contatos de emergência',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade900,
+                            ),
+                          ),
+                          Text(
+                            nomeAluno,
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ...contatos.map((contato) {
+                  final color = contato['cor'] as Color;
+                  final numero = contato['numero'] as String;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: color.withOpacity(0.18)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                              child: Icon(contato['icone'] as IconData, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          contato['titulo'] as String,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.grey.shade900,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: color.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(99),
+                                        ),
+                                        child: Text(
+                                          contato['prioridade'] as String,
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            color: color,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${contato['subtitulo']} • ${_formatarTelefoneVisual(numero)}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _launchPhone(numero);
+                                },
+                                icon: const Icon(Icons.call_rounded, size: 20),
+                                label: const Text('LIGAR AGORA'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: color,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 13),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 54,
+                              height: 48,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _abrirWhatsApp(numero, mensagem: 'Olá, preciso falar sobre $nomeAluno.');
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green.shade600,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                                child: _buildWhatsAppIcon(enabled: true, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmergencyContactsSection({
+    required String nomeAluno,
+    required String contatoAluno,
+    required String nomeResponsavel,
+    required String? contatoResponsavel,
+    required String nomeContatoEmergencia,
+    required String contatoEmergencia,
+    required String? turmaId,
+  }) {
+    final contatoPrincipal = _temContatoValido(contatoResponsavel)
+        ? contatoResponsavel!
+        : _temContatoValido(contatoEmergencia)
+        ? contatoEmergencia
+        : contatoAluno;
+
+    final nomePrincipal = _temContatoValido(contatoResponsavel)
+        ? nomeResponsavel
+        : _temContatoValido(contatoEmergencia)
+        ? nomeContatoEmergencia
+        : nomeAluno;
+
+    final tipoPrincipal = _temContatoValido(contatoResponsavel)
+        ? 'Responsável principal'
+        : _temContatoValido(contatoEmergencia)
+        ? 'Contato de emergência'
+        : 'Aluno';
+
+    final temPrincipal = _temContatoValido(contatoPrincipal);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.13),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: Colors.red.shade100),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade900, Colors.red.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.health_and_safety_rounded, color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Emergência e contatos',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Acesso rápido para ligar ou chamar no WhatsApp',
+                            style: TextStyle(fontSize: 12, color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: temPrincipal ? () => _launchPhone(contatoPrincipal) : null,
+                        icon: Icon(temPrincipal ? Icons.sos_rounded : Icons.phone_disabled_rounded, size: 26),
+                        label: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              temPrincipal ? 'LIGAR EMERGÊNCIA AGORA' : 'SEM CONTATO DE EMERGÊNCIA',
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                            if (temPrincipal)
+                              Text(
+                                '$nomePrincipal • $tipoPrincipal',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade800,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          foregroundColor: Colors.white,
+                          disabledForegroundColor: Colors.grey.shade600,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: temPrincipal ? 3 : 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (temPrincipal)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.red.shade100),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.priority_high_rounded, color: Colors.red.shade800, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Contato principal: $nomePrincipal • ${_formatarTelefoneVisual(contatoPrincipal)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red.shade900,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildContactPersonCard(
+                            titulo: 'Responsável',
+                            nome: nomeResponsavel,
+                            numero: contatoResponsavel,
+                            color: Colors.red.shade700,
+                            icon: Icons.family_restroom_rounded,
+                            mensagemWhatsApp: 'Olá, preciso falar sobre $nomeAluno.',
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildContactPersonCard(
+                            titulo: 'Aluno',
+                            nome: nomeAluno,
+                            numero: contatoAluno,
+                            color: Colors.blue.shade700,
+                            icon: Icons.person_rounded,
+                            mensagemWhatsApp: 'Olá, $nomeAluno. Tudo bem?',
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_temContatoValido(contatoEmergencia)) ...[
+                      const SizedBox(height: 10),
+                      _buildContactPersonCard(
+                        titulo: 'Contato extra de emergência',
+                        nome: nomeContatoEmergencia,
+                        numero: contatoEmergencia,
+                        color: Colors.orange.shade800,
+                        icon: Icons.emergency_share_rounded,
+                        fullWidth: true,
+                        mensagemWhatsApp: 'Olá, preciso falar sobre $nomeAluno.',
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: temPrincipal
+                                ? () => _mostrarOpcoesContatoEmergencia(
+                              nomeAluno: nomeAluno,
+                              contatoAluno: contatoAluno,
+                              nomeResponsavel: nomeResponsavel,
+                              contatoResponsavel: contatoResponsavel,
+                              nomeContatoEmergencia: nomeContatoEmergencia,
+                              contatoEmergencia: contatoEmergencia,
+                            )
+                                : null,
+                            icon: const Icon(Icons.contact_phone_rounded, size: 18),
+                            label: const Text('Ver opções'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red.shade900,
+                              side: BorderSide(color: Colors.red.shade200),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FutureBuilder<DocumentSnapshot>(
+                            future: turmaId != null && turmaId.isNotEmpty
+                                ? _firestore.collection('turmas').doc(turmaId).get()
+                                : null,
+                            builder: (context, snapshot) {
+                              String? whatsappUrl;
+                              if (snapshot.hasData && snapshot.data!.exists) {
+                                final turmaData = snapshot.data!.data() as Map<String, dynamic>?;
+                                whatsappUrl = turmaData?['whatsapp_url'] as String?;
+                              }
+
+                              return OutlinedButton.icon(
+                                onPressed: whatsappUrl != null && whatsappUrl.isNotEmpty
+                                    ? () => _convidarParaGrupo(
+                                  context,
+                                  whatsappUrl,
+                                  contatoAluno,
+                                  contatoResponsavel,
+                                )
+                                    : null,
+                                icon: const Icon(Icons.group_add_rounded, size: 18),
+                                label: const Text('Grupo'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade800,
+                                  side: BorderSide(color: Colors.orange.shade200),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildAreaAlunoAcessoButton(
+                      nomeAluno: nomeAluno,
+                      contatoAluno: contatoAluno,
+                      contatoResponsavel: contatoResponsavel,
+                      nomeResponsavel: nomeResponsavel,
+                    ),
+                    if (!temPrincipal) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 20),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Cadastre pelo menos um telefone para emergências.',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildAreaAlunoAcessoButton({
+    required String nomeAluno,
+    required String contatoAluno,
+    required String? contatoResponsavel,
+    required String nomeResponsavel,
+  }) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _firestore
+          .collection('configuracoes_site')
+          .doc('area_aluno')
+          .get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? {};
+        final visivel = data['visivel_site'] == true;
+
+        if (!visivel) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _enviarAcessoAreaAlunoWhatsApp(
+                nomeAluno: nomeAluno,
+                contatoAluno: contatoAluno,
+                contatoResponsavel: contatoResponsavel,
+                nomeResponsavel: nomeResponsavel,
+              ),
+              icon: const Icon(Icons.school_rounded, size: 18),
+              label: const Text('Enviar acesso da Área do Aluno'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.indigo.shade700,
+                side: BorderSide(color: Colors.indigo.shade200),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildContactPersonCard({
+    required String titulo,
+    required String nome,
+    required String? numero,
+    required Color color,
+    required IconData icon,
+    required String mensagemWhatsApp,
+    bool fullWidth = false,
+  }) {
+    final temNumero = _temContatoValido(numero);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: temNumero ? color.withOpacity(0.07) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: temNumero ? color.withOpacity(0.18) : Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: temNumero ? color : Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titulo,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: temNumero ? color : Colors.grey.shade600,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      nome.trim().isNotEmpty ? nome : titulo,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade900,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatarTelefoneVisual(numero),
+            style: TextStyle(
+              fontSize: 12,
+              color: temNumero ? Colors.grey.shade800 : Colors.grey.shade500,
+              fontWeight: temNumero ? FontWeight.w600 : FontWeight.normal,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: temNumero ? () => _launchPhone(numero!) : null,
+                  icon: const Icon(Icons.call_rounded, size: 16),
+                  label: Text(fullWidth ? 'Ligar' : 'Ligar', style: const TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.grey.shade600,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 44,
+                height: 40,
+                child: ElevatedButton(
+                  onPressed: temNumero
+                      ? () => _abrirWhatsApp(numero!, mensagem: mensagemWhatsApp)
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _buildWhatsAppIcon(enabled: temNumero, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _getMonitorColor(String monitor) {
     final lowerMonitor = monitor.toLowerCase();
     if (lowerMonitor.contains('azul')) return Colors.blue;
@@ -1788,6 +2793,17 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final fotoUrl = data['foto_perfil_aluno'] as String?;
     final contatoAluno = data['contato_aluno'] as String? ?? '';
     final contatoResponsavel = data['contato_responsavel'] as String?;
+    final nomeResponsavel = data['nome_responsavel']?.toString() ??
+        data['responsavel']?.toString() ??
+        data['responsavel_nome']?.toString() ??
+        'Responsável';
+    final contatoEmergencia = data['contato_emergencia']?.toString() ??
+        data['telefone_emergencia']?.toString() ??
+        data['emergencia_contato']?.toString() ??
+        '';
+    final nomeContatoEmergencia = data['nome_contato_emergencia']?.toString() ??
+        data['responsavel_emergencia']?.toString() ??
+        'Contato de emergência';
     final monitor = data['monitor'] as String?;
     final idade = data['idade'] as String?;
     final nome = data['nome'] as String? ?? 'N/A';
@@ -2118,112 +3134,15 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ),
             ),
 
-            // Seção de Ações Rápidas
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: Colors.red.shade100,
-                  width: 1.5,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'Contatos Rápidos',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[900],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Linha 1 - Contato Aluno
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildQuickActionButton(
-                          icon: Icons.phone,
-                          label: 'Ligar para Aluno',
-                          onPressed: contatoAluno.isNotEmpty
-                              ? () => _launchPhone(contatoAluno)
-                              : null,
-                          color: Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildQuickActionButton(
-                          icon: Icons.chat,
-                          label: 'WhatsApp Aluno',
-                          onPressed: contatoAluno.isNotEmpty
-                              ? () => _abrirWhatsApp(contatoAluno)
-                              : null,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Linha 2 - Contato Responsável
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildQuickActionButton(
-                          icon: Icons.phone,
-                          label: 'Ligar para Responsável',
-                          onPressed: contatoResponsavel != null &&
-                              contatoResponsavel.isNotEmpty
-                              ? () => _launchPhone(contatoResponsavel!)
-                              : null,
-                          color: Colors.purple,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildQuickActionButton(
-                          icon: Icons.chat,
-                          label: 'WhatsApp Responsável',
-                          onPressed: contatoResponsavel != null &&
-                              contatoResponsavel.isNotEmpty
-                              ? () => _abrirWhatsApp(contatoResponsavel!)
-                              : null,
-                          color: Colors.teal,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Botão de convidar para grupo
-                  FutureBuilder<DocumentSnapshot>(
-                    future: _firestore.collection('turmas').doc(turmaId).get(),
-                    builder: (context, snapshot) {
-                      String? whatsappUrl;
-                      if (snapshot.hasData && snapshot.data!.exists) {
-                        final turmaData = snapshot.data!.data() as Map<String, dynamic>?;
-                        whatsappUrl = turmaData?['whatsapp_url'] as String?;
-                      }
-
-                      return _buildQuickActionButton(
-                        icon: Icons.group_add,
-                        label: 'Convidar para Grupo',
-                        onPressed: whatsappUrl != null && whatsappUrl.isNotEmpty
-                            ? () => _convidarParaGrupo(context, whatsappUrl, contatoAluno, contatoResponsavel)
-                            : null,
-                        color: Colors.orange,
-                      );
-                    },
-                  ),
-                ],
-              ),
+            // 🚨 SEÇÃO DE EMERGÊNCIA E CONTATOS RÁPIDOS
+            _buildEmergencyContactsSection(
+              nomeAluno: nome,
+              contatoAluno: contatoAluno,
+              nomeResponsavel: nomeResponsavel,
+              contatoResponsavel: contatoResponsavel,
+              nomeContatoEmergencia: nomeContatoEmergencia,
+              contatoEmergencia: contatoEmergencia,
+              turmaId: turmaId,
             ),
 
             // 🔥 CARD DE FREQUÊNCIA COM CACHE INTELIGENTE

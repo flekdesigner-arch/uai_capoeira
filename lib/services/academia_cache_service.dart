@@ -17,16 +17,21 @@ class AcademiaCacheService {
 
   final Connectivity _connectivity = Connectivity();
 
-  // ========== INICIALIZAR HIVE ==========
+  // ═══════════════════════════════════════════════════════════
+  // INICIALIZAR HIVE
+  // ═══════════════════════════════════════════════════════════
   Future<void> _initHive() async {
     if (_boxAberto) return;
 
     try {
-      // Diretório para armazenar os dados
-      final appDocumentDir = await path_provider.getApplicationDocumentsDirectory();
-      Hive.init(appDocumentDir.path);
+      final appDocumentDir =
+      await path_provider.getApplicationDocumentsDirectory();
 
-      // Abrir box (ou criar se não existir)
+      // Evita erro caso outro serviço já tenha inicializado o Hive.
+      if (!Hive.isBoxOpen(_boxName)) {
+        Hive.init(appDocumentDir.path);
+      }
+
       _box = await Hive.openBox(_boxName);
       _boxAberto = true;
       debugPrint('📦 Hive inicializado com sucesso');
@@ -35,10 +40,19 @@ class AcademiaCacheService {
     }
   }
 
-  // ========== VERIFICAR INTERNET ==========
+  // ═══════════════════════════════════════════════════════════
+  // VERIFICAR INTERNET
+  // ═══════════════════════════════════════════════════════════
   Future<bool> temInternet() async {
     try {
-      var connectivityResult = await _connectivity.checkConnectivity();
+      final connectivityResult = await _connectivity.checkConnectivity();
+
+      // Compatível com versões que retornam ConnectivityResult
+      // e versões que retornam List<ConnectivityResult>.
+      if (connectivityResult is List<ConnectivityResult>) {
+        return !connectivityResult.contains(ConnectivityResult.none);
+      }
+
       return connectivityResult != ConnectivityResult.none;
     } catch (e) {
       debugPrint('Erro ao verificar internet: $e');
@@ -46,7 +60,9 @@ class AcademiaCacheService {
     }
   }
 
-  // ========== VERIFICAR SE PODE USAR CACHE ==========
+  // ═══════════════════════════════════════════════════════════
+  // VERIFICAR SE PODE USAR CACHE
+  // ═══════════════════════════════════════════════════════════
   Future<bool> _podeUsarCache() async {
     if (_academiasCache.isEmpty) return false;
     if (_ultimoCacheAcademias == null) return false;
@@ -54,23 +70,25 @@ class AcademiaCacheService {
     final temInternetAgora = await temInternet();
 
     if (temInternetAgora) {
-      // COM INTERNET: cache expira em 5 minutos
-      final cacheValido = DateTime.now().difference(_ultimoCacheAcademias!) <= _cacheValidadeOnline;
+      final cacheValido =
+          DateTime.now().difference(_ultimoCacheAcademias!) <=
+              _cacheValidadeOnline;
+
       debugPrint('📱 Com internet - cache ${cacheValido ? 'válido' : 'expirado'}');
       return cacheValido;
     } else {
-      // SEM INTERNET: cache NUNCA expira (enquanto app estiver rodando)
       debugPrint('📴 Sem internet - usando cache mesmo antigo');
       return true;
     }
   }
 
-  // ========== SALVAR NO DISCO (HIVE) ==========
+  // ═══════════════════════════════════════════════════════════
+  // SALVAR NO DISCO (HIVE)
+  // ═══════════════════════════════════════════════════════════
   Future<void> _salvarNoDisco(List<Map<String, dynamic>> academias) async {
     try {
       await _initHive();
 
-      // Salva os dados
       await _box.put('academias', academias);
       await _box.put('timestamp', DateTime.now().toIso8601String());
 
@@ -80,7 +98,9 @@ class AcademiaCacheService {
     }
   }
 
-  // ========== CARREGAR DO DISCO (HIVE) ==========
+  // ═══════════════════════════════════════════════════════════
+  // CARREGAR DO DISCO (HIVE)
+  // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> _carregarDoDisco() async {
     try {
       await _initHive();
@@ -88,40 +108,44 @@ class AcademiaCacheService {
       final academias = _box.get('academias', defaultValue: []);
       final timestampStr = _box.get('timestamp');
 
-      if (academias.isEmpty) {
+      if (academias is! List || academias.isEmpty) {
         debugPrint('📭 Nenhum dado encontrado no disco');
         return [];
       }
 
-      // Converte para o formato correto
       final List<Map<String, dynamic>> academiasConvertidas = [];
-      for (var item in academias) {
+
+      for (final item in academias) {
         if (item is Map) {
           academiasConvertidas.add(Map<String, dynamic>.from(item));
         }
       }
 
-      // Atualiza o cache em memória
       _academiasCache = academiasConvertidas;
+
       if (timestampStr != null) {
-        _ultimoCacheAcademias = DateTime.parse(timestampStr);
+        try {
+          _ultimoCacheAcademias = DateTime.parse(timestampStr.toString());
+        } catch (_) {
+          _ultimoCacheAcademias = null;
+        }
       }
 
       debugPrint('📀 Dados carregados do disco (${_academiasCache.length} academias)');
       return _academiasCache;
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar do disco: $e');
       return [];
     }
   }
 
-  // ========== LIMPAR CACHE ==========
+  // ═══════════════════════════════════════════════════════════
+  // LIMPAR CACHE
+  // ═══════════════════════════════════════════════════════════
   Future<void> limparCache() async {
     _academiasCache = [];
     _ultimoCacheAcademias = null;
 
-    // Limpa também do disco
     try {
       await _initHive();
       await _box.clear();
@@ -131,50 +155,130 @@ class AcademiaCacheService {
     }
   }
 
-  // ========== CONTAR ALUNOS DA ACADEMIA ==========
-  Future<int> _contarAlunosAcademia(String academiaId) async {
+  // ═══════════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════════
+  int _toInt(dynamic valor) {
+    if (valor == null) return 0;
+
+    if (valor is int) return valor;
+    if (valor is num) return valor.toInt();
+
+    if (valor is String) {
+      return int.tryParse(valor.trim()) ?? 0;
+    }
+
+    return 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // CONTAR TURMAS DA ACADEMIA
+  // ═══════════════════════════════════════════════════════════
+  Future<int> _contarTurmasAcademia(String academiaId) async {
     try {
-      // Tenta cache primeiro
-      final alunosSnapshot = await FirebaseFirestore.instance
-          .collection('alunos')
+      final snapshot = await FirebaseFirestore.instance
+          .collection('turmas')
           .where('academia_id', isEqualTo: academiaId)
-          .where('status_atividade', isEqualTo: 'ATIVO(A)')
-          .get(const GetOptions(source: Source.cache));
+          .where('status', isEqualTo: 'ATIVA')
+          .get(const GetOptions(source: Source.server));
 
-      return alunosSnapshot.docs.length;
+      return snapshot.docs.length;
     } catch (e) {
-      // Se falhar, tenta servidor
-      try {
-        final alunosSnapshot = await FirebaseFirestore.instance
-            .collection('alunos')
-            .where('academia_id', isEqualTo: academiaId)
-            .where('status_atividade', isEqualTo: 'ATIVO(A)')
-            .get(const GetOptions(source: Source.server));
+      debugPrint('⚠️ Erro ao contar turmas no servidor, tentando cache: $e');
 
-        return alunosSnapshot.docs.length;
-      } catch (e) {
-        debugPrint('Erro ao contar alunos: $e');
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('turmas')
+            .where('academia_id', isEqualTo: academiaId)
+            .where('status', isEqualTo: 'ATIVA')
+            .get(const GetOptions(source: Source.cache));
+
+        return snapshot.docs.length;
+      } catch (e2) {
+        debugPrint('❌ Erro ao contar turmas da academia $academiaId: $e2');
         return 0;
       }
     }
   }
 
-  // ========== PROCESSAR ACADEMIAS ==========
+  // ═══════════════════════════════════════════════════════════
+  // CONTAR ALUNOS DA ACADEMIA
+  //
+  // CORREÇÃO:
+  // Antes estava contando em alunos.where('academia_id').
+  // No seu app as turmas já possuem alunos_ativos, e a tela de turmas
+  // carrega corretamente por academia_id. Então a Home deve somar
+  // alunos_ativos das turmas ATIVAS da academia.
+  // ═══════════════════════════════════════════════════════════
+  Future<int> _contarAlunosAcademia(String academiaId) async {
+    try {
+      final turmasSnapshot = await FirebaseFirestore.instance
+          .collection('turmas')
+          .where('academia_id', isEqualTo: academiaId)
+          .where('status', isEqualTo: 'ATIVA')
+          .get(const GetOptions(source: Source.server));
+
+      int total = 0;
+
+      for (final turmaDoc in turmasSnapshot.docs) {
+        final data = turmaDoc.data();
+        total += _toInt(data['alunos_ativos']);
+      }
+
+      debugPrint('👥 Academia $academiaId: total alunos ativos pelas turmas = $total');
+      return total;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao contar alunos pelo servidor, tentando cache: $e');
+
+      try {
+        final turmasSnapshot = await FirebaseFirestore.instance
+            .collection('turmas')
+            .where('academia_id', isEqualTo: academiaId)
+            .where('status', isEqualTo: 'ATIVA')
+            .get(const GetOptions(source: Source.cache));
+
+        int total = 0;
+
+        for (final turmaDoc in turmasSnapshot.docs) {
+          final data = turmaDoc.data();
+          total += _toInt(data['alunos_ativos']);
+        }
+
+        debugPrint('👥 Academia $academiaId: total alunos ativos pelo cache = $total');
+        return total;
+      } catch (e2) {
+        debugPrint('❌ Erro ao contar alunos da academia $academiaId: $e2');
+        return 0;
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PROCESSAR ACADEMIAS
+  // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> _processarAcademias(
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
       ) async {
     final List<Map<String, dynamic>> academias = [];
 
-    for (var doc in docs) {
+    for (final doc in docs) {
       try {
         final data = doc.data();
+
         final totalAlunos = await _contarAlunosAcademia(doc.id);
+
+        // Se o campo turmas_count do documento estiver errado ou ausente,
+        // conta direto na coleção turmas.
+        final turmasCountCampo = _toInt(data['turmas_count']);
+        final totalTurmas = turmasCountCampo > 0
+            ? turmasCountCampo
+            : await _contarTurmasAcademia(doc.id);
 
         academias.add({
           'id': doc.id,
           'nome': data['nome'] ?? 'Sem nome',
           'cidade': data['cidade'] ?? '',
-          'turmas_count': data['turmas_count'] ?? 0,
+          'turmas_count': totalTurmas,
           'endereco': data['endereco'] ?? '',
           'telefone': data['telefone'] ?? '',
           'whatsapp_url': data['whatsapp_url'] ?? '',
@@ -185,6 +289,10 @@ class AcademiaCacheService {
           'professores_ids': data['professores_ids'] ?? [],
           'alunos_count': totalAlunos,
         });
+
+        debugPrint(
+          '🏫 ${data['nome'] ?? doc.id} => alunos: $totalAlunos | turmas: $totalTurmas',
+        );
       } catch (e) {
         debugPrint('Erro ao processar academia ${doc.id}: $e');
         continue;
@@ -194,8 +302,13 @@ class AcademiaCacheService {
     return academias;
   }
 
-  // ========== CARREGAR ACADEMIAS DO USUÁRIO ==========
-  Future<List<Map<String, dynamic>>> carregarAcademiasComAlunos(String? userId) async {
+  // ═══════════════════════════════════════════════════════════
+  // CARREGAR ACADEMIAS DO USUÁRIO
+  // ═══════════════════════════════════════════════════════════
+  Future<List<Map<String, dynamic>>> carregarAcademiasComAlunos(
+      String? userId, {
+        bool forcarAtualizacao = false,
+      }) async {
     if (userId == null || userId.isEmpty) {
       debugPrint('❌ userId é nulo ou vazio');
       return [];
@@ -203,39 +316,46 @@ class AcademiaCacheService {
 
     final temInternetAgora = await temInternet();
 
-    // PRIORIDADE 1: Cache em memória válido
-    if (_academiasCache.isNotEmpty) {
-      final podeUsarCache = await _podeUsarCache();
-      if (podeUsarCache) {
-        debugPrint('📦 Usando cache em memória (${_academiasCache.length} itens)');
-        return _academiasCache;
+    // Se for forçar atualização, ignora cache em memória e disco.
+    if (!forcarAtualizacao) {
+      // PRIORIDADE 1: Cache em memória válido
+      if (_academiasCache.isNotEmpty) {
+        final podeUsarCache = await _podeUsarCache();
+
+        if (podeUsarCache) {
+          debugPrint('📦 Usando cache em memória (${_academiasCache.length} itens)');
+          return _academiasCache;
+        }
       }
+
+      // PRIORIDADE 2: Tentar carregar do disco
+      final dadosDisco = await _carregarDoDisco();
+
+      if (dadosDisco.isNotEmpty) {
+        debugPrint('💿 Cache carregado do disco (${dadosDisco.length} itens)');
+
+        if (!temInternetAgora) {
+          debugPrint('📴 Modo offline - usando cache do disco');
+          return dadosDisco;
+        }
+
+        // Com internet, só usa cache do disco se ainda estiver válido.
+        if (await _podeUsarCache()) {
+          debugPrint('✅ Cache do disco ainda válido');
+          return dadosDisco;
+        }
+
+        debugPrint('♻️ Cache do disco expirado. Buscando servidor...');
+      }
+    } else {
+      debugPrint('🔄 Forçando atualização das academias no servidor...');
     }
 
-    // PRIORIDADE 2: Tentar carregar do disco
-    final dadosDisco = await _carregarDoDisco();
-    if (dadosDisco.isNotEmpty) {
-      debugPrint('💿 Cache carregado do disco (${dadosDisco.length} itens)');
-
-      // Se está sem internet, USA SEMPRE o cache do disco (ignora expiração)
-      if (!temInternetAgora) {
-        debugPrint('📴 Modo offline - usando cache do disco (ignorando expiração)');
-        return dadosDisco;
-      }
-
-      // Se está com internet, verifica se o cache ainda é válido
-      if (await _podeUsarCache()) {
-        debugPrint('✅ Cache do disco ainda válido');
-        return dadosDisco;
-      }
-    }
-
-    // PRIORIDADE 3: Se está sem internet e não conseguiu carregar nada, tenta forçar o disco
     if (!temInternetAgora) {
-      // Tenta uma última vez carregar do disco (ignorando qualquer erro)
       final dadosDiscoForcado = await _carregarDoDisco();
+
       if (dadosDiscoForcado.isNotEmpty) {
-        debugPrint('⚠️ Forçando uso do cache do disco em modo offline');
+        debugPrint('⚠️ Sem internet - usando cache do disco');
         return dadosDiscoForcado;
       }
 
@@ -246,7 +366,6 @@ class AcademiaCacheService {
     debugPrint('🌐 Carregando academias do servidor para usuário: $userId');
 
     try {
-      // Busca academias onde o usuário é professor
       final academiasSnapshot = await FirebaseFirestore.instance
           .collection('academias')
           .where('status', isEqualTo: 'ativa')
@@ -255,46 +374,48 @@ class AcademiaCacheService {
 
       debugPrint('📊 Encontradas ${academiasSnapshot.docs.length} academias');
 
-      // Processa as academias (conta alunos)
       final academias = await _processarAcademias(academiasSnapshot.docs);
 
-      // Atualiza cache em memória
       _academiasCache = academias;
       _ultimoCacheAcademias = DateTime.now();
 
-      // SALVA NO DISCO (persistente)
       await _salvarNoDisco(academias);
 
       debugPrint('✅ Cache atualizado com ${academias.length} academias');
       return academias;
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar do servidor: $e');
 
-      // Se falhou mas tem cache em memória, usa
       if (_academiasCache.isNotEmpty) {
         debugPrint('⚠️ Usando cache em memória como fallback');
         return _academiasCache;
       }
 
-      // Se não tem em memória, tenta disco
+      final dadosDisco = await _carregarDoDisco();
+
       if (dadosDisco.isNotEmpty) {
         debugPrint('⚠️ Usando cache do disco como fallback');
         return dadosDisco;
       }
 
-      // Se não tem nada, retorna lista vazia
       return [];
     }
   }
 
-  // ========== CARREGAR ACADEMIAS FORÇANDO ATUALIZAÇÃO ==========
+  // ═══════════════════════════════════════════════════════════
+  // CARREGAR ACADEMIAS FORÇANDO ATUALIZAÇÃO
+  // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> recarregarAcademias(String? userId) async {
     await limparCache();
-    return carregarAcademiasComAlunos(userId);
+    return carregarAcademiasComAlunos(
+      userId,
+      forcarAtualizacao: true,
+    );
   }
 
-  // ========== OBTER ESTATÍSTICAS DO CACHE ==========
+  // ═══════════════════════════════════════════════════════════
+  // OBTER ESTATÍSTICAS DO CACHE
+  // ═══════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> getStatusCache() async {
     final temInternetAgora = await temInternet();
 
@@ -308,18 +429,11 @@ class AcademiaCacheService {
     };
   }
 
-  // ========== VERIFICAR SE USUÁRIO TEM ACADEMIAS ==========
+  // ═══════════════════════════════════════════════════════════
+  // VERIFICAR SE USUÁRIO TEM ACADEMIAS
+  // ═══════════════════════════════════════════════════════════
   Future<bool> usuarioTemAcademias(String userId) async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('academias')
-          .where('status', isEqualTo: 'ativa')
-          .where('professores_ids', arrayContains: userId)
-          .limit(1)
-          .get(const GetOptions(source: Source.cache));
-
-      if (snapshot.docs.isNotEmpty) return true;
-
       final snapshotServer = await FirebaseFirestore.instance
           .collection('academias')
           .where('status', isEqualTo: 'ativa')
@@ -327,17 +441,26 @@ class AcademiaCacheService {
           .limit(1)
           .get(const GetOptions(source: Source.server));
 
-      return snapshotServer.docs.isNotEmpty;
+      if (snapshotServer.docs.isNotEmpty) return true;
 
+      final snapshotCache = await FirebaseFirestore.instance
+          .collection('academias')
+          .where('status', isEqualTo: 'ativa')
+          .where('professores_ids', arrayContains: userId)
+          .limit(1)
+          .get(const GetOptions(source: Source.cache));
+
+      return snapshotCache.docs.isNotEmpty;
     } catch (e) {
       debugPrint('Erro ao verificar academias do usuário: $e');
       return false;
     }
   }
 
-  // ========== BUSCAR UMA ACADEMIA ESPECÍFICA ==========
+  // ═══════════════════════════════════════════════════════════
+  // BUSCAR UMA ACADEMIA ESPECÍFICA
+  // ═══════════════════════════════════════════════════════════
   Future<Map<String, dynamic>?> buscarAcademia(String academiaId) async {
-    // Procura no cache em memória primeiro
     try {
       final academiaCache = _academiasCache.firstWhere(
             (a) => a['id'] == academiaId,
@@ -348,40 +471,46 @@ class AcademiaCacheService {
         debugPrint('📦 Academia encontrada no cache em memória');
         return academiaCache;
       }
-    } catch (e) {}
+    } catch (_) {}
 
-    // Procura no disco
     try {
       await _initHive();
+
       final academiasDisco = _box.get('academias', defaultValue: []);
 
-      for (var academia in academiasDisco) {
-        if (academia['id'] == academiaId) {
-          debugPrint('💿 Academia encontrada no cache do disco');
-          return Map<String, dynamic>.from(academia);
+      if (academiasDisco is List) {
+        for (final academia in academiasDisco) {
+          if (academia is Map && academia['id'] == academiaId) {
+            debugPrint('💿 Academia encontrada no cache do disco');
+            return Map<String, dynamic>.from(academia);
+          }
         }
       }
-    } catch (e) {}
+    } catch (_) {}
 
-    // Se não achou no cache, busca no Firestore
     try {
       debugPrint('🌐 Buscando academia no servidor: $academiaId');
 
       final doc = await FirebaseFirestore.instance
           .collection('academias')
           .doc(academiaId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (!doc.exists) return null;
 
       final data = doc.data()!;
       final totalAlunos = await _contarAlunosAcademia(academiaId);
 
+      final turmasCountCampo = _toInt(data['turmas_count']);
+      final totalTurmas = turmasCountCampo > 0
+          ? turmasCountCampo
+          : await _contarTurmasAcademia(academiaId);
+
       final academia = {
         'id': doc.id,
         'nome': data['nome'] ?? 'Sem nome',
         'cidade': data['cidade'] ?? '',
-        'turmas_count': data['turmas_count'] ?? 0,
+        'turmas_count': totalTurmas,
         'endereco': data['endereco'] ?? '',
         'telefone': data['telefone'] ?? '',
         'whatsapp_url': data['whatsapp_url'] ?? '',
@@ -393,12 +522,18 @@ class AcademiaCacheService {
         'alunos_count': totalAlunos,
       };
 
-      // Atualiza cache
-      _academiasCache.add(academia);
+      final index = _academiasCache.indexWhere((a) => a['id'] == academiaId);
+
+      if (index >= 0) {
+        _academiasCache[index] = academia;
+      } else {
+        _academiasCache.add(academia);
+      }
+
+      _ultimoCacheAcademias = DateTime.now();
       await _salvarNoDisco(_academiasCache);
 
       return academia;
-
     } catch (e) {
       debugPrint('Erro ao buscar academia: $e');
       return null;

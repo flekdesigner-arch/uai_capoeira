@@ -1,10 +1,10 @@
 // chamada_turma_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/services/lock_chamada_service.dart';
@@ -42,7 +42,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   bool _verificandoLock = true;
   bool _podeAcessarChamada = false;
   Map<String, dynamic>? _ocupanteInfo;
-  Stream<Map<String, dynamic>?>? _ocupacaoStream;
+  StreamSubscription<Map<String, dynamic>?>? _ocupacaoSubscription;
 
   // Estados principais
   bool _isLoading = true;
@@ -60,6 +60,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
   // Controles
   final TextEditingController _observacaoController = TextEditingController();
+  final TextEditingController _buscaController = TextEditingController();
+
+  // 🔥 UX DA LISTA
+  String _buscaAluno = '';
+  String _filtroPresenca = 'Todos'; // Todos, Presentes, Ausentes, Com observação
+  bool _modoListaCompacta = false;
 
   // Dados da turma
   List<String> _diasTreinoTurma = [];
@@ -81,6 +87,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   // UI
   final Map<String, Map<String, dynamic>> _graduacoesCache = {};
   String? _svgContent;
+
+  // 🔥 OTIMIZAÇÃO DE UI / CACHE LOCAL
+  Timer? _buscaDebounce;
+  String _cacheAssinaturaFiltro = '';
+  List<Map<String, dynamic>> _cacheAlunosFiltrados = [];
+  bool _avisoLockPerdidoAberto = false;
+
+  // Cache global enquanto o app está aberto para não baixar graduação/SVG toda hora.
+  static final Map<String, Map<String, dynamic>> _graduacoesGlobalCache = {};
+  static String? _svgGlobalContent;
 
   // 🔥 ANIMAÇÕES
   late AnimationController _animationController;
@@ -131,8 +147,11 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       debugPrint('🔓 Liberando lock no dispose');
       LockChamadaService.liberarChamada(widget.turmaId);
     }
+    _buscaDebounce?.cancel();
+    _ocupacaoSubscription?.cancel();
     _animationController.dispose();
     _observacaoController.dispose();
+    _buscaController.dispose();
     super.dispose();
   }
 
@@ -217,13 +236,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       }
 
       // Configurar stream para monitorar ocupação
-      _ocupacaoStream = _firestore
+      await _ocupacaoSubscription?.cancel();
+      _ocupacaoSubscription = _firestore
           .collection('locks_chamada')
           .doc(widget.turmaId)
           .snapshots()
-          .map((snapshot) => snapshot.data());
-
-      _ocupacaoStream!.listen((ocupante) {
+          .map((snapshot) => snapshot.data())
+          .listen((ocupante) {
         if (!mounted) return;
         if (ocupante == null) return;
         final ocupanteId = ocupante['usuario_id'];
@@ -255,7 +274,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   void _mostrarAvisoLockPerdido(Map<String, dynamic> ocupante) {
-    if (!mounted) return;
+    if (!mounted || _avisoLockPerdidoAberto) return;
+    _avisoLockPerdidoAberto = true;
 
     showDialog(
       context: context,
@@ -548,7 +568,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       final alunosSnapshot = await _firestore
           .collection('alunos')
           .where('turma_id', isEqualTo: widget.turmaId)
-          .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO(A) '])
+          .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO(A) ', 'ATIVO'])
           .get();
 
       final alunosList = alunosSnapshot.docs.map((doc) {
@@ -556,8 +576,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         return {
           'id': doc.id,
           'nome': data['nome'] ?? 'Sem nome',
+          'apelido': data['apelido']?.toString() ?? '',
           'foto': data['foto_perfil_aluno'] as String?,
           'graduacao_id': data['graduacao_id'] as String?,
+          'graduacao_nome': data['graduacao_nome']?.toString() ?? data['graduacao_atual']?.toString() ?? '',
         };
       }).toList();
 
@@ -571,6 +593,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       setState(() {
         _alunos = alunosList;
         _presencas = presencasIniciais;
+        _invalidarCacheFiltro();
       });
 
       _preloadGraduacoes();
@@ -591,7 +614,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context).loadString('assets/images/corda.svg');
+      if (_svgGlobalContent != null) {
+        if (mounted) setState(() => _svgContent = _svgGlobalContent);
+        return;
+      }
+
+      final content = await DefaultAssetBundle.of(context)
+          .loadString('assets/images/corda.svg');
+
+      _svgGlobalContent = content;
+
       if (mounted) {
         setState(() => _svgContent = content);
       }
@@ -602,11 +634,20 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
   Future<void> _preloadGraduacoes() async {
     try {
+      if (_graduacoesGlobalCache.isNotEmpty) {
+        _graduacoesCache
+          ..clear()
+          ..addAll(_graduacoesGlobalCache);
+        return;
+      }
+
       final snapshot = await _firestore.collection('graduacoes').get();
+
+      final temp = <String, Map<String, dynamic>>{};
 
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        _graduacoesCache[doc.id] = {
+        temp[doc.id] = {
           'hex_cor1': data.containsKey('hex_cor1') ? data['hex_cor1'] : '#CCCCCC',
           'hex_cor2': data.containsKey('hex_cor2') ? data['hex_cor2'] : '#CCCCCC',
           'hex_ponta1': data.containsKey('hex_ponta1') ? data['hex_ponta1'] : '#CCCCCC',
@@ -614,6 +655,14 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           'nome_graduacao': data.containsKey('nome_graduacao') ? data['nome_graduacao'] : 'Sem graduação',
         };
       }
+
+      _graduacoesGlobalCache
+        ..clear()
+        ..addAll(temp);
+
+      _graduacoesCache
+        ..clear()
+        ..addAll(temp);
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar graduações: $e');
     }
@@ -711,6 +760,22 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   // ============================================
   // FUNÇÕES AUXILIARES
   // ============================================
+
+  int _parseIntSeguro(dynamic value, {int fallback = 0}) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final cleaned = value.trim().replaceAll('%', '').replaceAll(',', '.');
+      final parsedInt = int.tryParse(cleaned);
+      if (parsedInt != null) return parsedInt;
+      final parsedDouble = double.tryParse(cleaned);
+      if (parsedDouble != null) return parsedDouble.round();
+    }
+    return fallback;
+  }
+
   String _getDiaAbreviado(String diaCompleto) {
     final diaUpper = diaCompleto.toUpperCase().trim();
     if (_diasAbreviados.containsKey(diaUpper)) {
@@ -738,9 +803,164 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         .replaceAll('domingo', 'dom');
   }
 
+  void _invalidarCacheFiltro() {
+    _cacheAssinaturaFiltro = '';
+  }
+
   void _togglePresenca(String alunoId) {
     setState(() {
       _presencas[alunoId] = !(_presencas[alunoId] ?? false);
+      _invalidarCacheFiltro();
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  String _normalizarTextoBusca(String texto) {
+    return texto
+        .toLowerCase()
+        .trim()
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('â', 'a')
+        .replaceAll('ã', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ô', 'o')
+        .replaceAll('õ', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ç', 'c');
+  }
+
+  String _assinaturaFiltroAlunos() {
+    final presentes = _presencas.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .join('|');
+
+    final observacoes = _observacoes.entries
+        .where((e) => e.value.trim().isNotEmpty)
+        .map((e) => '${e.key}:${e.value.trim().length}')
+        .join('|');
+
+    return '${_alunos.length}::${_normalizarTextoBusca(_buscaAluno)}::'
+        '$_filtroPresenca::$presentes::$observacoes';
+  }
+
+  List<Map<String, dynamic>> get _alunosFiltrados {
+    final assinatura = _assinaturaFiltroAlunos();
+
+    if (_cacheAssinaturaFiltro == assinatura) {
+      return _cacheAlunosFiltrados;
+    }
+
+    final busca = _normalizarTextoBusca(_buscaAluno);
+    final resultado = <Map<String, dynamic>>[];
+
+    for (final aluno in _alunos) {
+      final alunoId = aluno['id'] as String;
+      final presente = _presencas[alunoId] ?? false;
+      final observacao = (_observacoes[alunoId] ?? '').trim();
+
+      if (_filtroPresenca == 'Presentes' && !presente) continue;
+      if (_filtroPresenca == 'Ausentes' && presente) continue;
+      if (_filtroPresenca == 'Com observação' && observacao.isEmpty) {
+        continue;
+      }
+
+      if (busca.isNotEmpty) {
+        final nome = aluno['nome']?.toString() ?? '';
+        final apelido = aluno['apelido']?.toString() ?? '';
+        final graduacao = aluno['graduacao_nome']?.toString() ?? '';
+        final textoAluno = _normalizarTextoBusca('$nome $apelido $graduacao');
+
+        if (!textoAluno.contains(busca)) continue;
+      }
+
+      resultado.add(aluno);
+    }
+
+    _cacheAssinaturaFiltro = assinatura;
+    _cacheAlunosFiltrados = resultado;
+    return resultado;
+  }
+
+  int get _presentesFiltrados {
+    int total = 0;
+    for (final aluno in _alunosFiltrados) {
+      if (_presencas[aluno['id'] as String] == true) total++;
+    }
+    return total;
+  }
+
+  void _marcarTodosFiltrados(bool presente) {
+    final filtrados = _alunosFiltrados;
+    if (filtrados.isEmpty) return;
+
+    setState(() {
+      for (final aluno in filtrados) {
+        _presencas[aluno['id'] as String] = presente;
+      }
+      _invalidarCacheFiltro();
+    });
+
+    HapticFeedback.lightImpact();
+  }
+
+  void _inverterFiltrados() {
+    final filtrados = _alunosFiltrados;
+    if (filtrados.isEmpty) return;
+
+    setState(() {
+      for (final aluno in filtrados) {
+        final id = aluno['id'] as String;
+        _presencas[id] = !(_presencas[id] ?? false);
+      }
+      _invalidarCacheFiltro();
+    });
+
+    HapticFeedback.mediumImpact();
+  }
+
+  Future<void> _confirmarLimparChamada() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Limpar marcações?'),
+        content: const Text(
+          'Isso vai desmarcar todos os alunos e limpar a busca/filtros da tela. '
+              'A chamada ainda não será apagada do sistema.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Limpar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      for (final aluno in _alunos) {
+        _presencas[aluno['id'] as String] = false;
+      }
+      _observacoes.clear();
+      _buscaController.clear();
+      _buscaAluno = '';
+      _filtroPresenca = 'Todos';
+      _invalidarCacheFiltro();
     });
   }
 
@@ -769,6 +989,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               onPressed: () {
                 setState(() {
                   _observacoes[alunoId] = _observacaoController.text;
+                  _invalidarCacheFiltro();
                 });
                 _observacaoController.clear();
                 if (mounted) {
@@ -956,7 +1177,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     try {
       // Chamar a Cloud Function
       setState(() {
-        _statusMensagem = 'Processando chamada na nuvem...';
+        _statusMensagem = 'Processando chamada e atualizando contadores...';
       });
 
       final HttpsCallable callable = _functions.httpsCallable('processarChamada');
@@ -972,11 +1193,18 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         await LockChamadaService.liberarChamada(widget.turmaId);
 
         if (mounted) {
+          final int presentesResult = _parseIntSeguro(result.data['presentes']);
+          final int ausentesResult = _parseIntSeguro(result.data['ausentes']);
+          final int processadosResult = _parseIntSeguro(result.data['processados']);
+          final int percentualResult = processadosResult > 0
+              ? ((presentesResult / processadosResult) * 100).round()
+              : 0;
+
           _mostrarTelaConclusao({
-            'presentes': result.data['presentes'],
-            'ausentes': result.data['ausentes'],
-            'total_alunos': result.data['processados'],
-            'porcentagem_frequencia': (result.data['presentes'] / result.data['processados'] * 100).round(),
+            'presentes': presentesResult,
+            'ausentes': ausentesResult,
+            'total_alunos': processadosResult,
+            'porcentagem_frequencia': percentualResult,
           });
         }
       }
@@ -1137,108 +1365,387 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   Widget _buildAlunoGridItem(Map<String, dynamic> aluno) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
+    final apelido = aluno['apelido']?.toString() ?? '';
     final estaPresente = _presencas[alunoId] ?? false;
+    final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
     final fotoUrl = aluno['foto'] as String?;
 
-    return Card(
-      elevation: 4,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: estaPresente ? Colors.green : Colors.transparent, width: estaPresente ? 2 : 0),
-      ),
-      child: InkWell(
-        onTap: () => _togglePresenca(alunoId),
-        child: Container(
-          decoration: BoxDecoration(
-            color: estaPresente ? Colors.green.shade50.withOpacity(0.3) : Colors.white,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
+    return RepaintBoundary(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: estaPresente
+                  ? Colors.green.withOpacity(0.18)
+                  : Colors.red.withOpacity(0.14),
+              blurRadius: estaPresente ? 13 : 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _togglePresenca(alunoId),
+            onLongPress: () => _adicionarObservacao(alunoId, nomeAluno),
+            borderRadius: BorderRadius.circular(22),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: estaPresente ? Colors.green.shade500 : Colors.red.shade400,
+                  width: estaPresente ? 2.2 : 1.8,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
                 child: Stack(
                   children: [
-                    Container(
-                      color: Colors.grey[200],
-                      child: fotoUrl != null && fotoUrl.isNotEmpty
-                          ? CachedNetworkImage(
-                        imageUrl: fotoUrl,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        errorWidget: (c, u, e) => _placeholderIcon(size: 80),
-                      )
-                          : _placeholderIcon(size: 80),
-                    ),
-                    if (estaPresente)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
-                          child: const Icon(Icons.check, size: 14, color: Colors.white),
-                        ),
+                    Positioned.fill(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                _buildFotoAlunoSegura(
+                                  fotoUrl: fotoUrl,
+                                  nome: nomeAluno,
+                                  fit: BoxFit.cover,
+                                  cacheWidth: 420,
+                                  placeholderSize: 68,
+                                ),
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.center,
+                                        colors: [
+                                          Colors.black.withOpacity(0.58),
+                                          Colors.transparent,
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 10,
+                                  right: 10,
+                                  bottom: 9,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        nomeAluno,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.08,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (apelido.isNotEmpty)
+                                        Text(
+                                          '"$apelido"',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 10,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(9, 9, 9, 10),
+                            decoration: BoxDecoration(
+                              color: estaPresente
+                                  ? Colors.green.shade50
+                                  : Colors.red.shade50,
+                            ),
+                            child: Center(
+                              child: SizedBox(
+                                width: 128,
+                                height: 38,
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _togglePresenca(alunoId),
+                                  style: ElevatedButton.styleFrom(
+                                    elevation: 0,
+                                    backgroundColor: estaPresente
+                                        ? Colors.green.shade600
+                                        : Colors.red.shade900,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(19),
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    estaPresente
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
+                                    size: 17,
+                                  ),
+                                  label: Text(
+                                    estaPresente ? 'Presente' : 'Marcar',
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
                     Positioned(
-                      bottom: 8,
+                      top: 8,
                       right: 8,
                       child: GestureDetector(
                         onTap: () => _adicionarObservacao(alunoId, nomeAluno),
                         child: Container(
-                          padding: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: temObservacao
+                                ? Colors.amber.shade700
+                                : Colors.white.withOpacity(0.94),
                             shape: BoxShape.circle,
                             boxShadow: [
-                              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2)),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.16),
+                                blurRadius: 7,
+                              ),
                             ],
                           ),
-                          child: const Icon(Icons.note_add, size: 16, color: Colors.blue),
+                          child: Icon(
+                            temObservacao
+                                ? Icons.sticky_note_2_rounded
+                                : Icons.note_add_outlined,
+                            size: 17,
+                            color: temObservacao ? Colors.white : Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: estaPresente
+                              ? Colors.green.shade500
+                              : Colors.red.shade500,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.18),
+                              blurRadius: 5,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      nomeAluno.toUpperCase(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        height: 1.2,
-                        color: estaPresente ? Colors.green.shade800 : Colors.black87,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.center,
-                      child: Transform.scale(
-                        scale: 0.8,
-                        child: Switch(
-                          value: estaPresente,
-                          activeColor: Colors.green,
-                          inactiveTrackColor: Colors.grey.shade400,
-                          onChanged: (_) => _togglePresenca(alunoId),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAlunoCompactTile(Map<String, dynamic> aluno) {
+    final alunoId = aluno['id'] as String;
+    final nomeAluno = aluno['nome'] as String;
+    final apelido = aluno['apelido']?.toString() ?? '';
+    final graduacao = aluno['graduacao_nome']?.toString() ?? '';
+    final fotoUrl = aluno['foto'] as String?;
+    final estaPresente = _presencas[alunoId] ?? false;
+    final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: estaPresente ? Colors.green.shade300 : Colors.grey.shade200,
+          width: estaPresente ? 1.6 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: () => _togglePresenca(alunoId),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        leading: _buildAlunoAvatarMini(fotoUrl, nomeAluno, estaPresente),
+        title: Text(
+          nomeAluno,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: estaPresente ? Colors.green.shade800 : Colors.black87,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          [
+            if (apelido.isNotEmpty) '"$apelido"',
+            if (graduacao.isNotEmpty) graduacao,
+          ].join(' • ').isEmpty
+              ? (estaPresente ? 'Presente na chamada' : 'Ausente na chamada')
+              : [
+            if (apelido.isNotEmpty) '"$apelido"',
+            if (graduacao.isNotEmpty) graduacao,
+          ].join(' • '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (temObservacao)
+              Icon(Icons.sticky_note_2_rounded,
+                  color: Colors.amber.shade700, size: 20),
+            IconButton(
+              tooltip: 'Observação',
+              onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
+              icon: Icon(Icons.note_add_outlined, color: Colors.blue.shade700),
+            ),
+            Switch(
+              value: estaPresente,
+              activeColor: Colors.green,
+              onChanged: (_) => _togglePresenca(alunoId),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlunoAvatarMini(String? fotoUrl, String nome, bool presente) {
+    final inicial = nome.isEmpty ? '?' : nome[0].toUpperCase();
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: presente ? Colors.green.shade500 : Colors.grey.shade300,
+          width: 2,
+        ),
+      ),
+      child: ClipOval(
+        child: _buildFotoAlunoSegura(
+          fotoUrl: fotoUrl,
+          nome: nome,
+          fit: BoxFit.cover,
+          cacheWidth: 140,
+          placeholderSize: 24,
+          circular: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFotoAlunoSegura({
+    required String? fotoUrl,
+    required String nome,
+    required BoxFit fit,
+    required int cacheWidth,
+    double placeholderSize = 50,
+    bool circular = false,
+  }) {
+    final url = fotoUrl?.trim() ?? '';
+    final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
+
+    Widget fallback({Color? backgroundColor}) {
+      return Container(
+        color: backgroundColor ?? Colors.grey.shade100,
+        child: Center(
+          child: circular
+              ? Text(
+            inicial,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.bold,
+              fontSize: placeholderSize,
+            ),
+          )
+              : Icon(
+            Icons.person_rounded,
+            size: placeholderSize,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
+    if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
+      return fallback();
+    }
+
+    // Uso Image.network aqui de propósito: o erro do console vinha do cache
+    // local corrompido do cached_network_image tentando abrir arquivos que
+    // não existem mais em /cache/libCachedImageData. Image.network evita esse
+    // caminho quebrado e usa fallback silencioso.
+    return Image.network(
+      url,
+      fit: fit,
+      cacheWidth: cacheWidth,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return fallback();
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Container(
+          color: Colors.grey.shade100,
+          child: Center(
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.red.shade900,
+              ),
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return fallback();
+      },
     );
   }
 
@@ -1252,116 +1759,205 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   Widget _buildChamadaHeader() {
     final presentes = _presencas.values.where((v) => v).length;
     final total = _alunos.length;
+    final ausentes = total - presentes;
     final porcentagem = total > 0 ? (presentes / total * 100).round() : 0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+        color: Colors.red.shade900,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: Colors.white, size: 19),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.turmaNome,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    height: 1.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '${DateFormat('dd/MM').format(_dataChamada)} • $_tipoAulaHoje',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.78),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildHeaderTinyStat('P', presentes, Colors.greenAccent.shade100),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('A', ausentes, Colors.red.shade100),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('T', total, Colors.amber.shade100),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: total > 0 ? presentes / total : 0,
+                    minHeight: 6,
+                    backgroundColor: Colors.white.withOpacity(0.20),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      presentes == 0
+                          ? Colors.red.shade200
+                          : presentes == total
+                          ? Colors.greenAccent.shade100
+                          : Colors.orangeAccent.shade100,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$porcentagem%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderTinyStat(String label, int value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.11),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.70),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(
+              text: '$value',
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderSlimStat({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.11),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 5),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.76),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderMetricCard({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.13),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      DateFormat("EEEE, dd 'de' MMMM", 'pt_BR').format(_dataChamada),
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
-                    ),
-                    if (_modoExtraForcado)
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: Colors.red.shade900, borderRadius: BorderRadius.circular(4)),
-                        child: const Text(
-                          'MODO ADMIN: CHAMADA EXTRA',
-                          style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _getTipoAulaColor(_tipoAulaHoje).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _getTipoAulaColor(_tipoAulaHoje).withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(_getTipoAulaIcon(_tipoAulaHoje), size: 12, color: _getTipoAulaColor(_tipoAulaHoje)),
-                    const SizedBox(width: 6),
-                    Text(
-                      'TIPO DA AULA: $_tipoAulaHoje',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _getTipoAulaColor(_tipoAulaHoje)),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
-                child: Row(
-                  children: [
-                    Icon(Icons.person, size: 12, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      _professorNome.split(' ').first,
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildStatItem(value: '$presentes', label: 'Presentes', color: Colors.green, icon: Icons.check_circle),
-              const SizedBox(width: 12),
-              _buildStatItem(value: '${total - presentes}', label: 'Ausentes', color: Colors.red, icon: Icons.cancel),
-              const SizedBox(width: 12),
-              _buildStatItem(value: '$porcentagem%', label: 'Frequência', color: Colors.blue, icon: Icons.trending_up),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Column(
-            children: [
-              LinearProgressIndicator(
-                value: total > 0 ? presentes / total : 0,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  presentes == 0 ? Colors.red : presentes == total ? Colors.green : Colors.orange,
-                ),
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('$presentes de $total', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                  Text(
-                    _getStatusText(presentes, total),
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _getStatusColor(presentes, total)),
-                  ),
-                ],
-              ),
-            ],
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.78),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -1416,28 +2012,262 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
   Widget _buildAlunosList() {
     if (_alunos.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people_outline, size: 60, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('Nenhum aluno nesta turma', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
+      return _buildListaVazia(
+        icon: Icons.people_outline_rounded,
+        title: 'Nenhum aluno nesta turma',
+        subtitle: 'Confira se os alunos estão ativos e vinculados à turma.',
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.75,
+    final alunos = _alunosFiltrados;
+
+    return Column(
+      children: [
+        _buildPainelControleChamada(),
+        Expanded(
+          child: alunos.isEmpty
+              ? _buildListaVazia(
+            icon: Icons.search_off_rounded,
+            title: 'Nenhum aluno neste filtro',
+            subtitle: 'Toque em "Todos" para voltar para a chamada completa.',
+          )
+              : _modoListaCompacta
+              ? ListView.builder(
+            cacheExtent: 500,
+            padding: const EdgeInsets.only(top: 6, bottom: 14),
+            itemCount: alunos.length,
+            itemBuilder: (context, index) =>
+                _buildAlunoCompactTile(alunos[index]),
+          )
+              : GridView.builder(
+            cacheExtent: 600,
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+            gridDelegate:
+            const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.76,
+            ),
+            itemCount: alunos.length,
+            itemBuilder: (context, index) =>
+                _buildAlunoGridItem(alunos[index]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPainelControleChamada() {
+    final total = _alunos.length;
+    final filtrados = _alunosFiltrados.length;
+    final presentesFiltrados = _presentesFiltrados;
+
+    return Container(
+      color: Colors.grey.shade50,
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFiltroPresencaChip('Todos', Icons.groups_rounded),
+                _buildFiltroPresencaChip('Presentes', Icons.check_circle_rounded),
+                _buildFiltroPresencaChip('Ausentes', Icons.cancel_rounded),
+                _buildFiltroPresencaChip('Com observação', Icons.sticky_note_2_rounded),
+                const SizedBox(width: 4),
+                _buildModoVisualBotao(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.touch_app_rounded, size: 16, color: Colors.red.shade900),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '$presentesFiltrados presentes • $filtrados/$total alunos',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _buildMiniAcao(
+                  label: 'Todos',
+                  icon: Icons.done_all_rounded,
+                  color: Colors.green.shade700,
+                  onTap: () => _marcarTodosFiltrados(true),
+                ),
+                const SizedBox(width: 5),
+                _buildMiniAcao(
+                  label: 'Zerar',
+                  icon: Icons.remove_done_rounded,
+                  color: Colors.red.shade700,
+                  onTap: () => _marcarTodosFiltrados(false),
+                ),
+                const SizedBox(width: 5),
+                _buildMiniAcao(
+                  label: 'Inverter',
+                  icon: Icons.swap_vert_rounded,
+                  color: Colors.blue.shade700,
+                  onTap: _inverterFiltrados,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      itemCount: _alunos.length,
-      itemBuilder: (context, index) => _buildAlunoGridItem(_alunos[index]),
+    );
+  }
+
+  Widget _buildModoVisualBotao() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: InkWell(
+        onTap: () => setState(() => _modoListaCompacta = !_modoListaCompacta),
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _modoListaCompacta ? Icons.grid_view_rounded : Icons.view_list_rounded,
+                size: 15,
+                color: Colors.red.shade900,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _modoListaCompacta ? 'Grade' : 'Lista',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFiltroPresencaChip(String filtro, IconData icon) {
+    final ativo = _filtroPresenca == filtro;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: ChoiceChip(
+        selected: ativo,
+        avatar: Icon(
+          icon,
+          size: 15,
+          color: ativo ? Colors.white : Colors.grey.shade700,
+        ),
+        label: Text(
+          filtro,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: ativo ? Colors.white : Colors.grey.shade700,
+          ),
+        ),
+        selectedColor: Colors.red.shade900,
+        backgroundColor: Colors.white,
+        side: BorderSide(
+          color: ativo ? Colors.red.shade900 : Colors.grey.shade200,
+        ),
+        onSelected: (_) => setState(() {
+          _filtroPresenca = filtro;
+          _invalidarCacheFiltro();
+        }),
+      ),
+    );
+  }
+
+  Widget _buildMiniAcao({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.18)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListaVazia({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1705,32 +2535,103 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   Widget _buildTelaChamada() {
+    final presentes = _presencas.values.where((v) => v).length;
+    final total = _alunos.length;
+    final ausentes = total - presentes;
+
     return Column(
       children: [
         _buildChamadaHeader(),
         Expanded(child: _buildAlunosList()),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade300)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, -3))],
-          ),
-          child: ElevatedButton.icon(
-            onPressed: _salvandoChamada ? null : _salvarChamada,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade900,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 55),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 3,
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 14,
+                  offset: const Offset(0, -4),
+                ),
+              ],
             ),
-            icon: _salvandoChamada
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save, size: 24),
-            label: _salvandoChamada
-                ? const Text('SALVANDO...')
-                : const Text('✅ SALVAR CHAMADA', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _salvandoChamada ? null : _confirmarLimparChamada,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade900,
+                      side: BorderSide(color: Colors.red.shade100),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    icon: const Icon(Icons.cleaning_services_rounded, size: 18),
+                    label: const Text(
+                      'LIMPAR',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _salvandoChamada ? null : _salvarChamada,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade900,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                    child: _salvandoChamada
+                        ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'SALVANDO...',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    )
+                        : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.cloud_done_rounded, size: 22),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'SALVAR • $presentes P / $ausentes A',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -1857,7 +2758,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                       if (professorId.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
-                          'ID: ${professorId.substring(0, 6)}...',
+                          'ID: ${professorId.length > 6 ? professorId.substring(0, 6) : professorId}...',
                           style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.7), fontStyle: FontStyle.italic),
                         ),
                       ],
@@ -1882,23 +2783,23 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Stack(
+                    children: [
+                      Container(
                         height: 12,
-                        decoration: const BoxDecoration(color: Colors.green, borderRadius: BorderRadius.only(topLeft: Radius.circular(6), bottomLeft: Radius.circular(6))),
+                        color: Colors.red,
                       ),
-                      flex: presentes,
-                    ),
-                    Expanded(
-                      child: Container(
-                        height: 12,
-                        decoration: const BoxDecoration(color: Colors.red, borderRadius: BorderRadius.only(topRight: Radius.circular(6), bottomRight: Radius.circular(6))),
+                      FractionallySizedBox(
+                        widthFactor: total > 0 ? (presentes / total).clamp(0.0, 1.0) : 0.0,
+                        child: Container(
+                          height: 12,
+                          color: Colors.green,
+                        ),
                       ),
-                      flex: total - presentes,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Row(

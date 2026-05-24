@@ -15,8 +15,9 @@ class UserService {
 
     final agora = FieldValue.serverTimestamp();
 
-    // Dados básicos do usuário
-    Map<String, dynamic> userData = {
+    // Dados básicos que podem ser atualizados sem risco
+    final Map<String, dynamic> userData = {
+      'uid': user.uid,
       'email': user.email,
       'ultima_atualizacao': agora,
     };
@@ -36,9 +37,20 @@ class UserService {
         'data_cadastro': agora,
       });
     } else {
-      // Atualizar apenas campos permitidos
-      if (nomeCompleto != null) userData['nome_completo'] = nomeCompleto;
-      if (contato != null) userData['contato'] = contato;
+      // Usuário já existe.
+      // NÃO mexer em status_conta aqui.
+      // Esse campo é controle de aprovação.
+      if (nomeCompleto != null) {
+        userData['nome_completo'] = nomeCompleto;
+      }
+
+      if (contato != null) {
+        userData['contato'] = contato;
+      }
+
+      if (user.photoURL != null && user.photoURL!.isNotEmpty) {
+        userData['foto_url'] = user.photoURL;
+      }
     }
 
     await docRef.set(userData, SetOptions(merge: true));
@@ -57,6 +69,7 @@ class UserService {
       final status = doc.data()?['status_conta'] as String?;
       return status == 'ativa';
     } catch (e) {
+      print('❌ Erro ao verificar acesso do usuário: $e');
       return false;
     }
   }

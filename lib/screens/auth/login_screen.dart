@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'cadastro_screen.dart';
 import '../../screens/auth/auth_check.dart';
 import '../../config/app_config.dart';
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+
   bool _isPasswordVisible = false;
   bool _isLoading = false;
   String _versaoApp = 'Carregando...';
@@ -38,25 +40,71 @@ class _LoginScreenState extends State<LoginScreen> {
           .doc('app')
           .get();
 
+      if (!mounted) return;
+
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         final versao = data['versao_atual'] ?? '1.0.0';
+
         setState(() {
           _versaoApp = versao;
         });
+
         print('✅ Versão carregada do Firestore: $_versaoApp');
       } else {
         setState(() {
           _versaoApp = '1.0.0';
         });
+
         print('⚠️ Documento "configuracoes/app" não encontrado, usando versão padrão');
       }
     } catch (e) {
       print('❌ Erro ao carregar versão: $e');
+
+      if (!mounted) return;
+
       setState(() {
         _versaoApp = '1.0.0';
       });
     }
+  }
+
+  // Recarrega o usuário autenticado sem mexer no cache do Firestore.
+  //
+  // IMPORTANTE:
+  // Antes tentamos usar terminate/clearPersistence depois do login.
+  // Isso pode quebrar carregamentos iniciais da Home, principalmente listas
+  // que dependem do Firestore logo após entrar no app.
+  Future<void> _atualizarSessaoAposLogin() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        print('⚠️ Nenhum usuário logado para atualizar sessão.');
+        return;
+      }
+
+      await user.reload();
+      print('✅ Sessão do FirebaseAuth recarregada para: ${user.email}');
+    } catch (e) {
+      print('⚠️ Não foi possível recarregar sessão após login: $e');
+    }
+  }
+
+  Future<void> _verificarAcessoENavegar(User user) async {
+    final hasAccess = await UserService.hasAccess(user.uid);
+
+    if (!mounted) return;
+
+    if (!hasAccess) {
+      _showPendingAccountDialog();
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const AuthCheck()),
+    );
   }
 
   // Login com Email/Senha
@@ -68,34 +116,34 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      if (!mounted) return;
+      final user = credential.user ?? FirebaseAuth.instance.currentUser;
 
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final hasAccess = await UserService.hasAccess(user.uid);
-
-        if (!hasAccess) {
-          _showPendingAccountDialog();
-          return;
-        }
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Usuário não encontrado após login.',
+        );
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const AuthCheck()),
-      );
+      await _atualizarSessaoAposLogin();
 
+      if (!mounted) return;
+
+      await _verificarAcessoENavegar(user);
     } on FirebaseAuthException catch (e) {
       _handleLoginError(e);
     } catch (e) {
+      print('❌ Erro inesperado no login: $e');
       _showErrorSnackBar('Ocorreu um erro inesperado. Tente novamente.');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -107,7 +155,8 @@ class _LoginScreenState extends State<LoginScreen> {
         message = 'Usuário não encontrado. Verifique seu email.';
         break;
       case 'wrong-password':
-        message = 'Senha incorreta. Tente novamente.';
+      case 'invalid-credential':
+        message = 'Email ou senha incorretos. Tente novamente.';
         break;
       case 'invalid-email':
         message = 'Formato de email inválido.';
@@ -133,14 +182,16 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final GoogleSignIn _googleSignIn = kIsWeb
+      final GoogleSignIn googleSignIn = kIsWeb
           ? GoogleSignIn(clientId: AppConfig.googleWebClientId)
           : GoogleSignIn();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
         return;
       }
 
@@ -155,7 +206,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final UserCredential userCredential =
       await FirebaseAuth.instance.signInWithCredential(credential);
 
-      final user = userCredential.user!;
+      final user = userCredential.user;
+
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Usuário Google não encontrado após login.',
+        );
+      }
+
+      await _atualizarSessaoAposLogin();
 
       await UserService.createOrUpdateUserDocument(
         user: user,
@@ -164,28 +224,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      final hasAccess = await UserService.hasAccess(user.uid);
-
-      if (!hasAccess) {
-        _showPendingAccountDialog();
-        return;
-      }
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const AuthCheck()),
-      );
-
+      await _verificarAcessoENavegar(user);
     } on FirebaseAuthException catch (e) {
       String message = 'Erro no login com Google';
+
       if (e.code == 'account-exists-with-different-credential') {
         message = 'Já existe uma conta com este email. Use outro método de login.';
+      } else if (e.code == 'network-request-failed') {
+        message = 'Sem conexão com a internet. Verifique sua rede.';
       }
+
       _showErrorSnackBar(message);
     } catch (e) {
+      print('❌ Erro inesperado no login com Google: $e');
       _showErrorSnackBar('Erro ao conectar com Google. Tente novamente.');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -221,9 +277,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              FirebaseAuth.instance.signOut();
+              await FirebaseAuth.instance.signOut();
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.red.shade900,
@@ -236,6 +292,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -334,7 +392,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? Icons.visibility_off
                                 : Icons.visibility,
                           ),
-                          onPressed: () {
+                          onPressed: _isLoading
+                              ? null
+                              : () {
                             setState(() {
                               _isPasswordVisible = !_isPasswordVisible;
                             });
@@ -392,12 +452,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                             : const Text(
                           'ENTRAR',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -454,10 +518,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // Link para cadastro
                     TextButton(
-                      onPressed: _isLoading ? null : () {
+                      onPressed: _isLoading
+                          ? null
+                          : () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const CadastroScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const CadastroScreen(),
+                          ),
                         );
                       },
                       child: Text(

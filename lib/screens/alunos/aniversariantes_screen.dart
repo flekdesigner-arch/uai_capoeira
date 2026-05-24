@@ -1,14 +1,27 @@
 import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:confetti/confetti.dart'; // 👈 NOVO PACOTE
+import 'package:confetti/confetti.dart';
+
 import 'aluno_detalhe_screen.dart';
-import 'package:uai_capoeira/services/mensagem_aniversario_service.dart';
-import 'package:uai_capoeira/models/mensagem_aniversario_model.dart';
 import 'arte_aniversario_screen.dart';
+
+// =====================================================
+// 🎂 ANIVERSARIANTES PAGE — VERSÃO PIKA DAS GALÁXIAS
+// =====================================================
+// Melhorias:
+// - Header premium com resumo do dia, próximos 7 dias e mês atual
+// - Busca por nome, apelido e turma
+// - Filtros rápidos: Todos, Hoje, Próximos 7 dias, Mês atual
+// - Grid dos meses com contador real por mês
+// - Cards mais bonitos, claros e rápidos
+// - Dialog de aniversário com confetes e ações
+// - Permissão antes de abrir perfil
+// - Datas mais seguras: Timestamp, DateTime, String ISO ou dd/MM/yyyy
 
 class AniversariantesPage extends StatefulWidget {
   const AniversariantesPage({super.key});
@@ -17,119 +30,110 @@ class AniversariantesPage extends StatefulWidget {
   State<AniversariantesPage> createState() => _AniversariantesPageState();
 }
 
-class _AniversariantesPageState extends State<AniversariantesPage> with SingleTickerProviderStateMixin {
+class _AniversariantesPageState extends State<AniversariantesPage>
+    with SingleTickerProviderStateMixin {
   int? _selectedMonth;
   late DateTime _today;
-  late DateTime _nextWeek;
 
-  // 🎉 CONTROLE DE CONFETES
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _filtroRapido = 'Todos';
+
   late ConfettiController _confettiController;
   Timer? _confettiTimer;
   bool _mostrarConfetes = false;
 
+  final List<String> _filtrosRapidos = const [
+    'Todos',
+    'Hoje',
+    '7 dias',
+    'Mês atual',
+  ];
+
   @override
   void initState() {
     super.initState();
-    _today = DateTime.now();
-    _nextWeek = _today.add(const Duration(days: 7));
-
-    // 🎉 INICIALIZA CONTROLADOR DE CONFETES
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    _today = _normalizarData(DateTime.now());
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
     _confettiController.dispose();
     _confettiTimer?.cancel();
     super.dispose();
   }
 
-  // 🎉 MÉTODO PARA EXPLODIR CONFETES
-  void _explodirConfetes() {
-    setState(() {
-      _mostrarConfetes = true;
-    });
+  // =====================================================
+  // DATAS
+  // =====================================================
 
-    // Inicia a animação
-    _confettiController.play();
-
-    // Para os confetes após 3 segundos
-    _confettiTimer?.cancel();
-    _confettiTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _mostrarConfetes = false;
-        });
-      }
-    });
-  }
-
-  // ==================== MÉTODOS AUXILIARES PARA DATAS ====================
-
-  /// 🔥 CORREÇÃO 1: Normalizar data (remover horas, minutos, segundos)
   DateTime _normalizarData(DateTime data) {
     return DateTime(data.year, data.month, data.day);
   }
 
-  /// 🔥 CORREÇÃO 2: Verificar se é aniversário hoje (ignorando fuso horário)
-  bool _isAniversarioHoje(DateTime dataNascimento) {
-    final hoje = DateTime.now();
+  DateTime? _parseDataNascimento(dynamic value) {
+    if (value == null) return null;
 
-    // Normalizar ambas as datas para ignorar horas
-    final dataNascimentoNormalizada = DateTime(
-      dataNascimento.year,
-      dataNascimento.month,
-      dataNascimento.day,
-    );
+    if (value is Timestamp) {
+      return value.toDate();
+    }
 
-    final hojeNormalizada = DateTime(
-      hoje.year,
-      hoje.month,
-      hoje.day,
-    );
+    if (value is DateTime) {
+      return value;
+    }
 
-    // Comparar apenas mês e dia
-    return dataNascimentoNormalizada.month == hojeNormalizada.month &&
-        dataNascimentoNormalizada.day == hojeNormalizada.day;
+    if (value is String) {
+      final texto = value.trim();
+      if (texto.isEmpty) return null;
+
+      final iso = DateTime.tryParse(texto);
+      if (iso != null) return iso;
+
+      try {
+        return DateFormat('dd/MM/yyyy').parseStrict(texto);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return null;
   }
 
-  /// 🔥 CORREÇÃO 3: Calcular idade corretamente considerando data normalizada
+  bool _isAniversarioHoje(DateTime dataNascimento) {
+    final hoje = _normalizarData(DateTime.now());
+    final nascimento = _normalizarData(dataNascimento);
+
+    return nascimento.month == hoje.month && nascimento.day == hoje.day;
+  }
+
   int _calcularIdade(DateTime dataNascimento) {
-    final hoje = DateTime.now();
-    final hojeNormalizada = DateTime(hoje.year, hoje.month, hoje.day);
-    final nascimentoNormalizada = DateTime(
-      dataNascimento.year,
-      dataNascimento.month,
-      dataNascimento.day,
-    );
+    final hoje = _normalizarData(DateTime.now());
+    final nascimento = _normalizarData(dataNascimento);
 
-    int idade = hojeNormalizada.year - nascimentoNormalizada.year;
+    int idade = hoje.year - nascimento.year;
 
-    // Ajustar se ainda não fez aniversário esse ano
-    if (hojeNormalizada.month < nascimentoNormalizada.month ||
-        (hojeNormalizada.month == nascimentoNormalizada.month &&
-            hojeNormalizada.day < nascimentoNormalizada.day)) {
+    if (hoje.month < nascimento.month ||
+        (hoje.month == nascimento.month && hoje.day < nascimento.day)) {
       idade--;
     }
 
-    return idade;
+    return idade < 0 ? 0 : idade;
   }
 
-  /// 🔥 CORREÇÃO 4: Calcular dias até o próximo aniversário
   int _calcularDiasAteAniversario(DateTime dataNascimento) {
-    final hoje = DateTime.now();
-    final hojeNormalizada = DateTime(hoje.year, hoje.month, hoje.day);
+    final hoje = _normalizarData(DateTime.now());
 
-    // Próximo aniversário no ano atual
     DateTime proximoAniversario = DateTime(
       hoje.year,
       dataNascimento.month,
       dataNascimento.day,
     );
 
-    // Se já passou esse ano, considerar ano que vem
-    if (proximoAniversario.isBefore(hojeNormalizada) ||
-        _isAniversarioHoje(dataNascimento)) {
+    if (proximoAniversario.isBefore(hoje)) {
       proximoAniversario = DateTime(
         hoje.year + 1,
         dataNascimento.month,
@@ -137,56 +141,137 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
       );
     }
 
-    return proximoAniversario.difference(hojeNormalizada).inDays;
+    return proximoAniversario.difference(hoje).inDays;
   }
 
-  // ==================== STREAMS E FILTROS ====================
+  String _formatarDataNascimento(DateTime data) {
+    return DateFormat('dd/MM/yyyy').format(data);
+  }
+
+  String _formatarDiaMes(DateTime data) {
+    return DateFormat('dd/MM').format(data);
+  }
+
+  String _getMonthName(int month) {
+    final date = DateTime(2024, month);
+    final name = DateFormat.MMMM('pt_BR').format(date);
+    return name.substring(0, 1).toUpperCase() + name.substring(1);
+  }
+
+  String _getMonthAbbreviation(int month) {
+    final date = DateTime(2024, month);
+    final name = DateFormat.MMM('pt_BR').format(date);
+    return name.substring(0, 1).toUpperCase() + name.substring(1);
+  }
+
+  // =====================================================
+  // FIRESTORE
+  // =====================================================
 
   Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
   _getAlunosAtivosStream() {
     return FirebaseFirestore.instance
         .collection('alunos')
-        .where('status_atividade', isEqualTo: 'ATIVO(A)')
-        .where('data_nascimento', isNotEqualTo: null)
+        .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO'])
         .snapshots()
-        .map((snapshot) => snapshot.docs);
+        .map((snapshot) {
+      final docs = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return _parseDataNascimento(data['data_nascimento']) != null;
+      }).toList();
+
+      docs.sort((a, b) {
+        final aDate = _parseDataNascimento(a.data()['data_nascimento']);
+        final bDate = _parseDataNascimento(b.data()['data_nascimento']);
+
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+
+        final da = _calcularDiasAteAniversario(aDate);
+        final db = _calcularDiasAteAniversario(bDate);
+
+        return da.compareTo(db);
+      });
+
+      return docs;
+    });
   }
 
-  /// 🔥 CORREÇÃO 5: Filtrar aniversariantes de hoje (CORRIGIDO)
-  List<QueryDocumentSnapshot<Map<String, dynamic>>>
-  _filterTodayBirthdays(List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos) {
-    return alunos.where((doc) {
-      final birthData = doc.data();
-      if (birthData['data_nascimento'] == null) return false;
+  // =====================================================
+  // FILTROS
+  // =====================================================
 
-      final birthDate = (birthData['data_nascimento'] as Timestamp).toDate();
+  String _normalizarTexto(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('â', 'a')
+        .replaceAll('ã', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ô', 'o')
+        .replaceAll('õ', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ç', 'c');
+  }
+
+  bool _matchesSearch(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    if (_searchQuery.trim().isEmpty) return true;
+
+    final data = doc.data();
+    final query = _normalizarTexto(_searchQuery);
+
+    final campos = [
+      data['nome'],
+      data['apelido'],
+      data['turma'],
+      data['responsavel'],
+      data['nome_responsavel'],
+    ].whereType<Object>().map((e) => _normalizarTexto(e.toString())).join(' ');
+
+    return campos.contains(query);
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _aplicarBusca(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    return alunos.where(_matchesSearch).toList();
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterTodayBirthdays(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    return alunos.where((doc) {
+      final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
+      if (birthDate == null) return false;
       return _isAniversarioHoje(birthDate);
-    }).toList();
-  }
-
-  /// 🔥 CORREÇÃO 6: Filtrar próximos aniversários (7 dias)
-  List<QueryDocumentSnapshot<Map<String, dynamic>>>
-  _filterWeekBirthdays(List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos) {
-    final hoje = DateTime.now();
-    final hojeNormalizada = DateTime(hoje.year, hoje.month, hoje.day);
-
-    return alunos.where((doc) {
-      final birthData = doc.data();
-      if (birthData['data_nascimento'] == null) return false;
-
-      final birthDate = (birthData['data_nascimento'] as Timestamp).toDate();
-
-      // Ignorar aniversariantes de hoje
-      if (_isAniversarioHoje(birthDate)) return false;
-
-      // Calcular dias até o próximo aniversário
-      final diasAteAniversario = _calcularDiasAteAniversario(birthDate);
-
-      return diasAteAniversario > 0 && diasAteAniversario <= 7;
     }).toList()
       ..sort((a, b) {
-        final dateA = (a.data()['data_nascimento'] as Timestamp).toDate();
-        final dateB = (b.data()['data_nascimento'] as Timestamp).toDate();
+        final nomeA = a.data()['nome']?.toString() ?? '';
+        final nomeB = b.data()['nome']?.toString() ?? '';
+        return nomeA.compareTo(nomeB);
+      });
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterWeekBirthdays(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    return alunos.where((doc) {
+      final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
+      if (birthDate == null) return false;
+
+      final dias = _calcularDiasAteAniversario(birthDate);
+      return dias > 0 && dias <= 7;
+    }).toList()
+      ..sort((a, b) {
+        final dateA = _parseDataNascimento(a.data()['data_nascimento']);
+        final dateB = _parseDataNascimento(b.data()['data_nascimento']);
+        if (dateA == null || dateB == null) return 0;
 
         final diasA = _calcularDiasAteAniversario(dateA);
         final diasB = _calcularDiasAteAniversario(dateB);
@@ -195,46 +280,89 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
       });
   }
 
-  /// Filtrar por mês
-  List<QueryDocumentSnapshot<Map<String, dynamic>>>
-  _filterMonthBirthdays(List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos, int month) {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterMonthBirthdays(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      int month,
+      ) {
     return alunos.where((doc) {
-      final birthData = doc.data();
-      if (birthData['data_nascimento'] == null) return false;
-      final birthDate = (birthData['data_nascimento'] as Timestamp).toDate();
+      final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
+      if (birthDate == null) return false;
       return birthDate.month == month;
     }).toList()
       ..sort((a, b) {
-        final dateA = (a.data()['data_nascimento'] as Timestamp).toDate();
-        final dateB = (b.data()['data_nascimento'] as Timestamp).toDate();
+        final dateA = _parseDataNascimento(a.data()['data_nascimento']);
+        final dateB = _parseDataNascimento(b.data()['data_nascimento']);
+        if (dateA == null || dateB == null) return 0;
         return dateA.day.compareTo(dateB.day);
       });
   }
 
-  // ==================== MÉTODOS DE PERMISSÃO ====================
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterCurrentMonth(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    return _filterMonthBirthdays(alunos, DateTime.now().month);
+  }
 
-  /// 🔥 CORREÇÃO 7: Método corrigido - AGORA SÓ ESPERA 2 PARÂMETROS
-  Future<void> _verificarPermissaoEAbrirPerfil(BuildContext context, String alunoId) async {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _getListaFiltroRapido(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    switch (_filtroRapido) {
+      case 'Hoje':
+        return _filterTodayBirthdays(alunos);
+      case '7 dias':
+        return _filterWeekBirthdays(alunos);
+      case 'Mês atual':
+        return _filterCurrentMonth(alunos);
+      case 'Todos':
+      default:
+        return alunos;
+    }
+  }
+
+  Map<int, int> _contarPorMes(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
+    final counts = <int, int>{
+      for (int i = 1; i <= 12; i++) i: 0,
+    };
+
+    for (final doc in alunos) {
+      final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
+      if (birthDate == null) continue;
+
+      counts[birthDate.month] = (counts[birthDate.month] ?? 0) + 1;
+    }
+
+    return counts;
+  }
+
+  // =====================================================
+  // PERMISSÃO
+  // =====================================================
+
+  Future<void> _verificarPermissaoEAbrirPerfil(
+      BuildContext context,
+      String alunoId,
+      ) async {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      _mostrarSnackBarSemPermissao(context, 'Usuário não autenticado');
+      _mostrarSnackBar(context, 'Usuário não autenticado', Colors.red);
       return;
     }
 
     try {
-      // Verifica permissão no Firestore
-      final doc = await FirebaseFirestore.instance
+      final permissoesDoc = await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(currentUser.uid)
           .collection('permissoes_usuario')
           .doc('configuracoes')
           .get();
 
-      final permissoes = doc.data() ?? {};
-      final podeVisualizarAlunos = permissoes['pode_visualizar_alunos'] ?? false;
+      final permissoes = permissoesDoc.data() ?? {};
+      final podeVisualizarAlunos =
+          permissoes['pode_visualizar_alunos'] == true;
 
-      // Verifica também se é admin pelo peso_permissao
       final userDoc = await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(currentUser.uid)
@@ -248,21 +376,16 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
         return;
       }
 
-      // Se tiver permissão, abre o perfil
-      if (context.mounted) {
-        print('🎯 Abrindo perfil do aluno: $alunoId');
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AlunoDetalheScreen(
-              alunoId: alunoId,
-            ),
-          ),
-        );
-      }
+      if (!context.mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AlunoDetalheScreen(alunoId: alunoId),
+        ),
+      );
     } catch (e) {
-      print('Erro ao verificar permissão: $e');
-      _mostrarSnackBarSemPermissao(context, 'Erro ao verificar permissão');
+      _mostrarSnackBar(context, 'Erro ao verificar permissão', Colors.red);
     }
   }
 
@@ -272,71 +395,26 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
           ),
           title: Row(
             children: [
-              Icon(
-                Icons.no_accounts,
-                color: Colors.red.shade900,
-                size: 28,
-              ),
-              const SizedBox(width: 12),
+              Icon(Icons.lock_rounded, color: Colors.red.shade900),
+              const SizedBox(width: 10),
               const Text(
                 'Sem Permissão',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Você não tem permissão para $acao.',
-                style: const TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade100),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.red.shade900,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Entre em contato com um administrador para solicitar acesso.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          content: Text('Você não tem permissão para $acao.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red.shade900,
+              child: Text(
+                'Entendi',
+                style: TextStyle(color: Colors.red.shade900),
               ),
-              child: const Text('Entendi'),
             ),
           ],
         );
@@ -344,339 +422,41 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
     );
   }
 
-  void _mostrarSnackBarSemPermissao(BuildContext context, String mensagem) {
+  void _mostrarSnackBar(BuildContext context, String mensagem, Color cor) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensagem),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 2),
+        backgroundColor: cor,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // ==================== DIALOG DE ANIVERSÁRIO ====================
+  // =====================================================
+  // CONFETES / ARTE
+  // =====================================================
 
-  void _mostrarDialogAniversario(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final aluno = doc.data();
-    final alunoId = doc.id;
-    final nome = aluno['nome'] ?? 'Aniversariante';
-    final fotoUrl = aluno['foto_perfil_aluno'] as String?;
-    final birthDate = (aluno['data_nascimento'] as Timestamp).toDate();
-    final idade = _calcularIdade(birthDate);
+  void _explodirConfetes() {
+    setState(() {
+      _mostrarConfetes = true;
+    });
 
-    // 🎉 EXPLODE CONFETES QUANDO ABRE O DIALOG
-    _explodirConfetes();
+    _confettiController.play();
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) => Stack(
-        children: [
-          // 🎉 CONFETES POR CIMA DE TUDO
-          if (_mostrarConfetes)
-            ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive, // Explode em todas direções
-              shouldLoop: false,
-              colors: const [
-                Colors.red,
-                Colors.blue,
-                Colors.green,
-                Colors.yellow,
-                Colors.purple,
-                Colors.orange,
-                Colors.pink,
-              ], // Cores variadas
-              numberOfParticles: 50, // Quantidade de partículas
-              gravity: 0.1, // Queda suave
-              emissionFrequency: 0.05,
-              minimumSize: const Size(10, 10),
-              maximumSize: const Size(20, 20),
-              particleDrag: 0.05,
-            ),
-          // Dialog normal
-          Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            elevation: 8,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.red.shade50,
-                    Colors.white,
-                  ],
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Cabeçalho comemorativo
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.red.shade900,
-                          Colors.red.shade700,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(3, (index) =>
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                child: Icon(
-                                  Icons.star,
-                                  color: Colors.amber.shade300,
-                                  size: 20 + index * 4,
-                                ),
-                              ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          '🎉 FELIZ ANIVERSÁRIO! 🎉',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '$idade anos',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Corpo do dialog
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        // Foto do aluno
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.red.shade800,
-                              width: 3,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.red.shade200,
-                                blurRadius: 12,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: fotoUrl != null && fotoUrl.isNotEmpty
-                                ? CachedNetworkImage(
-                              imageUrl: fotoUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: Colors.grey.shade200,
-                                child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: Colors.grey.shade200,
-                                child: Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: Colors.grey.shade400,
-                                ),
-                              ),
-                            )
-                                : Container(
-                              color: Colors.grey.shade200,
-                              child: Icon(
-                                Icons.person,
-                                size: 50,
-                                color: Colors.grey.shade400,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Nome do aluno
-                        Text(
-                          nome,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Text(
-                          'Hoje é um dia especial! 🎂',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade600,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Botões
-                        Row(
-                          children: [
-                            // Botão Ver Perfil
-                            Expanded(
-                              child: _buildDialogButton(
-                                onPressed: () {
-                                  Navigator.of(dialogContext).pop();
-                                  Future.delayed(Duration.zero, () {
-                                    if (context.mounted) {
-                                      _verificarPermissaoEAbrirPerfil(context, alunoId);
-                                    }
-                                  });
-                                },
-                                icon: Icons.person,
-                                label: 'VER PERFIL',
-                                color: Colors.blue.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Botão Criar Arte
-                            Expanded(
-                              child: _buildDialogButton(
-                                onPressed: () {
-                                  Navigator.of(dialogContext).pop();
-                                  Future.delayed(Duration.zero, () {
-                                    if (context.mounted) {
-                                      _abrirArteAniversario(context, aluno, alunoId);
-                                    }
-                                  });
-                                },
-                                icon: Icons.brush,
-                                label: 'CRIAR ARTE',
-                                color: Colors.red.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // Botão Fechar
-                        TextButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.grey.shade600,
-                          ),
-                          child: const Text('FECHAR'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    _confettiTimer?.cancel();
+    _confettiTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() {
+        _mostrarConfetes = false;
+      });
+    });
   }
 
-  // Widget auxiliar para botões do dialog
-  Widget _buildDialogButton({
-    required VoidCallback onPressed,
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            color,
-            color.withOpacity(0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: Colors.white, size: 24),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==================== MÉTODO DE ARTE ====================
-
-  void _abrirArteAniversario(BuildContext context, Map<String, dynamic> aluno, String alunoId) {
+  void _abrirArteAniversario(
+      BuildContext context,
+      Map<String, dynamic> aluno,
+      String alunoId,
+      ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -689,7 +469,282 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
     );
   }
 
-  // ==================== BUILD PRINCIPAL ====================
+  // =====================================================
+  // DIALOG
+  // =====================================================
+
+  void _mostrarDialogAniversario(
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
+    final aluno = doc.data();
+    final alunoId = doc.id;
+    final nome = aluno['nome']?.toString() ?? 'Aniversariante';
+    final apelido = aluno['apelido']?.toString();
+    final fotoUrl = aluno['foto_perfil_aluno'] as String?;
+    final birthDate = _parseDataNascimento(aluno['data_nascimento']);
+    final idade = birthDate == null ? 0 : _calcularIdade(birthDate);
+
+    _explodirConfetes();
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext dialogContext) {
+        return Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            if (_mostrarConfetes)
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: _confettiController,
+                  blastDirectionality: BlastDirectionality.explosive,
+                  shouldLoop: false,
+                  colors: const [
+                    Colors.red,
+                    Colors.blue,
+                    Colors.green,
+                    Colors.yellow,
+                    Colors.purple,
+                    Colors.orange,
+                    Colors.pink,
+                  ],
+                  numberOfParticles: 45,
+                  gravity: 0.18,
+                  emissionFrequency: 0.05,
+                  minimumSize: const Size(8, 8),
+                  maximumSize: const Size(18, 18),
+                ),
+              ),
+            Dialog(
+              insetPadding: const EdgeInsets.all(18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(26),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.red.shade900,
+                            Colors.red.shade700,
+                            Colors.deepOrange.shade500,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Text('🎉', style: TextStyle(fontSize: 24)),
+                              SizedBox(width: 8),
+                              Text(
+                                'FELIZ ANIVERSÁRIO!',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text('🎂', style: TextStyle(fontSize: 24)),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          _buildAvatar(
+                            fotoUrl: fotoUrl,
+                            nome: nome,
+                            size: 112,
+                            borderColor: Colors.white,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            nome,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (apelido != null && apelido.trim().isNotEmpty)
+                            Text(
+                              '"$apelido"',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Text(
+                              '$idade anos hoje',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Que seja um dia cheio de axé, alegria e boas energias!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildDialogButton(
+                                  onPressed: () {
+                                    Navigator.of(dialogContext).pop();
+                                    Future.delayed(Duration.zero, () {
+                                      if (context.mounted) {
+                                        _verificarPermissaoEAbrirPerfil(
+                                          context,
+                                          alunoId,
+                                        );
+                                      }
+                                    });
+                                  },
+                                  icon: Icons.person_rounded,
+                                  label: 'PERFIL',
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _buildDialogButton(
+                                  onPressed: () {
+                                    Navigator.of(dialogContext).pop();
+                                    Future.delayed(Duration.zero, () {
+                                      if (context.mounted) {
+                                        _abrirArteAniversario(
+                                          context,
+                                          aluno,
+                                          alunoId,
+                                        );
+                                      }
+                                    });
+                                  },
+                                  icon: Icons.auto_awesome_rounded,
+                                  label: 'CRIAR ARTE',
+                                  color: Colors.red.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: Text(
+                              'FECHAR',
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDialogButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color, color.withOpacity(0.82)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.28),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+            child: Column(
+              children: [
+                Icon(icon, color: Colors.white, size: 25),
+                const SizedBox(height: 5),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // BUILD
+  // =====================================================
 
   @override
   Widget build(BuildContext context) {
@@ -702,11 +757,12 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
         return true;
       },
       child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
         appBar: _selectedMonth != null
             ? AppBar(
           backgroundColor: Colors.red.shade900,
           foregroundColor: Colors.white,
-          elevation: 0,
+          title: Text(_getMonthName(_selectedMonth!)),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => setState(() => _selectedMonth = null),
@@ -720,246 +776,490 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
               return _buildLoading();
             }
 
+            if (snapshot.hasError) {
+              return _buildErrorState(snapshot.error.toString());
+            }
+
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return _buildEmptyState();
             }
 
-            final alunos = snapshot.data!;
+            final alunosOriginais = snapshot.data!;
+            final alunosComBusca = _aplicarBusca(alunosOriginais);
 
             if (_selectedMonth != null) {
-              final monthlyBirthdays = _filterMonthBirthdays(alunos, _selectedMonth!);
-              return _buildMonthView(monthlyBirthdays, _selectedMonth!);
+              final monthlyBirthdays = _filterMonthBirthdays(
+                alunosComBusca,
+                _selectedMonth!,
+              );
+              return _buildMonthView(
+                monthlyBirthdays,
+                _selectedMonth!,
+                alunosOriginais,
+              );
             }
 
-            return _buildMainView(alunos);
+            return _buildMainView(alunosOriginais, alunosComBusca);
           },
         ),
       ),
     );
   }
 
-  Widget _buildMainView(List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos) {
-    final todayBirthdays = _filterTodayBirthdays(alunos);
-    final weeklyBirthdays = _filterWeekBirthdays(alunos);
+  Widget _buildMainView(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosOriginais,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosFiltradosBusca,
+      ) {
+    final todayBirthdays = _filterTodayBirthdays(alunosFiltradosBusca);
+    final weeklyBirthdays = _filterWeekBirthdays(alunosFiltradosBusca);
+    final monthBirthdays = _filterCurrentMonth(alunosFiltradosBusca);
+    final listaFiltro = _getListaFiltroRapido(alunosFiltradosBusca);
+    final monthCounts = _contarPorMes(alunosFiltradosBusca);
 
     return RefreshIndicator(
+      color: Colors.red.shade900,
       onRefresh: () async {
         setState(() {
-          _today = DateTime.now();
-          _nextWeek = _today.add(const Duration(days: 7));
+          _today = _normalizarData(DateTime.now());
         });
       },
       child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          // Cabeçalho
-          SliverAppBar(
-            backgroundColor: Colors.red.shade900,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-            pinned: true,
-            floating: true,
-            expandedHeight: 100,
-            flexibleSpace: FlexibleSpaceBar(
-              centerTitle: true,
-              title: Row(
-                mainAxisSize: MainAxisSize.min,
+          _buildSliverHeader(
+            total: alunosOriginais.length,
+            hoje: todayBirthdays.length,
+            semana: weeklyBirthdays.length,
+            mes: monthBirthdays.length,
+          ),
+          SliverToBoxAdapter(
+            child: _buildSearchAndFilters(),
+          ),
+          if (_searchQuery.isNotEmpty || _filtroRapido != 'Todos')
+            SliverToBoxAdapter(
+              child: _buildFilteredListHeader(listaFiltro.length),
+            ),
+          if (_searchQuery.isNotEmpty || _filtroRapido != 'Todos')
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final doc = listaFiltro[index];
+                  final birthDate =
+                  _parseDataNascimento(doc.data()['data_nascimento']);
+                  if (birthDate == null) return const SizedBox.shrink();
+
+                  return _buildBirthdayCard(
+                    doc,
+                    birthDate,
+                    isHoje: _isAniversarioHoje(birthDate),
+                  );
+                },
+                childCount: listaFiltro.length,
+              ),
+            )
+          else ...[
+            if (todayBirthdays.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _buildBirthdaySection(
+                  title: 'Aniversariantes de Hoje',
+                  subtitle: 'Aproveite para mandar uma mensagem especial',
+                  count: todayBirthdays.length,
+                  icon: Icons.celebration_rounded,
+                  color: Colors.red.shade800,
+                ),
+              ),
+            if (todayBirthdays.isNotEmpty)
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    final doc = todayBirthdays[index];
+                    final birthDate =
+                    _parseDataNascimento(doc.data()['data_nascimento']);
+                    if (birthDate == null) return const SizedBox.shrink();
+
+                    return _buildBirthdayCard(
+                      doc,
+                      birthDate,
+                      isHoje: true,
+                    );
+                  },
+                  childCount: todayBirthdays.length,
+                ),
+              ),
+            if (weeklyBirthdays.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _buildBirthdaySection(
+                  title: 'Próximos 7 dias',
+                  subtitle: 'Prepare artes e mensagens com antecedência',
+                  count: weeklyBirthdays.length,
+                  icon: Icons.upcoming_rounded,
+                  color: Colors.orange.shade800,
+                ),
+              ),
+            if (weeklyBirthdays.isNotEmpty)
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    final doc = weeklyBirthdays[index];
+                    final birthDate =
+                    _parseDataNascimento(doc.data()['data_nascimento']);
+                    if (birthDate == null) return const SizedBox.shrink();
+
+                    return _buildBirthdayCard(
+                      doc,
+                      birthDate,
+                      isHoje: false,
+                    );
+                  },
+                  childCount: weeklyBirthdays.length,
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: _buildMonthGridSection(monthCounts),
+            ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 28)),
+        ],
+      ),
+    );
+  }
+
+  SliverAppBar _buildSliverHeader({
+    required int total,
+    required int hoje,
+    required int semana,
+    required int mes,
+  }) {
+    return SliverAppBar(
+      backgroundColor: Colors.red.shade900,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      pinned: true,
+      expandedHeight: 235,
+      flexibleSpace: FlexibleSpaceBar(
+        collapseMode: CollapseMode.parallax,
+        titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
+        title: const Text(
+          'Aniversariantes',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.red.shade900,
+                Colors.red.shade700,
+                Colors.deepOrange.shade500,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 54),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.cake, size: 24),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Aniversariantes',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.16),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.16),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.cake_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Central de Aniversários',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              DateFormat(
+                                "EEEE, dd 'de' MMMM",
+                                'pt_BR',
+                              ).format(_today),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.84),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildHeaderStat(
+                          icon: Icons.celebration_rounded,
+                          value: '$hoje',
+                          label: 'Hoje',
+                          color: Colors.amber.shade300,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildHeaderStat(
+                          icon: Icons.calendar_month_rounded,
+                          value: '$semana',
+                          label: '7 dias',
+                          color: Colors.lightBlue.shade200,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildHeaderStat(
+                          icon: Icons.groups_rounded,
+                          value: '$mes',
+                          label: 'Mês',
+                          color: Colors.greenAccent.shade100,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildHeaderStat(
+                          icon: Icons.people_alt_rounded,
+                          value: '$total',
+                          label: 'Ativos',
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.red.shade900,
-                      Colors.red.shade700,
-                    ],
-                  ),
-                ),
-              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          // Seção: Aniversariantes de Hoje
-          if (todayBirthdays.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _buildBirthdaySection(
-                title: '🎂 Aniversariantes de Hoje',
-                count: todayBirthdays.length,
-                icon: Icons.celebration,
-                isToday: true,
-              ),
+  Widget _buildHeaderStat({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.13),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withOpacity(0.14)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
-          if (todayBirthdays.isNotEmpty)
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final doc = todayBirthdays[index];
-                  final birthDate = (doc.data()['data_nascimento'] as Timestamp).toDate();
-                  return _buildBirthdayCard(doc, birthDate, isHoje: true);
-                },
-                childCount: todayBirthdays.length,
-              ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.78),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
             ),
-
-          // Seção: Próximos Aniversários
-          if (weeklyBirthdays.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _buildBirthdaySection(
-                title: '📅 Próximos Aniversários',
-                count: weeklyBirthdays.length,
-                icon: Icons.upcoming,
-                isToday: false,
-              ),
-            ),
-          if (weeklyBirthdays.isNotEmpty)
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final doc = weeklyBirthdays[index];
-                  final birthDate = (doc.data()['data_nascimento'] as Timestamp).toDate();
-                  return _buildBirthdayCard(doc, birthDate, isHoje: false);
-                },
-                childCount: weeklyBirthdays.length,
-              ),
-            ),
-
-          // Seção: Buscar por Mês
-          SliverToBoxAdapter(
-            child: _buildMonthGridSection(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMonthView(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
-      int month,
-      ) {
-    return Column(
-      children: [
-        // Faixinha com nome do mês
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          decoration: BoxDecoration(
-            color: Colors.red.shade900,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _getMonthName(month),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${monthlyBirthdays.length}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Lista de aniversariantes
-        Expanded(
-          child: monthlyBirthdays.isEmpty
-              ? _buildEmptyMonthState(month)
-              : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: monthlyBirthdays.length,
-            itemBuilder: (context, index) {
-              final doc = monthlyBirthdays[index];
-              final birthDate = (doc.data()['data_nascimento'] as Timestamp).toDate();
-              return _buildBirthdayCard(doc, birthDate, isMonthView: true);
+  Widget _buildSearchAndFilters() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
             },
+            decoration: InputDecoration(
+              hintText: 'Buscar aluno, apelido ou turma...',
+              prefixIcon: Icon(Icons.search_rounded, color: Colors.red.shade900),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                  });
+                },
+                icon: const Icon(Icons.close_rounded),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _filtrosRapidos.map((filtro) {
+                final ativo = _filtroRapido == filtro;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    selected: ativo,
+                    label: Text(filtro),
+                    selectedColor: Colors.red.shade900,
+                    backgroundColor: Colors.grey.shade100,
+                    labelStyle: TextStyle(
+                      color: ativo ? Colors.white : Colors.grey.shade800,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) {
+                      setState(() {
+                        _filtroRapido = filtro;
+                      });
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilteredListHeader(int count) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.shade100),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.filter_alt_rounded, color: Colors.red.shade900),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$count resultado${count == 1 ? '' : 's'} encontrado${count == 1 ? '' : 's'}',
+              style: TextStyle(
+                color: Colors.red.shade900,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          if (_searchQuery.isNotEmpty || _filtroRapido != 'Todos')
+            TextButton(
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _searchQuery = '';
+                  _filtroRapido = 'Todos';
+                });
+              },
+              child: const Text('Limpar'),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildBirthdaySection({
     required String title,
+    required String subtitle,
     required int count,
     required IconData icon,
-    required bool isToday,
+    required Color color,
   }) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      margin: const EdgeInsets.fromLTRB(16, 18, 16, 8),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: isToday ? Colors.red.shade100 : Colors.orange.shade100,
-              borderRadius: BorderRadius.circular(8),
+              color: color.withOpacity(0.11),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              color: isToday ? Colors.red.shade800 : Colors.orange.shade800,
-              size: 20,
-            ),
+            child: Icon(icon, color: color, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isToday ? Colors.red.shade800 : Colors.black87,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: isToday ? Colors.red.shade50 : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isToday ? Colors.red.shade200 : Colors.grey.shade300,
-              ),
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withOpacity(0.20)),
             ),
             child: Text(
               '$count',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: isToday ? Colors.red.shade800 : Colors.grey.shade700,
+                color: color,
               ),
             ),
           ),
@@ -968,7 +1268,6 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
     );
   }
 
-  /// 🔥 CORREÇÃO 9: Card com verificação correta de aniversário
   Widget _buildBirthdayCard(
       QueryDocumentSnapshot<Map<String, dynamic>> doc,
       DateTime birthDate, {
@@ -977,181 +1276,189 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
       }) {
     final aluno = doc.data();
     final alunoId = doc.id;
-    final idade = _calcularIdade(birthDate);
-    final diasAteAniversario = _calcularDiasAteAniversario(birthDate);
+    final nome = aluno['nome']?.toString() ?? 'Nome não informado';
+    final apelido = aluno['apelido']?.toString();
+    final turma = aluno['turma']?.toString();
+    final fotoUrl = aluno['foto_perfil_aluno'] as String?;
+    final idadeAtual = _calcularIdade(birthDate);
+    final idadeQueVaiFazer = _isAniversarioHoje(birthDate)
+        ? idadeAtual
+        : idadeAtual + (_calcularDiasAteAniversario(birthDate) > 0 ? 1 : 0);
+    final dias = _calcularDiasAteAniversario(birthDate);
 
-    // 🔥 DEBUG para verificar datas
-    debugPrint('''
-      📅 Verificando ${aluno['nome']}:
-        Data nascimento (Firestore): $birthDate
-        Data hoje: ${DateTime.now()}
-        Data hoje normalizada: ${_normalizarData(DateTime.now())}
-        Data nascimento normalizada: ${_normalizarData(birthDate)}
-        É aniversário hoje? ${_isAniversarioHoje(birthDate)}
-        Idade: $idade
-        Dias até aniversário: $diasAteAniversario
-    ''');
+    final Color destaque = isHoje
+        ? Colors.red.shade900
+        : dias <= 7
+        ? Colors.orange.shade800
+        : Colors.grey.shade800;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
-        color: isHoje ? Colors.red.shade50 : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        gradient: isHoje
+            ? LinearGradient(
+          colors: [
+            Colors.red.shade50,
+            Colors.white,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        )
+            : null,
+        color: isHoje ? null : Colors.white,
+        border: Border.all(
+          color: isHoje ? Colors.red.shade300 : Colors.grey.shade200,
+          width: isHoje ? 1.6 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: isHoje
+                ? Colors.red.shade900.withOpacity(0.13)
+                : Colors.black.withOpacity(0.045),
+            blurRadius: isHoje ? 14 : 8,
+            offset: const Offset(0, 4),
           ),
         ],
-        border: isHoje ? Border.all(color: Colors.red.shade300, width: 2) : null,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: () {
             if (isHoje) {
-              // Se for hoje, mostra diálogo especial com CONFETES!
               _mostrarDialogAniversario(context, doc);
             } else {
-              // 🔥 CORREÇÃO 10: Chamada corrigida - sem o nome
               _verificarPermissaoEAbrirPerfil(context, alunoId);
             }
           },
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(13),
             child: Row(
               children: [
-                // Foto do aluno
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isHoje ? Colors.red.shade500 : Colors.grey.shade300,
-                      width: isHoje ? 3 : 2,
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _buildAvatar(
+                      fotoUrl: fotoUrl,
+                      nome: nome,
+                      size: 62,
+                      borderColor:
+                      isHoje ? Colors.red.shade700 : Colors.grey.shade300,
                     ),
-                  ),
-                  child: ClipOval(
-                    child: aluno['foto_perfil_aluno'] != null
-                        ? CachedNetworkImage(
-                      imageUrl: aluno['foto_perfil_aluno'],
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: Colors.grey.shade100,
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.grey.shade400,
+                    if (isHoje)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade800,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.cake_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
                         ),
                       ),
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.grey.shade100,
-                        child: const Icon(
-                          Icons.error,
-                          color: Colors.red,
-                        ),
-                      ),
-                    )
-                        : Container(
-                      color: Colors.grey.shade100,
-                      child: Icon(
-                        Icons.person,
-                        color: Colors.grey.shade400,
-                        size: 30,
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
-
-                const SizedBox(width: 16),
-
-                // Informações do aluno
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        aluno['nome'] ?? 'Nome não informado',
+                        nome,
                         style: TextStyle(
-                          fontWeight: isHoje ? FontWeight.bold : FontWeight.w600,
-                          fontSize: 16,
-                          color: isHoje ? Colors.red.shade900 : Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15.5,
+                          color: destaque,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-
-                      const SizedBox(height: 4),
-
-                      Text(
-                        DateFormat('dd/MM/yyyy').format(birthDate),
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                          fontSize: 14,
-                        ),
-                      ),
-
-                      const SizedBox(height: 4),
-
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          // Idade
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '$idade ano${idade != 1 ? 's' : ''}',
-                              style: TextStyle(
-                                color: Colors.blue.shade700,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                      if (apelido != null && apelido.trim().isNotEmpty)
+                        Text(
+                          '"$apelido"',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
                           ),
-
-                          // Dias restantes (se não for hoje)
-                          if (!isHoje && diasAteAniversario > 0 && diasAteAniversario <= 30)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Faltam $diasAteAniversario dia${diasAteAniversario != 1 ? 's' : ''}',
-                                style: TextStyle(
-                                  color: Colors.orange.shade700,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 5,
+                        children: [
+                          _buildSmallChip(
+                            icon: Icons.calendar_today_rounded,
+                            text: _formatarDiaMes(birthDate),
+                            color: Colors.blue.shade700,
+                          ),
+                          _buildSmallChip(
+                            icon: Icons.cake_rounded,
+                            text: isHoje
+                                ? '$idadeAtual anos'
+                                : 'fará $idadeQueVaiFazer',
+                            color: Colors.purple.shade700,
+                          ),
+                          if (turma != null && turma.trim().isNotEmpty)
+                            _buildSmallChip(
+                              icon: Icons.groups_rounded,
+                              text: turma,
+                              color: Colors.green.shade700,
+                            ),
+                          if (!isHoje)
+                            _buildSmallChip(
+                              icon: Icons.hourglass_bottom_rounded,
+                              text: dias == 0
+                                  ? 'Hoje'
+                                  : 'faltam $dias dia${dias == 1 ? '' : 's'}',
+                              color: Colors.orange.shade800,
                             ),
                         ],
                       ),
                     ],
                   ),
                 ),
-
-                // Ícone indicador
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: isHoje ? Colors.red.shade100 : Colors.transparent,
-                    shape: BoxShape.circle,
+                const SizedBox(width: 8),
+                if (isHoje)
+                  Column(
+                    children: [
+                      IconButton(
+                        tooltip: 'Criar arte',
+                        onPressed: () => _abrirArteAniversario(
+                          context,
+                          aluno,
+                          alunoId,
+                        ),
+                        icon: Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.red.shade900,
+                        ),
+                      ),
+                      Text(
+                        'Arte',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.red.shade900,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.grey.shade400,
                   ),
-                  child: Icon(
-                    isHoje ? Icons.cake : Icons.chevron_right,
-                    color: isHoje ? Colors.red.shade800 : Colors.grey.shade400,
-                    size: isHoje ? 28 : 20,
-                  ),
-                ),
               ],
             ),
           ),
@@ -1160,184 +1467,183 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
     );
   }
 
-  Widget _buildMonthGridSection() {
+  Widget _buildSmallChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 16),
-            child: Text(
-              "📆 Escolha um mês",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10.5,
+              color: color,
+              fontWeight: FontWeight.w700,
             ),
-          ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.3,
-            ),
-            itemCount: 12,
-            itemBuilder: (context, index) {
-              final month = index + 1;
-              return _buildMonthCard(month);
-            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMonthCard(int month) {
-    final isCurrentMonth = month == DateTime.now().month;
+  Widget _buildAvatar({
+    required String? fotoUrl,
+    required String nome,
+    required double size,
+    required Color borderColor,
+  }) {
+    final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
 
-    return Material(
-      borderRadius: BorderRadius.circular(12),
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => setState(() => _selectedMonth = month),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 2.4),
+        boxShadow: [
+          BoxShadow(
+            color: borderColor.withOpacity(0.22),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: fotoUrl != null && fotoUrl.isNotEmpty
+            ? CachedNetworkImage(
+          imageUrl: fotoUrl,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            color: Colors.grey.shade100,
+            child: Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.red.shade900,
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => _avatarFallback(inicial),
+        )
+            : _avatarFallback(inicial),
+      ),
+    );
+  }
+
+  Widget _avatarFallback(String inicial) {
+    return Container(
+      color: Colors.grey.shade100,
+      child: Center(
+        child: Text(
+          inicial,
+          style: TextStyle(
+            fontSize: 25,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey.shade500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // MONTH VIEW
+  // =====================================================
+
+  Widget _buildMonthView(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
+      int month,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> allAlunos,
+      ) {
+    final nomeMes = _getMonthName(month);
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: isCurrentMonth
-                  ? [Colors.red.shade800, Colors.red.shade600]
-                  : [Colors.red.shade700, Colors.red.shade500],
+              colors: [
+                Colors.red.shade900,
+                Colors.red.shade700,
+                Colors.deepOrange.shade500,
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.red.shade300.withOpacity(0.3),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+                color: Colors.red.shade900.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  _getMonthAbbreviation(month).toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  month.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyMonthState(int month) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.cake_outlined,
-            size: 80,
-            color: Colors.grey.shade300,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Nenhum aniversariante em ${_getMonthName(month)}',
-            style: const TextStyle(
-              fontSize: 18,
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Não há alunos ativos que façam aniversário neste mês',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          TextButton(
-            onPressed: () => setState(() => _selectedMonth = null),
-            child: Text(
-              'Voltar',
-              style: TextStyle(
-                color: Colors.red.shade800,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoading() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            color: Colors.red.shade800,
-            strokeWidth: 2,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Carregando...',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Título centralizado
-        Container(
-          height: 100,
-          decoration: BoxDecoration(
-            color: Colors.red.shade900,
-          ),
-          child: Center(
+          child: SafeArea(
+            bottom: false,
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cake, color: Colors.white, size: 28),
-                const SizedBox(width: 12),
-                const Text(
-                  'Aniversariantes',
-                  style: TextStyle(
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.calendar_month_rounded,
                     color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                    size: 25,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nomeMes,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${monthlyBirthdays.length} aniversariante${monthlyBirthdays.length == 1 ? '' : 's'} encontrado${monthlyBirthdays.length == 1 ? '' : 's'}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.82),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.white.withOpacity(0.16)),
+                  ),
+                  child: Text(
+                    '${monthlyBirthdays.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -1345,35 +1651,304 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
           ),
         ),
         Expanded(
+          child: monthlyBirthdays.isEmpty
+              ? _buildEmptyMonthState(month)
+              : RefreshIndicator(
+            color: Colors.red.shade900,
+            onRefresh: () async => setState(() {}),
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(0, 12, 0, 24),
+              itemCount: monthlyBirthdays.length,
+              itemBuilder: (context, index) {
+                final doc = monthlyBirthdays[index];
+                final birthDate =
+                _parseDataNascimento(doc.data()['data_nascimento']);
+                if (birthDate == null) return const SizedBox.shrink();
+
+                return _buildBirthdayCard(
+                  doc,
+                  birthDate,
+                  isMonthView: true,
+                  isHoje: _isAniversarioHoje(birthDate),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMonthGridSection(Map<int, int> monthCounts) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_view_month_rounded,
+                  color: Colors.red.shade900),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Buscar por mês',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                '12 meses',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.22,
+            ),
+            itemCount: 12,
+            itemBuilder: (context, index) {
+              final month = index + 1;
+              return _buildMonthCard(month, monthCounts[month] ?? 0);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthCard(int month, int count) {
+    final isCurrentMonth = month == DateTime.now().month;
+    final hasBirthdays = count > 0;
+
+    final colors = isCurrentMonth
+        ? [Colors.red.shade900, Colors.red.shade700]
+        : hasBirthdays
+        ? [Colors.deepOrange.shade600, Colors.orange.shade500]
+        : [Colors.grey.shade200, Colors.grey.shade100];
+
+    return Material(
+      borderRadius: BorderRadius.circular(15),
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _selectedMonth = month),
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: colors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: isCurrentMonth
+                  ? Colors.red.shade200
+                  : Colors.grey.shade200,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _getMonthAbbreviation(month).toUpperCase(),
+                      style: TextStyle(
+                        color: hasBirthdays || isCurrentMonth
+                            ? Colors.white
+                            : Colors.grey.shade700,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      month.toString().padLeft(2, '0'),
+                      style: TextStyle(
+                        color: hasBirthdays || isCurrentMonth
+                            ? Colors.white70
+                            : Colors.grey.shade500,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 7,
+                top: 7,
+                child: Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: hasBirthdays || isCurrentMonth
+                        ? Colors.white.withOpacity(0.22)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: hasBirthdays || isCurrentMonth
+                          ? Colors.white
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // EMPTY / LOADING / ERROR
+  // =====================================================
+
+  Widget _buildLoading() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            color: Colors.red.shade900,
+            strokeWidth: 2.5,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Carregando aniversariantes...',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(26),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 70, color: Colors.red.shade300),
+            const SizedBox(height: 14),
+            const Text(
+              'Erro ao carregar aniversariantes',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Column(
+      children: [
+        Container(
+          height: 120,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.red.shade900, Colors.red.shade700],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const SafeArea(
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cake_rounded, color: Colors.white, size: 30),
+                  SizedBox(width: 10),
+                  Text(
+                    'Aniversariantes',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(32.0),
+              padding: const EdgeInsets.all(32),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.celebration_outlined,
-                    size: 80,
+                    size: 86,
                     color: Colors.grey.shade300,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   const Text(
-                    'Nenhum aniversariante',
+                    'Nenhum aniversariante encontrado',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 19,
                       fontWeight: FontWeight.bold,
                       color: Colors.grey,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
-                    'Não há alunos ativos com aniversário próximo',
+                    'Não há alunos ativos com data de nascimento cadastrada.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade500,
+                      height: 1.4,
                     ),
-                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -1384,15 +1959,49 @@ class _AniversariantesPageState extends State<AniversariantesPage> with SingleTi
     );
   }
 
-  String _getMonthName(int month) {
-    final date = DateTime(2024, month);
-    final name = DateFormat.MMMM('pt_BR').format(date);
-    return name.substring(0, 1).toUpperCase() + name.substring(1);
-  }
-
-  String _getMonthAbbreviation(int month) {
-    final date = DateTime(2024, month);
-    final name = DateFormat.MMM('pt_BR').format(date);
-    return name.substring(0, 1).toUpperCase() + name.substring(1);
+  Widget _buildEmptyMonthState(int month) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(26),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cake_outlined, size: 82, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text(
+              'Nenhum aniversariante em ${_getMonthName(month)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tente buscar outro mês ou conferir os cadastros dos alunos.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade500,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedMonth = null),
+              icon: Icon(Icons.arrow_back, color: Colors.red.shade900),
+              label: Text(
+                'Voltar',
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

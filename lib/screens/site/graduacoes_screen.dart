@@ -265,721 +265,906 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = ResponsiveUtils.isMobile(context);
-    final isTablet = ResponsiveUtils.isTablet(context);
-    final isDesktop = ResponsiveUtils.isDesktop(context);
-    final padding = ResponsiveUtils.getResponsivePadding(context);
+    final width = MediaQuery.of(context).size.width;
+    final isMobile = width < 700;
     final colorScheme = Theme.of(context).colorScheme;
 
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
       },
       child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
         appBar: AppBar(
-          title: const Text('🥋 GRADUAÇÕES'),
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
+          title: const Text(
+            'Graduações',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          backgroundColor: Colors.red.shade900,
+          foregroundColor: Colors.white,
           elevation: 0,
+          centerTitle: false,
           actions: [
             if (_usandoCache && !_carregando)
-              Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  '📦 CACHE',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                  ),
+                  child: const Text(
+                    'CACHE',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () async {
-                setState(() {
-                  _carregando = true;
-                });
-                await _buscarDadosReaisESalvar();
-                if (mounted) {
-                  setState(() {
-                    _carregando = false;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Dados atualizados!')),
-                  );
-                }
-              },
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: _carregando ? null : _atualizarDados,
               tooltip: 'Atualizar dados',
             ),
           ],
         ),
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                colorScheme.primaryContainer.withOpacity(0.3),
-                colorScheme.surface,
-              ],
+        body: _carregando
+            ? _buildLoadingState()
+            : _erroMensagem != null
+            ? _buildErrorState(colorScheme)
+            : RefreshIndicator(
+          onRefresh: _atualizarDados,
+          color: Colors.red.shade900,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              isMobile ? 14 : 24,
+              isMobile ? 14 : 22,
+              isMobile ? 14 : 24,
+              30,
             ),
-          ),
-          child: _carregando
-              ? const Center(child: CircularProgressIndicator())
-              : _erroMensagem != null
-              ? _buildErrorState(colorScheme)
-              : SingleChildScrollView(
-            padding: padding,
-            child: SizedBox(
-              width: double.infinity,
-              child: Center(
+            children: [
+              Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1400),
+                  constraints: const BoxConstraints(maxWidth: 1040),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 24),
-                      _buildHeader(colorScheme, context),
-                      const SizedBox(height: 24),
-                      _buildDashboardCards(colorScheme, isMobile, isTablet, isDesktop),
-                      const SizedBox(height: 32),
-                      _buildSectionTitle(colorScheme, context),
+                      _buildHeroGraduacoes(isMobile),
+                      const SizedBox(height: 14),
+                      _buildDashboardCardsModernos(isMobile),
                       const SizedBox(height: 20),
-                      _graduacoes.isEmpty
-                          ? _buildEmptyState(colorScheme)
-                          : _svgContent == null
-                          ? _buildGraduacoesSemSvg(colorScheme, isMobile, isTablet, isDesktop)
-                          : _buildGraduacoesGrid(colorScheme, isMobile, isTablet, isDesktop),
-                      const SizedBox(height: 24),
+                      _buildTimelineHeader(isMobile),
+                      const SizedBox(height: 14),
+                      if (_graduacoes.isEmpty)
+                        _buildEmptyState(colorScheme)
+                      else
+                        _buildGraduacoesTimeline(isMobile),
                     ],
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(ColorScheme colorScheme, BuildContext context) {
-    final isMobile = ResponsiveUtils.isMobile(context);
+  Future<void> _atualizarDados() async {
+    setState(() {
+      _carregando = true;
+      _erroMensagem = null;
+    });
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: isMobile ? 12 : 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.emoji_events,
-            size: isMobile ? 40 : 60,
-            color: colorScheme.primary,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Sistema de Graduações',
-            style: TextStyle(
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: isMobile ? 22 : 28),
-              fontWeight: FontWeight.bold,
-              color: colorScheme.primary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Acompanhe o progresso e evolução dos alunos',
-            style: TextStyle(
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: isMobile ? 12 : 14),
-              color: colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          if (_usandoCache) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '📦 Dados em cache (atualizado há menos de 3 dias)',
-                style: TextStyle(
-                  fontSize: isMobile ? 9 : 10,
-                  color: Colors.green.shade700,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
+    try {
+      await _buscarDadosReaisESalvar();
+
+      if (mounted) {
+        setState(() => _carregando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dados atualizados!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _erroMensagem = e.toString();
+          _carregando = false;
+        });
+      }
+    }
   }
 
-  Widget _buildSectionTitle(ColorScheme colorScheme, BuildContext context) {
-    final isMobile = ResponsiveUtils.isMobile(context);
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 8),
-      child: Row(
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: isMobile ? 20 : 40,
-            height: 3,
-            color: colorScheme.primary,
-          ),
-          const SizedBox(width: 12),
+          CircularProgressIndicator(color: Colors.red.shade900),
+          const SizedBox(height: 14),
           Text(
-            'TODAS AS GRADUAÇÕES',
+            'Carregando graduações...',
             style: TextStyle(
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: isMobile ? 16 : 20),
-              fontWeight: FontWeight.bold,
-              color: colorScheme.primary,
-              letterSpacing: 1.2,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: isMobile ? 20 : 40,
-            height: 3,
-            color: colorScheme.primary,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDashboardCards(ColorScheme colorScheme, bool isMobile, bool isTablet, bool isDesktop) {
+  Widget _buildHeroGraduacoes(bool isMobile) {
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(isMobile ? 24 : 30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: isMobile
+          ? Column(
+        children: [
+          _buildHeroIcon(),
+          const SizedBox(height: 14),
+          _buildHeroTexts(isMobile, centered: true),
+        ],
+      )
+          : Row(
+        children: [
+          _buildHeroIcon(),
+          const SizedBox(width: 16),
+          Expanded(child: _buildHeroTexts(isMobile, centered: false)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroIcon() {
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: const Icon(
+        Icons.workspace_premium_rounded,
+        color: Colors.white,
+        size: 38,
+      ),
+    );
+  }
+
+  Widget _buildHeroTexts(bool isMobile, {required bool centered}) {
+    return Column(
+      crossAxisAlignment:
+      centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Sistema de Graduações',
+          textAlign: centered ? TextAlign.center : TextAlign.left,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: isMobile ? 23 : 30,
+            height: 1.05,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          'A evolução na capoeira contada pelas cordas, suas cores e seus significados.',
+          textAlign: centered ? TextAlign.center : TextAlign.left,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.82),
+            fontSize: isMobile ? 13.5 : 15,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (_usandoCache) ...[
+          const SizedBox(height: 12),
+          _buildCacheInfoChip(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCacheInfoChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.offline_bolt_rounded, color: Colors.white, size: 15),
+          SizedBox(width: 5),
+          Text(
+            'Dados em cache',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardCardsModernos(bool isMobile) {
+    final cards = [
+      _GraduacaoStatCard(
+        titulo: 'Total',
+        valor: _totalAlunos,
+        subtitulo: 'Alunos',
+        icone: Icons.groups_rounded,
+        cor: Colors.blue,
+      ),
+      _GraduacaoStatCard(
+        titulo: 'Ativos',
+        valor: _alunosAtivos,
+        subtitulo: 'Treinando',
+        icone: Icons.fitness_center_rounded,
+        cor: Colors.green,
+      ),
+      _GraduacaoStatCard(
+        titulo: 'Inativos',
+        valor: _alunosInativos,
+        subtitulo: 'Ausentes',
+        icone: Icons.person_off_rounded,
+        cor: Colors.red,
+      ),
+      _GraduacaoStatCard(
+        titulo: 'Graduados',
+        valor: _totalAlunosGraduados,
+        subtitulo: 'Cordas',
+        icone: Icons.school_rounded,
+        cor: Colors.orange,
+      ),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        int crossAxisCount;
-        double childAspectRatio;
+        final largura = constraints.maxWidth;
+        final colunas = largura < 760 ? 2 : 4;
+        const spacing = 10.0;
+        final itemWidth = (largura - spacing * (colunas - 1)) / colunas;
 
-        if (isDesktop) {
-          crossAxisCount = 4;
-          childAspectRatio = 1.0; // Quadrado
-        } else if (isTablet) {
-          crossAxisCount = 2;
-          childAspectRatio = 1.0; // Quadrado
-        } else {
-          // Mobile
-          if (constraints.maxWidth < 400) {
-            crossAxisCount = 1;
-            childAspectRatio = 1.2;
-          } else {
-            crossAxisCount = 2;
-            childAspectRatio = 1.0; // Quadrado
-          }
-        }
-
-        return GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: childAspectRatio,
-          children: [
-            _buildDashboardCard(
-              context, colorScheme, 'Total', _totalAlunos,
-              Icons.people_alt, Colors.blue, 'Alunos',
-              isMobile,
-            ),
-            _buildDashboardCard(
-              context, colorScheme, 'Ativos', _alunosAtivos,
-              Icons.fitness_center, Colors.green, 'Treinando',
-              isMobile,
-            ),
-            _buildDashboardCard(
-              context, colorScheme, 'Inativos', _alunosInativos,
-              Icons.person_off, Colors.red, 'Ausentes',
-              isMobile,
-            ),
-            _buildDashboardCard(
-              context, colorScheme, 'Graduados', _totalAlunosGraduados,
-              Icons.school, Colors.orange, 'Cordas',
-              isMobile,
-            ),
-          ],
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: cards.map((card) {
+            return SizedBox(
+              width: itemWidth,
+              child: _buildStatCard(card, compact: isMobile),
+            );
+          }).toList(),
         );
       },
     );
   }
 
-  Widget _buildDashboardCard(
-      BuildContext context,
-      ColorScheme colorScheme,
-      String titulo,
-      int valor,
-      IconData icone,
-      Color cor,
-      String subtitulo,
-      bool isMobile,
-      ) {
-    final fontSizeIcon = isMobile ? 28.0 : 36.0;
-    final fontSizeTitulo = isMobile ? 13.0 : 15.0;
-    final fontSizeValor = isMobile ? 24.0 : 32.0;
-    final fontSizeSubtitulo = isMobile ? 10.0 : 11.0;
+  Widget _buildStatCard(_GraduacaoStatCard card, {required bool compact}) {
+    return Container(
+      constraints: BoxConstraints(minHeight: compact ? 98 : 112),
+      padding: EdgeInsets.all(compact ? 11 : 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: card.cor.withOpacity(0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 7,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(card.icone, color: card.cor, size: compact ? 24 : 28),
+          const SizedBox(height: 7),
+          Text(
+            card.valor.toString(),
+            style: TextStyle(
+              color: card.cor,
+              fontSize: compact ? 20 : 25,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            card.titulo,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade900,
+              fontSize: compact ? 12 : 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            card.subtitulo,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: compact ? 10 : 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: EdgeInsets.all(isMobile ? 10 : 14),
-              decoration: BoxDecoration(
-                color: cor.withOpacity(0.1),
-                shape: BoxShape.circle,
+  Widget _buildTimelineHeader(bool isMobile) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.red.shade900.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(
+              Icons.timeline_rounded,
+              color: Colors.red.shade900,
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SISTEMA DE GRADUAÇÃO',
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: isMobile ? 17 : 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '${_graduacoes.length} graduações cadastradas',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGraduacoesTimeline(bool isMobile) {
+    return Column(
+      children: List.generate(_graduacoes.length, (index) {
+        final graduacao = _graduacoes[index];
+        final id = graduacao['id']?.toString() ?? '';
+        final quantidadeAlunos = _contagemAlunosPorGraduacao[id] ?? 0;
+        final nome = graduacao['nome_graduacao']?.toString() ?? 'Sem nome';
+        final titulo = graduacao['titulo_graduacao']?.toString() ?? '';
+        final corda = graduacao['corda']?.toString() ?? '';
+        final tipoPublico = graduacao['tipo_publico']?.toString() ?? '';
+        final descricao = _descricaoGraduacao(graduacao);
+        final modifiedSvg = _svgContent == null
+            ? null
+            : _getModifiedSvg(graduacao, _svgContent!);
+        final color1 = _safeColor(
+          graduacao['hex_cor1'],
+          fallback: Colors.red.shade900,
+        );
+        final color2 = _safeColor(graduacao['hex_cor2'], fallback: color1);
+
+        return _buildTimelineItem(
+          index: index,
+          total: _graduacoes.length,
+          nome: nome,
+          titulo: titulo,
+          corda: corda,
+          tipoPublico: tipoPublico,
+          descricao: descricao,
+          modifiedSvg: modifiedSvg,
+          quantidadeAlunos: quantidadeAlunos,
+          color1: color1,
+          color2: color2,
+          isMobile: isMobile,
+        );
+      }),
+    );
+  }
+
+  Widget _buildTimelineItem({
+    required int index,
+    required int total,
+    required String nome,
+    required String titulo,
+    required String corda,
+    required String tipoPublico,
+    required String descricao,
+    required String? modifiedSvg,
+    required int quantidadeAlunos,
+    required Color color1,
+    required Color color2,
+    required bool isMobile,
+  }) {
+    final isFirst = index == 0;
+    final isLast = index == total - 1;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: isMobile ? 42 : 58,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Container(
+                    width: 3,
+                    color: isFirst ? Colors.transparent : Colors.red.shade100,
+                  ),
+                ),
+                Container(
+                  width: isMobile ? 32 : 38,
+                  height: isMobile ? 32 : 38,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color1, color2],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color1.withOpacity(0.22),
+                        blurRadius: 7,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${index + 1}',
+                      style: TextStyle(
+                        color: _contrastingTextColor(color1),
+                        fontSize: isMobile ? 11 : 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    width: 3,
+                    color: isLast ? Colors.transparent : Colors.red.shade100,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: isMobile ? 6 : 10,
+                bottom: isLast ? 0 : 14,
               ),
-              child: Icon(
-                icone,
-                size: fontSizeIcon,
-                color: cor,
+              child: Container(
+                padding: EdgeInsets.all(isMobile ? 14 : 18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: color1.withOpacity(0.12)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.035),
+                      blurRadius: 7,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: isMobile
+                    ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _buildTimelineCordaPreview(
+                      modifiedSvg: modifiedSvg,
+                      color1: color1,
+                      color2: color2,
+                      isMobile: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTimelineTextContent(
+                      nome: nome,
+                      titulo: titulo,
+                      corda: corda,
+                      tipoPublico: tipoPublico,
+                      descricao: descricao,
+                      quantidadeAlunos: quantidadeAlunos,
+                      centered: true,
+                    ),
+                  ],
+                )
+                    : Row(
+                  children: [
+                    SizedBox(
+                      width: 210,
+                      child: _buildTimelineCordaPreview(
+                        modifiedSvg: modifiedSvg,
+                        color1: color1,
+                        color2: color2,
+                        isMobile: false,
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: _buildTimelineTextContent(
+                        nome: nome,
+                        titulo: titulo,
+                        corda: corda,
+                        tipoPublico: tipoPublico,
+                        descricao: descricao,
+                        quantidadeAlunos: quantidadeAlunos,
+                        centered: false,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              titulo,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineCordaPreview({
+    required String? modifiedSvg,
+    required Color color1,
+    required Color color2,
+    required bool isMobile,
+  }) {
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(
+        maxWidth: isMobile ? 260 : 210,
+      ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: isMobile ? 92 : 104,
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: modifiedSvg != null && modifiedSvg.isNotEmpty
+                ? SvgPicture.string(modifiedSvg, fit: BoxFit.contain)
+                : Icon(
+              Icons.image_not_supported_rounded,
+              color: Colors.grey.shade300,
+              size: 48,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 7,
+            width: 92,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              gradient: LinearGradient(colors: [color1, color2]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineTextContent({
+    required String nome,
+    required String titulo,
+    required String corda,
+    required String tipoPublico,
+    required String descricao,
+    required int quantidadeAlunos,
+    required bool centered,
+  }) {
+    final subtitulo = [
+      if (titulo.trim().isNotEmpty) titulo.trim(),
+      if (corda.trim().isNotEmpty) corda.trim(),
+      if (tipoPublico.trim().isNotEmpty &&
+          tipoPublico.trim().toUpperCase() != 'GERAL')
+        tipoPublico.trim().toUpperCase(),
+    ].join(' • ');
+
+    return Column(
+      crossAxisAlignment:
+      centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Text(
+          nome,
+          textAlign: centered ? TextAlign.center : TextAlign.left,
+          style: TextStyle(
+            color: Colors.grey.shade900,
+            fontSize: 16.2,
+            height: 1.08,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.1,
+          ),
+        ),
+        if (subtitulo.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          Text(
+            subtitulo,
+            textAlign: centered ? TextAlign.center : TextAlign.left,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 12,
+              height: 1.22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        if (descricao.trim().isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Text(
+              descricao.trim(),
+              textAlign: centered ? TextAlign.center : TextAlign.left,
               style: TextStyle(
-                fontSize: fontSizeTitulo,
-                color: colorScheme.onSurfaceVariant,
+                color: Colors.grey.shade800,
+                fontSize: 13.2,
+                height: 1.36,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              valor.toString(),
-              style: TextStyle(
-                fontSize: fontSizeValor,
-                fontWeight: FontWeight.bold,
-                color: cor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitulo,
-              style: TextStyle(
-                fontSize: fontSizeSubtitulo,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+        ],
+        Wrap(
+          alignment: centered ? WrapAlignment.center : WrapAlignment.start,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildInfoChip(
+              icon: Icons.groups_rounded,
+              label: '$quantidadeAlunos ${quantidadeAlunos == 1 ? 'aluno' : 'alunos'}',
+              color: Colors.red.shade900,
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withOpacity(0.13)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildGraduacoesGrid(ColorScheme colorScheme, bool isMobile, bool isTablet, bool isDesktop) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        int crossAxisCount;
-        double childAspectRatio = 1.0; // Cards quadrados
+  String _descricaoGraduacao(Map<String, dynamic> graduacao) {
+    final candidatos = [
+      graduacao['descricao_site'],
+      graduacao['descricao_graduacao'],
+      graduacao['descricao'],
+      graduacao['frase_descricao'],
+    ];
 
-        if (isDesktop) {
-          crossAxisCount = 4;
-          childAspectRatio = 0.9;
-        } else if (isTablet) {
-          crossAxisCount = 3;
-          childAspectRatio = 0.85;
-        } else {
-          // Mobile - cards mais quadrados
-          if (constraints.maxWidth < 400) {
-            crossAxisCount = 2;
-            childAspectRatio = 0.85;
-          } else {
-            crossAxisCount = 2;
-            childAspectRatio = 0.9;
-          }
-        }
-
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: childAspectRatio,
-          ),
-          itemCount: _graduacoes.length,
-          itemBuilder: (context, index) {
-            final graduacao = _graduacoes[index];
-            final modifiedSvg = _getModifiedSvg(graduacao, _svgContent!);
-            final quantidadeAlunos = _contagemAlunosPorGraduacao[graduacao['id']] ?? 0;
-            final nivel = graduacao['nivel_graduacao'] ?? 0;
-            final tipoPublico = graduacao['tipo_publico'] ?? '';
-
-            return _buildGraduacaoCard(
-              context,
-              colorScheme,
-              graduacao['nome_graduacao'] ?? 'Sem nome',
-              modifiedSvg,
-              quantidadeAlunos,
-              nivel,
-              tipoPublico,
-              isMobile,
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildGraduacaoCard(
-      BuildContext context,
-      ColorScheme colorScheme,
-      String nome,
-      String modifiedSvg,
-      int quantidadeAlunos,
-      int nivel,
-      String tipoPublico,
-      bool isMobile,
-      ) {
-    final fontSizeNivel = isMobile ? 10.0 : 12.0;
-    final fontSizeNome = isMobile ? 12.0 : 14.0;
-    final fontSizeAlunos = isMobile ? 11.0 : 13.0;
-    final svgHeight = isMobile ? 70.0 : 90.0;
-    final paddingCard = isMobile ? 8.0 : 12.0;
-
-    // Formata o texto do nível com o tipo público
-    String nivelText = 'NÍVEL $nivel';
-    if (tipoPublico.isNotEmpty && tipoPublico != 'GERAL') {
-      nivelText = '$nivelText • ${tipoPublico.toUpperCase()}';
+    for (final value in candidatos) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
     }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: EdgeInsets.all(paddingCard),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Header com nível e tipo
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: isMobile ? 6 : 8),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Text(
-                  nivelText,
-                  style: TextStyle(
-                    fontSize: fontSizeNivel,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // SVG da corda
-            Expanded(
-              child: Center(
-                child: SvgPicture.string(
-                  modifiedSvg,
-                  fit: BoxFit.contain,
-                  height: svgHeight,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Nome da graduação
-            Text(
-              nome,
-              style: TextStyle(
-                fontSize: fontSizeNome,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            // Contador de alunos
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 12, vertical: isMobile ? 6 : 8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [colorScheme.primary, colorScheme.primary.withOpacity(0.8)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.people,
-                    size: fontSizeAlunos,
-                    color: colorScheme.onPrimary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    quantidadeAlunos.toString(),
-                    style: TextStyle(
-                      fontSize: fontSizeAlunos,
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    quantidadeAlunos == 1 ? 'ALUNO' : 'ALUNOS',
-                    style: TextStyle(
-                      fontSize: fontSizeAlunos * 0.8,
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return '';
   }
 
-  Widget _buildGraduacoesSemSvg(ColorScheme colorScheme, bool isMobile, bool isTablet, bool isDesktop) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        int crossAxisCount;
-        double childAspectRatio = 1.0;
+  Color _safeColor(dynamic hex, {required Color fallback}) {
+    final value = hex?.toString().trim();
 
-        if (isDesktop) {
-          crossAxisCount = 4;
-          childAspectRatio = 0.9;
-        } else if (isTablet) {
-          crossAxisCount = 3;
-          childAspectRatio = 0.85;
-        } else {
-          if (constraints.maxWidth < 400) {
-            crossAxisCount = 2;
-            childAspectRatio = 0.85;
-          } else {
-            crossAxisCount = 2;
-            childAspectRatio = 0.9;
-          }
-        }
+    if (value == null || value.isEmpty) return fallback;
 
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: childAspectRatio,
-          ),
-          itemCount: _graduacoes.length,
-          itemBuilder: (context, index) {
-            final graduacao = _graduacoes[index];
-            final quantidadeAlunos = _contagemAlunosPorGraduacao[graduacao['id']] ?? 0;
-            final nivel = graduacao['nivel_graduacao'] ?? 0;
-            final tipoPublico = graduacao['tipo_publico'] ?? '';
+    try {
+      final cleaned = value.replaceAll('#', '').toUpperCase();
 
-            return _buildGraduacaoCardSemSvg(
-              context,
-              colorScheme,
-              graduacao['nome_graduacao'] ?? 'Sem nome',
-              quantidadeAlunos,
-              nivel,
-              tipoPublico,
-              isMobile,
-            );
-          },
-        );
-      },
-    );
+      if (cleaned.length == 6) {
+        return Color(int.parse('FF$cleaned', radix: 16));
+      }
+
+      if (cleaned.length == 8) {
+        return Color(int.parse(cleaned, radix: 16));
+      }
+    } catch (_) {}
+
+    return fallback;
   }
 
-  Widget _buildGraduacaoCardSemSvg(
-      BuildContext context,
-      ColorScheme colorScheme,
-      String nome,
-      int quantidadeAlunos,
-      int nivel,
-      String tipoPublico,
-      bool isMobile,
-      ) {
-    final fontSizeNivel = isMobile ? 10.0 : 12.0;
-    final fontSizeNome = isMobile ? 12.0 : 14.0;
-    final fontSizeAlunos = isMobile ? 11.0 : 13.0;
-    final paddingCard = isMobile ? 8.0 : 12.0;
-
-    String nivelText = 'NÍVEL $nivel';
-    if (tipoPublico.isNotEmpty && tipoPublico != 'GERAL') {
-      nivelText = '$nivelText • ${tipoPublico.toUpperCase()}';
-    }
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: EdgeInsets.all(paddingCard),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: isMobile ? 6 : 8),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Text(
-                  nivelText,
-                  style: TextStyle(
-                    fontSize: fontSizeNivel,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Center(
-                child: Icon(
-                  Icons.image_not_supported,
-                  size: isMobile ? 50 : 70,
-                  color: Colors.grey.shade400,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              nome,
-              style: TextStyle(
-                fontSize: fontSizeNome,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 12, vertical: isMobile ? 6 : 8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [colorScheme.primary, colorScheme.primary.withOpacity(0.8)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.people,
-                    size: fontSizeAlunos,
-                    color: colorScheme.onPrimary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    quantidadeAlunos.toString(),
-                    style: TextStyle(
-                      fontSize: fontSizeAlunos,
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    quantidadeAlunos == 1 ? 'ALUNO' : 'ALUNOS',
-                    style: TextStyle(
-                      fontSize: fontSizeAlunos * 0.8,
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Color _contrastingTextColor(Color color) {
+    final luminance = color.computeLuminance();
+    return luminance > 0.52 ? Colors.black87 : Colors.white;
   }
 
   Widget _buildErrorState(ColorScheme colorScheme) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error, size: 80, color: colorScheme.error),
-          const SizedBox(height: 16),
-          Text(
-            'Erro ao carregar os dados',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.error),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 460),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.red.shade100),
           ),
-          const SizedBox(height: 8),
-          Text(
-            _erroMensagem ?? 'Tente novamente mais tarde',
-            style: TextStyle(color: colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 72,
+                color: Colors.red.shade700,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Erro ao carregar os dados',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.red.shade900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _erroMensagem ?? 'Tente novamente mais tarde',
+                style: TextStyle(color: Colors.grey.shade700),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _carregando = true;
+                    _erroMensagem = null;
+                  });
+                  _carregarDados();
+                },
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Tentar novamente'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade900,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _carregando = true;
-                _erroMensagem = null;
-                _carregarDados();
-              });
-            },
-            child: const Text('Tentar novamente'),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.emoji_events, size: 80, color: colorScheme.outline),
-          const SizedBox(height: 16),
+          Icon(
+            Icons.workspace_premium_outlined,
+            size: 70,
+            color: Colors.grey.shade300,
+          ),
+          const SizedBox(height: 14),
           Text(
             'Nenhuma graduação encontrada',
             style: TextStyle(
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 18),
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(
+                context,
+                baseSize: 18,
+              ),
+              color: Colors.grey.shade800,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Adicione graduações no painel administrativo',
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+            'Adicione graduações no painel administrativo.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ],
       ),
     );
   }
+}
+
+class _GraduacaoStatCard {
+  final String titulo;
+  final int valor;
+  final String subtitulo;
+  final IconData icone;
+  final Color cor;
+
+  const _GraduacaoStatCard({
+    required this.titulo,
+    required this.valor,
+    required this.subtitulo,
+    required this.icone,
+    required this.cor,
+  });
 }

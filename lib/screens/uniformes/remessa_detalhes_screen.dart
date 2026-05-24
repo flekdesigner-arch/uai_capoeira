@@ -4,10 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
 import 'package:uai_capoeira/services/remessa_service.dart';
+import 'package:uai_capoeira/services/fornecedor_service.dart';
 import 'package:uai_capoeira/screens/uniformes/screens/remessa_pdf_service.dart';
 import 'pedido_card.dart';
 import 'dialogs/pagamento_dialog.dart';
-import 'dialogs/selecionar_aluno_dialog.dart';
 
 class RemessaDetalhesScreen extends StatefulWidget {
   final String remessaId;
@@ -22,15 +22,41 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
   final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
+  final FornecedorService _fornecedorService = FornecedorService();
+
+  String? _fornecedorNome;
+  bool _carregandoFornecedor = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarFornecedor();
+  }
+
+  Future<void> _carregarFornecedor() async {
+    final fornecedorId = widget.remessaData['fornecedor_id'] as String?;
+    if (fornecedorId == null) return;
+
+    setState(() => _carregandoFornecedor = true);
+    try {
+      final doc = await _fornecedorService.getFornecedor(fornecedorId);
+      if (doc.exists) {
+        // 🔧 Conversão explícita para Map<String, dynamic>
+        final data = doc.data() as Map<String, dynamic>;
+        setState(() {
+          _fornecedorNome = data['nome'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar fornecedor: $e');
+    } finally {
+      if (mounted) setState(() => _carregandoFornecedor = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final data = widget.remessaData;
-    final itensEstoque = (data['itens_estoque'] as List?)
-        ?.map((e) => Map<String, dynamic>.from(e))
-        .toList() ??
-        [];
-
     return Scaffold(
       appBar: AppBar(
         title: Text(data['nome'] ?? 'Remessa'),
@@ -64,99 +90,50 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         children: [
           _buildCabecalho(data),
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  // Pedidos vinculados
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _remessaService.getPedidosDaRemessa(widget.remessaId),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                      final pedidos = snapshot.data!.docs;
-                      if (pedidos.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text('Nenhum pedido vinculado'),
-                        );
-                      }
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: pedidos.length,
-                        itemBuilder: (_, i) {
-                          final pedidoData = pedidos[i].data() as Map<String, dynamic>;
-                          return PedidoCard(
-                            docId: pedidos[i].id,
-                            data: pedidoData,
-                            realFormat: _realFormat,
-                            onMarcarConfeccao: _marcarPedidoComoConfeccao,
-                            onFinalizar: _marcarPedidoComoFinalizado,
-                            onRegistrarPagamento: _registrarPagamentoPedido,
-                            onTap: (id, d) {},
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  // Itens de estoque
-                  if (itensEstoque.isNotEmpty) ...[
-                    const Divider(thickness: 2),
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        'Itens para estoque',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green.shade800),
-                      ),
-                    ),
-                    ...itensEstoque.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final item = entry.value;
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        child: ListTile(
-                          title: Text('${item['nome']} (${item['tamanho'] ?? 'Único'})'),
-                          subtitle: Text(
-                              'Qtd: ${item['quantidade']} - R\$ ${(item['preco_venda'] ?? 0).toStringAsFixed(2)}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextButton.icon(
-                                onPressed: () => _atribuirItemEstoque(index, item, itensEstoque),
-                                icon: const Icon(Icons.person_add, size: 18),
-                                label: const Text('Atribuir'),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () async {
-                                  final confirmar = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('Remover item'),
-                                      content: const Text('Remover este item do estoque da remessa?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remover')),
-                                      ],
-                                    ),
-                                  );
-                                  if (confirmar == true) {
-                                    itensEstoque.removeAt(index);
-                                    await _remessaService.atualizarRemessa(
-                                      widget.remessaId,
-                                      {'itens_estoque': itensEstoque},
-                                    );
-                                    setState(() {});
-                                  }
-                                },
-                              ),
-                            ],
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _remessaService.getPedidosDaRemessa(widget.remessaId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final pedidos = snapshot.data!.docs;
+                if (pedidos.isEmpty) {
+                  return const Center(child: Text('Nenhum pedido vinculado'));
+                }
+                return ListView.builder(
+                  itemCount: pedidos.length,
+                  itemBuilder: (_, i) {
+                    final pedidoData = pedidos[i].data() as Map<String, dynamic>;
+                    final bool ehEstoque = pedidoData['tipo_estoque'] == true;
+
+                    return Column(
+                      children: [
+                        if (ehEstoque)
+                          Container(
+                            color: Colors.amber.shade50,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.inventory_2, size: 16, color: Colors.amber),
+                                const SizedBox(width: 4),
+                                Text('Item para estoque – será adicionado ao finalizar',
+                                    style: TextStyle(fontSize: 11, color: Colors.amber.shade800)),
+                              ],
+                            ),
                           ),
+                        PedidoCard(
+                          docId: pedidos[i].id,
+                          data: pedidoData,
+                          realFormat: _realFormat,
+                          onMarcarConfeccao: _marcarPedidoComoConfeccao,
+                          onFinalizar: _marcarPedidoComoFinalizado,
+                          onRegistrarPagamento: _registrarPagamentoPedido,
+                          onTap: (id, d) {},
                         ),
-                      );
-                    }),
-                  ],
-                ],
-              ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -170,99 +147,75 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Status: ${data['status']}'.toUpperCase(),
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             if (data['data_prevista'] != null)
               Text(
                   'Previsão: ${DateFormat('dd/MM/yyyy').format((data['data_prevista'] as Timestamp).toDate())}'),
-            if (data['observacoes'] != null) Text('Obs: ${data['observacoes']}'),
+            if (_fornecedorNome != null)
+              Row(
+                children: [
+                  const Icon(Icons.business, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text('Fornecedor: $_fornecedorNome'),
+                ],
+              ),
+            if (_carregandoFornecedor)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: LinearProgressIndicator(),
+              ),
+            if (data['observacoes'] != null && data['observacoes'].toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Obs: ${data['observacoes']}'),
+              ),
           ],
         ),
       ),
     );
   }
 
-  // ─── Atribuir item de estoque a um aluno ─────────────────────
-  Future<void> _atribuirItemEstoque(
-      int index, Map<String, dynamic> item, List<Map<String, dynamic>> itensEstoque) async {
-    final aluno = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (_) => const SelecionarAlunoDialog(corTema: Colors.purple),
-    );
-    if (aluno == null || !mounted) return;
-
-    // Criar pedido com os dados do item
-    final novoPedido = {
-      'id_pedido': 'PED-ESTOQUE-${DateTime.now().millisecondsSinceEpoch}',
-      'aluno_id': aluno['id'],
-      'aluno_nome': aluno['nome'],
-      'itens': [
-        {
-          'nome': item['nome'],
-          'tamanho': item['tamanho'] ?? 'Único',
-          'quantidade': item['quantidade'],
-          'preco_unitario': item['preco_venda'] ?? 0,
-          'cor': item['cor'] ?? '',
-        }
-      ],
-      'valor_total': (item['quantidade'] * (item['preco_venda'] ?? 0)),
-      'valor_pago': 0,
-      'status': 'pendente',
-      'status_pagamento': 'pendente',
-      'remessa_id': widget.remessaId,
-      'data_pedido': FieldValue.serverTimestamp(),
-      'criado_por': FirebaseAuth.instance.currentUser?.uid,
-    };
-
-    try {
-      final pedidoRef =
-      await FirebaseFirestore.instance.collection('pedidos_uniformes').add(novoPedido);
-
-      itensEstoque.removeAt(index);
-
-      await _remessaService.atualizarRemessa(widget.remessaId, {
-        'itens_estoque': itensEstoque,
-        'pedidos_ids': FieldValue.arrayUnion([pedidoRef.id]),
-      });
-
-      await _remessaService.vincularPedido(pedidoRef.id, widget.remessaId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Item convertido em pedido para o aluno!')),
-        );
-        setState(() {});
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  // ─── Finalização com atualização de estoque ─────────────────
+  // ─── Finalização com lógica de estoque integrada ─────────────
   Future<void> _finalizarRemessa() async {
-    // Verificar pedidos normais
-    final pedidos = await FirebaseFirestore.instance
+    final todosPedidos = await FirebaseFirestore.instance
         .collection('pedidos_uniformes')
         .where('remessa_id', isEqualTo: widget.remessaId)
         .get();
-    bool todosOk = pedidos.docs.every((doc) {
-      final d = doc.data();
+
+    final pedidosAluno = <QueryDocumentSnapshot>[];
+    final pedidosEstoque = <QueryDocumentSnapshot>[];
+    for (var doc in todosPedidos.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['tipo_estoque'] == true) {
+        pedidosEstoque.add(doc);
+      } else {
+        pedidosAluno.add(doc);
+      }
+    }
+
+    bool todosAlunosOk = pedidosAluno.every((doc) {
+      final d = doc.data() as Map<String, dynamic>;
       return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
     });
-    if (!todosOk) {
+
+    if (!todosAlunosOk) {
       _mostrarDialogoPedidosPendentes();
       return;
     }
+
+    final int qtdEstoque = pedidosEstoque.length;
+    final String mensagem = qtdEstoque > 0
+        ? 'Todos os pedidos de aluno estão finalizados. $qtdEstoque pedido(s) de estoque serão adicionados ao estoque. Deseja finalizar?'
+        : 'Todos os pedidos estão finalizados e pagos. Deseja finalizar a remessa?';
 
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Finalizar Remessa'),
-        content: const Text(
-            'Todos os pedidos estão pagos e finalizados. Deseja finalizar e adicionar os itens de estoque?'),
+        content: Text(mensagem),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Finalizar')),
@@ -272,49 +225,20 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     if (confirmar != true) return;
 
     try {
-      final itensEstoque =
-      List<Map<String, dynamic>>.from(widget.remessaData['itens_estoque'] ?? []);
-
-      for (var item in itensEstoque) {
-        // Procurar item existente no estoque com mesmo nome e tamanho
-        final query = await FirebaseFirestore.instance
-            .collection('uniformes_estoque')
-            .where('nome', isEqualTo: item['nome'])
-            .where('tamanho', isEqualTo: item['tamanho'] ?? 'Único')
-            .where('status', isEqualTo: 'ativo')
-            .limit(1)
-            .get();
-
-        if (query.docs.isNotEmpty) {
-          await query.docs.first.reference.update({
-            'quantidade': FieldValue.increment(item['quantidade']),
-          });
-        } else {
-          // Criar novo item no estoque
-          await FirebaseFirestore.instance.collection('uniformes_estoque').add({
-            'nome': item['nome'],
-            'tamanho': item['tamanho'] ?? 'Único',
-            'quantidade': item['quantidade'],
-            'preco_venda': item['preco_venda'] ?? 0,
-            'preco_custo': (item['preco_venda'] != null)
-                ? ((item['preco_venda'] as num) * 0.5)
-                : 0,
-            'categoria': 'Geral',
-            'controla_estoque': true,
-            'status': 'ativo',
-            'fornecedor': '',
-            'descricao': 'Adicionado via remessa ${widget.remessaData['nome']}',
-            'possui_variacoes': false,
-            'tipo': 'base',
-          });
+      for (var doc in pedidosEstoque) {
+        final pedido = doc.data() as Map<String, dynamic>;
+        final itens = pedido['itens'] as List? ?? [];
+        for (var item in itens) {
+          await _adicionarAoEstoque(item);
         }
+        await doc.reference.delete();
       }
 
       await _remessaService.atualizarRemessa(widget.remessaId, {'status': 'finalizada'});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Remessa finalizada e estoque atualizado!')),
+          SnackBar(content: Text('✅ Remessa finalizada! ${qtdEstoque > 0 ? "$qtdEstoque itens de estoque adicionados." : ""}')),
         );
         Navigator.pop(context, true);
       }
@@ -325,13 +249,49 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
+  Future<void> _adicionarAoEstoque(Map<String, dynamic> item) async {
+    final nome = item['nome'] ?? 'Item sem nome';
+    final tamanho = item['tamanho'] ?? 'Único';
+    final quantidade = item['quantidade'] ?? 0;
+    if (quantidade <= 0) return;
+
+    final query = await FirebaseFirestore.instance
+        .collection('uniformes_estoque')
+        .where('nome', isEqualTo: nome)
+        .where('tamanho', isEqualTo: tamanho)
+        .where('status', isEqualTo: 'ativo')
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      await query.docs.first.reference.update({
+        'quantidade': FieldValue.increment(quantidade),
+      });
+    } else {
+      await FirebaseFirestore.instance.collection('uniformes_estoque').add({
+        'nome': nome,
+        'tamanho': tamanho,
+        'quantidade': quantidade,
+        'preco_venda': item['preco_unitario'] ?? 0,
+        'preco_custo': 0,
+        'categoria': 'Geral',
+        'controla_estoque': true,
+        'status': 'ativo',
+        'fornecedor': '',
+        'descricao': 'Adicionado via remessa ${widget.remessaData['nome']}',
+        'possui_variacoes': false,
+        'tipo': 'base',
+      });
+    }
+  }
+
   void _mostrarDialogoPedidosPendentes() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Ação não permitida'),
-        content:
-        const Text('Todos os pedidos devem estar finalizados e pagos antes de finalizar a remessa.'),
+        content: const Text(
+            'Todos os pedidos com aluno devem estar finalizados e pagos antes de finalizar a remessa.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendi')),
         ],
@@ -404,8 +364,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         .collection('pedidos_uniformes')
         .where('remessa_id', isEqualTo: widget.remessaId)
         .get();
-    bool todosOk = pedidos.docs.every((doc) {
-      final d = doc.data();
+    bool todosOk = pedidos.docs
+        .where((doc) => (doc.data() as Map<String, dynamic>)['tipo_estoque'] != true)
+        .every((doc) {
+      final d = doc.data() as Map<String, dynamic>;
       return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
     });
     if (!todosOk) {

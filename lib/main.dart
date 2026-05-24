@@ -7,6 +7,7 @@ import 'package:uai_capoeira/screens/admin/admin_screen.dart';
 import 'package:uai_capoeira/screens/alunos/alunos_screen.dart';
 import 'package:uai_capoeira/screens/alunos/aniversariantes_screen.dart';
 import 'package:uai_capoeira/screens/auth/auth_check.dart';
+import 'package:uai_capoeira/screens/auth/splash_auth_screen.dart';
 import 'package:uai_capoeira/profile_screen.dart';
 import 'package:uai_capoeira/turmas_academia_screen.dart';
 import 'package:uai_capoeira/screens/eventos/eventos_screen.dart';
@@ -69,6 +70,16 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // =====================================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    print('⚠️ Firebase já inicializado ou erro no background handler: $e');
+  }
+
   print('📨 Background message: ${message.messageId}');
 
   const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
@@ -113,7 +124,7 @@ Future<void> main() async {
     print('✅ Firebase inicializado');
 
     // =====================================================
-    // 🔐 PERSISTÊNCIA DE LOGIN - CONFIGURAÇÃO CRÍTICA
+    // 🔐 PERSISTÊNCIA DE LOGIN - WEB
     // =====================================================
     if (kIsWeb) {
       print('💾 Configurando persistência LOCAL para web...');
@@ -121,17 +132,17 @@ Future<void> main() async {
       print('✅ Persistência LOCAL configurada');
     }
 
-    // Aguarda a restauração da sessão
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Observação:
+    // No Android/APK, o Firebase Auth já usa persistência local automaticamente.
+    // A tela SplashAuthScreen é quem segura o fluxo até a sessão ser restaurada.
 
-    // Verifica se a sessão foi restaurada
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      print('✅ Sessão restaurada automaticamente: ${currentUser.email}');
+      print('✅ Sessão inicial detectada: ${currentUser.email}');
       print('   UID: ${currentUser.uid}');
       print('   Email verificado: ${currentUser.emailVerified}');
     } else {
-      print('ℹ️ Nenhuma sessão ativa - usuário precisa fazer login');
+      print('ℹ️ Nenhuma sessão detectada imediatamente. Splash vai aguardar o Auth.');
     }
 
     print('📦 Configurando Firestore...');
@@ -160,7 +171,6 @@ Future<void> main() async {
     print('🏁 Chamando runApp...');
     runApp(const UaiCapoeiraApp());
     print('✅ runApp executado');
-
   } catch (e, stack) {
     print('❌❌❌ ERRO FATAL NO MAIN: $e');
     print(stack);
@@ -175,11 +185,16 @@ class ErrorApp extends StatelessWidget {
   final Object error;
   final StackTrace stack;
 
-  const ErrorApp({super.key, required this.error, required this.stack});
+  const ErrorApp({
+    super.key,
+    required this.error,
+    required this.stack,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       home: Scaffold(
         body: Center(
           child: Padding(
@@ -216,7 +231,10 @@ class ErrorApp extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Text(
                       stack.toString(),
-                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
                   ),
                 ),
@@ -302,11 +320,11 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
       locale: const Locale('pt', 'BR'),
 
       // =====================================================
-      // 🏠 HOME - RESPEITA A SESSÃO ATIVA
+      // 🏠 HOME
+      // Web mantém LandingPage.
+      // APK abre SplashAuthScreen para aguardar restauração do login.
       // =====================================================
-      home: kIsWeb
-          ? const LandingPage()
-          : const AuthCheck(),
+      home: kIsWeb ? const LandingPage() : const SplashAuthScreen(),
     );
   }
 }
@@ -462,6 +480,7 @@ class _MainScreenState extends State<MainScreen> {
       await notificationService.removeToken();
       _permissaoService.limparCache();
       await FirebaseAuth.instance.signOut();
+
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
       }
@@ -532,7 +551,9 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _verificarAtualizacaoAoEntrar() async {
     if (_dialogoAtualizacaoVerificado) return;
+
     await Future.delayed(const Duration(seconds: 2));
+
     if (mounted) {
       debugPrint('🔍 Verificando atualização ao entrar...');
       await AtualizacaoDialogService().verificarEMostrarDialogo(context);
@@ -540,13 +561,37 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Future<void> _inicializarNotificacoesAoEntrar() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      debugPrint('⚠️ Notificações não iniciadas: usuário não logado.');
+      return;
+    }
+
+    try {
+      final notificationService = NotificationService();
+
+      // Inicializa permissões, canais, listeners e tenta salvar o token.
+      await notificationService.initNotifications();
+
+      // Garante a sincronização depois do login/sessão restaurada.
+      await notificationService.syncTokenForCurrentUser();
+
+      debugPrint('✅ Notificações inicializadas e token sincronizado para: ${user.email}');
+    } catch (e) {
+      debugPrint('❌ Erro ao inicializar/sincronizar notificações: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (FirebaseAuth.instance.currentUser != null) {
-        NotificationService().initNotifications();
-        _verificarAtualizacaoAoEntrar();
+        await _inicializarNotificacoesAoEntrar();
+        await _verificarAtualizacaoAoEntrar();
       }
     });
   }
@@ -586,6 +631,7 @@ class _MainScreenState extends State<MainScreen> {
           }
 
           final userData = snapshot.data!.data();
+
           if (userData == null) {
             return const Drawer(
               child: Center(child: Text("Dados não encontrados")),

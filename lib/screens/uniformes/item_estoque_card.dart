@@ -9,6 +9,7 @@ class ItemEstoqueCard extends StatelessWidget {
   final Function(String, Map<String, dynamic>) onEditar;
   final Function(String, Map<String, dynamic>) onRegistrarEntrada;
   final Function(String, Map<String, dynamic>) onRegistrarSaida;
+  final Function(String, Map<String, dynamic>)? onExcluir;
 
   const ItemEstoqueCard({
     super.key,
@@ -18,6 +19,7 @@ class ItemEstoqueCard extends StatelessWidget {
     required this.onEditar,
     required this.onRegistrarEntrada,
     required this.onRegistrarSaida,
+    this.onExcluir,
   });
 
   Color _getCategoriaColor(String? categoria) {
@@ -61,7 +63,6 @@ class ItemEstoqueCard extends StatelessWidget {
     }
   }
 
-  /// Abre diálogo em tela cheia para visualizar foto com zoom
   void _mostrarFotoAmpliada(BuildContext context, String? fotoUrl) {
     if (fotoUrl == null || fotoUrl.isEmpty) return;
 
@@ -92,6 +93,30 @@ class ItemEstoqueCard extends StatelessWidget {
     );
   }
 
+  void _confirmarExclusao(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('🗑️ Excluir item'),
+        content: Text('Tem certeza que deseja excluir "${data['nome']}" do estoque?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onExcluir?.call(docId, data);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int quantidade = data['quantidade'] ?? 0;
@@ -101,7 +126,15 @@ class ItemEstoqueCard extends StatelessWidget {
     bool controlaEstoque = data['controla_estoque'] ?? true;
     final String? fotoUrl = data['foto_url'];
     final String categoria = data['categoria'] ?? 'Outro';
+    final String tamanho = data['tamanho']?.toString() ?? 'Tam. Único';
+    final String cor = data['cor']?.toString() ?? '';
     final Color corCat = _getCategoriaColor(categoria);
+
+    // Monta texto do subtítulo com tamanho e cor
+    String subtitulo = '$categoria - $tamanho';
+    if (cor.isNotEmpty) {
+      subtitulo += ' - $cor';
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -170,7 +203,7 @@ class ItemEstoqueCard extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$categoria - ${data['tamanho'] ?? 'Tam. Único'}'),
+            Text(subtitulo),
             Text(
               'Preço: ${realFormat.format(precoVenda)}',
               style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w500),
@@ -201,6 +234,18 @@ class ItemEstoqueCard extends StatelessWidget {
                       ),
                   ],
                 ),
+                // Exibe a cor como um chip extra, se houver
+                if (cor.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _buildInfoChip(
+                      icon: Icons.color_lens,
+                      label: 'Cor: $cor',
+                      color: Colors.teal,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 if (data['descricao'] != null && data['descricao'].toString().isNotEmpty)
                   Align(
@@ -248,6 +293,18 @@ class ItemEstoqueCard extends StatelessWidget {
                         label: const Text('Saída'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: quantidade > 0 ? Colors.orange : Colors.grey,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                    if (onExcluir != null) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _confirmarExclusao(context),
+                        icon: const Icon(Icons.delete, size: 18),
+                        label: const Text('Excluir'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
                         ),
                       ),

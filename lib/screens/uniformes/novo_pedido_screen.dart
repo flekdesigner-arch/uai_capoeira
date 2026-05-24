@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
 import 'package:uai_capoeira/services/remessa_service.dart';
+import 'package:uai_capoeira/services/fornecedor_service.dart';
 import 'dialogs/selecionar_aluno_dialog.dart';
 
 class NovoPedidoScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
+  final FornecedorService _fornecedorService = FornecedorService();
   final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   String? _alunoSelecionadoId;
@@ -34,6 +36,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 
   String? _remessaId;
   String? _remessaNome;
+  String? _fornecedorRemessa;
 
   @override
   void dispose() {
@@ -87,6 +90,14 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     }
   }
 
+  void _limparAluno() {
+    setState(() {
+      _alunoSelecionadoId = null;
+      _alunoSelecionadoNome = null;
+      _fotoAlunoUrl = null;
+    });
+  }
+
   Future<void> _selecionarDataPrevisao() async {
     DateTime? data = await showDatePicker(
       context: context,
@@ -103,7 +114,6 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     }
   }
 
-  // 🔥 Selecionar remessa (CORRIGIDO)
   Future<void> _selecionarRemessa() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -113,12 +123,12 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
       setState(() {
         _remessaId = result['id'] as String?;
         _remessaNome = result['nome'] as String?;
+        _fornecedorRemessa = result['fornecedor_nome'] as String?;
 
-        // Preencher data de previsão automaticamente se a remessa tiver data prevista
         final dataPrevista = result['data_prevista'];
         if (dataPrevista is Timestamp) {
-          final dataFormatada = DateFormat('dd/MM/yyyy', 'pt_BR').format(dataPrevista.toDate());
-          _dataPrevisaoController.text = dataFormatada;
+          _dataPrevisaoController.text =
+              DateFormat('dd/MM/yyyy', 'pt_BR').format(dataPrevista.toDate());
         } else if (dataPrevista is String && dataPrevista.isNotEmpty) {
           _dataPrevisaoController.text = dataPrevista;
         }
@@ -130,14 +140,15 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     setState(() {
       _remessaId = null;
       _remessaNome = null;
+      _fornecedorRemessa = null;
     });
   }
 
   Future<void> _salvarPedido() async {
-    if (_alunoSelecionadoId == null) {
+    if (_remessaId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Selecione um aluno'),
+          content: Text('Selecione uma remessa para o pedido'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -158,11 +169,12 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 
     try {
       String idPedido = _uniformesService.gerarIdPedido();
+      final bool ehEstoque = _alunoSelecionadoId == null;
 
       final dadosPedido = {
         'id_pedido': idPedido,
-        'aluno_id': _alunoSelecionadoId,
-        'aluno_nome': _alunoSelecionadoNome,
+        'aluno_id': _alunoSelecionadoId ?? '',
+        'aluno_nome': _alunoSelecionadoNome ?? 'Item para Estoque',
         'itens': _itensPedido,
         'valor_total': _valorTotal,
         'valor_pago': 0,
@@ -173,18 +185,18 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         'data_pedido': FieldValue.serverTimestamp(),
         'criado_por': currentUser?.uid,
         'remessa_id': _remessaId,
+        'tipo_estoque': ehEstoque,
       };
 
       final pedidoIdCriado = await _uniformesService.criarPedido(dadosPedido);
-
-      if (_remessaId != null) {
-        await _remessaService.vincularPedido(pedidoIdCriado, _remessaId!);
-      }
+      await _remessaService.vincularPedido(pedidoIdCriado, _remessaId!);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Pedido $idPedido criado com sucesso!'),
+            content: Text(ehEstoque
+                ? '✅ Pedido para estoque criado!'
+                : '✅ Pedido $idPedido criado com sucesso!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -206,6 +218,8 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool semAluno = _alunoSelecionadoId == null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('NOVO PEDIDO'),
@@ -219,9 +233,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
           TextButton.icon(
             onPressed: _isLoading ? null : _salvarPedido,
             icon: _isLoading
-                ? const SizedBox(
-                width: 20,
-                height: 20,
+                ? const SizedBox(width: 20, height: 20,
                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.save, color: Colors.white),
             label: Text(
@@ -237,18 +249,26 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Aluno (com foto)
+            // REMESSA (obrigatória)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              color: _remessaId == null ? Colors.red.shade50 : null,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('ALUNO', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Row(
+                      children: [
+                        const Icon(Icons.local_shipping, size: 18, color: Colors.brown),
+                        const SizedBox(width: 8),
+                        const Text('REMESSA (obrigatória)',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     InkWell(
-                      onTap: _selecionarAluno,
+                      onTap: _selecionarRemessa,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.all(12),
@@ -258,32 +278,125 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         ),
                         child: Row(
                           children: [
-                            _fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty
-                                ? CachedNetworkImage(
-                              imageUrl: _fotoAlunoUrl!,
-                              imageBuilder: (ctx, imageProvider) => CircleAvatar(
-                                backgroundImage: imageProvider,
-                                radius: 16,
+                            Icon(Icons.local_shipping, color: Colors.brown.shade300),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _remessaNome ?? 'Selecionar remessa',
+                                style: TextStyle(
+                                  color: _remessaNome == null ? Colors.red : Colors.black,
+                                  fontWeight: _remessaNome == null ? FontWeight.normal : FontWeight.w500,
+                                ),
                               ),
-                              placeholder: (_, __) => CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Colors.grey.shade200,
-                                child: const Icon(Icons.person, size: 18),
-                              ),
-                              errorWidget: (_, __, ___) => CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Colors.grey.shade100,
-                                child: Icon(Icons.person, color: Colors.grey.shade600),
-                              ),
-                            )
-                                : Icon(Icons.person, color: Colors.grey.shade600),
+                            ),
+                            if (_remessaId != null)
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.red),
+                                onPressed: _removerRemessa,
+                                tooltip: 'Remover vínculo',
+                              )
+                            else
+                              const Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_remessaNome != null) ...[
+                      const SizedBox(height: 4),
+                      Text('O pedido será vinculado à remessa $_remessaNome.',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      if (_fornecedorRemessa != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.business, size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text('Fornecedor: $_fornecedorRemessa',
+                                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ALUNO (opcional)
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('ALUNO', style: TextStyle(fontWeight: FontWeight.bold)),
+                        if (!semAluno)
+                          TextButton.icon(
+                            onPressed: _limparAluno,
+                            icon: const Icon(Icons.clear, size: 16),
+                            label: const Text('Remover', style: TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _selecionarAluno,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                          color: semAluno ? Colors.amber.shade50 : null,
+                        ),
+                        child: Row(
+                          children: [
+                            if (semAluno)
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.inventory_2, color: Colors.amber.shade800, size: 20),
+                              )
+                            else if (_fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty)
+                              CachedNetworkImage(
+                                imageUrl: _fotoAlunoUrl!,
+                                imageBuilder: (ctx, imageProvider) => CircleAvatar(
+                                  backgroundImage: imageProvider,
+                                  radius: 16,
+                                ),
+                                placeholder: (_, __) => CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Colors.grey.shade200,
+                                  child: const Icon(Icons.person, size: 18),
+                                ),
+                                errorWidget: (_, __, ___) => CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Colors.grey.shade100,
+                                  child: Icon(Icons.person, color: Colors.grey.shade600),
+                                ),
+                              )
+                            else
+                              Icon(Icons.person, color: Colors.grey.shade600),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                _alunoSelecionadoNome ?? 'Selecionar aluno',
+                                semAluno ? 'Item para Estoque (sem aluno)' : (_alunoSelecionadoNome ?? 'Selecionar aluno'),
                                 style: TextStyle(
-                                  color: _alunoSelecionadoNome == null ? Colors.grey : Colors.black,
-                                  fontWeight: _alunoSelecionadoNome != null ? FontWeight.w500 : FontWeight.normal,
+                                  color: semAluno
+                                      ? Colors.amber.shade800
+                                      : _alunoSelecionadoNome == null
+                                      ? Colors.grey
+                                      : Colors.black,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -292,13 +405,21 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         ),
                       ),
                     ),
+                    if (semAluno)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '⚠️ Pedido será marcado como item para estoque. Na finalização da remessa, será adicionado automaticamente.',
+                          style: TextStyle(fontSize: 11, color: Colors.amber.shade800),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // Itens
+            // ITENS
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -340,7 +461,12 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         itemBuilder: (context, index) {
                           final item = _itensPedido[index];
                           final tamanho = item['tamanho'] as String?;
-                          final nomeExibicao = tamanho != null ? '${item['nome']} - Tam. $tamanho' : item['nome'];
+                          final cor = item['cor'] as String?;
+                          final String nomeExibicao = [
+                            item['nome'] ?? 'Item',
+                            if (tamanho != null && tamanho.isNotEmpty) 'Tam. $tamanho',
+                            if (cor != null && cor.isNotEmpty) 'Cor: $cor',
+                          ].join(' - ');
                           return ListTile(
                             leading: Container(
                               width: 40,
@@ -351,7 +477,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                               ),
                               child: const Icon(Icons.shopping_bag, color: Colors.purple),
                             ),
-                            title: Text(nomeExibicao ?? 'Item'),
+                            title: Text(nomeExibicao),
                             subtitle: Text('${item['quantidade']} x ${_realFormat.format(item['preco_unitario'])}'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -386,62 +512,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Remessa
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('REMESSA (opcional)', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: _selecionarRemessa,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.local_shipping, color: Colors.brown.shade300),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _remessaNome ?? 'Vincular a uma remessa',
-                                style: TextStyle(color: _remessaNome == null ? Colors.grey : Colors.black),
-                              ),
-                            ),
-                            if (_remessaId != null)
-                              IconButton(
-                                icon: const Icon(Icons.close, color: Colors.red),
-                                onPressed: _removerRemessa,
-                                tooltip: 'Remover vínculo',
-                              )
-                            else
-                              const Icon(Icons.arrow_drop_down),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_remessaNome != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'O pedido será vinculado automaticamente à remessa $_remessaNome.',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Informações adicionais
+            // INFORMAÇÕES ADICIONAIS
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -525,7 +596,10 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('CRIAR PEDIDO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                child: Text(
+                  _alunoSelecionadoId == null ? 'CRIAR ITEM PARA ESTOQUE' : 'CRIAR PEDIDO',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -536,7 +610,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 }
 
 // =============================================================================
-// DIÁLOGO DE SELEÇÃO DE REMESSA (CORRIGIDO)
+// DIÁLOGO DE SELEÇÃO DE REMESSA (com fornecedor)
 // =============================================================================
 class _SelecionarRemessaDialog extends StatefulWidget {
   @override
@@ -546,11 +620,21 @@ class _SelecionarRemessaDialog extends StatefulWidget {
 class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
   String _search = '';
   final TextEditingController _searchController = TextEditingController();
+  final FornecedorService _fornecedorService = FornecedorService();
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<String?> _getFornecedorNome(String? fornecedorId) async {
+    if (fornecedorId == null) return null;
+    final doc = await _fornecedorService.getFornecedor(fornecedorId);
+    if (doc.exists) {
+      return (doc.data() as Map<String, dynamic>)['nome'] as String?;
+    }
+    return null;
   }
 
   @override
@@ -591,17 +675,25 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
                       final data = docs[i].data() as Map<String, dynamic>;
-                      return ListTile(
-                        leading: Icon(Icons.local_shipping, color: Colors.brown.shade300),
-                        title: Text(data['nome'] ?? 'Sem nome'),
-                        subtitle: Text('Status: ${data['status']}'),
-                        onTap: () {
-                          // Retorna um Map<String, dynamic> com os dados da remessa
-                          Navigator.pop(context, {
-                            'id': docs[i].id,
-                            'nome': data['nome'],
-                            'data_prevista': data['data_prevista'], // pode ser Timestamp ou String
-                          });
+                      return FutureBuilder<String?>(
+                        future: _getFornecedorNome(data['fornecedor_id']),
+                        builder: (context, snap) {
+                          final String? fornecedorNome = snap.data;
+                          return ListTile(
+                            leading: Icon(Icons.local_shipping, color: Colors.brown.shade300),
+                            title: Text(data['nome'] ?? 'Sem nome'),
+                            subtitle: Text(
+                              'Status: ${data['status']}${fornecedorNome != null ? ' • Fornecedor: $fornecedorNome' : ''}',
+                            ),
+                            onTap: () {
+                              Navigator.pop(context, {
+                                'id': docs[i].id,
+                                'nome': data['nome'],
+                                'data_prevista': data['data_prevista'],
+                                'fornecedor_nome': fornecedorNome,
+                              });
+                            },
+                          );
                         },
                       );
                     },
@@ -617,7 +709,7 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
 }
 
 // =============================================================================
-// DIÁLOGO DE SELEÇÃO DE ITEM (COM VARIAÇÕES)
+// DIÁLOGO DE SELEÇÃO DE ITEM (COM VARIAÇÕES) – CORRIGIDO PARA HERDAR COR
 // =============================================================================
 class SelecionarItemPedidoDialog extends StatefulWidget {
   const SelecionarItemPedidoDialog({super.key});
@@ -655,6 +747,8 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
             children: [
               Text('Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}'),
               if (tamanho != null) Text('Tamanho: $tamanho'),
+              if (data['cor'] != null && data['cor'].toString().isNotEmpty)
+                Text('Cor: ${data['cor']}'),
               const SizedBox(height: 16),
               TextField(
                 controller: quantidadeController,
@@ -683,6 +777,7 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                   'tamanho': tamanho,
                   'quantidade': quantidade,
                   'preco_unitario': data['preco_venda'] ?? 0,
+                  'cor': data['cor'] ?? '',   // 🔥 HERDA A COR
                 });
               },
               child: const Text('Adicionar'),
@@ -725,6 +820,7 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                 final variacao = snapshot.docs[i].data();
                 final tamanho = variacao['tamanho'] ?? '?';
                 final quantidadeEstoque = variacao['quantidade'] ?? 0;
+                final cor = variacao['cor']?.toString() ?? '';
                 return ListTile(
                   leading: CircleAvatar(
                     backgroundColor: Colors.purple.shade50,
@@ -734,13 +830,13 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                     ),
                   ),
                   title: Text('Tamanho $tamanho'),
-                  subtitle: Text('Estoque: $quantidadeEstoque un'),
+                  subtitle: Text('Estoque: $quantidadeEstoque un${cor.isNotEmpty ? ' - Cor: $cor' : ''}'),
                   onTap: () {
                     Navigator.pop(ctx);
                     _showQuantidadeDialog(
                       context,
                       snapshot.docs[i].id,
-                      variacao,
+                      variacao,  // 🔥 já contém o campo 'cor'
                       tamanho: tamanho.toString(),
                     );
                   },

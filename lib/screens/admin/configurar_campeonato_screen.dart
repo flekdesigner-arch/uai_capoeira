@@ -760,56 +760,64 @@ Assinatura do Responsável: _____________________________
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 🔥 CARD PRINCIPAL - ATIVAR/DESATIVAR CAMPEONATO
-          _buildCardAtivarCampeonato(),
-          const SizedBox(height: 16),
+      body: Container(
+        color: Colors.grey.shade50,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 980),
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // 🔥 CARD PRINCIPAL - ATIVAR/DESATIVAR CAMPEONATO
+                _buildCardAtivarCampeonato(),
+                const SizedBox(height: 16),
 
-          // 🔥 NOVO CARD: CONTROLE DE INSCRIÇÕES
-          _buildCardControleInscricoes(),
-          const SizedBox(height: 16),
+                // 🔥 NOVO CARD: CONTROLE DE INSCRIÇÕES
+                _buildCardControleInscricoes(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD INFORMAÇÕES GERAIS
-          _buildCardInformacoesGerais(),
-          const SizedBox(height: 16),
+                // 🔥 CARD INFORMAÇÕES GERAIS
+                _buildCardInformacoesGerais(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD CATEGORIAS
-          _buildCardCategorias(),
-          const SizedBox(height: 16),
+                // 🔥 CARD CATEGORIAS
+                _buildCardCategorias(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD CONTROLE DE VAGAS
-          _buildCardVagas(),
-          const SizedBox(height: 16),
+                // 🔥 CARD CONTROLE DE VAGAS
+                _buildCardVagas(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD TERMO E ASSINATURA
-          _buildCardTermo(),
-          const SizedBox(height: 16),
+                // 🔥 CARD TERMO E ASSINATURA
+                _buildCardTermo(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD CAMPOS OPCIONAIS
-          _buildCardCamposOpcionais(),
-          const SizedBox(height: 16),
+                // 🔥 CARD CAMPOS OPCIONAIS
+                _buildCardCamposOpcionais(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD PAGAMENTO
-          _buildCardPagamento(),
-          const SizedBox(height: 16),
+                // 🔥 CARD PAGAMENTO
+                _buildCardPagamento(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD REGULAMENTO
-          _buildCardRegulamento(),
-          const SizedBox(height: 16),
+                // 🔥 CARD REGULAMENTO
+                _buildCardRegulamento(),
+                const SizedBox(height: 16),
 
-          // 🔥 CARD INFORMAÇÕES ADICIONAIS
-          _buildCardInfoAdicionais(),
-          const SizedBox(height: 24),
+                // 🔥 CARD INFORMAÇÕES ADICIONAIS
+                _buildCardInfoAdicionais(),
+                const SizedBox(height: 24),
 
-          // 🔥 RESUMO DAS CONFIGURAÇÕES
-          _buildResumoConfiguracoes(),
-          const SizedBox(height: 16),
+                // 🔥 RESUMO DAS CONFIGURAÇÕES
+                _buildResumoConfiguracoes(),
+                const SizedBox(height: 16),
 
-          // 🔥 BOTÃO GRUPOS CONVIDADOS
-          _buildBotaoGrupos(),
-        ],
+                // 🔥 BOTÃO GRUPOS CONVIDADOS
+                _buildBotaoGrupos(),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -843,9 +851,13 @@ Assinatura do Responsável: _____________________________
                       size: 32,
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'CAMPEONATO ATIVO',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    const Expanded(
+                      child: Text(
+                        'CAMPEONATO ATIVO',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -1082,17 +1094,22 @@ Assinatura do Responsável: _____________________________
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.category, color: Colors.purple.shade900),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'CATEGORIAS',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.category, color: Colors.purple.shade900),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'CATEGORIAS',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle, color: Colors.green, size: 28),
@@ -1164,78 +1181,130 @@ Assinatura do Responsável: _____________________________
   Widget _buildCardVagas() {
     return Card(
       elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 520;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.people, color: Colors.orange.shade900),
-                const SizedBox(width: 8),
-                const Text(
-                  'CONTROLE DE VAGAS',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _taxaInscricaoController,
-                    decoration: const InputDecoration(
-                      labelText: 'Taxa (R\$)',
-                      border: OutlineInputBorder(),
-                      prefixText: 'R\$ ',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _vagasDisponiveisController,
-                    decoration: const InputDecoration(
-                      labelText: 'Vagas Totais',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        '$_totalInscricoes',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
+                Row(
+                  children: [
+                    Icon(Icons.people, color: Colors.orange.shade900),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'CONTROLE DE VAGAS',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const Text(
-                        'Inscritos',
-                        style: TextStyle(fontSize: 10),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                if (isSmall)
+                  Column(
+                    children: [
+                      TextField(
+                        controller: _taxaInscricaoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Taxa (R\$)',
+                          border: OutlineInputBorder(),
+                          prefixText: 'R\$ ',
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _vagasDisponiveisController,
+                        decoration: const InputDecoration(
+                          labelText: 'Vagas Totais',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _buildInscritosResumo(),
                       ),
                     ],
+                  )
+                else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _taxaInscricaoController,
+                          decoration: const InputDecoration(
+                            labelText: 'Taxa (R\$)',
+                            border: OutlineInputBorder(),
+                            prefixText: 'R\$ ',
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _vagasDisponiveisController,
+                          decoration: const InputDecoration(
+                            labelText: 'Vagas Totais',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _buildInscritosResumo(),
+                    ],
                   ),
-                ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
+
+  Widget _buildInscritosResumo() {
+    return Container(
+      width: 120,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$_totalInscricoes',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue.shade900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Inscritos',
+            style: TextStyle(fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildCardTermo() {
     return Card(
@@ -1538,24 +1607,45 @@ Assinatura do Responsável: _____________________________
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: cor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
+          Expanded(
+            flex: 2,
             child: Text(
-              valor,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: cor),
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  valor,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: cor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
 
   Widget _buildBotaoGrupos() {
     return SizedBox(

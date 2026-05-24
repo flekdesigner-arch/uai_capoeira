@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.34+1
+version: 2.0.50+1
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -9,6 +9,8 @@ version: 2.0.34+1
 environment:
   sdk: ">=3.10.8 <4.0.0"  # Versão do Dart
   flutter: ">=3.22.0"     # Versão do Flutter
+
+
 
 # =============================================
 # 📦 DEPENDÊNCIAS PRINCIPAIS (PRODUÇÃO)
@@ -135,6 +137,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0               # 📏 Boas práticas de código
   image: ^4.1.7                       # 🖼️ Manipular imagens (gerar ícones)
   flutter_launcher_icons: ^0.14.1     # 🎨 Gerar ícones do app
+  flutter_native_splash: ^2.4.4       # 🚀 Gerar splash nativo do Android/iOS
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DO FLUTTER
@@ -149,6 +152,7 @@ flutter:
     - assets/images/fundo_aniversario_app_flutter.png
     - assets/images/logo_uai.png
     - assets/images/google_logo.png
+    - assets/logoprincipal.png
 
     # 📊 Dados de migração
     - assets/dadosalunos.csv

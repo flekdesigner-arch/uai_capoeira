@@ -3,9 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
+import 'package:uai_capoeira/services/fornecedor_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
 
 class AdicionarEstoqueScreen extends StatefulWidget {
   final String? itemId;
@@ -21,6 +24,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   final _formKey = GlobalKey<FormState>();
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
+  final FornecedorService _fornecedorService = FornecedorService();
   final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   // Controladores
@@ -58,6 +62,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     '4A', '6A', '8A', '10A', '12A', '14A', 'Único'
   ];
 
+  String? _fornecedorId;
+  String? _fornecedorNome;
+
   @override
   void initState() {
     super.initState();
@@ -82,8 +89,24 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     _fotoUrl = data['foto_url'];
     _possuiVariacoes = data['possui_variacoes'] ?? false;
 
+    _fornecedorId = data['fornecedor_id'];
+    if (_fornecedorId != null) {
+      _carregarFornecedor(_fornecedorId!);
+    }
+
     if (_possuiVariacoes && data['variacoes'] != null) {
       _variacoes = List<Map<String, dynamic>>.from(data['variacoes']);
+    }
+  }
+
+  Future<void> _carregarFornecedor(String fornecedorId) async {
+    final doc = await _fornecedorService.getFornecedor(fornecedorId);
+    if (doc.exists) {
+      final data = doc.data() as Map<String, dynamic>;
+      setState(() {
+        _fornecedorNome = data['nome'] ?? '';
+        _fornecedorController.text = _fornecedorNome ?? '';
+      });
     }
   }
 
@@ -144,14 +167,32 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     }
   }
 
+  // 🔥 Adicionar variação com cor herdada da última
   void _adicionarVariacao() {
+    final usedSizes = _variacoes.map((v) => v['tamanho'] as String).toSet();
+    final available = _tamanhosPadrao.where((t) => !usedSizes.contains(t)).toList();
+
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Todos os tamanhos já foram adicionados!')),
+      );
+      return;
+    }
+
+    // Pega a cor da última variação (se existir)
+    String corHerdada = '';
+    if (_variacoes.isNotEmpty) {
+      corHerdada = _variacoes.last['cor'] ?? '';
+    }
+
     setState(() {
       _variacoes.add({
-        'tamanho': 'P',
+        'tamanho': available.first,
         'quantidade': 0,
         'estoque_minimo': _estoqueMinimoController.text.isNotEmpty
             ? int.tryParse(_estoqueMinimoController.text) ?? 5
             : 5,
+        'cor': corHerdada,   // 🔥 herda a cor
       });
     });
   }
@@ -162,15 +203,42 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     });
   }
 
+  Future<void> _selecionarFornecedor() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _SelecionarFornecedorDialog(),
+    );
+    if (result != null) {
+      setState(() {
+        _fornecedorId = result['id'];
+        _fornecedorNome = result['nome'];
+        _fornecedorController.text = _fornecedorNome ?? '';
+      });
+    }
+  }
+
+  void _removerFornecedor() {
+    setState(() {
+      _fornecedorId = null;
+      _fornecedorNome = null;
+      _fornecedorController.clear();
+    });
+  }
+
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
+      // 🔥 Upload da foto para Firebase Storage (se for arquivo local)
       String? fotoFinal = _fotoUrl;
       if (_fotoArquivo != null) {
-        fotoFinal = _fotoArquivo!.path;
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('estoque/${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putFile(_fotoArquivo!);
+        fotoFinal = await ref.getDownloadURL();
       }
 
       if (_possuiVariacoes && _variacoes.isNotEmpty) {
@@ -179,7 +247,8 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'categoria': _categoriaSelecionada,
           'preco_custo': double.tryParse(_precoCustoController.text.replaceAll(',', '.')) ?? 0,
           'preco_venda': double.tryParse(_precoVendaController.text.replaceAll(',', '.')) ?? 0,
-          'fornecedor': _fornecedorController.text.toUpperCase().trim(),
+          'fornecedor': _fornecedorNome ?? _fornecedorController.text.trim(),
+          'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
           'codigo_barras': _codigoBarrasController.text.trim(),
           'controla_estoque': _controlaEstoque,
@@ -212,9 +281,11 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             'tamanho': variacao['tamanho'],
             'quantidade': variacao['quantidade'],
             'estoque_minimo': variacao['estoque_minimo'],
+            'cor': variacao['cor'] ?? '',
             'preco_custo': dadosBase['preco_custo'],
             'preco_venda': dadosBase['preco_venda'],
             'fornecedor': dadosBase['fornecedor'],
+            'fornecedor_id': dadosBase['fornecedor_id'],
             'descricao': dadosBase['descricao'],
             'codigo_barras': dadosBase['codigo_barras'],
             'controla_estoque': _controlaEstoque,
@@ -247,7 +318,8 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'estoque_minimo': int.tryParse(_estoqueMinimoController.text) ?? 5,
           'preco_custo': double.tryParse(_precoCustoController.text.replaceAll(',', '.')) ?? 0,
           'preco_venda': double.tryParse(_precoVendaController.text.replaceAll(',', '.')) ?? 0,
-          'fornecedor': _fornecedorController.text.toUpperCase().trim(),
+          'fornecedor': _fornecedorNome ?? _fornecedorController.text.trim(),
+          'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
           'codigo_barras': _codigoBarrasController.text.trim(),
           'controla_estoque': _controlaEstoque,
@@ -512,7 +584,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
               ),
             ),
 
-            // VARIAÇÕES (CORRIGIDO: texto preto + menu com scroll)
+            // VARIAÇÕES (com seleção dinâmica e cor herdada)
             if (_possuiVariacoes) ...[
               const SizedBox(height: 16),
               Card(
@@ -530,7 +602,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           TextButton.icon(
-                            onPressed: _adicionarVariacao,
+                            onPressed: _variacoes.length < _tamanhosPadrao.length
+                                ? _adicionarVariacao
+                                : null,
                             icon: const Icon(Icons.add, size: 18),
                             label: const Text('Adicionar'),
                           ),
@@ -554,13 +628,29 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                           itemCount: _variacoes.length,
                           itemBuilder: (context, index) {
                             final variacao = _variacoes[index];
+
+                            // 🔥 Tamanhos já usados (exceto o atual)
+                            final usedSizes = <String>{};
+                            for (int j = 0; j < _variacoes.length; j++) {
+                              if (j != index) {
+                                usedSizes.add(_variacoes[j]['tamanho'] as String);
+                              }
+                            }
+                            final availableSizes = _tamanhosPadrao
+                                .where((t) => !usedSizes.contains(t))
+                                .toList();
+
+                            if (!availableSizes.contains(variacao['tamanho']) &&
+                                variacao['tamanho'] != null) {
+                              availableSizes.insert(0, variacao['tamanho']);
+                            }
+
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: Row(
                                 children: [
-                                  // 🔧 DROPDOWN COM TEXTO PRETO, FUNDO BRANCO E SCROLL (menuMaxHeight)
                                   SizedBox(
-                                    width: 100,
+                                    width: 90,
                                     child: DropdownButtonFormField<String>(
                                       value: variacao['tamanho'],
                                       style: const TextStyle(
@@ -572,13 +662,14 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                                         labelStyle: TextStyle(color: Colors.black87),
                                         border: OutlineInputBorder(),
                                         isDense: true,
-                                        contentPadding: EdgeInsets.only(left: 6, right: 2, top: 4, bottom: 4),
+                                        contentPadding: EdgeInsets.only(
+                                            left: 6, right: 2, top: 4, bottom: 4),
                                         filled: true,
                                         fillColor: Colors.white,
                                       ),
                                       dropdownColor: Colors.white,
-                                      menuMaxHeight: 200, // scroll depois de ~5 itens
-                                      items: _tamanhosPadrao.map((t) {
+                                      menuMaxHeight: 200,
+                                      items: availableSizes.map((t) {
                                         return DropdownMenuItem(
                                           value: t,
                                           child: Text(
@@ -597,9 +688,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  // Quantidade
+                                  const SizedBox(width: 4),
                                   Expanded(
+                                    flex: 2,
                                     child: TextFormField(
                                       keyboardType: TextInputType.number,
                                       initialValue: variacao['quantidade'].toString(),
@@ -607,34 +698,58 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                                         labelText: 'Qtd.',
                                         border: OutlineInputBorder(),
                                         isDense: true,
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 4),
                                       ),
                                       style: const TextStyle(fontSize: 13),
                                       onChanged: (val) {
-                                        variacao['quantidade'] = int.tryParse(val) ?? 0;
+                                        variacao['quantidade'] =
+                                            int.tryParse(val) ?? 0;
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  // Estoque mínimo
+                                  const SizedBox(width: 4),
                                   Expanded(
+                                    flex: 2,
                                     child: TextFormField(
                                       keyboardType: TextInputType.number,
-                                      initialValue: variacao['estoque_minimo'].toString(),
+                                      initialValue:
+                                      variacao['estoque_minimo'].toString(),
                                       decoration: const InputDecoration(
                                         labelText: 'Min.',
                                         border: OutlineInputBorder(),
                                         isDense: true,
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 4),
                                       ),
                                       style: const TextStyle(fontSize: 13),
                                       onChanged: (val) {
-                                        variacao['estoque_minimo'] = int.tryParse(val) ?? 5;
+                                        variacao['estoque_minimo'] =
+                                            int.tryParse(val) ?? 5;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    flex: 3,
+                                    child: TextFormField(
+                                      initialValue: variacao['cor'] ?? '',
+                                      decoration: const InputDecoration(
+                                        labelText: 'Cor',
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 4),
+                                      ),
+                                      style: const TextStyle(fontSize: 12),
+                                      onChanged: (val) {
+                                        variacao['cor'] = val.trim();
                                       },
                                     ),
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.remove_circle, color: Colors.red, size: 20),
+                                    icon: const Icon(Icons.remove_circle,
+                                        color: Colors.red, size: 20),
                                     onPressed: () => _removerVariacao(index),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
@@ -770,7 +885,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
             const SizedBox(height: 16),
 
-            // INFORMAÇÕES ADICIONAIS
+            // INFORMAÇÕES ADICIONAIS (com seleção de fornecedor)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -784,15 +899,38 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                     ),
                     const Divider(),
 
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Fornecedor', style: TextStyle(fontWeight: FontWeight.w500)),
+                        TextButton.icon(
+                          onPressed: _selecionarFornecedor,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: Text(_fornecedorId == null ? 'Selecionar' : 'Trocar'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _fornecedorController,
-                      decoration: const InputDecoration(
-                        labelText: 'Fornecedor',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.business),
-                        hintText: 'Nome do fornecedor',
+                      decoration: InputDecoration(
+                        labelText: 'Nome do fornecedor',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.business),
+                        suffixIcon: _fornecedorId != null
+                            ? IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.red),
+                          onPressed: _removerFornecedor,
+                        )
+                            : null,
                       ),
                       textCapitalization: TextCapitalization.characters,
+                      onChanged: (_) {
+                        if (_fornecedorId != null) {
+                          _fornecedorId = null;
+                          _fornecedorNome = null;
+                        }
+                      },
                     ),
                     const SizedBox(height: 16),
 
@@ -858,5 +996,79 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       );
     }
     return const Icon(Icons.photo_camera, size: 40, color: Colors.grey);
+  }
+}
+
+// ─── Diálogo de seleção de fornecedor (compartilhado) ─────────────────
+class _SelecionarFornecedorDialog extends StatefulWidget {
+  @override
+  State<_SelecionarFornecedorDialog> createState() => _SelecionarFornecedorDialogState();
+}
+
+class _SelecionarFornecedorDialogState extends State<_SelecionarFornecedorDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  String _search = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Pesquisar fornecedor...',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (v) => setState(() => _search = v.toLowerCase()),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('fornecedores')
+                    .where('status', isEqualTo: 'ativo')
+                    .orderBy('nome')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  var docs = snapshot.data!.docs;
+                  if (_search.isNotEmpty) {
+                    docs = docs.where((d) {
+                      final nome = (d.data() as Map<String, dynamic>)['nome'] ?? '';
+                      return nome.toLowerCase().contains(_search);
+                    }).toList();
+                  }
+                  if (docs.isEmpty) return const Center(child: Text('Nenhum fornecedor encontrado'));
+                  return ListView.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final data = docs[i].data() as Map<String, dynamic>;
+                      return ListTile(
+                        leading: const Icon(Icons.business),
+                        title: Text(data['nome'] ?? ''),
+                        subtitle: Text(data['contato'] ?? ''),
+                        onTap: () => Navigator.pop(context, <String, String>{
+                          'id': docs[i].id,
+                          'nome': (data['nome'] ?? '').toString(),
+                        }),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

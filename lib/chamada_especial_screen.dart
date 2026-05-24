@@ -323,10 +323,23 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     );
   }
 
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
   // ============================================
-  // FUNÇÃO PRINCIPAL DE SALVAR CHAMADA (COM CLOUD FUNCTION)
+  // FUNÇÃO PRINCIPAL DE SALVAR CHAMADA ESPECIAL
+  // Usa a mesma Cloud Function processarChamada.
+  // A Cloud Function agora cria os logs e atualiza os contadores:
+  // alunos/{alunoId}/contadores/frequencia_dashboard
   // ============================================
   Future<void> _salvarChamada() async {
+    if (_isSaving) return;
+
     if (_alunos.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -346,7 +359,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('❌ Nenhum aluno presente'),
-          content: const Text('Deseja salvar a chamada mesmo sem nenhum aluno presente?'),
+          content: const Text(
+            'Deseja salvar a chamada especial mesmo sem nenhum aluno presente?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -364,7 +379,17 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       if (confirm != true) return;
     }
 
-    // Preparar dados para a Cloud Function
+    final alunosPayload = _alunos.map((aluno) {
+      final alunoId = aluno['id']?.toString() ?? '';
+
+      return {
+        'id': alunoId,
+        'nome': aluno['nome']?.toString() ?? 'Sem nome',
+        'presente': _presencas[alunoId] ?? false,
+        'observacao': _observacoes[alunoId] ?? '',
+      };
+    }).toList();
+
     final dadosChamada = {
       'turmaId': widget.turmaId,
       'turmaNome': widget.turmaNome,
@@ -374,66 +399,74 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       'tipoAula': _tipoAula,
       'professorId': _professorId,
       'professorNome': _professorNome,
-      'alunos': _alunos.map((aluno) => {
-        'id': aluno['id'],
-        'nome': aluno['nome'],
-        'presente': _presencas[aluno['id']] ?? false,
-        'observacao': _observacoes[aluno['id']] ?? '',
-      }).toList(),
+      'alunos': alunosPayload,
     };
 
     setState(() {
       _isSaving = true;
       _mostrarProgresso = true;
-      _statusMensagem = 'Enviando para processamento...';
+      _statusMensagem = 'Enviando chamada especial para a nuvem...';
     });
 
     try {
       setState(() {
-        _statusMensagem = 'Processando chamada especial na nuvem...';
+        _statusMensagem = 'Criando chamada, logs e contadores...';
       });
 
       final HttpsCallable callable = _functions.httpsCallable('processarChamada');
       final result = await callable.call(dadosChamada);
 
-      setState(() {
-        _statusMensagem = '✅ Chamada salva com sucesso!';
-      });
-      await Future.delayed(const Duration(milliseconds: 500));
+      final data = Map<String, dynamic>.from(result.data as Map);
 
-      if (result.data['success']) {
-        if (mounted) {
-          _mostrarTelaConclusao({
-            'presentes': result.data['presentes'],
-            'ausentes': result.data['ausentes'],
-            'total_alunos': result.data['processados'],
-            'porcentagem_frequencia': (result.data['presentes'] / result.data['processados'] * 100).round(),
-          });
-        }
+      final success = data['success'] == true;
+      if (!success) {
+        throw Exception('A Cloud Function não confirmou o salvamento.');
       }
 
-    } catch (e) {
-      debugPrint('❌ Erro ao processar chamada especial: $e');
+      final processados = _toInt(data['processados']);
+      final presentesCloud = _toInt(data['presentes']);
+      final ausentesCloud = _toInt(data['ausentes']);
+      final porcentagemCloud = data.containsKey('porcentagem_frequencia')
+          ? _toInt(data['porcentagem_frequencia'])
+          : processados > 0
+          ? ((presentesCloud / processados) * 100).round()
+          : 0;
+
+      final bool duplicate = data['duplicate'] == true;
+
       setState(() {
-        _isSaving = false;
-        _mostrarProgresso = false;
+        _statusMensagem = duplicate
+            ? '⚠️ Esta chamada já existia. Dados carregados sem duplicar.'
+            : '✅ Chamada especial salva e contadores atualizados!';
       });
+
+      await Future.delayed(const Duration(milliseconds: 600));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao salvar: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        _mostrarTelaConclusao({
+          'presentes': presentesCloud,
+          'ausentes': ausentesCloud,
+          'total_alunos': processados,
+          'porcentagem_frequencia': porcentagemCloud,
+          'duplicate': duplicate,
+        });
       }
-    } finally {
+    } catch (e) {
+      debugPrint('❌ Erro ao processar chamada especial: $e');
+
       if (mounted) {
         setState(() {
           _isSaving = false;
           _mostrarProgresso = false;
         });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao salvar chamada especial: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     }
   }
@@ -472,9 +505,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              const Text(
-                '🎉 CHAMADA ESPECIAL CONCLUÍDA!',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              Text(
+                dados['duplicate'] == true
+                    ? '⚠️ CHAMADA ESPECIAL JÁ EXISTIA!'
+                    : '🎉 CHAMADA ESPECIAL CONCLUÍDA!',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),

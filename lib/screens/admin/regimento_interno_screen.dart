@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../services/logo_service.dart'; // 🔥 IMPORT DO LOGO SERVICE
+import 'package:flutter/material.dart';
+
+import '../../services/logo_service.dart';
 
 class RegimentoInternoScreen extends StatefulWidget {
   const RegimentoInternoScreen({super.key});
@@ -11,43 +13,25 @@ class RegimentoInternoScreen extends StatefulWidget {
 
 class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final LogoService _logoService = LogoService(); // 🔥 LOGO SERVICE
+  final LogoService _logoService = LogoService();
 
-  // Lista de seções dinâmicas
   List<Map<String, dynamic>> _secoes = [];
 
   bool _carregando = true;
   bool _salvando = false;
 
-  // Lista de ícones disponíveis
   final List<Map<String, dynamic>> _iconesDisponiveis = [
-    {'nome': 'Gavel', 'icon': Icons.gavel, 'iconName': 'gavel', 'cor': Colors.blue},
-    {'nome': 'Person Add', 'icon': Icons.person_add, 'iconName': 'person_add', 'cor': Colors.green},
-    {'nome': 'School', 'icon': Icons.school, 'iconName': 'school', 'cor': Colors.orange},
-    {'nome': 'Workspace Premium', 'icon': Icons.workspace_premium, 'iconName': 'workspace_premium', 'cor': Colors.purple},
-    {'nome': 'Security', 'icon': Icons.security, 'iconName': 'security', 'cor': Colors.red},
-    {'nome': 'Group', 'icon': Icons.group, 'iconName': 'group', 'cor': Colors.teal},
-    {'nome': 'Star', 'icon': Icons.star, 'iconName': 'star', 'cor': Colors.amber},
-    {'nome': 'Emoji Events', 'icon': Icons.emoji_events, 'iconName': 'emoji_events', 'cor': Colors.deepOrange},
-    {'nome': 'Menu Book', 'icon': Icons.menu_book, 'iconName': 'menu_book', 'cor': Colors.brown},
-    {'nome': 'Rule', 'icon': Icons.rule, 'iconName': 'rule', 'cor': Colors.indigo},
+    {'nome': 'Gavel', 'icon': Icons.gavel_rounded, 'iconName': 'gavel', 'cor': Colors.blue},
+    {'nome': 'Person Add', 'icon': Icons.person_add_rounded, 'iconName': 'person_add', 'cor': Colors.green},
+    {'nome': 'School', 'icon': Icons.school_rounded, 'iconName': 'school', 'cor': Colors.orange},
+    {'nome': 'Premium', 'icon': Icons.workspace_premium_rounded, 'iconName': 'workspace_premium', 'cor': Colors.purple},
+    {'nome': 'Security', 'icon': Icons.security_rounded, 'iconName': 'security', 'cor': Colors.red},
+    {'nome': 'Group', 'icon': Icons.group_rounded, 'iconName': 'group', 'cor': Colors.teal},
+    {'nome': 'Star', 'icon': Icons.star_rounded, 'iconName': 'star', 'cor': Colors.amber},
+    {'nome': 'Events', 'icon': Icons.emoji_events_rounded, 'iconName': 'emoji_events', 'cor': Colors.deepOrange},
+    {'nome': 'Book', 'icon': Icons.menu_book_rounded, 'iconName': 'menu_book', 'cor': Colors.brown},
+    {'nome': 'Rule', 'icon': Icons.rule_rounded, 'iconName': 'rule', 'cor': Colors.indigo},
   ];
-
-  IconData _getIconFromName(String iconName) {
-    switch (iconName) {
-      case 'gavel': return Icons.gavel;
-      case 'person_add': return Icons.person_add;
-      case 'school': return Icons.school;
-      case 'workspace_premium': return Icons.workspace_premium;
-      case 'security': return Icons.security;
-      case 'group': return Icons.group;
-      case 'star': return Icons.star;
-      case 'emoji_events': return Icons.emoji_events;
-      case 'menu_book': return Icons.menu_book;
-      case 'rule': return Icons.rule;
-      default: return Icons.description;
-    }
-  }
 
   @override
   void initState() {
@@ -61,8 +45,13 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
 
       if (doc.exists) {
         final data = doc.data()!;
+
         if (data.containsKey('secoes') && data['secoes'] is List) {
-          _secoes = List<Map<String, dynamic>>.from(data['secoes']);
+          _secoes = (data['secoes'] as List).map((item) {
+            if (item is Map<String, dynamic>) return item;
+            if (item is Map) return Map<String, dynamic>.from(item);
+            return <String, dynamic>{};
+          }).where((item) => item.isNotEmpty).toList();
         } else {
           _secoes = _getSecoesPadrao();
         }
@@ -73,7 +62,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
       _mostrarErro('Erro ao carregar: $e');
       _secoes = _getSecoesPadrao();
     } finally {
-      setState(() => _carregando = false);
+      if (mounted) setState(() => _carregando = false);
     }
   }
 
@@ -130,20 +119,16 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     } catch (e) {
       _mostrarErro('Erro ao salvar: $e');
     } finally {
-      setState(() => _salvando = false);
+      if (mounted) setState(() => _salvando = false);
     }
   }
 
   void _mostrarErro(String mensagem) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(mensagem), backgroundColor: Colors.red),
     );
   }
 
-  // ========== CONTEÚDOS PADRÃO ==========
   String _getRegrasGeraisPadrao() {
     return '''🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).
 ❌ Não é permitido utilizar uniformes de outros grupos.
@@ -210,9 +195,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   }
 
   void _adicionarSecao() {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => _DialogNovaSecao(
+      builder: (context) => _DialogSecao(
         iconesDisponiveis: _iconesDisponiveis,
         onSalvar: (titulo, iconName, cor) {
           setState(() {
@@ -231,9 +216,10 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
 
   void _editarSecao(int index) {
     final secao = _secoes[index];
-    showDialog(
+
+    showDialog<void>(
       context: context,
-      builder: (context) => _DialogEditarSecao(
+      builder: (context) => _DialogSecao(
         secao: secao,
         iconesDisponiveis: _iconesDisponiveis,
         onSalvar: (titulo, iconName, cor) {
@@ -248,97 +234,340 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   }
 
   void _removerSecao(int index) {
-    showDialog(
+    final titulo = _secoes[index]['titulo']?.toString() ?? 'esta seção';
+
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remover seção'),
-        content: const Text('Tem certeza que deseja remover esta seção?'),
+        insetPadding: const EdgeInsets.all(18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: Colors.red.shade800),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Remover seção?',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        content: Text('Tem certeza que deseja remover "$titulo"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('CANCELAR'),
           ),
-          TextButton(
+          ElevatedButton.icon(
             onPressed: () {
-              setState(() {
-                _secoes.removeAt(index);
-              });
+              setState(() => _secoes.removeAt(index));
               Navigator.pop(context);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('REMOVER'),
+            icon: const Icon(Icons.delete_rounded, size: 18),
+            label: const Text('REMOVER'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade800,
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       ),
     );
   }
 
+  IconData _getIconFromName(dynamic iconName) {
+    switch (iconName?.toString()) {
+      case 'gavel':
+        return Icons.gavel_rounded;
+      case 'person_add':
+        return Icons.person_add_rounded;
+      case 'school':
+        return Icons.school_rounded;
+      case 'workspace_premium':
+        return Icons.workspace_premium_rounded;
+      case 'security':
+        return Icons.security_rounded;
+      case 'group':
+        return Icons.group_rounded;
+      case 'star':
+        return Icons.star_rounded;
+      case 'emoji_events':
+        return Icons.emoji_events_rounded;
+      case 'menu_book':
+        return Icons.menu_book_rounded;
+      case 'rule':
+        return Icons.rule_rounded;
+      default:
+        return Icons.description_rounded;
+    }
+  }
+
+  Color _safeColor(dynamic value, {Color fallback = Colors.blue}) {
+    if (value is Color) return value;
+    if (value is int) return Color(value);
+    return fallback;
+  }
+
+  void _moverSecao(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+
+      final item = _secoes.removeAt(oldIndex);
+      _secoes.insert(newIndex, item);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_carregando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.red.shade900),
+        ),
       );
     }
 
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('📜 Regimento Interno'),
+        title: const Text(
+          'Regimento Interno',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.add, color: Colors.white),
+            icon: const Icon(Icons.add_rounded),
             onPressed: _adicionarSecao,
+            tooltip: 'Adicionar seção',
           ),
-          TextButton.icon(
-            onPressed: _salvando ? null : _salvar,
+          IconButton(
             icon: _salvando
                 ? const SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
             )
-                : const Icon(Icons.save, color: Colors.white),
-            label: Text(
-              _salvando ? 'SALVANDO...' : 'SALVAR',
-              style: const TextStyle(color: Colors.white),
-            ),
+                : const Icon(Icons.save_rounded),
+            onPressed: _salvando ? null : _salvar,
+            tooltip: 'Salvar',
           ),
         ],
       ),
-      body: CustomScrollView(
-        slivers: [
-          // 🔥 LOGO ACIMA DAS SEÇÕES
-          SliverToBoxAdapter(
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: _logoService.buildLogo(height: 100), // LOGO AQUI!
+      body: _buildBody(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _adicionarSecao,
+        backgroundColor: Colors.red.shade900,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text(
+          'SEÇÃO',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.045),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: ElevatedButton.icon(
+            onPressed: _salvando ? null : _salvar,
+            icon: _salvando
+                ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+                : const Icon(Icons.save_rounded),
+            label: Text(_salvando ? 'SALVANDO...' : 'SALVAR REGIMENTO'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(50),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          // SEÇÕES
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final secao = _secoes[index];
-                  return _buildSecao(
-                    index: index,
-                    titulo: secao['titulo'],
-                    icone: _getIconFromName(secao['icone']),
-                    cor: Color(secao['cor']),
-                    controller: TextEditingController(text: secao['conteudo']),
-                    onChanged: (value) {
-                      _secoes[index]['conteudo'] = value;
-                    },
-                  );
-                },
-                childCount: _secoes.length,
+  Widget _buildBody() {
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 96),
+      onReorder: _moverSecao,
+      itemCount: _secoes.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            key: const ValueKey('hero'),
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 980),
+                child: _buildHero(),
               ),
+            ),
+          );
+        }
+
+        final itemIndex = index - 1;
+        final secao = _secoes[itemIndex];
+
+        return Padding(
+          key: ValueKey(secao['id'] ?? itemIndex),
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
+              child: _buildSecao(index: itemIndex, secao: secao),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHero() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 560;
+
+          final logo = Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: _logoService.buildLogo(height: 58),
+          );
+
+          final text = Column(
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Editar Regimento',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: narrow ? 22 : 27,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Organize seções, edite textos, escolha ícones e salve o conteúdo exibido no site.',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.82),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _whiteChip(
+                    icon: Icons.article_rounded,
+                    label: '${_secoes.length} seções',
+                  ),
+                  _whiteChip(
+                    icon: Icons.drag_indicator_rounded,
+                    label: 'Arraste para ordenar',
+                  ),
+                ],
+              ),
+            ],
+          );
+
+          if (narrow) {
+            return Column(
+              children: [
+                logo,
+                const SizedBox(height: 14),
+                text,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              logo,
+              const SizedBox(width: 16),
+              Expanded(child: text),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _whiteChip({
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -348,68 +577,107 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
 
   Widget _buildSecao({
     required int index,
-    required String titulo,
-    required IconData icone,
-    required Color cor,
-    required TextEditingController controller,
-    required Function(String) onChanged,
+    required Map<String, dynamic> secao,
   }) {
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    final titulo = secao['titulo']?.toString() ?? 'Sem título';
+    final iconName = secao['icone']?.toString() ?? 'description';
+    final icone = _getIconFromName(iconName);
+    final cor = _safeColor(secao['cor'], fallback: Colors.blue);
+    final controller = TextEditingController(text: secao['conteudo']?.toString() ?? '');
+
+    return Container(
+      decoration: _cardDecoration(borderColor: cor.withOpacity(0.12)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: cor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icone, color: cor),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [cor.withOpacity(0.13), cor.withOpacity(0.05)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    titulo,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                border: Border(bottom: BorderSide(color: cor.withOpacity(0.10))),
+              ),
+              child: Row(
+                children: [
+                  ReorderableDragStartListener(
+                    index: index + 1,
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      color: Colors.grey.shade600,
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 20),
-                  onPressed: () => _editarSecao(index),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, size: 20),
-                  onPressed: () => _removerSecao(index),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cor.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(icone, color: cor, size: 24),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      titulo,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey.shade900,
+                        fontSize: 16,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_rounded),
+                    color: Colors.blue.shade700,
+                    onPressed: () => _editarSecao(index),
+                    tooltip: 'Editar seção',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_rounded),
+                    color: Colors.red.shade700,
+                    onPressed: () => _removerSecao(index),
+                    tooltip: 'Remover seção',
+                  ),
+                ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
               child: TextField(
                 controller: controller,
                 maxLines: null,
+                minLines: 5,
                 keyboardType: TextInputType.multiline,
-                onChanged: onChanged,
-                decoration: const InputDecoration(
+                onChanged: (value) {
+                  _secoes[index]['conteudo'] = value;
+                },
+                decoration: InputDecoration(
                   hintText: 'Digite o conteúdo aqui...',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(12),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.only(bottom: 100),
+                    child: Icon(Icons.notes_rounded, color: Colors.red.shade900),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(color: Colors.red.shade900, width: 1.4),
+                  ),
                 ),
               ),
             ),
@@ -419,232 +687,227 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-}
-
-// ========== DIALOG PARA NOVA SEÇÃO (SIMPLIFICADO) ==========
-class _DialogNovaSecao extends StatefulWidget {
-  final List<Map<String, dynamic>> iconesDisponiveis;
-  final Function(String titulo, String iconName, Color cor) onSalvar;
-
-  const _DialogNovaSecao({
-    required this.iconesDisponiveis,
-    required this.onSalvar,
-  });
-
-  @override
-  State<_DialogNovaSecao> createState() => _DialogNovaSecaoState();
-}
-
-class _DialogNovaSecaoState extends State<_DialogNovaSecao> {
-  final TextEditingController _tituloController = TextEditingController();
-  int _iconeSelecionado = 0;
-  Color _corSelecionada = Colors.blue;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nova Seção'),
-      content: Container(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _tituloController,
-                decoration: const InputDecoration(
-                  labelText: 'Título da seção',
-                  hintText: 'Ex: ⚖️ REGRAS GERAIS',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text('Escolha o ícone:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-
-              // Wrap em vez de GridView
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: widget.iconesDisponiveis.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final icone = entry.value;
-                  final isSelected = _iconeSelecionado == index;
-
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        _iconeSelecionado = index;
-                        _corSelecionada = icone['cor'];
-                      });
-                    },
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isSelected ? icone['cor'].withOpacity(0.2) : null,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isSelected ? icone['cor'] : Colors.grey.shade300,
-                          width: isSelected ? 2 : 1,
-                        ),
-                      ),
-                      child: Icon(
-                        icone['icon'],
-                        color: icone['cor'],
-                        size: 30,
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('CANCELAR'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_tituloController.text.isNotEmpty) {
-              final icone = widget.iconesDisponiveis[_iconeSelecionado];
-              widget.onSalvar(
-                _tituloController.text,
-                icone['iconName'],
-                _corSelecionada,
-              );
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('ADICIONAR'),
+  BoxDecoration _cardDecoration({Color? borderColor}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(color: borderColor ?? Colors.grey.shade100),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 7,
+          offset: const Offset(0, 3),
         ),
       ],
     );
   }
 }
 
-// ========== DIALOG PARA EDITAR SEÇÃO (SIMPLIFICADO) ==========
-class _DialogEditarSecao extends StatefulWidget {
-  final Map<String, dynamic> secao;
+class _DialogSecao extends StatefulWidget {
+  final Map<String, dynamic>? secao;
   final List<Map<String, dynamic>> iconesDisponiveis;
   final Function(String titulo, String iconName, Color cor) onSalvar;
 
-  const _DialogEditarSecao({
-    required this.secao,
+  const _DialogSecao({
+    this.secao,
     required this.iconesDisponiveis,
     required this.onSalvar,
   });
 
   @override
-  State<_DialogEditarSecao> createState() => _DialogEditarSecaoState();
+  State<_DialogSecao> createState() => _DialogSecaoState();
 }
 
-class _DialogEditarSecaoState extends State<_DialogEditarSecao> {
-  late TextEditingController _tituloController;
+class _DialogSecaoState extends State<_DialogSecao> {
+  late final TextEditingController _tituloController;
   late int _iconeSelecionado;
   late Color _corSelecionada;
+
+  bool get _editando => widget.secao != null;
 
   @override
   void initState() {
     super.initState();
-    _tituloController = TextEditingController(text: widget.secao['titulo']);
+
+    _tituloController = TextEditingController(
+      text: widget.secao?['titulo']?.toString() ?? '',
+    );
+
+    final iconName = widget.secao?['icone']?.toString();
 
     _iconeSelecionado = widget.iconesDisponiveis.indexWhere(
-            (icone) => icone['iconName'] == widget.secao['icone']
+          (icone) => icone['iconName'] == iconName,
     );
+
     if (_iconeSelecionado == -1) _iconeSelecionado = 0;
 
-    _corSelecionada = Color(widget.secao['cor']);
+    final corRaw = widget.secao?['cor'];
+
+    if (corRaw is int) {
+      _corSelecionada = Color(corRaw);
+    } else {
+      _corSelecionada = widget.iconesDisponiveis[_iconeSelecionado]['cor'] as Color;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tituloController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Editar Seção'),
-      content: Container(
-        width: double.maxFinite,
+    return Dialog(
+      insetPadding: const EdgeInsets.all(14),
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 560),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: _tituloController,
-                decoration: const InputDecoration(
-                  labelText: 'Título da seção',
-                  border: OutlineInputBorder(),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(99),
                 ),
               ),
-              const SizedBox(height: 20),
-              const Text('Escolha o ícone:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade900.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      _editando ? Icons.edit_rounded : Icons.add_rounded,
+                      color: Colors.red.shade900,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      _editando ? 'Editar seção' : 'Nova seção',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _tituloController,
+                decoration: InputDecoration(
+                  labelText: 'Título da seção',
+                  hintText: 'Ex: ⚖️ REGRAS GERAIS',
+                  prefixIcon: Icon(Icons.title_rounded, color: Colors.red.shade900),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Escolha o ícone',
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
               const SizedBox(height: 10),
-
-              // Wrap em vez de GridView
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: widget.iconesDisponiveis.asMap().entries.map((entry) {
                   final index = entry.key;
                   final icone = entry.value;
-                  final isSelected = _iconeSelecionado == index;
+                  final selected = _iconeSelecionado == index;
+                  final cor = icone['cor'] as Color;
 
                   return InkWell(
                     onTap: () {
                       setState(() {
                         _iconeSelecionado = index;
-                        _corSelecionada = icone['cor'];
+                        _corSelecionada = cor;
                       });
                     },
+                    borderRadius: BorderRadius.circular(16),
                     child: Container(
-                      width: 50,
-                      height: 50,
+                      width: 54,
+                      height: 54,
                       decoration: BoxDecoration(
-                        color: isSelected ? icone['cor'].withOpacity(0.2) : null,
-                        borderRadius: BorderRadius.circular(8),
+                        color: selected ? cor.withOpacity(0.12) : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isSelected ? icone['cor'] : Colors.grey.shade300,
-                          width: isSelected ? 2 : 1,
+                          color: selected ? cor : Colors.grey.shade300,
+                          width: selected ? 2 : 1,
                         ),
                       ),
                       child: Icon(
-                        icone['icon'],
-                        color: icone['cor'],
-                        size: 30,
+                        icone['icon'] as IconData,
+                        color: cor,
+                        size: 28,
                       ),
                     ),
                   );
                 }).toList(),
               ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('CANCELAR'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final titulo = _tituloController.text.trim();
+
+                        if (titulo.isEmpty) return;
+
+                        final icone = widget.iconesDisponiveis[_iconeSelecionado];
+
+                        widget.onSalvar(
+                          titulo,
+                          icone['iconName'] as String,
+                          _corSelecionada,
+                        );
+
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade900,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text(_editando ? 'SALVAR' : 'ADICIONAR'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('CANCELAR'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_tituloController.text.isNotEmpty) {
-              final icone = widget.iconesDisponiveis[_iconeSelecionado];
-              widget.onSalvar(
-                _tituloController.text,
-                icone['iconName'],
-                _corSelecionada,
-              );
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('SALVAR'),
-        ),
-      ],
     );
   }
 }

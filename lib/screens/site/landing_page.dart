@@ -6,6 +6,7 @@ import 'package:uai_capoeira/screens/inscricao/inscricao_campeonato_screen.dart'
 import 'package:uai_capoeira/screens/site/biografia_screen.dart';
 import 'package:uai_capoeira/screens/site/regimento_screen.dart';
 import 'package:uai_capoeira/screens/site/graduacoes_screen.dart';
+import 'package:uai_capoeira/screens/site/area_aluno/area_aluno_login_screen.dart';
 import 'package:uai_capoeira/services/logo_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -41,6 +42,8 @@ class _LandingPageState extends State<LandingPage> {
   bool _carregandoConfigPortfolio = true;
   bool _campeonatoAtivo = false;
   bool _carregandoConfigCampeonato = true;
+  bool _areaAlunoVisivel = false;
+  bool _carregandoConfigAreaAluno = true;
 
   int _totalVisitas = 0;
   bool _carregandoVisitas = true;
@@ -56,9 +59,10 @@ class _LandingPageState extends State<LandingPage> {
     {'id': 'biografia', 'icone': Icons.auto_stories, 'label': 'BIOGRAFIA', 'index': 2, 'isSpecial': false},
     {'id': 'graduacoes', 'icone': Icons.emoji_events, 'label': 'GRADUAÇÕES', 'index': 3, 'isSpecial': false},
     {'id': 'inscricao', 'icone': Icons.app_registration, 'label': 'INSCRIÇÃO', 'index': 4, 'isSpecial': false, 'condicional': true},
-    {'id': 'campeonato', 'icone': Icons.emoji_events, 'label': 'CAMPEONATO', 'index': 5, 'isSpecial': false, 'condicional': true},
-    {'id': 'portfolio', 'icone': Icons.photo_library, 'label': 'PORTFÓLIO', 'index': 6, 'isSpecial': false, 'condicional': true},
-    {'id': 'acessar_app', 'icone': Icons.lock_open, 'label': 'ACESSAR APP', 'index': 7, 'isSpecial': true},
+    {'id': 'area_aluno', 'icone': Icons.school, 'label': 'ÁREA DO ALUNO', 'index': 5, 'isSpecial': false, 'condicional': true},
+    {'id': 'campeonato', 'icone': Icons.emoji_events, 'label': 'CAMPEONATO', 'index': 6, 'isSpecial': false, 'condicional': true},
+    {'id': 'portfolio', 'icone': Icons.photo_library, 'label': 'PORTFÓLIO', 'index': 7, 'isSpecial': false, 'condicional': true},
+    {'id': 'acessar_app', 'icone': Icons.lock_open, 'label': 'ACESSAR APP', 'index': 8, 'isSpecial': true},
   ];
 
   @override
@@ -164,24 +168,34 @@ class _LandingPageState extends State<LandingPage> {
         _inscricoesAbertas = docInscricoes.data()?['inscricoes_abertas'] ?? false;
         _carregandoConfigInscricoes = false;
       });
+
       final docPortfolio = await _firestore.collection('configuracoes').doc('portfolio_site').get();
       setState(() {
         _portfolioVisivel = docPortfolio.data()?['exibir'] ?? false;
         _carregandoConfigPortfolio = false;
       });
+
       final docCampeonato = await _firestore.collection('configuracoes').doc('campeonato').get();
       setState(() {
         _campeonatoAtivo = docCampeonato.data()?['campeonato_ativo'] ?? false;
         _carregandoConfigCampeonato = false;
+      });
+
+      final docAreaAluno = await _firestore.collection('configuracoes_site').doc('area_aluno').get();
+      setState(() {
+        _areaAlunoVisivel = docAreaAluno.data()?['visivel_site'] == true;
+        _carregandoConfigAreaAluno = false;
       });
     } catch (e) {
       setState(() {
         _inscricoesAbertas = false;
         _portfolioVisivel = false;
         _campeonatoAtivo = false;
+        _areaAlunoVisivel = false;
         _carregandoConfigInscricoes = false;
         _carregandoConfigPortfolio = false;
         _carregandoConfigCampeonato = false;
+        _carregandoConfigAreaAluno = false;
       });
     }
   }
@@ -205,17 +219,28 @@ class _LandingPageState extends State<LandingPage> {
           if (ordem != null && ordem.isNotEmpty) {
             final List<Map<String, dynamic>> itensOrdenados = [];
             itensOrdenados.add(_itensMenuBase.firstWhere((item) => item['id'] == 'inicio'));
+
             for (String id in ordem) {
               if (id != 'inicio' && id != 'acessar_app') {
                 final item = _itensMenuBase.firstWhere((item) => item['id'] == id, orElse: () => const {});
                 if (item.isNotEmpty) itensOrdenados.add(item);
               }
             }
+
+            for (final item in _itensMenuBase) {
+              final id = item['id'];
+              final jaExiste = itensOrdenados.any((i) => i['id'] == id);
+              if (!jaExiste && id != 'acessar_app') {
+                itensOrdenados.add(item);
+              }
+            }
+
             itensOrdenados.add(_itensMenuBase.firstWhere((item) => item['id'] == 'acessar_app'));
             _itensMenu = itensOrdenados;
           } else {
             _itensMenu = List.from(_itensMenuBase);
           }
+
           if (data['titulos'] != null) _textosPersonalizados = Map<String, dynamic>.from(data['titulos']);
           if (data['visibilidade'] != null) _visibilidadePersonalizada = Map<String, bool>.from(data['visibilidade']);
           _carregandoConfigMenu = false;
@@ -239,6 +264,7 @@ class _LandingPageState extends State<LandingPage> {
     if (item['id'] == 'inscricao') return _inscricoesAbertas;
     if (item['id'] == 'campeonato') return _campeonatoAtivo;
     if (item['id'] == 'portfolio') return _portfolioVisivel;
+    if (item['id'] == 'area_aluno') return _areaAlunoVisivel;
     return true;
   }
 
@@ -262,6 +288,7 @@ class _LandingPageState extends State<LandingPage> {
       origem: 'drawer',
       metadata: {'label': label, 'isSpecial': isSpecial},
     );
+
     setState(() {
       _selectedIndex = index;
       _isDrawerOpen = false;
@@ -360,6 +387,7 @@ class _LandingPageState extends State<LandingPage> {
 
   void _verificarSenha(BuildContext dialogContext) {
     final senhaDigitada = _senhaController.text.trim();
+
     if (senhaDigitada == _senhaAcessoApp) {
       Navigator.pop(dialogContext);
       Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
@@ -428,44 +456,77 @@ class _LandingPageState extends State<LandingPage> {
   // ==================== BUILD UI ====================
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final largura = MediaQuery.of(context).size.width;
+    final isMobile = largura < 700;
+
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        drawer: Drawer(
+          width: isMobile ? largura.clamp(280.0, 330.0) : 360,
+          child: _buildDrawer(),
+        ),
         appBar: AppBar(
           backgroundColor: Colors.red.shade900,
-          title: const Text(''),
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () {
-              print('🔘 Abrir drawer via AppBar');
-              _rastreioService.registrarEvento(tipo: 'ui', nome: 'abrir_drawer', origem: 'appbar');
-              setState(() => _isDrawerOpen = !_isDrawerOpen);
+          foregroundColor: Colors.white,
+          elevation: 0,
+          toolbarHeight: isMobile ? 56 : 62,
+          titleSpacing: 0,
+          title: Row(
+            children: [
+              if (!isMobile) ...[
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _logoService.buildLogo(height: 30),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  _tituloPaginaAtual(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu_rounded),
+                onPressed: () {
+                  _rastreioService.registrarEvento(
+                    tipo: 'ui',
+                    nome: 'abrir_drawer',
+                    origem: 'appbar',
+                  );
+                  Scaffold.of(context).openDrawer();
+                },
+              );
             },
           ),
+          actions: [
+            if (!isMobile)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: _buildContadorVisitas(comBackground: false),
+                ),
+              ),
+          ],
         ),
         body: Stack(
           children: [
             _buildMainContent(),
-            if (_isDrawerOpen)
-              GestureDetector(
-                onTap: () => setState(() => _isDrawerOpen = false),
-                child: Container(
-                  color: Colors.black54,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: isMobile ? 280 : 320,
-                        height: double.infinity,
-                        color: Colors.white,
-                        child: _buildDrawer(),
-                      ),
-                      Expanded(child: Container()),
-                    ],
-                  ),
-                ),
-              ),
             const ChatAssistenteWidget(),
           ],
         ),
@@ -473,26 +534,62 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
+  String _tituloPaginaAtual() {
+    if (_itensMenu.isEmpty || _selectedIndex >= _itensMenu.length) {
+      return 'UAI Capoeira';
+    }
+
+    final item = _itensMenu[_selectedIndex];
+    final id = item['id']?.toString() ?? '';
+
+    if (id == 'inicio') return 'UAI CAPOEIRA';
+    return _getLabelItem(item);
+  }
+
   Widget _buildContadorVisitas({bool comBackground = true}) {
     if (_carregandoVisitas) {
-      return Container(width: 60, height: 24, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12)));
+      return Container(
+        width: 58,
+        height: 24,
+        decoration: BoxDecoration(
+          color: comBackground ? Colors.grey.shade200 : Colors.white.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      );
     }
+
     return InkWell(
-      onTap: () => showDialog(context: context, builder: (context) => const ArvoreVisitasDialog()),
+      onTap: () => showDialog(
+        context: context,
+        builder: (context) => const ArvoreVisitasDialog(),
+      ),
+      borderRadius: BorderRadius.circular(99),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: comBackground
-            ? BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.red.shade100))
-            : null,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: comBackground ? Colors.red.shade50 : Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(
+            color: comBackground ? Colors.red.shade100 : Colors.white.withOpacity(0.16),
+          ),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.remove_red_eye, size: 16, color: comBackground ? Colors.red.shade900 : Colors.red.shade300),
+            Icon(
+              Icons.remove_red_eye_rounded,
+              size: 15,
+              color: comBackground ? Colors.red.shade900 : Colors.white,
+            ),
             const SizedBox(width: 4),
-            Text(_formatarNumero(_totalVisitas),
-                style: TextStyle(color: comBackground ? Colors.red.shade900 : Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 4),
-            Icon(Icons.arrow_drop_up, size: 16, color: comBackground ? Colors.red.shade900 : Colors.grey.shade600),
+            Text(
+              _formatarNumero(_totalVisitas),
+              style: TextStyle(
+                color: comBackground ? Colors.red.shade900 : Colors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ),
@@ -500,51 +597,147 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Widget _buildDrawer() {
-    if (_carregandoConfigMenu) return const Center(child: CircularProgressIndicator());
-    return Column(
-      children: [
-        Container(height: 20, color: Colors.white),
-        Align(
-          alignment: Alignment.topRight,
-          child: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _isDrawerOpen = false)),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            children: _itensMenu.map((item) {
-              if (!_deveMostrarItem(item)) return const SizedBox.shrink();
-              final label = _getLabelItem(item);
-              final index = _itensMenu.indexOf(item);
-              final isSpecial = item['isSpecial'] ?? false;
-              return _buildDrawerItem(icon: item['icone'], label: label, index: index, isSpecial: isSpecial);
-            }).toList(),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildSocialButton(icon: Icons.photo_camera, label: 'Instagram', color: Colors.purple, url: 'https://www.instagram.com/uai.capoeira.bocaiuva/', origem: 'drawer'),
-                  _buildSocialButton(icon: Icons.play_circle_fill, label: 'YouTube', color: Colors.red, url: 'https://www.youtube.com/@uaicapoeira', origem: 'drawer'),
-                ],
+    if (_carregandoConfigMenu) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final itensVisiveis = _itensMenu.where(_deveMostrarItem).toList();
+
+    return SafeArea(
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(18, 12, 12, 18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red.shade900, Colors.red.shade700],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('© ${DateTime.now().year} UAI CAPOEIRA', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-                  const SizedBox(width: 8),
-                  _buildContadorVisitas(comBackground: false),
-                ],
-              ),
-            ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: _logoService.buildLogo(height: 54),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'UAI Capoeira',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'União • Amizade • Inteligência',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Builder(
+                  builder: (context) {
+                    return IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+              itemCount: itensVisiveis.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 3),
+              itemBuilder: (context, index) {
+                final item = itensVisiveis[index];
+                final originalIndex = _itensMenu.indexOf(item);
+                final label = _getLabelItem(item);
+                final isSpecial = item['isSpecial'] ?? false;
+
+                return _buildDrawerItem(
+                  icon: item['icone'],
+                  label: label,
+                  index: originalIndex,
+                  isSpecial: isSpecial,
+                );
+              },
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildSocialButton(
+                        icon: Icons.photo_camera,
+                        label: 'Instagram',
+                        color: Colors.purple,
+                        url: 'https://www.instagram.com/uai.capoeira.bocaiuva/',
+                        origem: 'drawer',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildSocialButton(
+                        icon: Icons.play_circle_fill_rounded,
+                        label: 'YouTube',
+                        color: Colors.red,
+                        url: 'https://www.youtube.com/@uaicapoeira',
+                        origem: 'drawer',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      '© ${DateTime.now().year} UAI CAPOEIRA',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    _buildContadorVisitas(comBackground: true),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -557,62 +750,114 @@ class _LandingPageState extends State<LandingPage> {
   }) {
     return InkWell(
       onTap: () => _onSocialButtonTap(label.toLowerCase(), url, origem),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withOpacity(0.16)),
+        ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 4),
-            Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+            Icon(icon, color: color, size: 17),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDrawerItem({required IconData icon, required String label, required int index, bool isSpecial = false}) {
+  Widget _buildDrawerItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    bool isSpecial = false,
+  }) {
     final isSelected = _selectedIndex == index;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _onMenuItemTap(index, _itensMenu[index]['id'], label, isSpecial),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(color: isSelected ? Colors.red.shade50 : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-            child: Row(
-              children: [
-                Icon(icon, color: isSpecial ? Colors.green : (isSelected ? Colors.red.shade900 : Colors.grey.shade600), size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(label,
-                      style: TextStyle(
-                        color: isSpecial ? Colors.green : (isSelected ? Colors.red.shade900 : Colors.grey.shade800),
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 14,
-                      )),
+    final color = isSpecial ? Colors.green.shade700 : Colors.red.shade900;
+
+    return Builder(
+      builder: (context) {
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).maybePop();
+              _onMenuItemTap(index, _itensMenu[index]['id'], label, isSpecial);
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(
+                color: isSelected ? color.withOpacity(0.08) : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected ? color.withOpacity(0.16) : Colors.transparent,
                 ),
-              ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isSelected ? color : color.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: isSelected ? Colors.white : color,
+                      size: 19,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: isSelected ? color : Colors.grey.shade800,
+                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                  if (isSpecial)
+                    Icon(Icons.lock_rounded, color: color, size: 17)
+                  else if (isSelected)
+                    Icon(Icons.chevron_right_rounded, color: color, size: 20),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildMainContent() {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.red.shade50, Colors.white])),
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
+    return ColoredBox(
+      color: Colors.grey.shade50,
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 1200),
-          child: Padding(padding: EdgeInsets.all(isMobile ? 8 : 24), child: _buildSelectedContent()),
+          constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 1180),
+          child: _buildSelectedContent(),
         ),
       ),
     );
@@ -621,6 +866,7 @@ class _LandingPageState extends State<LandingPage> {
   Widget _buildSelectedContent() {
     if (_itensMenu.isNotEmpty && _selectedIndex < _itensMenu.length) {
       final itemId = _itensMenu[_selectedIndex]['id'];
+
       switch (itemId) {
         case 'inicio':
           return _buildHomeContent();
@@ -632,6 +878,8 @@ class _LandingPageState extends State<LandingPage> {
           return const GraduacoesScreen();
         case 'inscricao':
           return const InscricaoPublicaScreen();
+        case 'area_aluno':
+          return const AreaAlunoLoginScreen();
         case 'campeonato':
           return const InscricaoCampeonatoScreen();
         case 'portfolio':
@@ -639,113 +887,182 @@ class _LandingPageState extends State<LandingPage> {
         case 'acessar_app':
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _mostrarDialogoSenha();
-            setState(() => _selectedIndex = 0);
+            if (mounted) setState(() => _selectedIndex = 0);
           });
           return _buildHomeContent();
         default:
           return _buildHomeContent();
       }
     }
+
     return _buildHomeContent();
   }
 
+  List<Map<String, dynamic>> _homeItemsVisiveis() {
+    return _itensMenu
+        .where((item) =>
+    item['id'] != 'inicio' &&
+        item['id'] != 'acessar_app' &&
+        _deveMostrarItem(item))
+        .toList();
+  }
+
   Widget _buildHomeContent() {
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final largura = MediaQuery.of(context).size.width;
+    final isMobile = largura < 700;
+    final paddingHorizontal = isMobile ? 14.0 : 24.0;
+
     return ListView(
       controller: _scrollController,
+      padding: EdgeInsets.fromLTRB(
+        paddingHorizontal,
+        isMobile ? 18 : 26,
+        paddingHorizontal,
+        26,
+      ),
       children: [
-        const SizedBox(height: 20),
-        Center(child: _logoService.buildLogo(height: isMobile ? 120 : 150)),
-        const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text('UAI CAPOEIRA: União, Amizade e Inteligência',
-              textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 20 : 24, fontWeight: FontWeight.bold)),
+        _buildHeroMobileFirst(isMobile),
+        const SizedBox(height: 16),
+        _buildSocialRow(isMobile),
+        const SizedBox(height: 16),
+        _buildTextoBoasVindas(),
+        const SizedBox(height: 18),
+        _buildGridAcessos(isMobile),
+        const SizedBox(height: 26),
+        _buildFooter(isMobile),
+      ],
+    );
+  }
+
+  Widget _buildHeroMobileFirst(bool isMobile) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 18 : 26),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSocialButtonLarge(icon: Icons.photo_camera, label: 'Instagram', color: Colors.purple, url: 'https://www.instagram.com/uai.capoeira.bocaiuva/', origem: 'home_footer'),
-            const SizedBox(width: 20),
-            _buildSocialButtonLarge(icon: Icons.play_circle_fill, label: 'YouTube', color: Colors.red, url: 'https://www.youtube.com/@uaicapoeira', origem: 'home_footer'),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Bem-vindo ao site oficial do Grupo UAI Capoeira. '
-                'Aqui você encontra informações sobre nossa história, '
-                'regimento interno, sistema de graduações e pode solicitar '
-                'uma aula experimental.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+        borderRadius: BorderRadius.circular(isMobile ? 24 : 30),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: isMobile ? 126 : 156,
+            height: isMobile ? 126 : 156,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.13),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: _logoService.buildLogo(height: isMobile ? 88 : 116),
           ),
-        ),
-        const SizedBox(height: 30),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          alignment: WrapAlignment.center,
-          children: _itensMenu
-              .where((item) => item['id'] != 'inicio' && item['id'] != 'acessar_app' && _deveMostrarItem(item))
-              .map((item) {
-            Color cor;
-            String descricao;
-            IconData icone = item['icone'];
-            switch (item['id']) {
-              case 'regimento':
-                cor = Colors.blue;
-                descricao = 'Regras e normas';
-                break;
-              case 'biografia':
-                cor = Colors.green;
-                descricao = 'Nossa história';
-                break;
-              case 'graduacoes':
-                cor = Colors.orange;
-                descricao = 'Sistema de cordas';
-                break;
-              case 'inscricao':
-                cor = Colors.purple;
-                descricao = 'Aula experimental';
-                break;
-              case 'campeonato':
-                cor = Colors.amber.shade800;
-                descricao = '1° Campeonato UAI Capoeira';
-                break;
-              case 'portfolio':
-                cor = Colors.teal;
-                descricao = 'Nossos eventos';
-                break;
-              default:
-                cor = Colors.grey;
-                descricao = '';
-            }
-            final tituloCard = _getLabelItem(item);
-            final index = _itensMenu.indexOf(item);
-            return _buildQuickCard(
-              titulo: tituloCard,
-              descricao: descricao,
-              icone: icone,
-              cor: cor,
-              onTap: () => _onCardTap(item['id'], tituloCard, index),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 40),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          const SizedBox(height: 16),
+          Text(
+            'UAI CAPOEIRA',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 28 : 38,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'União, Amizade e Inteligência',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.88),
+              fontSize: isMobile ? 14.5 : 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Text('© ${DateTime.now().year} UAI CAPOEIRA', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              Container(margin: const EdgeInsets.symmetric(horizontal: 10), height: 12, width: 1, color: Colors.grey.shade300),
-              _buildContadorVisitas(comBackground: true),
+              _buildHeroChip(Icons.verified_rounded, 'Site oficial'),
+              if (_areaAlunoVisivel) _buildHeroChip(Icons.school_rounded, 'Área do Aluno'),
+              if (_inscricoesAbertas) _buildHeroChip(Icons.app_registration_rounded, 'Inscrições'),
             ],
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSocialRow(bool isMobile) {
+    final buttons = [
+      _buildSocialButtonLarge(
+        icon: Icons.photo_camera,
+        label: 'Instagram',
+        color: Colors.purple,
+        url: 'https://www.instagram.com/uai.capoeira.bocaiuva/',
+        origem: 'home',
+      ),
+      _buildSocialButtonLarge(
+        icon: Icons.play_circle_fill_rounded,
+        label: 'YouTube',
+        color: Colors.red,
+        url: 'https://www.youtube.com/@uaicapoeira',
+        origem: 'home',
+      ),
+    ];
+
+    if (isMobile) {
+      return Row(
+        children: [
+          Expanded(child: buttons[0]),
+          const SizedBox(width: 10),
+          Expanded(child: buttons[1]),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        buttons[0],
+        const SizedBox(width: 12),
+        buttons[1],
       ],
     );
   }
@@ -759,23 +1076,139 @@ class _LandingPageState extends State<LandingPage> {
   }) {
     return InkWell(
       onTap: () => _onSocialButtonTap(label.toLowerCase(), url, origem),
+      borderRadius: BorderRadius.circular(22),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: color.withOpacity(0.3)),
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color.withOpacity(0.15)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w500)),
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTextoBoasVindas() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Text(
+        'Bem-vindo ao site oficial do Grupo UAI Capoeira. Aqui você encontra informações sobre nossa história, regimento interno, sistema de graduações, Área do Aluno e inscrições disponíveis.',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 14,
+          height: 1.42,
+          color: Colors.grey.shade700,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridAcessos(bool isMobile) {
+    final itens = _homeItemsVisiveis();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final largura = constraints.maxWidth;
+        final colunas = largura < 520
+            ? 2
+            : largura < 850
+            ? 3
+            : 4;
+
+        const spacing = 12.0;
+        final cardWidth = (largura - spacing * (colunas - 1)) / colunas;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          alignment: WrapAlignment.center,
+          children: itens.map((item) {
+            final id = item['id']?.toString() ?? '';
+            final tituloCard = _getLabelItem(item);
+            final index = _itensMenu.indexOf(item);
+
+            return SizedBox(
+              width: cardWidth,
+              child: _buildQuickCard(
+                titulo: tituloCard,
+                descricao: _descricaoCard(id),
+                icone: item['icone'],
+                cor: _corCard(id),
+                onTap: () => _onCardTap(id, tituloCard, index),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Color _corCard(String id) {
+    switch (id) {
+      case 'regimento':
+        return Colors.blue;
+      case 'biografia':
+        return Colors.green;
+      case 'graduacoes':
+        return Colors.orange;
+      case 'inscricao':
+        return Colors.purple;
+      case 'area_aluno':
+        return Colors.indigo;
+      case 'campeonato':
+        return Colors.amber.shade800;
+      case 'portfolio':
+        return Colors.teal;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _descricaoCard(String id) {
+    switch (id) {
+      case 'regimento':
+        return 'Regras e normas';
+      case 'biografia':
+        return 'Nossa história';
+      case 'graduacoes':
+        return 'Sistema de cordas';
+      case 'inscricao':
+        return 'Aula experimental';
+      case 'area_aluno':
+        return 'Consultar dados';
+      case 'campeonato':
+        return 'Campeonato';
+      case 'portfolio':
+        return 'Eventos e fotos';
+      default:
+        return '';
+    }
   }
 
   Widget _buildQuickCard({
@@ -787,25 +1220,85 @@ class _LandingPageState extends State<LandingPage> {
   }) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
       child: Container(
-        width: 160,
-        height: 140,
+        constraints: const BoxConstraints(minHeight: 132),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))],
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: cor.withOpacity(0.10)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.035),
+              blurRadius: 7,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: cor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icone, size: 30, color: cor)),
-            const SizedBox(height: 8),
-            Text(titulo, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(descricao, style: TextStyle(color: Colors.grey.shade600, fontSize: 10)),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: cor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(17),
+              ),
+              child: Icon(icone, size: 27, color: cor),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              titulo,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12.8,
+                height: 1.08,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              descricao,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFooter(bool isMobile) {
+    return Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            Text(
+              '© ${DateTime.now().year} UAI CAPOEIRA',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            _buildContadorVisitas(comBackground: true),
+          ],
+        ),
+      ],
     );
   }
 }

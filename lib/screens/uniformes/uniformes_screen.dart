@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/services/permissao_service.dart';
 import 'package:uai_capoeira/services/uniformes_service.dart';
 import 'package:uai_capoeira/services/remessa_service.dart';
@@ -24,6 +25,7 @@ import 'editar_venda_screen.dart';
 import 'editar_pedido_screen.dart';
 import 'remessa_form_screen.dart';
 import 'remessa_detalhes_screen.dart';
+import 'fornecedores_list_screen.dart';
 
 // Dialogs
 import 'dialogs/quantidade_dialog.dart';
@@ -57,7 +59,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
-    _tabController.addListener(() => setState(() {})); // para atualizar o botão +
+    _tabController.addListener(() => setState(() {}));
     _verificarPermissoes();
     _verificarPermissoesEdicao();
   }
@@ -115,21 +117,20 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     super.dispose();
   }
 
-  // 🔥 Função que retorna a ação do botão + de acordo com a aba atual
   void _onAddPressed() {
     switch (_tabController.index) {
-      case 0: // Estoque
+      case 0:
         _abrirAdicionarEstoque();
         break;
-      case 1: // Vendas
+      case 1:
         _abrirNovaVenda();
         break;
-      case 2: // Pendências (sem ação)
+      case 2:
         break;
-      case 3: // Pedidos
+      case 3:
         _abrirNovoPedido();
         break;
-      case 4: // Remessas
+      case 4:
         _abrirNovaRemessa();
         break;
     }
@@ -163,7 +164,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           ],
         ),
         actions: [
-          // Botão + único (exceto na aba pendências)
           if (_tabController.index != 2)
             IconButton(
               icon: const Icon(Icons.add_circle_outline, size: 28),
@@ -175,6 +175,18 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
             tooltip: 'Relatório Financeiro',
             onPressed: () => _abrirRelatorioFinanceiro(),
           ),
+          if (_tabController.index == 4)
+            IconButton(
+              icon: const Icon(Icons.business),
+              tooltip: 'Fornecedores',
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const FornecedoresListScreen()),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
         ],
       ),
       body: Column(
@@ -242,7 +254,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     );
   }
 
-  // ==================== ABA ESTOQUE ====================
+  // ==================== ABA ESTOQUE (CATEGORIAS EXPANSÍVEIS) ====================
   Widget _buildEstoqueTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -293,35 +305,87 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           );
         }
 
-        var itens = snapshot.data!.docs.where((doc) {
-          if (_searchQuery.isEmpty) return true;
+        var categorias = snapshot.data!.docs.where((doc) {
           var data = doc.data() as Map<String, dynamic>;
+          final tipo = data['tipo'] as String?;
+          if (tipo != null && tipo != 'base') return false;
+          if (_searchQuery.isEmpty) return true;
           String nome = data['nome'] ?? '';
-          String categoria = data['categoria'] ?? '';
-          String tamanho = data['tamanho'] ?? '';
-          return nome.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              categoria.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              tamanho.toLowerCase().contains(_searchQuery.toLowerCase());
+          return nome.toLowerCase().contains(_searchQuery.toLowerCase());
         }).toList();
 
         return ListView.builder(
           padding: const EdgeInsets.all(12),
-          itemCount: itens.length,
+          itemCount: categorias.length,
           itemBuilder: (context, index) {
-            var doc = itens[index];
+            var doc = categorias[index];
             var data = doc.data() as Map<String, dynamic>;
-            return ItemEstoqueCard(
-              docId: doc.id,
-              data: data,
-              realFormat: _realFormat,
-              onEditar: _editarItemEstoque,
-              onRegistrarEntrada: _registrarEntrada,
-              onRegistrarSaida: _registrarSaida,
-            );
+            final bool isBase = data['tipo'] == 'base';
+            if (isBase) {
+              return _CategoriaEstoqueExpansivel(
+                categoriaId: doc.id,
+                categoriaData: data,
+                realFormat: _realFormat,
+                onEditarItem: _editarItemEstoque,
+                onRegistrarEntrada: _registrarEntrada,
+                onRegistrarSaida: _registrarSaida,
+                onExcluirItem: _excluirItemEstoque,
+                // 🔥 NOVO CALLBACK
+                onExcluirCategoria: () => _excluirCategoriaEstoque(doc.id, data),
+              );
+            } else {
+              final int quantidade = data['quantidade'] ?? 0;
+              return ItemEstoqueCard(
+                docId: doc.id,
+                data: data,
+                realFormat: _realFormat,
+                onEditar: _editarItemEstoque,
+                onRegistrarEntrada: _registrarEntrada,
+                onRegistrarSaida: _registrarSaida,
+                onExcluir: quantidade == 0
+                    ? (docId, data) => _excluirItemEstoque(docId, data)
+                    : null,
+              );
+            }
           },
         );
       },
     );
+  }
+
+  // 🔥 EXCLUIR CATEGORIA INTEIRA (BASE + VARIAÇÕES)
+  Future<void> _excluirCategoriaEstoque(String categoriaId, Map<String, dynamic> data) async {
+    try {
+      // Exclui todas as variações vinculadas
+      final variacoes = await FirebaseFirestore.instance
+          .collection('uniformes_estoque')
+          .where('item_base_id', isEqualTo: categoriaId)
+          .get();
+      for (var doc in variacoes.docs) {
+        await doc.reference.delete();
+      }
+      // Exclui a categoria base
+      await FirebaseFirestore.instance.collection('uniformes_estoque').doc(categoriaId).delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Categoria "${data['nome']}" e suas variações foram excluídas!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erro ao excluir categoria: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // ==================== ABA VENDAS ====================
@@ -544,7 +608,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
           }).toList();
         }
 
-        // 🔥 Apenas a lista, sem botão extra no final
         return ListView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: pedidos.length,
@@ -569,6 +632,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       },
     );
   }
+
   // ==================== ABA REMESSAS ====================
   Widget _buildRemessasTab() {
     return StreamBuilder<QuerySnapshot>(
@@ -708,45 +772,65 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     setState(() {});
   }
 
-  // 🔥 EXCLUIR REMESSA (com verificação de pedidos finalizados/pagos)
   void _excluirRemessa(String remessaId, Map<String, dynamic> data) async {
-    final podeExcluir = await _verificarSePodeFinalizarRemessa(remessaId);
-    if (!podeExcluir) {
-      _mostrarDialogoPedidosPendentes('excluir');
-      return;
-    }
+    final pedidosSnapshot = await FirebaseFirestore.instance
+        .collection('pedidos_uniformes')
+        .where('remessa_id', isEqualTo: remessaId)
+        .get();
+    final qtdPedidos = pedidosSnapshot.docs.length;
 
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Excluir Remessa'),
-        content: const Text('Tem certeza que deseja excluir esta remessa? Os pedidos não serão excluídos.'),
+        title: const Text('🗑️ Excluir Remessa'),
+        content: Text(
+          qtdPedidos > 0
+              ? 'Esta remessa possui $qtdPedidos pedido(s) vinculado(s). '
+              'Ao excluir a remessa, todos esses pedidos também serão excluídos permanentemente. Deseja continuar?'
+              : 'Tem certeza que deseja excluir esta remessa?',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Excluir')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Excluir tudo'),
+          ),
         ],
       ),
     );
+
     if (confirmar != true) return;
+
     try {
+      for (var doc in pedidosSnapshot.docs) {
+        await doc.reference.delete();
+      }
       await _remessaService.excluirRemessa(remessaId);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Remessa excluída')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(qtdPedidos > 0
+                ? '✅ Remessa e $qtdPedidos pedido(s) excluídos!'
+                : '✅ Remessa excluída!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         setState(() {});
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erro ao excluir: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }
 
   // ==================== REGRAS DE REMESSA ↔ PEDIDOS ====================
-
-  /// Altera o status da remessa e, se for "em_confeccao", atualiza todos os pedidos vinculados
   Future<void> _alterarStatusRemessa(String remessaId, String novoStatus) async {
     if (novoStatus == 'em_confeccao') {
-      // Atualiza todos os pedidos vinculados para "em_confeccao"
       final pedidos = await FirebaseFirestore.instance
           .collection('pedidos_uniformes')
           .where('remessa_id', isEqualTo: remessaId)
@@ -759,13 +843,12 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     setState(() {});
   }
 
-  /// Verifica se todos os pedidos da remessa estão finalizados e pagos
   Future<bool> _verificarSePodeFinalizarRemessa(String remessaId) async {
     final pedidos = await FirebaseFirestore.instance
         .collection('pedidos_uniformes')
         .where('remessa_id', isEqualTo: remessaId)
         .get();
-    if (pedidos.docs.isEmpty) return true; // sem pedidos, pode excluir
+    if (pedidos.docs.isEmpty) return true;
     for (var doc in pedidos.docs) {
       final data = doc.data();
       final status = data['status'] as String?;
@@ -782,7 +865,8 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Ação não permitida'),
-        content: const Text('Todos os pedidos vinculados devem estar finalizados e pagos antes de finalizar/excluir a remessa.'),
+        content: const Text(
+            'Todos os pedidos vinculados devem estar finalizados e pagos antes de finalizar/excluir a remessa.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendi')),
         ],
@@ -790,7 +874,7 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
     );
   }
 
-  // ==================== ESTOQUE (mantidos) ====================
+  // ==================== ESTOQUE ====================
   void _registrarEntrada(String docId, Map<String, dynamic> data) {
     _showQuantidadeDialog(
       titulo: 'Registrar Entrada',
@@ -884,6 +968,30 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
         maxQuantidade: maxQuantidade,
       ),
     );
+  }
+
+  Future<void> _excluirItemEstoque(String docId, Map<String, dynamic> data) async {
+    try {
+      await FirebaseFirestore.instance.collection('uniformes_estoque').doc(docId).delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Item "${data['nome']}" excluído do estoque!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erro ao excluir item: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // ==================== PAGAMENTOS ====================
@@ -1008,7 +1116,6 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
   }
 
   void _abrirDetalhesPedido(String docId, Map<String, dynamic> data) {
-    // TODO: implementar
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Detalhes do pedido em desenvolvimento'),
@@ -1110,15 +1217,23 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
       ),
     );
     if (confirmar != true) return;
+
     try {
+      final remessaId = data['remessa_id'] as String?;
+      if (remessaId != null && remessaId.isNotEmpty) {
+        await _remessaService.desvincularPedido(docId, remessaId);
+      }
+
       await FirebaseFirestore.instance
           .collection('pedidos_uniformes')
           .doc(docId)
           .delete();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Pedido excluído com sucesso!'), backgroundColor: Colors.green),
         );
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
@@ -1174,5 +1289,169 @@ class _UniformesScreenState extends State<UniformesScreen> with SingleTickerProv
         );
       }
     }
+  }
+}
+
+// ==================== WIDGET AUXILIAR: CATEGORIA EXPANSÍVEL (COM EXCLUSÃO) ====================
+class _CategoriaEstoqueExpansivel extends StatefulWidget {
+  final String categoriaId;
+  final Map<String, dynamic> categoriaData;
+  final NumberFormat realFormat;
+  final Function(String, Map<String, dynamic>) onEditarItem;
+  final Function(String, Map<String, dynamic>) onRegistrarEntrada;
+  final Function(String, Map<String, dynamic>) onRegistrarSaida;
+  final Function(String, Map<String, dynamic>) onExcluirItem;
+  final VoidCallback? onExcluirCategoria; // 🔥 NOVO
+
+  const _CategoriaEstoqueExpansivel({
+    required this.categoriaId,
+    required this.categoriaData,
+    required this.realFormat,
+    required this.onEditarItem,
+    required this.onRegistrarEntrada,
+    required this.onRegistrarSaida,
+    required this.onExcluirItem,
+    this.onExcluirCategoria,
+  });
+
+  @override
+  State<_CategoriaEstoqueExpansivel> createState() => _CategoriaEstoqueExpansivelState();
+}
+
+class _CategoriaEstoqueExpansivelState extends State<_CategoriaEstoqueExpansivel> {
+  bool _expanded = false;
+
+  Color _getCategoriaColor(String? categoria) {
+    switch (categoria?.toLowerCase()) {
+      case 'camisa': case 'camiseta': return Colors.blue;
+      case 'calça': case 'calca': case 'bermuda': return Colors.green;
+      case 'abada': case 'corda': return Colors.orange;
+      case 'acessório': case 'acessorio': return Colors.purple;
+      default: return Colors.grey;
+    }
+  }
+
+  IconData _getCategoriaIcon(String? categoria) {
+    switch (categoria?.toLowerCase()) {
+      case 'camisa': case 'camiseta': return Icons.shopping_bag;
+      case 'calça': case 'calca': case 'bermuda': return Icons.shopping_bag;
+      case 'abada': return Icons.sports_kabaddi;
+      case 'corda': return Icons.sensors;
+      case 'acessório': case 'acessorio': return Icons.watch;
+      default: return Icons.inventory;
+    }
+  }
+
+  void _confirmarExclusaoCategoria() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir categoria'),
+        content: Text(
+          'Tem certeza que deseja excluir a categoria "${widget.categoriaData['nome']}"?\n\n'
+              'Todos os itens vinculados (variações) também serão excluídos permanentemente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.onExcluirCategoria?.call();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Excluir tudo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.categoriaData;
+    final String nome = data['nome'] ?? 'Sem nome';
+    final String? fotoUrl = data['foto_url'];
+    final String categoria = data['categoria'] ?? 'Outro';
+    final Color corCat = _getCategoriaColor(categoria);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: corCat.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: fotoUrl != null && fotoUrl.isNotEmpty
+              ? ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: CachedNetworkImage(imageUrl: fotoUrl, fit: BoxFit.cover),
+          )
+              : Icon(_getCategoriaIcon(categoria), color: corCat),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            if (widget.onExcluirCategoria != null)
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                onPressed: _confirmarExclusaoCategoria,
+                tooltip: 'Excluir categoria',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+          ],
+        ),
+        subtitle: Text(categoria),
+        onExpansionChanged: (expanded) {
+          setState(() => _expanded = expanded);
+        },
+        children: [
+          if (_expanded)
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('uniformes_estoque')
+                  .where('item_base_id', isEqualTo: widget.categoriaId)
+                  .where('status', isEqualTo: 'ativo')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final variacoes = snapshot.data!.docs;
+                if (variacoes.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Nenhuma variação disponível'),
+                  );
+                }
+                return Column(
+                  children: variacoes.map((doc) {
+                    var varData = doc.data() as Map<String, dynamic>;
+                    final int quantidade = varData['quantidade'] ?? 0;
+                    return ItemEstoqueCard(
+                      docId: doc.id,
+                      data: varData,
+                      realFormat: widget.realFormat,
+                      onEditar: widget.onEditarItem,
+                      onRegistrarEntrada: widget.onRegistrarEntrada,
+                      onRegistrarSaida: widget.onRegistrarSaida,
+                      onExcluir: quantidade == 0
+                          ? widget.onExcluirItem
+                          : null,
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+        ],
+      ),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/screens/alunos/alunos_turma_screen.dart';
 import 'package:uai_capoeira/screens/alunos/dashboard_turmas_page.dart';
+import 'package:uai_capoeira/screens/alunos/avaliacao_alunos_turma_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -141,6 +142,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         });
 
         debugPrint('🔄 Permissões atualizadas');
+        debugPrint('⭐ pode_avaliar_aluno: ${novasPermissoes['pode_avaliar_aluno']}');
       }
     }, onError: (error) {
       debugPrint('❌ Erro no stream de permissões: $error');
@@ -185,7 +187,16 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
 
   // 🔐 VERIFICAR PERMISSÃO
   bool _temPermissao(String permissao) {
-    return _permissoes[permissao] == true;
+    final valor = _permissoes[permissao];
+
+    if (valor == true) return true;
+    if (valor is String) {
+      final normalizado = valor.toLowerCase().trim();
+      return normalizado == 'true' || normalizado == '1' || normalizado == 'sim';
+    }
+    if (valor is num) return valor == 1;
+
+    return false;
   }
 
   // 🌐 VERIFICAR CONEXÃO PARA AÇÕES
@@ -227,6 +238,32 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
           academiaId: widget.academiaId,
           academiaNome: widget.academiaNome,
           usuarioId: user.uid,
+        ),
+      ),
+    );
+  }
+
+
+  // ✅ VALIDAÇÃO PARA AVALIAÇÃO DO ALUNO
+  Future<void> _validarEAbrirAvaliacaoAluno() async {
+    if (!_temPermissao('pode_avaliar_aluno')) {
+      _mostrarMensagem(
+        '⛔ Você não tem permissão para avaliar alunos.',
+        Colors.red.shade800,
+      );
+      return;
+    }
+
+    if (!await _temInternetParaAcao()) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AvaliacaoAlunosTurmaScreen(
+          turmaId: widget.turmaId,
+          turmaNome: _dadosTurma['nome']?.toString() ?? widget.turmaNome,
+          academiaId: widget.academiaId,
+          academiaNome: widget.academiaNome,
         ),
       ),
     );
@@ -420,6 +457,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       );
     }
 
+    debugPrint('🔥 TelaTurma botão avaliação: pode_avaliar_aluno=${_permissoes['pode_avaliar_aluno']} | temPermissao=${_temPermissao('pode_avaliar_aluno')}');
+
     final String logoUrl = _dadosTurma['logo_url'] as String? ?? '';
     final List diasSemana = _dadosTurma['dias_semana_display'] is List
         ? (_dadosTurma['dias_semana_display'] as List)
@@ -562,9 +601,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
               ),
             ),
 
-            const SizedBox(height: 24),
-
-            // BOTÕES - SÓ APARECEM SE TIVER PERMISSÃO
+            const SizedBox(height: 18),
+// BOTÕES - SÓ APARECEM SE TIVER PERMISSÃO
             _buildFunctionCard(
               icon: Icons.person_search,
               title: 'VER ALUNOS',
@@ -635,6 +673,16 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                 );
               },
             ),
+
+            _buildFunctionCard(
+              icon: Icons.star_rate_rounded,
+              title: 'AVALIAÇÃO DO ALUNO',
+              subtitle: 'Comportamento, disciplina, evolução e destaque',
+              color: Colors.deepPurple.shade600,
+              permissao: 'pode_avaliar_aluno',
+              onTap: _validarEAbrirAvaliacaoAluno,
+            ),
+
           ],
         ),
       ),

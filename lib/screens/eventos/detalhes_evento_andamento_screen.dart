@@ -443,55 +443,83 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
       appBar: AppBar(
         title: const Text(
           'Gerenciar Evento',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           if (_podeVerRelatorios)
             IconButton(
-              icon: const Icon(Icons.assessment),
+              icon: const Icon(Icons.assessment_rounded),
               onPressed: _abrirRelatorioFinanceiro,
               tooltip: 'Relatório Financeiro',
             ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: _carregarDados,
             tooltip: 'Atualizar',
           ),
           IconButton(
-            icon: const Icon(Icons.share),
+            icon: const Icon(Icons.share_rounded),
             onPressed: _compartilharEvento,
             tooltip: 'Compartilhar',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingState()
           : RefreshIndicator(
         onRefresh: _carregarDados,
-        child: SingleChildScrollView(
+        color: Colors.red.shade900,
+        child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              _buildHeader(evento),
-              Padding(
-                padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 980),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildTituloEvento(evento),
-                    const SizedBox(height: 20),
+                    _buildHeader(evento),
+                    const SizedBox(height: 14),
                     _buildEstatisticasCard(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     _buildMenuBotoes(evento),
-                    const SizedBox(height: 20),
-                    // Links removidos
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.red.shade900),
+            const SizedBox(height: 14),
+            Text(
+              'Carregando dados do evento...',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -510,46 +538,98 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   }
 
   Widget _buildHeader(EventoModel evento) {
+    final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      width: double.infinity,
-      color: Colors.red.shade900.withOpacity(0.05),
-      child: Center(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
         child: Stack(
           children: [
-            Container(
-              width: 150,
-              height: 150,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.red.shade900,
-                  width: 3,
+            AspectRatio(
+              aspectRatio: 1.65,
+              child: hasBanner
+                  ? Image.network(
+                evento.linkBanner!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallbackBanner(),
+              )
+                  : _buildFallbackBanner(),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withOpacity(0.10),
+                      Colors.black.withOpacity(0.50),
+                      Colors.black.withOpacity(0.86),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _headerChip(
+                        icon: Icons.pending_actions_rounded,
+                        text: 'EM ANDAMENTO',
+                        color: Colors.green,
+                      ),
+                      if (evento.tipo.trim().isNotEmpty)
+                        _headerChip(
+                          icon: evento.iconeDoTipo,
+                          text: evento.tipo,
+                          color: Colors.orange,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 11),
+                  Text(
+                    evento.nome,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 25,
+                      height: 1.03,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _headerMeta(Icons.calendar_month_rounded, _formatarData()),
+                      if (evento.horario.trim().isNotEmpty)
+                        _headerMeta(Icons.access_time_rounded, evento.horario),
+                      if (evento.cidade.trim().isNotEmpty)
+                        _headerMeta(Icons.location_city_rounded, evento.cidade),
+                    ],
                   ),
                 ],
               ),
-              child: ClipOval(
-                child: evento.linkBanner != null && evento.linkBanner!.isNotEmpty
-                    ? Image.network(
-                  evento.linkBanner!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return _buildFallbackBanner(evento);
-                  },
-                )
-                    : _buildFallbackBanner(evento),
-              ),
-            ),
-            const Positioned(
-              bottom: 0,
-              right: 0,
-              child: _StatusBadge(),
             ),
           ],
         ),
@@ -557,124 +637,125 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     );
   }
 
-  Widget _buildFallbackBanner(EventoModel evento) {
+  Widget _buildFallbackBanner() {
     return Container(
-      color: Colors.red.shade900.withOpacity(0.1),
-      child: Center(
-        child: Icon(
-          evento.iconeDoTipo,
-          size: 50,
-          color: Colors.red.shade900,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+      ),
+      child: const Center(
+        child: Icon(Icons.event_available_rounded, size: 72, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _headerChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.44),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerMeta(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildTituloEvento(EventoModel evento) {
-    return Column(
-      children: [
-        Text(
-          evento.nome,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-            const SizedBox(width: 8),
-            Text(
-              '${_formatarData()} ${evento.horario.isNotEmpty ? 'às ${evento.horario}' : ''}',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        if (evento.local.isNotEmpty || evento.cidade.isNotEmpty)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.location_on, size: 16, color: Colors.grey.shade600),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${evento.local}${evento.local.isNotEmpty && evento.cidade.isNotEmpty ? ' - ' : ''}${evento.cidade}',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildEstatisticasCard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      decoration: _cardDecoration(),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatItem(
-                  icon: Icons.people,
-                  value: '$_totalParticipantes',
-                  label: 'Participantes',
-                  color: Colors.blue,
-                  onTap: null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatItem(
-                  icon: Icons.attach_money,
-                  value: _formatarMoeda(_totalGastos),
-                  label: 'Gastos',
-                  color: Colors.green,
-                  onTap: null,
-                ),
-              ),
-            ],
+          _sectionHeader(
+            icon: Icons.dashboard_rounded,
+            title: 'Resumo do evento',
+            subtitle: 'Dados atualizados de participantes, camisas, gastos e patrocínios.',
+            color: Colors.red.shade900,
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatItem(
-                  icon: Icons.volunteer_activism,
-                  value: _formatarMoeda(_totalPatrocinioValor),
-                  label: 'Patrocínios',
-                  color: Colors.purple,
-                  onTap: null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatItem(
-                  icon: Icons.shopping_bag,
-                  value: '$_totalCamisas',
-                  label: 'Camisas',
-                  color: Colors.orange,
-                  onTap: _totalCamisas > 0 ? _mostrarDetalhesCamisas : null,
-                ),
-              ),
-            ],
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth < 620 ? 2 : 4;
+              const spacing = 10.0;
+              final itemWidth = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+              final items = [
+                _StatData(Icons.people_rounded, '$_totalParticipantes', 'Participantes', Colors.blue, null),
+                _StatData(Icons.shopping_bag_rounded, '$_totalCamisas', 'Camisas', Colors.orange, _mostrarDetalhesCamisas),
+                _StatData(Icons.money_off_rounded, _formatarMoeda(_totalGastos), 'Gastos', Colors.red, null),
+                _StatData(Icons.volunteer_activism_rounded, _formatarMoeda(_totalPatrocinioValor), 'Patrocínio', Colors.green, null),
+              ];
+
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: items.map((item) {
+                  return SizedBox(
+                    width: itemWidth,
+                    child: _buildStatItem(
+                      icon: item.icon,
+                      value: item.value,
+                      label: item.label,
+                      color: item.color,
+                      onTap: item.onTap,
+                    ),
+                  );
+                }).toList(),
+              );
+            },
           ),
         ],
       ),
@@ -682,104 +763,121 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   }
 
   Widget _buildMenuBotoes(EventoModel evento) {
-    return Column(
-      children: [
-        if (_podeGerenciarParticipantes)
-          _buildMenuButton(
-            icon: Icons.people,
-            title: 'Gerenciar Participantes',
-            subtitle: 'Adicione alunos participantes do evento',
-            color: Colors.blue,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ParticipantesEventoScreen(
-                    eventoId: widget.eventoId,
-                    eventoNome: evento.nome,
-                    evento: evento,
-                  ),
+    final buttons = <Widget>[
+      if (_podeGerenciarParticipantes)
+        _buildMenuButton(
+          icon: Icons.people_rounded,
+          title: 'Participantes',
+          subtitle: 'Adicionar, remover e acompanhar alunos',
+          color: Colors.blue,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ParticipantesEventoScreen(
+                  eventoId: widget.eventoId,
+                  eventoNome: evento.nome,
+                  evento: evento,
                 ),
-              ).then((_) => _carregarDados());
+              ),
+            ).then((_) => _carregarDados());
+          },
+        ),
+      if (_podeGerenciarFinanceiro)
+        _buildMenuButton(
+          icon: Icons.attach_money_rounded,
+          title: 'Gastos',
+          subtitle: 'Controlar despesas do evento',
+          color: Colors.red,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => GastosEventoScreen(
+                  eventoId: widget.eventoId,
+                  eventoNome: evento.nome,
+                ),
+              ),
+            ).then((_) => _carregarDados());
+          },
+        ),
+      if (_podeGerenciarPatrocinadores)
+        _buildMenuButton(
+          icon: Icons.volunteer_activism_rounded,
+          title: 'Patrocinadores',
+          subtitle: 'Gerenciar apoios e beneficiados',
+          color: Colors.green,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PatrocinadoresEventoScreen(
+                  eventoId: widget.eventoId,
+                  eventoNome: evento.nome,
+                ),
+              ),
+            ).then((_) => _carregarDados());
+          },
+        ),
+      if (_podeGerenciarCamisas)
+        _buildMenuButton(
+          icon: Icons.shopping_bag_rounded,
+          title: 'Camisas avulsas',
+          subtitle: 'Registrar e conferir camisas extras',
+          color: Colors.orange,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CamisasEventoScreen(
+                  eventoId: widget.eventoId,
+                  eventoNome: evento.nome,
+                ),
+              ),
+            ).then((_) => _carregarDados());
+          },
+        ),
+      if (_podeVerRelatorios)
+        _buildMenuButton(
+          icon: Icons.assessment_rounded,
+          title: 'Relatório financeiro',
+          subtitle: 'PDFs, conferências e resumo geral',
+          color: Colors.purple,
+          onTap: _abrirRelatorioFinanceiro,
+        ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.apps_rounded,
+            title: 'Ações do evento',
+            subtitle: 'Escolha o que deseja gerenciar.',
+            color: Colors.red.shade900,
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 720;
+              if (!wide) {
+                return Column(children: buttons);
+              }
+
+              const spacing = 12.0;
+              final itemWidth = (constraints.maxWidth - spacing) / 2;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: buttons.map((b) => SizedBox(width: itemWidth, child: b)).toList(),
+              );
             },
           ),
-        if (_podeGerenciarFinanceiro)
-          _buildMenuButton(
-            icon: Icons.attach_money,
-            title: 'Gerenciar Gastos',
-            subtitle: 'Controle de despesas do evento',
-            color: Colors.green,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => GastosEventoScreen(
-                    eventoId: widget.eventoId,
-                    eventoNome: evento.nome,
-                  ),
-                ),
-              ).then((_) => _carregarDados());
-            },
-          ),
-        if (_podeGerenciarPatrocinadores)
-          _buildMenuButton(
-            icon: Icons.star,
-            title: 'Gerenciar Patrocinadores',
-            subtitle: 'Adicione patrocinadores e apoios',
-            color: Colors.amber,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PatrocinadoresEventoScreen(
-                    eventoId: widget.eventoId,
-                    eventoNome: evento.nome,
-                  ),
-                ),
-              ).then((_) => _carregarDados());
-            },
-          ),
-        if (_podeGerenciarCamisas && evento.temCamisa)
-          _buildMenuButton(
-            icon: Icons.shopping_bag,
-            title: 'Gerenciar Camisas',
-            subtitle: 'Lista de camisas por tamanho',
-            color: Colors.purple,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CamisasEventoScreen(
-                    eventoId: widget.eventoId,
-                    eventoNome: evento.nome,
-                  ),
-                ),
-              ).then((_) => _carregarDados());
-            },
-          ),
-        if (!_podeGerenciarParticipantes &&
-            !_podeGerenciarFinanceiro &&
-            !_podeGerenciarPatrocinadores &&
-            !_podeGerenciarCamisas)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.lock, size: 40, color: Colors.grey.shade400),
-                const SizedBox(height: 8),
-                Text(
-                  'Você não tem permissão para gerenciar este evento',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -790,49 +888,55 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     required Color color,
     required VoidCallback? onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: onTap != null ? color : color.withOpacity(0.3),
-            width: onTap != null ? 2 : 1,
+    return Material(
+      color: color.withOpacity(0.07),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 112),
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.14)),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: color,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 25),
+              const SizedBox(height: 8),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (onTap != null) ...[
               const SizedBox(height: 4),
-              Icon(
-                Icons.touch_app,
-                size: 12,
-                color: color.withOpacity(0.7),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              if (onTap != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Toque para ver',
+                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -845,35 +949,123 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withOpacity(0.12)),
+              color: color.withOpacity(0.035),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(17),
+                  ),
+                  child: Icon(icon, color: color, size: 25),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade900,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 11.5,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right_rounded, color: color),
+              ],
+            ),
+          ),
+        ),
       ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(10),
+    );
+  }
+
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, color: color),
         ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11.5,
+                  height: 1.22,
+                ),
+              ),
+            ],
           ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: Colors.grey.shade600),
+      ],
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(color: Colors.grey.shade100),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 7,
+          offset: const Offset(0, 3),
         ),
-        trailing: Icon(Icons.chevron_right, color: Colors.grey.shade600),
-        onTap: onTap,
-      ),
+      ],
     );
   }
 
@@ -908,6 +1100,16 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
       );
     }
   }
+}
+
+class _StatData {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _StatData(this.icon, this.value, this.label, this.color, this.onTap);
 }
 
 class _StatusBadge extends StatelessWidget {

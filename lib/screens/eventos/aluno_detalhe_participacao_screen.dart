@@ -1217,8 +1217,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             ),
         ],
       ),
+      backgroundColor: Colors.grey.shade50,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: Colors.red.shade900))
           : RefreshIndicator(
         onRefresh: _carregarDados,
         color: Colors.red.shade900,
@@ -1726,29 +1727,38 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   Widget _buildInfoCard(String label, String value, IconData icon, Color color) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 92),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.14)),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: color,
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: color,
+              ),
             ),
           ),
+          const SizedBox(height: 3),
           Text(
             label,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 11,
-              color: Colors.grey.shade600,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1766,12 +1776,13 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withOpacity(0.10)),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 7,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1780,14 +1791,24 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey.shade900,
+                  ),
                 ),
               ),
             ],
@@ -1840,190 +1861,161 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
   }
 
+  List<Widget> _buildParcelasPendentes() {
+    final parcelas = <Widget>[];
+
+    if (_saldo <= 0) return parcelas;
+
+    final sugestoes = _gerarSugestoesPagamento();
+
+    if (sugestoes.isEmpty) {
+      parcelas.add(
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.orange.withOpacity(0.16)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ainda existe saldo pendente.',
+                  style: TextStyle(
+                    color: Colors.orange.shade900,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return parcelas;
+    }
+
+    for (final valor in sugestoes) {
+      parcelas.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.045),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.red.withOpacity(0.12)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.payments_rounded, color: Colors.red.shade900, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  valor >= _saldo - 0.01 ? 'Quitar saldo restante' : 'Pagamento sugerido',
+                  style: TextStyle(
+                    color: Colors.grey.shade800,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                _formatarMoeda(valor),
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return parcelas;
+  }
+
   Widget _buildPagamentoCard(PagamentoModel pagamento) {
     final cor = pagamento.status == 'confirmado' ? Colors.green : Colors.orange;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        color: cor.withOpacity(0.055),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cor.withOpacity(0.13)),
       ),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: cor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+              color: cor.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(15),
             ),
             child: Icon(
-              pagamento.formaPagamento == 'PIX'
-                  ? Icons.pix
-                  : pagamento.formaPagamento == 'PATROCÍNIO'
-                  ? Icons.volunteer_activism
-                  : Icons.payment,
+              pagamento.status == 'confirmado'
+                  ? Icons.check_circle_rounded
+                  : Icons.schedule_rounded,
               color: cor,
-              size: 20,
+              size: 24,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      _formatarData(pagamento.dataPagamento),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            pagamento.status == 'confirmado'
-                                ? Icons.check_circle
-                                : Icons.access_time,
-                            size: 10,
-                            color: cor,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            pagamento.status == 'confirmado' ? 'Confirmado' : 'Pendente',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: cor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        pagamento.formaPagamento,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      _formatarMoeda(pagamento.valor),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-                if (pagamento.observacoes != null && pagamento.observacoes!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      pagamento.observacoes!,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey.shade500,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
+                Text(
+                  _formatarMoeda(pagamento.valor),
+                  style: TextStyle(
+                    color: cor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
                   ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${pagamento.formaPagamento} • ${_formatarData(pagamento.dataPagamento)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 11.5),
+                ),
               ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: cor.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              pagamento.status.toUpperCase(),
+              style: TextStyle(
+                color: cor,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  List<Widget> _buildParcelasPendentes() {
-    final widgets = <Widget>[];
-
-    final parcelasPagas = _pagamentos
-        .where((p) => p.parcela != null)
-        .map((p) => p.parcela!)
-        .toSet();
-
-    for (int i = 1; i <= _participacao.parcelas; i++) {
-      if (!parcelasPagas.contains(i)) {
-        final dataVencimento = _participacao.dataEvento
-            .subtract(Duration(days: 30 * (_participacao.parcelas - i)));
-
-        widgets.add(
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red.shade200),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pendente - ${i}ª parcela',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Vencimento: ${_formatarData(dataVencimento)}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.red.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // 🔥 SÓ MOSTRA BOTÃO DE PAGAR SE SALDO > 0
-                if (_podeRegistrarPagamento && !_participacao.estaFinalizado && _saldo > 0)
-                  TextButton(
-                    onPressed: _registrarPagamento,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red,
-                    ),
-                    child: const Text('PAGAR'),
-                  ),
-              ],
-            ),
-          ),
-        );
-      }
-    }
-
-    return widgets;
   }
 
   Future<void> _abrirLink(String? url) async {

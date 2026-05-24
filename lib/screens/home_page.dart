@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Services
 import '../services/academia_cache_service.dart';
@@ -22,14 +21,10 @@ class _HomePageState extends State<HomePage> {
   final AcademiaCacheService _cacheService = AcademiaCacheService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Stream para dados do usuário em TEMPO REAL
   late Stream<DocumentSnapshot<Map<String, dynamic>>> _userDataStream;
+  late Future<List<Map<String, dynamic>>> _academiasFuture;
 
-  // Future para academias
-  Future<List<Map<String, dynamic>>> _academiasFuture = Future.value([]);
-
-  // Controle de conectividade
-  final Connectivity _connectivity = Connectivity();
+  bool _jaMostrouAvisoOffline = false;
 
   @override
   void initState() {
@@ -38,7 +33,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _inicializarStreams() {
-    // Configura o stream do usuário com snapshots() em tempo real
     if (currentUser != null) {
       _userDataStream = FirebaseFirestore.instance
           .collection('usuarios')
@@ -48,27 +42,44 @@ class _HomePageState extends State<HomePage> {
       _userDataStream = Stream.empty();
     }
 
-    // Carrega academias
-    _recarregarAcademias();
+    // IMPORTANTE:
+    // Antes isso começava como Future.value([]), então a Home podia mostrar
+    // "Você não está vinculado..." antes da busca real terminar.
+    _academiasFuture = _carregarAcademias();
+  }
+
+  Future<List<Map<String, dynamic>>> _carregarAcademias() async {
+    final uid = currentUser?.uid;
+
+    if (uid == null || uid.isEmpty) {
+      debugPrint('⚠️ HomePage: usuário nulo ao carregar academias.');
+      return [];
+    }
+
+    final temInternet = await _cacheService.temInternet();
+
+    if (!temInternet && mounted && !_jaMostrouAvisoOffline) {
+      _jaMostrouAvisoOffline = true;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🌐 Modo offline - usando dados salvos'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    final academias = await _cacheService.carregarAcademiasComAlunos(uid);
+
+    debugPrint('🏫 HomePage: academias carregadas: ${academias.length}');
+
+    return academias;
   }
 
   Future<void> _recarregarAcademias() async {
-    final temInternet = await _cacheService.temInternet();
-
-    if (!temInternet) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🌐 Modo offline - usando dados salvos'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-
     setState(() {
-      _academiasFuture = _cacheService.carregarAcademiasComAlunos(currentUser?.uid);
+      _academiasFuture = _carregarAcademias();
     });
   }
 
@@ -80,13 +91,13 @@ class _HomePageState extends State<HomePage> {
       body: RefreshIndicator(
         onRefresh: () async {
           await _recarregarAcademias();
-          // Força atualização do stream do usuário
+
           if (currentUser != null) {
             try {
               await FirebaseFirestore.instance
                   .collection('usuarios')
                   .doc(currentUser!.uid)
-                  .get(GetOptions(source: Source.server));
+                  .get(const GetOptions(source: Source.server));
             } catch (e) {
               debugPrint('Erro ao forçar atualização: $e');
             }
@@ -100,18 +111,10 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 children: [
                   const SizedBox(height: 30),
-
-                  // ========== PERFIL DO USUÁRIO COM STREAM EM TEMPO REAL ==========
                   _buildPerfilStream(theme),
-
                   const SizedBox(height: 30),
-
-                  // ========== LOGO ==========
                   _buildLogo(),
-
                   const SizedBox(height: 30),
-
-                  // ========== LISTA DE ACADEMIAS ==========
                   _buildAcademiasFuture(),
                 ],
               ),
@@ -122,7 +125,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== PERFIL COM STREAM EM TEMPO REAL ==========
   Widget _buildPerfilStream(ThemeData theme) {
     if (currentUser == null) {
       return _buildPerfilOffline();
@@ -131,28 +133,23 @@ class _HomePageState extends State<HomePage> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDataStream,
       builder: (context, snapshot) {
-        // Mostra skeleton enquanto carrega pela primeira vez
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return _buildSkeletonPerfil(theme);
         }
 
-        // Em caso de erro, mostra dados do cache ou fallback
         if (snapshot.hasError) {
           debugPrint('Erro no stream do usuário: ${snapshot.error}');
           return _buildPerfilComFallback(theme);
         }
 
-        // Verifica se tem dados
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return _buildPerfilVazio(theme);
         }
 
-        // Dados atualizados em tempo real
         final userData = snapshot.data!.data() ?? {};
         final String displayName = userData['nome_completo'] ?? 'Usuário';
         final String? photoUrl = userData['foto_url'] as String?;
 
-        // LOG PARA DEBUG - mostra quando atualiza
         debugPrint('🔄 Perfil atualizado: $displayName');
 
         return Column(
@@ -191,18 +188,18 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== FALLBACK PARA QUANDO NÃO TEM DADOS ==========
   Widget _buildPerfilComFallback(ThemeData theme) {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: FirebaseFirestore.instance
           .collection('usuarios')
           .doc(currentUser?.uid)
-          .get(GetOptions(source: Source.cache)),
+          .get(const GetOptions(source: Source.cache)),
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data!.exists) {
           final userData = snapshot.data!.data() ?? {};
           return _buildPerfilComDados(userData);
         }
+
         return _buildPerfilVazio(theme);
       },
     );
@@ -282,7 +279,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== LOGO ==========
   Widget _buildLogo() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -322,13 +318,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== LISTA DE ACADEMIAS ==========
   Widget _buildAcademiasFuture() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _academiasFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildSkeletonAcademias();
+          return _buildLoadingAcademias();
         }
 
         if (snapshot.hasError) {
@@ -346,7 +341,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== SKELETON DO PERFIL ==========
   Widget _buildSkeletonPerfil(ThemeData theme) {
     return Column(
       children: [
@@ -374,17 +368,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== SKELETON DAS ACADEMIAS ==========
-  Widget _buildSkeletonAcademias() {
-    return const Padding(
-      padding: EdgeInsets.all(40),
-      child: Center(
-        child: CircularProgressIndicator(),
+  Widget _buildLoadingAcademias() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Padding(
+          padding: EdgeInsets.all(25),
+          child: Column(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Carregando suas academias...',
+                style: TextStyle(fontSize: 15, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // ========== WIDGET DE ERRO ==========
   Widget _buildErrorWidget(String error) {
     final theme = Theme.of(context);
 
@@ -397,6 +404,12 @@ class _HomePageState extends State<HomePage> {
           const Text(
             'Erro ao carregar academias',
             style: TextStyle(fontSize: 16, color: Colors.red),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            error,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
@@ -413,7 +426,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== SEM ACADEMIAS ==========
   Widget _buildEmptyAcademias() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -437,6 +449,12 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: _recarregarAcademias,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Atualizar'),
+              ),
             ],
           ),
         ),
@@ -444,11 +462,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== LISTA DE ACADEMIAS ==========
   Widget _buildAcademiasList(List<Map<String, dynamic>> academias) {
     int totalAlunos = 0;
+
     for (var academia in academias) {
-      totalAlunos += academia['alunos_count'] as int;
+      totalAlunos += (academia['alunos_count'] ?? 0) as int;
     }
 
     return Column(
@@ -479,15 +497,11 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _recarregarAcademias,
-                    icon: const Icon(Icons.refresh),
-                    color: Colors.grey.shade600,
-                    iconSize: 20,
-                  ),
-                ],
+              IconButton(
+                onPressed: _recarregarAcademias,
+                icon: const Icon(Icons.refresh),
+                color: Colors.grey.shade600,
+                iconSize: 20,
               ),
             ],
           ),
@@ -499,7 +513,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== CARD DE ACADEMIA ==========
   Widget _buildCardAcademia(Map<String, dynamic> academia) {
     final theme = Theme.of(context);
 
@@ -533,14 +546,17 @@ class _HomePageState extends State<HomePage> {
                   color: theme.primaryColor.withOpacity(0.1),
                   border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
                 ),
-                child: academia['logo_url'] != null && academia['logo_url'].isNotEmpty
+                child: academia['logo_url'] != null &&
+                    academia['logo_url'].toString().isNotEmpty
                     ? ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: CachedNetworkImage(
                     imageUrl: academia['logo_url'],
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => const CircularProgressIndicator(),
-                    errorWidget: (context, url, error) => const Icon(Icons.error),
+                    placeholder: (context, url) =>
+                    const CircularProgressIndicator(),
+                    errorWidget: (context, url, error) =>
+                    const Icon(Icons.error),
                   ),
                 )
                     : Icon(Icons.location_on, color: theme.primaryColor, size: 24),
@@ -551,26 +567,32 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      academia['nome'],
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      academia['nome'] ?? 'Academia',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (academia['cidade']?.isNotEmpty ?? false)
+                    if (academia['cidade']?.toString().isNotEmpty ?? false)
                       Text(
                         academia['cidade'],
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                        ),
                       ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         _buildBadge(
                           icon: Icons.people,
-                          text: '${academia['alunos_count']}',
+                          text: '${academia['alunos_count'] ?? 0}',
                           color: Colors.blue.shade700,
                         ),
                         const SizedBox(width: 8),
-                        if (academia['turmas_count'] > 0)
+                        if ((academia['turmas_count'] ?? 0) > 0)
                           _buildBadge(
                             icon: Icons.class_,
                             text: '${academia['turmas_count']}',
@@ -589,8 +611,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== BADGE ==========
-  Widget _buildBadge({required IconData icon, required String text, required Color color}) {
+  Widget _buildBadge({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -604,14 +629,17 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: 4),
           Text(
             text,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ========== AVATAR ==========
   Widget _buildAvatarImageHome({
     required String? photoUrl,
     required String displayName,

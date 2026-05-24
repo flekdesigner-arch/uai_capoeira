@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
+import 'dart:math' as math;
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import 'package:uai_capoeira/screens/inscricao/signature_screen.dart';
 import 'package:uai_capoeira/widgets/regimento_dialog.dart';
 import 'package:uai_capoeira/screens/site/landing_page.dart';
@@ -53,19 +55,24 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _temVagas = true;
   bool _recolherAssinatura = true;
   String? _assinaturaUrl;
+  Uint8List? _assinaturaBytes;
+  bool _uploadingAssinatura = false;
 
   Uint8List? _fotoBytes;
   String? _fotoNome;
   String? _fotoUrl;
   bool _uploadingFoto = false;
+  bool _processandoFotoLocal = false;
+  String _statusFotoLocal = '';
 
   final Map<int, bool> _etapaValida = {
-    0: false,
-    1: false,
-    2: false,
-    3: false,
-    4: true,
-    5: false,
+    0: false, // Boas-vindas
+    1: false, // Foto
+    2: false, // Dados do aluno
+    3: false, // Contato
+    4: false, // Endereço
+    5: true,  // Documento opcional
+    6: false, // Revisão
   };
 
   final Map<int, List<String>> _errosPorEtapa = {
@@ -75,6 +82,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     3: [],
     4: [],
     5: [],
+    6: [],
   };
 
   @override
@@ -387,18 +395,28 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       }
     }
 
-    final fotoValida = _temFoto();
-    if (!fotoValida) {
-      erros.add('Adicione a foto do aluno.');
-    }
-
     setState(() {
-      _etapaValida[1] = nomeValido &&
+      _etapaValida[2] = nomeValido &&
           apelidoValido &&
           dataValida &&
           sexoValido &&
-          idadeValida &&
-          fotoValida;
+          idadeValida;
+      _errosPorEtapa[2] = erros;
+    });
+  }
+
+  void _validarEtapaFoto() {
+    if (!mounted) return;
+
+    final erros = <String>[];
+
+    final fotoValida = _temFoto();
+    if (!fotoValida) {
+      erros.add('Tire a foto do aluno para identificação.');
+    }
+
+    setState(() {
+      _etapaValida[1] = fotoValida;
       _errosPorEtapa[1] = erros;
     });
   }
@@ -434,9 +452,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     setState(() {
-      _etapaValida[2] =
+      _etapaValida[3] =
           contatoAlunoValido && nomeRespValido && contatoRespValido;
-      _errosPorEtapa[2] = erros;
+      _errosPorEtapa[3] = erros;
     });
   }
 
@@ -479,9 +497,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     setState(() {
-      _etapaValida[3] =
+      _etapaValida[4] =
           ruaValida && numeroValido && bairroValido && cidadeValida;
-      _errosPorEtapa[3] = erros;
+      _errosPorEtapa[4] = erros;
     });
   }
 
@@ -492,7 +510,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       erros.add('Aceite os termos de responsabilidade.');
     }
 
-    if (_recolherAssinatura && _assinaturaUrl == null) {
+    if (_recolherAssinatura && _assinaturaUrl == null && _assinaturaBytes == null) {
       erros.add('Assine o termo digitalmente.');
     }
 
@@ -501,9 +519,13 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     setState(() {
-      _etapaValida[5] =
-          _autorizacao && (_recolherAssinatura ? _assinaturaUrl != null : true) && _temFoto();
-      _errosPorEtapa[5] = erros;
+      _etapaValida[6] =
+          _autorizacao &&
+              (_recolherAssinatura
+                  ? (_assinaturaUrl != null || _assinaturaBytes != null)
+                  : true) &&
+              _temFoto();
+      _errosPorEtapa[6] = erros;
     });
   }
 
@@ -555,52 +577,304 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
   }
 
+  void _setProcessandoFotoLocal(String status) {
+    if (!mounted) return;
+
+    setState(() {
+      _processandoFotoLocal = true;
+      _statusFotoLocal = status;
+    });
+  }
+
+  void _limparProcessandoFotoLocal() {
+    if (!mounted) return;
+
+    setState(() {
+      _processandoFotoLocal = false;
+      _statusFotoLocal = '';
+    });
+  }
+
+  Future<bool> _mostrarOrientacaoFotoAluno() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(18),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 430),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade900.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Icon(
+                    Icons.center_focus_strong_rounded,
+                    color: Colors.red.shade900,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Foto para identificação',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tire a foto do aluno de frente, com o rosto bem visível. Depois da câmera, ajuste a foto usando o retângulo e as linhas guia.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    height: 1.35,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: 180,
+                  height: 230,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.green.shade500, width: 2),
+                  ),
+                  child: CustomPaint(
+                    painter: _GuiaRostoInscricaoPainter(),
+                    child: Center(
+                      child: Icon(
+                        Icons.face_rounded,
+                        size: 74,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('CANCELAR'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(context, true),
+                        icon: const Icon(Icons.camera_alt_rounded),
+                        label: const Text('ABRIR CÂMERA'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade900,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    return result == true;
+  }
+
   Future<void> _selecionarFoto() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        withData: true,
+    var loadingAberto = false;
+
+    Future<void> abrirLoading({
+      required String titulo,
+      required String subtitulo,
+      required IconData icon,
+    }) async {
+      if (!mounted) return;
+
+      loadingAberto = true;
+
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _ProcessandoFotoDialog(
+            titulo: titulo,
+            subtitulo: subtitulo,
+            icon: icon,
+          ),
+        ),
       );
 
-      if (result == null || result.files.single.bytes == null) return;
+      // Garante pelo menos um frame para o usuário enxergar o feedback.
+      await Future.delayed(const Duration(milliseconds: 120));
+    }
+
+    void fecharLoading() {
+      if (!mounted || !loadingAberto) return;
+
+      loadingAberto = false;
+
+      try {
+        Navigator.of(context, rootNavigator: true).pop();
+      } catch (_) {}
+    }
+
+    try {
+      final continuar = await _mostrarOrientacaoFotoAluno();
+      if (!continuar) return;
+
+      _setProcessandoFotoLocal('Preparando câmera...');
+
+      await abrirLoading(
+        titulo: 'Aguardando foto do aluno...',
+        subtitulo: 'A câmera será aberta agora. Tire uma foto de frente e confirme.',
+        icon: Icons.camera_alt_rounded,
+      );
+
+      await Future.delayed(const Duration(milliseconds: 280));
+
+      fecharLoading();
+
+      final picker = ImagePicker();
+
+      final image = await picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        imageQuality: 92,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+
+      if (image == null) {
+        _limparProcessandoFotoLocal();
+        return;
+      }
+
+      _setProcessandoFotoLocal('Foto recebida. Processando...');
+
+      await abrirLoading(
+        titulo: 'Analisando foto do aluno...',
+        subtitulo: 'A foto foi recebida. Estamos preparando o ajuste para identificação.',
+        icon: Icons.center_focus_strong_rounded,
+      );
+
+      // Dá tempo para a interface atualizar antes da leitura/processamento.
+      await Future.delayed(const Duration(milliseconds: 160));
+
+      final originalBytes = await image.readAsBytes();
+
+      _setProcessandoFotoLocal('Abrindo editor de ajuste...');
+
+      // Tempo mínimo visual para evitar sensação de tela vazia/travada.
+      await Future.delayed(const Duration(milliseconds: 520));
+
+      fecharLoading();
+
+      if (!mounted) {
+        _limparProcessandoFotoLocal();
+        return;
+      }
+
+      final bytesEditados = await showDialog<Uint8List?>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _EditorFotoInscricaoDialog(
+          imageBytes: originalBytes,
+          nomeAluno: _controllers['nome']!.text.trim(),
+        ),
+      );
+
+      if (bytesEditados == null) {
+        _limparProcessandoFotoLocal();
+        return;
+      }
 
       setState(() {
-        _fotoBytes = result.files.single.bytes!;
-        _fotoNome = result.files.single.name;
+        _fotoBytes = bytesEditados;
+        _fotoNome = 'foto_aluno_${DateTime.now().millisecondsSinceEpoch}.jpg';
         _fotoUrl = null;
-        _uploadingFoto = true;
+        _uploadingFoto = false;
+        _processandoFotoLocal = false;
+        _statusFotoLocal = '';
       });
 
-      await _uploadFotoFirebase();
-      _validarEtapa1();
-      _showSuccessSnackbar('📸 Foto carregada com sucesso!');
+      _validarEtapaFoto();
+      _showSuccessSnackbar('📸 Foto ajustada! Ela será enviada ao finalizar a inscrição.');
     } catch (e) {
-      setState(() => _uploadingFoto = false);
-      _showErrorSnackbar('Erro ao selecionar foto: $e');
+      fecharLoading();
+      _limparProcessandoFotoLocal();
+
+      if (mounted) setState(() => _uploadingFoto = false);
+
+      _showErrorSnackbar('Erro ao tirar foto: $e');
     }
   }
 
   Future<void> _uploadFotoFirebase() async {
     if (_fotoBytes == null || _fotoNome == null) return;
 
+    setState(() {
+      _uploadingFoto = true;
+      _processandoFotoLocal = true;
+      _statusFotoLocal = 'Enviando foto com segurança...';
+    });
+
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final nomeAluno = _controllers['nome']!.text.trim().replaceAll(' ', '_');
+      final nomeAluno = _controllers['nome']!.text.trim().replaceAll(RegExp(r'\s+'), '_');
       final fileName = '${timestamp}_${nomeAluno.isEmpty ? 'aluno' : nomeAluno}.jpg';
 
       final fotoRef = _storage.ref().child('fotos_inscricoes/$fileName');
 
-      await fotoRef.putData(_fotoBytes!);
+      await fotoRef.putData(
+        _fotoBytes!,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'origem': 'camera_inscricao_publica',
+            'crop': 'rosto_centralizado',
+          },
+        ),
+      );
+
       final downloadUrl = await fotoRef.getDownloadURL();
 
       setState(() {
         _fotoUrl = downloadUrl;
         _uploadingFoto = false;
+        _processandoFotoLocal = false;
+        _statusFotoLocal = '';
       });
     } catch (e) {
-      setState(() => _uploadingFoto = false);
+      setState(() {
+        _uploadingFoto = false;
+        _processandoFotoLocal = false;
+        _statusFotoLocal = '';
+      });
       _showErrorSnackbar('Erro ao fazer upload da foto: $e');
+      rethrow;
     }
   }
 
@@ -621,9 +895,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                 _fotoBytes = null;
                 _fotoNome = null;
                 _fotoUrl = null;
+                _processandoFotoLocal = false;
+                _statusFotoLocal = '';
               });
               Navigator.pop(context);
-              _validarEtapa1();
+              _validarEtapaFoto();
               _showSuccessSnackbar('Foto removida com sucesso');
             },
             style: ElevatedButton.styleFrom(
@@ -662,7 +938,7 @@ Eu, $nomeAluno, declaro para os devidos fins que:
 
 Data e hora: $dataHora
 
-Assinatura: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : '_____________________________'}
+Assinatura: ${(_assinaturaUrl != null || _assinaturaBytes != null) ? '[ASSINATURA DIGITAL]' : '_____________________________'}
 ''';
     }
 
@@ -681,7 +957,7 @@ Eu, $nomeResp, responsável legal por $nomeAluno, declaro para os devidos fins q
 
 Data e hora: $dataHora
 
-Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : '_____________________________'}
+Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != null) ? '[ASSINATURA DIGITAL]' : '_____________________________'}
 ''';
   }
 
@@ -697,12 +973,20 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           inscricaoId: 'temp_${DateTime.now().millisecondsSinceEpoch}',
           nomeResponsavel: nomeResponsavel,
           nomeAluno: _controllers['nome']!.text,
-          onConfirm: (imageUrl) {
+          onConfirm: (imageBytes) {
             setState(() {
-              _assinaturaUrl = imageUrl;
+              _assinaturaBytes = imageBytes;
+              _assinaturaUrl = null;
             });
-            _validarEtapaFinal();
-            _showSuccessSnackbar('✅ Termo assinado com sucesso!');
+
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _validarEtapaFinal();
+                setState(() {});
+              }
+            });
+
+            _showSuccessSnackbar('✅ Assinatura registrada com sucesso!');
           },
         ),
       ),
@@ -713,10 +997,55 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     }
   }
 
+  Future<void> _uploadAssinaturaFirebase() async {
+    if (_assinaturaUrl?.isNotEmpty == true) return;
+    if (_assinaturaBytes == null) return;
+
+    setState(() => _uploadingAssinatura = true);
+
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final nomeResponsavel = _controllers['nome_responsavel']!.text.trim().isNotEmpty
+          ? _controllers['nome_responsavel']!.text.trim()
+          : _controllers['nome']!.text.trim();
+
+      final nomeSeguro = nomeResponsavel
+          .replaceAll(RegExp(r'\s+'), '_')
+          .replaceAll(RegExp(r'[^A-Za-zÀ-ÖØ-öø-ÿ0-9_\-]'), '');
+
+      final fileName = '${timestamp}_${nomeSeguro.isEmpty ? 'responsavel' : nomeSeguro}.png';
+
+      final assinaturaRef = _storage.ref().child('assinaturas_inscricoes/$fileName');
+
+      await assinaturaRef.putData(
+        _assinaturaBytes!,
+        SettableMetadata(
+          contentType: 'image/png',
+          customMetadata: {
+            'origem': 'assinatura_inscricao_publica',
+            'modo': 'upload_no_envio_final',
+          },
+        ),
+      );
+
+      final downloadUrl = await assinaturaRef.getDownloadURL();
+
+      setState(() {
+        _assinaturaUrl = downloadUrl;
+        _assinaturaBytes = null;
+        _uploadingAssinatura = false;
+      });
+    } catch (e) {
+      setState(() => _uploadingAssinatura = false);
+      _showErrorSnackbar('Erro ao enviar assinatura: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _enviarInscricao() async {
     _validarEtapaFinal();
 
-    if (!(_etapaValida[5] ?? false)) {
+    if (!(_etapaValida[6] ?? false)) {
       _mostrarFeedbackErros();
       return;
     }
@@ -761,13 +1090,29 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         'assinatura_recolhida': _recolherAssinatura,
       };
 
+      if (_fotoUrl == null || _fotoUrl!.isEmpty) {
+        await _uploadFotoFirebase();
+      }
+
       if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
         dados['foto_url'] = _fotoUrl;
       } else {
         throw Exception('Foto é obrigatória');
       }
 
-      if (_assinaturaUrl != null) {
+      if (_recolherAssinatura &&
+          ((_assinaturaUrl == null || _assinaturaUrl?.isEmpty == true) &&
+              _assinaturaBytes != null)) {
+        await _uploadAssinaturaFirebase();
+      }
+
+      if (_recolherAssinatura &&
+          (_assinaturaUrl == null || _assinaturaUrl?.isEmpty == true) &&
+          _assinaturaBytes == null) {
+        throw Exception('Assinatura é obrigatória');
+      }
+
+      if (_assinaturaUrl?.isNotEmpty == true) {
         dados['assinatura_url'] = _assinaturaUrl;
       }
 
@@ -837,94 +1182,109 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.all(18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Container(
-          width: double.maxFinite,
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.9,
-            maxWidth: 500,
+            maxHeight: MediaQuery.of(context).size.height * 0.92,
+            maxWidth: 520,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Colors.green.shade700, Colors.green.shade500],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
-                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 ),
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      width: 82,
+                      height: 82,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Colors.white.withOpacity(0.20)),
                       ),
                       child: const Icon(
-                        Icons.check_circle,
+                        Icons.check_circle_rounded,
                         color: Colors.white,
-                        size: 60,
+                        size: 54,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     const Text(
-                      'INSCRIÇÃO REALIZADA!',
+                      'Inscrição enviada!',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 24,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isMaior
+                          ? 'Recebemos seus dados com sucesso.'
+                          : 'Recebemos a inscrição de $nomeAluno com sucesso.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.86),
+                        fontSize: 13,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              Expanded(
+              Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(18),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.blue.shade100),
                         ),
-                        child: Column(
+                        child: Row(
                           children: [
-                            const Icon(Icons.waving_hand, color: Colors.blue, size: 32),
-                            const SizedBox(height: 8),
-                            Text(
-                              isMaior ? 'Olá, $nomeAluno!' : 'Olá, $nomeResponsavel!',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade900,
+                            Icon(Icons.waving_hand_rounded, color: Colors.blue.shade800),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                isMaior ? 'Olá, $nomeAluno!' : 'Olá, $nomeResponsavel!',
+                                style: TextStyle(
+                                  color: Colors.blue.shade900,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              isMaior
-                                  ? 'Sua inscrição foi recebida com sucesso!'
-                                  : 'Inscrição de $nomeAluno recebida com sucesso!',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.blue.shade900),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: Column(
@@ -937,177 +1297,107 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      if (_recolherAssinatura)
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.amber.shade100),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.notifications_active_rounded, color: Colors.amber.shade800),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Agora é só aguardar o contato do professor para combinar os próximos detalhes da aula experimental.',
+                                style: TextStyle(
+                                  color: Colors.amber.shade900,
+                                  fontSize: 12.5,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_recolherAssinatura) ...[
+                        const SizedBox(height: 12),
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: _assinaturaUrl != null
-                                ? Colors.green.shade50
-                                : Colors.purple.shade50,
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: Colors.green.shade100),
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                _assinaturaUrl != null ? Icons.draw : Icons.gavel,
-                                color: _assinaturaUrl != null
-                                    ? Colors.green.shade700
-                                    : Colors.purple.shade700,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
+                              Icon(Icons.draw_rounded, color: Colors.green.shade700),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _assinaturaUrl != null
-                                      ? '✅ Assinatura digital registrada'
-                                      : '📝 Termo de responsabilidade aceito',
+                                  (_assinaturaUrl != null || _assinaturaBytes != null)
+                                      ? 'Assinatura digital registrada.'
+                                      : 'Termo de responsabilidade aceito.',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    color: _assinaturaUrl != null
-                                        ? Colors.green.shade800
-                                        : Colors.purple.shade800,
-                                    fontWeight: FontWeight.w500,
+                                    color: Colors.green.shade900,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.access_time, color: Colors.amber),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '🔔 Próximos passos:',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    '1️⃣ Aguarde contato do professor (até 48h)\n2️⃣ Agendamento da aula experimental',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(24),
-                    bottomRight: Radius.circular(24),
+              SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
                   ),
-                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                ),
-                child: Column(
-                  children: [
-                    _buildContadorRedirecionamento(),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LandingPage(),
-                            ),
-                                (route) => false,
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade700,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const LandingPage(),
                           ),
-                        ),
-                        child: const Text(
-                          'FINALIZAR',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                              (route) => false,
+                        );
+                      },
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('FINALIZAR'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildContadorRedirecionamento() {
-    return StatefulBuilder(
-      builder: (context, setStateCounter) {
-        int segundosRestantes = 10;
-
-        Future.delayed(Duration.zero, () {
-          Timer.periodic(const Duration(seconds: 1), (timer) {
-            if (segundosRestantes > 1) {
-              segundosRestantes--;
-              setStateCounter(() {});
-            } else {
-              timer.cancel();
-              Navigator.of(context).pop();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const LandingPage()),
-                    (route) => false,
-              );
-            }
-          });
-        });
-
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.shade200),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.timer, color: Colors.blue, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Redirecionando em $segundosRestantes segundos...',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.blue.shade900,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1135,14 +1425,20 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   }
 
   void _proximaEtapa() {
-    if (_currentStep >= 5) return;
+    if (_currentStep >= 6) return;
 
-    if (_currentStep == 1) _validarEtapa1();
-    if (_currentStep == 2) _validarEtapa2();
-    if (_currentStep == 3) _validarEtapa3();
-    if (_currentStep == 5) _validarEtapaFinal();
+    if (_currentStep == 1) _validarEtapaFoto();
+    if (_currentStep == 2) _validarEtapa1();
+    if (_currentStep == 3) _validarEtapa2();
+    if (_currentStep == 4) _validarEtapa3();
+    if (_currentStep == 5) {
+      // CPF/documento é opcional. Esta etapa nunca deve bloquear o avanço.
+      _etapaValida[5] = true;
+      _errosPorEtapa[5] = [];
+    }
+    if (_currentStep == 6) _validarEtapaFinal();
 
-    final isValido = _etapaValida[_currentStep] ?? false;
+    final isValido = _currentStep == 5 ? true : (_etapaValida[_currentStep] ?? false);
 
     if (!isValido) {
       _mostrarFeedbackErros();
@@ -1236,8 +1532,32 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   @override
   Widget build(BuildContext context) {
     if (_carregando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Center(
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.red.shade900),
+                const SizedBox(height: 14),
+                Text(
+                  'Verificando inscrições...',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
@@ -1248,36 +1568,90 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           return false;
         },
         child: Scaffold(
+          backgroundColor: Colors.grey.shade50,
           appBar: AppBar(
-            title: const Text('📝 Inscrição'),
+            title: const Text(
+              'Inscrição',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             backgroundColor: Colors.red.shade900,
             foregroundColor: Colors.white,
+            elevation: 0,
           ),
           body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.lock, size: 80, color: Colors.grey.shade400),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Inscrições Fechadas',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade700,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 480),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.grey.shade100),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.035),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _mensagem.isNotEmpty
-                        ? _mensagem
-                        : 'No momento não estamos aceitando novas inscrições.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                ],
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 78,
+                      height: 78,
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: 42,
+                        color: Colors.red.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Inscrições fechadas',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.grey.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _mensagem.isNotEmpty
+                          ? _mensagem
+                          : 'No momento não estamos aceitando novas inscrições.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        label: const Text('VOLTAR'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade900,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1288,49 +1662,187 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
         appBar: AppBar(
-          title: const Text('📝 Inscrição para Aula Experimental'),
+          title: const Text(
+            'Aula Experimental',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
           backgroundColor: Colors.red.shade900,
           foregroundColor: Colors.white,
+          elevation: 0,
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(4),
+            preferredSize: const Size.fromHeight(7),
             child: LinearProgressIndicator(
-              value: (_currentStep + 1) / 6,
-              backgroundColor: Colors.white.withOpacity(0.3),
+              minHeight: 7,
+              value: (_currentStep + 1) / 7,
+              backgroundColor: Colors.white.withOpacity(0.25),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
         ),
         body: _enviando
-            ? const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 20),
-              Text('Enviando sua inscrição...'),
-            ],
-          ),
-        )
-            : Column(
-          children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildStepWelcome(),
-                  _buildStepAluno(),
-                  _buildStepContato(),
-                  _buildStepEndereco(),
-                  _buildStepCpf(),
-                  _buildStepRevisao(),
-                ],
-              ),
+            ? _buildSendingState()
+            : Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(
+              children: [
+                _buildStepHeader(),
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      _buildStepWelcome(),
+                      _buildStepFoto(),
+                      _buildStepAluno(),
+                      _buildStepContato(),
+                      _buildStepEndereco(),
+                      _buildStepCpf(),
+                      _buildStepRevisao(),
+                    ],
+                  ),
+                ),
+                _buildNavigationButtons(),
+              ],
             ),
-            _buildNavigationButtons(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSendingState() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(24),
+        constraints: const BoxConstraints(maxWidth: 420),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.035),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
           ],
         ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.red.shade900),
+            const SizedBox(height: 18),
+            Text(
+              _uploadingAssinatura
+                  ? 'Enviando assinatura...'
+                  : _uploadingFoto
+                  ? 'Enviando foto...'
+                  : 'Enviando sua inscrição...',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade900,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Aguarde só um instante. Estamos enviando foto, assinatura e dados com segurança.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepHeader() {
+    final etapas = [
+      ('Boas-vindas', Icons.waving_hand_rounded),
+      ('Foto do aluno', Icons.camera_alt_rounded),
+      ('Dados do aluno', Icons.person_rounded),
+      ('Contato', Icons.phone_rounded),
+      ('Endereço', Icons.home_rounded),
+      ('Documento', Icons.badge_rounded),
+      ('Revisão', Icons.check_circle_rounded),
+    ];
+
+    final atual = etapas[_currentStep];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: Icon(atual.$2, color: Colors.white, size: 26),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  atual.$1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Etapa ${_currentStep + 1} de 7',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.78),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    value: (_currentStep + 1) / 7,
+                    backgroundColor: Colors.white.withOpacity(0.18),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1499,118 +2011,11 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
         ? _calcularIdade(_controllers['data_nascimento']!.text)
         : 0;
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
-    final temFoto = _temFoto();
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: GestureDetector(
-              onTap: _uploadingFoto ? null : _selecionarFoto,
-              onLongPress: temFoto ? _removerFoto : null,
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.grey.shade200,
-                      border: Border.all(
-                        color: temFoto ? Colors.green.shade700 : Colors.red.shade900,
-                        width: temFoto ? 3 : 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: _fotoUrl != null
-                          ? Image.network(
-                        _fotoUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
-                      )
-                          : _fotoBytes != null
-                          ? Image.memory(
-                        _fotoBytes!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
-                      )
-                          : _buildFotoPlaceholder(),
-                    ),
-                  ),
-                  if (_uploadingFoto)
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.black.withOpacity(0.5),
-                      ),
-                      child: const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade900,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: Icon(
-                        temFoto ? Icons.edit : Icons.camera_alt,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: Column(
-              children: [
-                Text(
-                  temFoto
-                      ? '✅ Foto adicionada! Toque para trocar • Segure para remover'
-                      : '⚠️ FOTO OBRIGATÓRIA • Toque para adicionar',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: temFoto ? Colors.green.shade700 : Colors.red.shade700,
-                    fontWeight: temFoto ? FontWeight.normal : FontWeight.bold,
-                  ),
-                ),
-                if (!temFoto)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Uma foto sua é necessária para identificação',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Divider(),
-          const SizedBox(height: 16),
           const Text(
             '📋 DADOS DO ALUNO',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -1659,8 +2064,10 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                   value: _sexo,
                   decoration: InputDecoration(
                     labelText: 'Sexo *',
+                    filled: true,
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     errorText: _sexo == null ? 'Campo obrigatório' : null,
                     errorBorder: OutlineInputBorder(
@@ -1726,6 +2133,275 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     );
   }
 
+  Widget _buildStepFoto() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red.shade900, Colors.red.shade700],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.red.shade900.withOpacity(0.12),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 42),
+                const SizedBox(height: 10),
+                const Text(
+                  'Foto do aluno',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Essa foto ajuda o professor a identificar o aluno na chamada. Tire uma foto de frente, bem iluminada e com o rosto visível.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.82),
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildFotoAlunoCard(tamanhoGrande: true),
+          const SizedBox(height: 14),
+          if (_processandoFotoLocal) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.orange.shade100),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.3,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _statusFotoLocal.isNotEmpty
+                          ? _statusFotoLocal
+                          : 'Processando foto do aluno...',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 12.5,
+                        height: 1.3,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.green.shade100),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.center_focus_strong_rounded, color: Colors.green.shade800),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Depois de tirar a foto, alinhe o rosto usando o retângulo e as linhas guia.',
+                    style: TextStyle(
+                      color: Colors.green.shade900,
+                      fontSize: 12.5,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFotoAlunoCard({bool tamanhoGrande = false}) {
+    final temFoto = _temFoto();
+    final double size = tamanhoGrande ? 176 : 120;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Center(
+          child: GestureDetector(
+            onTap: (_uploadingFoto || _processandoFotoLocal) ? null : _selecionarFoto,
+            onLongPress: temFoto ? _removerFoto : null,
+            child: Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    color: Colors.grey.shade200,
+                    border: Border.all(
+                      color: temFoto ? Colors.green.shade700 : Colors.red.shade900,
+                      width: temFoto ? 3 : 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(26),
+                    child: _fotoUrl != null
+                        ? Image.network(
+                      _fotoUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
+                    )
+                        : _fotoBytes != null
+                        ? Image.memory(
+                      _fotoBytes!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
+                    )
+                        : _buildFotoPlaceholder(),
+                  ),
+                ),
+                if (_uploadingFoto || _processandoFotoLocal)
+                  Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      color: Colors.black.withOpacity(0.62),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.6,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _statusFotoLocal.isNotEmpty
+                                ? _statusFotoLocal
+                                : 'Processando foto...',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              height: 1.2,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade900,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Icon(
+                      temFoto ? Icons.edit : Icons.camera_alt,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Column(
+            children: [
+              Text(
+                _processandoFotoLocal
+                    ? (_statusFotoLocal.isNotEmpty ? _statusFotoLocal : 'Processando foto...')
+                    : temFoto
+                    ? '✅ Foto pronta! Toque para tirar outra • Segure para remover'
+                    : '⚠️ FOTO OBRIGATÓRIA • Toque para abrir a câmera',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _processandoFotoLocal
+                      ? Colors.orange.shade800
+                      : temFoto
+                      ? Colors.green.shade700
+                      : Colors.red.shade700,
+                  fontWeight: _processandoFotoLocal || !temFoto
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
+              ),
+              if (!temFoto)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Tire uma foto de frente, com o rosto bem visível',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFotoPlaceholder() {
     return Container(
       color: Colors.grey.shade200,
@@ -1735,7 +2411,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
           Icon(Icons.camera_alt, size: 40, color: Colors.grey.shade400),
           const SizedBox(height: 4),
           Text(
-            'Adicionar\nfoto',
+            'Tirar\nfoto',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
           ),
@@ -1915,7 +2591,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
     isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
     final nomeAluno = _controllers['nome']!.text;
     final idadeAluno = _calcularIdade(_controllers['data_nascimento']!.text);
-    final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null;
+    final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null && _assinaturaBytes == null;
     final temFoto = _temFoto();
 
     return SingleChildScrollView(
@@ -2047,7 +2723,7 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      '⚠️ Foto obrigatória! Volte e adicione uma foto.',
+                      '⚠️ Foto obrigatória! Volte na etapa Foto do aluno.',
                       style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -2059,19 +2735,19 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _assinaturaUrl == null ? _abrirTelaAssinatura : null,
+                onPressed: _assinaturaUrl == null && _assinaturaBytes == null ? _abrirTelaAssinatura : null,
                 icon: Icon(
-                  _assinaturaUrl == null ? Icons.draw : Icons.check_circle,
+                  _assinaturaUrl == null && _assinaturaBytes == null ? Icons.draw : Icons.check_circle,
                   color: Colors.white,
                   size: 28,
                 ),
                 label: Text(
-                  _assinaturaUrl == null ? '✍️ ASSINAR TERMO' : '✅ TERMO ASSINADO',
+                  _assinaturaUrl == null && _assinaturaBytes == null ? '✍️ ASSINAR TERMO' : '✅ TERMO ASSINADO',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                  _assinaturaUrl == null ? Colors.blue.shade900 : Colors.green,
+                  _assinaturaUrl == null && _assinaturaBytes == null ? Colors.blue.shade900 : Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -2251,11 +2927,17 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
                               ),
                             ],
                           ),
-                          child: _assinaturaUrl != null
+                          child: (_assinaturaUrl != null || _assinaturaBytes != null)
                               ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
+                            child: _assinaturaUrl != null
+                                ? Image.network(
                               _assinaturaUrl!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => _buildAssinaturaPreviewFallback(),
+                            )
+                                : Image.memory(
+                              _assinaturaBytes!,
                               fit: BoxFit.contain,
                             ),
                           )
@@ -2332,50 +3014,103 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   }
 
   Widget _buildNavigationButtons() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          if (_currentStep > 0)
+    final isLast = _currentStep == 6;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.045),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (_currentStep > 0) ...[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _etapaAnterior,
+                  icon: const Icon(Icons.arrow_back_rounded, size: 19),
+                  label: const Text('VOLTAR'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey.shade800,
+                    side: BorderSide(color: Colors.grey.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _etapaAnterior,
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('VOLTAR'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey.shade700,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              flex: _currentStep == 0 ? 2 : 1,
+              child: ElevatedButton.icon(
+                onPressed: isLast ? _enviarInscricao : _proximaEtapa,
+                icon: Icon(
+                  isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
+                  size: 20,
+                ),
+                label: Text(isLast ? 'ENVIAR INSCRIÇÃO' : 'CONTINUAR'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade900,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
             ),
-          if (_currentStep > 0) const SizedBox(width: 12),
-          Expanded(
-            flex: _currentStep == 0 ? 2 : 1,
-            child: ElevatedButton.icon(
-              onPressed: _currentStep == 5 ? _enviarInscricao : _proximaEtapa,
-              icon: Icon(_currentStep == 5 ? Icons.send : Icons.arrow_forward),
-              label: Text(
-                _currentStep == 5 ? 'ENVIAR INSCRIÇÃO' : 'CONTINUAR',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade900,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _modernInputDecoration({
+    required String label,
+    String? hint,
+    IconData? icon,
+    String? errorText,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      errorText: errorText,
+      prefixIcon: icon == null ? null : Icon(icon, color: Colors.red.shade900),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.red.shade900, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.red, width: 1.4),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.red, width: 1.4),
       ),
     );
   }
@@ -2406,22 +3141,21 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       ];
     }
 
+    IconData icon = Icons.edit_rounded;
+    if (label.toLowerCase().contains('nome')) icon = Icons.person_rounded;
+    if (label.toLowerCase().contains('apelido')) icon = Icons.badge_rounded;
+    if (label.toLowerCase().contains('rua')) icon = Icons.location_on_rounded;
+    if (label.toLowerCase().contains('número')) icon = Icons.numbers_rounded;
+    if (label.toLowerCase().contains('bairro')) icon = Icons.map_rounded;
+    if (label.toLowerCase().contains('cidade')) icon = Icons.location_city_rounded;
+
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      decoration: _modernInputDecoration(
+        label: label,
+        icon: icon,
         errorText: validator?.call(controller.text),
-        counterText: '',
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-      ),
+      ).copyWith(counterText: ''),
       keyboardType: isNumberOnly ? TextInputType.number : TextInputType.text,
       inputFormatters: formatters,
       textCapitalization: TextCapitalization.characters,
@@ -2438,19 +3172,11 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
 
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: '(00) 00000-0000',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      decoration: _modernInputDecoration(
+        label: label,
+        hint: '(00) 00000-0000',
+        icon: Icons.phone_android_rounded,
         errorText: hasError ? 'Telefone incompleto' : null,
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
       ),
       keyboardType: TextInputType.phone,
       inputFormatters: [
@@ -2467,10 +3193,10 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   Widget _buildCpfField() {
     return TextFormField(
       controller: _controllers['cpf'],
-      decoration: InputDecoration(
-        labelText: 'CPF (opcional)',
-        hintText: '000.000.000-00',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      decoration: _modernInputDecoration(
+        label: 'CPF (opcional)',
+        hint: '000.000.000-00',
+        icon: Icons.badge_rounded,
       ),
       keyboardType: TextInputType.number,
       inputFormatters: [
@@ -2484,19 +3210,12 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
   Widget _buildDateField(TextEditingController controller, String label) {
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        suffixIcon: const Icon(Icons.calendar_today),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      decoration: _modernInputDecoration(
+        label: label,
+        icon: Icons.cake_rounded,
         errorText: controller.text.isEmpty ? 'Campo obrigatório' : null,
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
+      ).copyWith(
+        suffixIcon: Icon(Icons.calendar_month_rounded, color: Colors.red.shade900),
       ),
       readOnly: true,
       onTap: () => _selectDate(context, controller),
@@ -2521,6 +3240,559 @@ Assinatura do Responsável: ${_assinaturaUrl != null ? '[ASSINATURA DIGITAL]' : 
       _validarEtapa1();
     }
   }
+}
+
+
+
+
+Widget _buildAssinaturaPreviewFallback() {
+  return Center(
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.draw_rounded, color: Colors.green, size: 18),
+        SizedBox(width: 6),
+        Text(
+          'Assinatura registrada',
+          style: TextStyle(
+            color: Colors.green,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+
+class _ProcessandoFotoDialog extends StatelessWidget {
+  final String titulo;
+  final String subtitulo;
+  final IconData icon;
+
+  const _ProcessandoFotoDialog({
+    required this.titulo,
+    required this.subtitulo,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        constraints: const BoxConstraints(maxWidth: 360),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 62,
+                  height: 62,
+                  child: CircularProgressIndicator(
+                    color: Colors.red.shade900,
+                    strokeWidth: 3,
+                  ),
+                ),
+                Icon(icon, color: Colors.red.shade900, size: 26),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              titulo,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade900,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              subtitulo,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                height: 1.35,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditorFotoInscricaoDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+  final String nomeAluno;
+
+  const _EditorFotoInscricaoDialog({
+    required this.imageBytes,
+    required this.nomeAluno,
+  });
+
+  @override
+  State<_EditorFotoInscricaoDialog> createState() => _EditorFotoInscricaoDialogState();
+}
+
+class _EditorFotoInscricaoDialogState extends State<_EditorFotoInscricaoDialog> {
+  double _zoom = 1.35;
+  double _offsetX = 0;
+  double _offsetY = 0;
+  bool _salvando = false;
+
+  void _resetar() {
+    setState(() {
+      _zoom = 1.35;
+      _offsetX = 0;
+      _offsetY = 0;
+    });
+  }
+
+  Future<void> _salvarImagemEditada() async {
+    if (_salvando) return;
+
+    setState(() => _salvando = true);
+
+    try {
+      final decoded = img.decodeImage(widget.imageBytes);
+
+      if (decoded == null) {
+        throw Exception('Não foi possível abrir essa imagem.');
+      }
+
+      final original = img.bakeOrientation(decoded);
+      final menorLado = math.min(original.width, original.height).toDouble();
+      final cropSize = (menorLado / _zoom)
+          .round()
+          .clamp(120, menorLado.round())
+          .toInt();
+
+      final maxDx = math.max(0.0, (original.width - cropSize) / 2);
+      final maxDy = math.max(0.0, (original.height - cropSize) / 2);
+
+      final cropX = ((original.width - cropSize) / 2 - (_offsetX * maxDx))
+          .round()
+          .clamp(0, original.width - cropSize)
+          .toInt();
+      final cropY = ((original.height - cropSize) / 2 - (_offsetY * maxDy))
+          .round()
+          .clamp(0, original.height - cropSize)
+          .toInt();
+
+      final cropped = img.copyCrop(
+        original,
+        x: cropX,
+        y: cropY,
+        width: cropSize,
+        height: cropSize,
+      );
+
+      final resized = img.copyResize(
+        cropped,
+        width: 900,
+        height: 900,
+        interpolation: img.Interpolation.cubic,
+      );
+
+      final jpg = Uint8List.fromList(img.encodeJpg(resized, quality: 86));
+
+      if (!mounted) return;
+      Navigator.pop(context, jpg);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao ajustar foto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      setState(() => _salvando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nome = widget.nomeAluno.trim().isEmpty ? 'Aluno' : widget.nomeAluno.trim();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.94,
+            maxWidth: 520,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade900, Colors.red.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.center_focus_strong_rounded, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Ajustar foto do aluno',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          Text(
+                            nome,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _salvando ? null : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Alinhe o rosto usando o retângulo e as linhas guia. Essa foto será usada para identificar o aluno na chamada.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildCardReferencia(),
+                      const SizedBox(height: 16),
+                      _buildSlider(
+                        label: 'Zoom',
+                        value: _zoom,
+                        min: 1.0,
+                        max: 3.0,
+                        divisions: 40,
+                        icon: Icons.zoom_in_rounded,
+                        onChanged: (v) => setState(() => _zoom = v),
+                      ),
+                      _buildSlider(
+                        label: 'Horizontal',
+                        value: _offsetX,
+                        min: -1,
+                        max: 1,
+                        divisions: 40,
+                        icon: Icons.swap_horiz_rounded,
+                        onChanged: (v) => setState(() => _offsetX = v),
+                      ),
+                      _buildSlider(
+                        label: 'Vertical',
+                        value: _offsetY,
+                        min: -1,
+                        max: 1,
+                        divisions: 40,
+                        icon: Icons.swap_vert_rounded,
+                        onChanged: (v) => setState(() => _offsetY = v),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _salvando ? null : _resetar,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Resetar'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _salvando ? null : _salvarImagemEditada,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade900,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              icon: _salvando
+                                  ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : const Icon(Icons.check_rounded),
+                              label: Text(_salvando ? 'Salvando...' : 'Usar foto'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardReferencia() {
+    return Center(
+      child: Container(
+        width: 210,
+        height: 292,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.green.shade500, width: 2.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      color: Colors.grey.shade100,
+                      child: ClipRect(
+                        child: Transform.translate(
+                          offset: Offset(_offsetX * 58, _offsetY * 58),
+                          child: Transform.scale(
+                            scale: _zoom,
+                            child: Image.memory(
+                              widget.imageBytes,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.medium,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _GuiaRostoInscricaoPainter(),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.center,
+                            colors: [
+                              Colors.black.withOpacity(0.55),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: 10,
+                      child: Text(
+                        'Rosto alinhado nas guias',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(9, 9, 9, 10),
+                color: Colors.green.shade50,
+                child: Center(
+                  child: Container(
+                    width: 142,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade600,
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: Colors.white, size: 17),
+                        SizedBox(width: 6),
+                        Text(
+                          'Boa para chamada',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required IconData icon,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: Colors.red.shade900),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 74,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              activeColor: Colors.red.shade900,
+              onChanged: _salvando ? null : onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuiaRostoInscricaoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final squarePaint = Paint()
+      ..color = Colors.green.withOpacity(0.78)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+
+    final safeSquare = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.16,
+        size.height * 0.14,
+        size.width * 0.68,
+        size.height * 0.64,
+      ),
+      const Radius.circular(14),
+    );
+
+    canvas.drawRRect(safeSquare, squarePaint);
+
+    final guidePaint = Paint()
+      ..color = Colors.white.withOpacity(0.42)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    final centerY = size.height * 0.42;
+
+    canvas.drawLine(
+      Offset(size.width / 2, size.height * 0.10),
+      Offset(size.width / 2, size.height * 0.82),
+      guidePaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.10, centerY),
+      Offset(size.width * 0.90, centerY),
+      guidePaint,
+    );
+
+    final thinPaint = Paint()
+      ..color = Colors.white.withOpacity(0.22)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    canvas.drawLine(
+      Offset(size.width * 0.33, size.height * 0.14),
+      Offset(size.width * 0.33, size.height * 0.78),
+      thinPaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.67, size.height * 0.14),
+      Offset(size.width * 0.67, size.height * 0.78),
+      thinPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CpfInputFormatter extends TextInputFormatter {

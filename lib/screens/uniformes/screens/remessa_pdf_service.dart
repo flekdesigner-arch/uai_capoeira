@@ -25,9 +25,28 @@ class RemessaPdfService {
     }
   }
 
+  static Future<String?> _getFornecedorNome(String? fornecedorId) async {
+    if (fornecedorId == null) return null;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('fornecedores')
+          .doc(fornecedorId)
+          .get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        return data['nome']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // PDF RESUMIDO (CONFECÇÃO)
+  // ────────────────────────────────────────────────────────────
   static Future<void> gerarPdfResumido(
       String remessaId, Map<String, dynamic> remessaData) async {
     final logo = await _carregarLogo();
+    final fornecedorNome = await _getFornecedorNome(remessaData['fornecedor_id']);
 
     final pedidosSnapshot = await FirebaseFirestore.instance
         .collection('pedidos_uniformes')
@@ -42,11 +61,11 @@ class RemessaPdfService {
       final pedido = doc.data();
       for (var item in pedido['itens'] ?? []) {
         final chave =
-            '${item['nome'] ?? 'Item'}_${item['tamanho'] ?? 'Único'}_${item['cor'] ?? 'N/A'}';
+            '${item['nome'] ?? 'Item'}_${item['tamanho'] ?? 'Unico'}_${item['cor'] ?? 'N/A'}';
         itemsAgrupados.putIfAbsent(chave, () => {
           'nome': item['nome'] ?? 'Item',
-          'tamanho': item['tamanho'] ?? 'Único',
-          'cor': item['cor'] ?? '—',
+          'tamanho': item['tamanho'] ?? 'Unico',
+          'cor': item['cor']?.toString().isNotEmpty == true ? item['cor'].toString() : '---',
           'quantidade': 0,
         });
         final qtd = (item['quantidade'] ?? 0) as int;
@@ -66,45 +85,47 @@ class RemessaPdfService {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (ctx) {
-          return [
-            _cabecalho(logo, 'PEDIDO PARA CONFECÇÃO', remessaData),
-            pw.SizedBox(height: 6),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('Previsão de entrega: $dataPrevisao',
-                    style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
-                pw.Text('Total de peças: $totalPecas',
-                    style: pw.TextStyle(
-                        fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
-              ],
-            ),
-            pw.SizedBox(height: 12),
-            _tabelaEstilizada(
-              headers: ['Item', 'Tamanho', 'Cor', 'Qtd.'],
-              dados: lista
-                  .map((e) => [
-                e['nome'].toString(),
-                e['tamanho'].toString(),
-                e['cor'].toString(),
-                e['quantidade'].toString(),
-              ])
-                  .toList(),
-            ),
-            pw.SizedBox(height: 20),
-            _rodape(),
-          ];
-        },
+        build: (ctx) => [
+          _cabecalho(logo, 'PEDIDO PARA CONFECÇÃO', remessaData, fornecedor: fornecedorNome),
+          pw.SizedBox(height: 6),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Previsão de entrega: $dataPrevisao',
+                  style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
+              pw.Text('Total de peças: $totalPecas',
+                  style: pw.TextStyle(
+                      fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          _tabelaEstilizada(
+            headers: ['Item', 'Tamanho', 'Cor', 'Qtd.'],
+            dados: lista
+                .map((e) => [
+              e['nome'].toString(),
+              e['tamanho'].toString(),
+              e['cor'].toString(),
+              e['quantidade'].toString(),
+            ])
+                .toList(),
+          ),
+          pw.SizedBox(height: 20),
+          _rodape(),
+        ],
       ),
     );
 
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
+  // ────────────────────────────────────────────────────────────
+  // PDF COMPLETO (ASSOCIAÇÃO)
+  // ────────────────────────────────────────────────────────────
   static Future<void> gerarPdfCompleto(
       String remessaId, Map<String, dynamic> remessaData) async {
     final logo = await _carregarLogo();
+    final fornecedorNome = await _getFornecedorNome(remessaData['fornecedor_id']);
     final numberFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
     final pedidosSnapshot = await FirebaseFirestore.instance
@@ -120,83 +141,105 @@ class RemessaPdfService {
 
     for (var doc in pedidosSnapshot.docs) {
       final pedido = doc.data();
-      final valorTotal = (pedido['valor_total'] ?? 0).toDouble();
-      final valorPago = (pedido['valor_pago'] ?? 0).toDouble();
-      totalGeral += valorTotal;
-      totalPago += valorPago;
+      final bool tipoEstoque = pedido['tipo_estoque'] == true;
+      final String dono = tipoEstoque ? 'Estoque' : (pedido['aluno_nome'] ?? '---');
+      final String pedidoId = pedido['id_pedido'] ?? '';
+      final String status = _statusFormatado(pedido['status']);
+      final String statusPgto = _statusPgtoFormatado(pedido['status_pagamento']);
+      final double valorTotalPedido = (pedido['valor_total'] ?? 0).toDouble();
+      final double valorPagoPedido = (pedido['valor_pago'] ?? 0).toDouble();
+      totalGeral += valorTotalPedido;
+      totalPago += valorPagoPedido;
 
-      final itensDesc = (pedido['itens'] as List?)
-          ?.map((i) => '${i['quantidade']}x ${i['nome']}')
-          .join(', ') ??
-          '';
-      rows.add([
-        pedido['id_pedido'] ?? '',
-        pedido['aluno_nome'] ?? '',
-        itensDesc,
-        numberFormat.format(valorTotal),
-        _statusFormatado(pedido['status']),
-        _statusPgtoFormatado(pedido['status_pagamento']),
-      ]);
+      final itens = (pedido['itens'] as List?) ?? [];
+      for (var item in itens) {
+        final nome = item['nome'] ?? 'Item';
+        final tamanho = item['tamanho'] ?? 'Unico';
+        final cor = item['cor']?.toString().isNotEmpty == true ? item['cor'].toString() : '---';
+        final qtd = item['quantidade'] ?? 0;
+        final precoUnit = (item['preco_unitario'] ?? 0).toDouble();
+        final subtotal = qtd * precoUnit;
+
+        rows.add([
+          pedidoId,
+          dono,
+          nome,
+          tamanho.toString(),
+          cor,
+          qtd.toString(),
+          numberFormat.format(precoUnit),
+          numberFormat.format(subtotal),
+          status,
+          statusPgto,
+        ]);
+      }
     }
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (ctx) {
-          return [
-            _cabecalho(logo, 'RELATÓRIO COMPLETO', remessaData),
-            pw.SizedBox(height: 10),
-            pw.Container(
-              padding: pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
-                color: verdeClaro,
-                borderRadius: pw.BorderRadius.circular(6),
-              ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('Total de pedidos: $totalPedidos',
-                          style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
-                      pw.Text(
-                          'Valor total: ${numberFormat.format(totalGeral)}',
-                          style: pw.TextStyle(
-                              fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                          'Total pago: ${numberFormat.format(totalPago)}',
-                          style: pw.TextStyle(fontSize: 10, color: verdePagamento)),
-                      pw.Text(
-                          'Pendente: ${numberFormat.format(totalGeral - totalPago)}',
-                          style: pw.TextStyle(fontSize: 10, color: vermelhoPendente)),
-                    ],
-                  ),
-                ],
-              ),
+        build: (ctx) => [
+          _cabecalho(logo, 'RELATÓRIO COMPLETO', remessaData, fornecedor: fornecedorNome),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            padding: pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: verdeClaro,
+              borderRadius: pw.BorderRadius.circular(6),
             ),
-            pw.SizedBox(height: 16),
-            _tabelaEstilizada(
-              headers: ['Pedido', 'Aluno', 'Itens', 'Valor', 'Status', 'Pagamento'],
-              dados: rows,
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Total de pedidos: $totalPedidos',
+                        style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
+                    pw.Text('Valor total: ${numberFormat.format(totalGeral)}',
+                        style: pw.TextStyle(
+                            fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Total pago: ${numberFormat.format(totalPago)}',
+                        style: pw.TextStyle(fontSize: 10, color: verdePagamento)),
+                    pw.Text(
+                        'Pendente: ${numberFormat.format(totalGeral - totalPago)}',
+                        style: pw.TextStyle(fontSize: 10, color: vermelhoPendente)),
+                  ],
+                ),
+              ],
             ),
-            pw.SizedBox(height: 20),
-            _rodape(),
-          ];
-        },
+          ),
+          pw.SizedBox(height: 16),
+          _tabelaEstilizada(
+            headers: [
+              'Pedido', 'Aluno', 'Item', 'Tam.', 'Cor', 'Qtd.', 'V. Unit.',
+              'Subtotal', 'Status', 'Pgto.'
+            ],
+            dados: rows,
+            largurasEspeciais: true, // ativa layout otimizado
+          ),
+          pw.SizedBox(height: 20),
+          _rodape(),
+        ],
       ),
     );
 
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
+  // ═══════════════ CABEÇALHO ═══════════════
   static pw.Widget _cabecalho(
-      pw.MemoryImage? logo, String titulo, Map<String, dynamic> remessaData) {
+      pw.MemoryImage? logo,
+      String titulo,
+      Map<String, dynamic> remessaData, {
+        String? fornecedor,
+      }) {
+    final String? observacoes = remessaData['observacoes']?.toString();
+
     return pw.Container(
       padding: pw.EdgeInsets.only(bottom: 8),
       decoration: pw.BoxDecoration(
@@ -224,9 +267,27 @@ class RemessaPdfService {
                     )),
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'Remessa: ${remessaData['nome'] ?? '—'}',
+                  'Remessa: ${remessaData['nome'] ?? '---'}',
                   style: pw.TextStyle(fontSize: 11, color: textoEscuro),
                 ),
+                if (fornecedor != null) ...[
+                  pw.SizedBox(height: 1),
+                  pw.Text(
+                    'Fornecedor: $fornecedor',
+                    style: pw.TextStyle(fontSize: 10, color: textoEscuro),
+                  ),
+                ],
+                if (observacoes != null && observacoes.isNotEmpty) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Obs: $observacoes',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      color: textoEscuro,
+                      fontStyle: pw.FontStyle.italic,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -235,17 +296,22 @@ class RemessaPdfService {
     );
   }
 
+  // ═══════════════ TABELA OTIMIZADA ═══════════════
   static pw.Widget _tabelaEstilizada({
     required List<String> headers,
     required List<List<String>> dados,
+    bool largurasEspeciais = false,
   }) {
+    if (largurasEspeciais) {
+      return _tabelaLarga(headers, dados);
+    }
     return pw.Table.fromTextArray(
       headerStyle: pw.TextStyle(
         fontWeight: pw.FontWeight.bold,
         color: PdfColors.white,
-        fontSize: 10,
+        fontSize: 9,
       ),
-      cellStyle: pw.TextStyle(fontSize: 9, color: textoEscuro),
+      cellStyle: pw.TextStyle(fontSize: 8, color: textoEscuro),
       headerDecoration: pw.BoxDecoration(color: verdeEscuro),
       cellDecoration: (row, col, idx) {
         final color = (idx % 2 == 0) ? cinzaClaro : PdfColors.white;
@@ -255,12 +321,45 @@ class RemessaPdfService {
       headerAlignment: pw.Alignment.centerLeft,
       headers: headers,
       data: dados,
-      cellPadding: pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      cellPadding: pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+    );
+  }
+
+  static pw.Widget _tabelaLarga(List<String> headers, List<List<String>> dados) {
+    return pw.Table.fromTextArray(
+      headerStyle: pw.TextStyle(
+        fontWeight: pw.FontWeight.bold,
+        color: PdfColors.white,
+        fontSize: 8,
+      ),
+      cellStyle: pw.TextStyle(fontSize: 7, color: textoEscuro),
+      headerDecoration: pw.BoxDecoration(color: verdeEscuro),
+      cellDecoration: (row, col, idx) {
+        final color = (idx % 2 == 0) ? cinzaClaro : PdfColors.white;
+        return pw.BoxDecoration(color: color);
+      },
+      cellAlignment: pw.Alignment.centerLeft,
+      headerAlignment: pw.Alignment.centerLeft,
+      headers: headers,
+      data: dados,
+      columnWidths: {
+        0: pw.FixedColumnWidth(55),  // Pedido (quebra se necessário)
+        1: pw.FlexColumnWidth(2),    // Aluno (ajusta ao maior nome)
+        2: pw.FlexColumnWidth(3),    // Item (quebra para baixo)
+        3: pw.FixedColumnWidth(30),  // Tam.
+        4: pw.FixedColumnWidth(40),  // Cor
+        5: pw.FixedColumnWidth(25),  // Qtd.
+        6: pw.FixedColumnWidth(50),  // V. Unit.
+        7: pw.FixedColumnWidth(55),  // Subtotal
+        8: pw.FixedColumnWidth(45),  // Status
+        9: pw.FixedColumnWidth(45),  // Pgto.
+      },
+      cellPadding: pw.EdgeInsets.symmetric(horizontal: 2, vertical: 3),
     );
   }
 
   static pw.Widget _rodape() {
-    final agora = DateFormat("dd/MM/yyyy 'às' HH:mm").format(DateTime.now());
+    final agora = DateFormat("dd/MM/yyyy 'as' HH:mm").format(DateTime.now());
     return pw.Container(
       padding: pw.EdgeInsets.only(top: 8),
       decoration: pw.BoxDecoration(
@@ -272,7 +371,7 @@ class RemessaPdfService {
         mainAxisAlignment: pw.MainAxisAlignment.end,
         children: [
           pw.Text(
-            'Gerado em $agora — Sistema UAI Capoeira',
+            'Gerado em $agora - Sistema UAI Capoeira',
             style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
           ),
         ],
@@ -285,7 +384,7 @@ class RemessaPdfService {
       case 'pendente': return 'Pendente';
       case 'em_confeccao': return 'Em confecção';
       case 'finalizado': return 'Finalizado';
-      default: return status?.toString() ?? '—';
+      default: return status?.toString() ?? '---';
     }
   }
 
@@ -294,7 +393,7 @@ class RemessaPdfService {
       case 'pago': return 'Pago';
       case 'pendente': return 'Pendente';
       case 'parcial': return 'Parcial';
-      default: return status?.toString() ?? '—';
+      default: return status?.toString() ?? '---';
     }
   }
 }

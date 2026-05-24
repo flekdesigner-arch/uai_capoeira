@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // 👈 ADICIONAR
@@ -697,29 +699,154 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
       builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Escolher da Galeria'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _pickImage(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Tirar Foto com a Câmera'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _pickImage(ImageSource.camera);
-              },
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library, color: Colors.red.shade900),
+                title: const Text('Escolher da Galeria'),
+                subtitle: const Text('Selecionar uma nova foto do aluno'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.camera_alt, color: Colors.red.shade900),
+                title: const Text('Tirar Foto com a Câmera'),
+                subtitle: const Text('Abrir a câmera do celular'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.crop_rounded, color: Colors.green.shade700),
+                title: const Text('Editar foto do aluno'),
+                subtitle: const Text('Centralizar o rosto para aparecer certo nos cards'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _editarFotoAluno();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<File> _criarArquivoTemporarioSeguro(String prefixo) async {
+    final baseDir = Directory.systemTemp;
+    final dir = Directory('${baseDir.path}/uai_capoeira_fotos_editor');
+
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final file = File(
+      '${dir.path}/${prefixo}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+
+    if (!await file.parent.exists()) {
+      await file.parent.create(recursive: true);
+    }
+
+    return file;
+  }
+
+  Future<File?> _obterArquivoImagemParaEditar() async {
+    try {
+      if (_pickedImage != null) {
+        final file = File(_pickedImage!.path);
+        if (await file.exists()) return file;
+      }
+
+      final url = _networkImageUrl?.trim() ?? '';
+      if (url.isEmpty || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        return null;
+      }
+
+      final request = await HttpClient().getUrl(Uri.parse(url));
+      final response = await request.close();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+
+      final bytesBuilder = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        bytesBuilder.add(chunk);
+      }
+
+      final tempFile = await _criarArquivoTemporarioSeguro('foto_aluno_editar');
+      await tempFile.writeAsBytes(bytesBuilder.takeBytes(), flush: true);
+      return tempFile;
+    } catch (e) {
+      debugPrint('Erro ao preparar foto para edição: $e');
+      return null;
+    }
+  }
+
+  Future<void> _editarFotoAluno() async {
+    final imagemOrigem = await _obterArquivoImagemParaEditar();
+
+    if (imagemOrigem == null) {
+      if (!_isMounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione ou tire uma foto primeiro para editar.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (!_isMounted) return;
+
+    final arquivoEditado = await showDialog<File?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _EditorFotoAlunoDialog(
+        imageFile: imagemOrigem,
+        nomeAluno: _controllers['nome']?.text.trim() ?? 'Aluno',
+      ),
+    );
+
+    if (arquivoEditado != null && _isMounted) {
+      if (!await arquivoEditado.exists()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro: a foto editada não foi encontrada. Tente novamente.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      _safeSetState(() => _pickedImage = XFile(arquivoEditado.path));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Foto ajustada! Toque em Salvar para enviar.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -748,9 +875,13 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
       final compressedBytes = img.encodeJpg(originalImage, quality: 70);
 
-      final tempDir = Directory.systemTemp;
+      final tempDir = Directory('${Directory.systemTemp.path}/uai_capoeira_fotos_editor');
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
+      }
+
       final tempFile = File('${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await tempFile.writeAsBytes(compressedBytes);
+      await tempFile.writeAsBytes(compressedBytes, flush: true);
 
       debugPrint('✅ Imagem comprimida: ${imageFile.lengthSync()} → ${tempFile.lengthSync()} bytes');
 
@@ -1193,18 +1324,46 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
               // Foto do aluno
               GestureDetector(
                 onTap: _showImageSourceActionSheet,
-                child: CircleAvatar(
-                  radius: 60,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: _pickedImage != null
-                      ? FileImage(File(_pickedImage!.path))
-                      : (_networkImageUrl != null && _networkImageUrl!.isNotEmpty
-                      ? CachedNetworkImageProvider(_networkImageUrl!)
-                      : null)
-                  as ImageProvider?,
-                  child: _pickedImage == null && (_networkImageUrl == null || _networkImageUrl!.isEmpty)
-                      ? const Icon(Icons.camera_alt, size: 50)
-                      : null,
+                child: Column(
+                  children: [
+                    Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.grey[300],
+                          backgroundImage: _pickedImage != null
+                              ? FileImage(File(_pickedImage!.path))
+                              : (_networkImageUrl != null && _networkImageUrl!.isNotEmpty
+                              ? CachedNetworkImageProvider(_networkImageUrl!)
+                              : null)
+                          as ImageProvider?,
+                          child: _pickedImage == null && (_networkImageUrl == null || _networkImageUrl!.isEmpty)
+                              ? const Icon(Icons.camera_alt, size: 50)
+                              : null,
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade900,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                          ),
+                          child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Toque na foto para galeria, câmera ou editor de enquadramento',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -1500,4 +1659,439 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
             ? 'Campo obrigatório'
             : null);
   }
+}
+
+class _EditorFotoAlunoDialog extends StatefulWidget {
+  final File imageFile;
+  final String nomeAluno;
+
+  const _EditorFotoAlunoDialog({
+    required this.imageFile,
+    required this.nomeAluno,
+  });
+
+  @override
+  State<_EditorFotoAlunoDialog> createState() => _EditorFotoAlunoDialogState();
+}
+
+class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
+  double _zoom = 1.35;
+  double _offsetX = 0;
+  double _offsetY = 0;
+  bool _salvando = false;
+
+  void _resetar() {
+    setState(() {
+      _zoom = 1.35;
+      _offsetX = 0;
+      _offsetY = 0;
+    });
+  }
+
+  Future<void> _salvarImagemEditada() async {
+    if (_salvando) return;
+
+    setState(() => _salvando = true);
+
+    try {
+      final bytes = await widget.imageFile.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+
+      if (decoded == null) {
+        throw Exception('Não foi possível abrir essa imagem.');
+      }
+
+      final original = img.bakeOrientation(decoded);
+      final menorLado = math.min(original.width, original.height).toDouble();
+      final cropSize = (menorLado / _zoom)
+          .round()
+          .clamp(120, menorLado.round())
+          .toInt();
+
+      final maxDx = math.max(0.0, (original.width - cropSize) / 2);
+      final maxDy = math.max(0.0, (original.height - cropSize) / 2);
+
+      // IMPORTANTE:
+      // No preview, o slider move a IMAGEM dentro do quadro.
+      // No recorte real, precisamos mover a JANELA DE CORTE no sentido contrário.
+      // Sem esse sinal invertido, ao puxar a foto para baixo no editor,
+      // o arquivo final cortava mais para baixo ainda e focava barriga/pernas.
+      final cropX = ((original.width - cropSize) / 2 - (_offsetX * maxDx))
+          .round()
+          .clamp(0, original.width - cropSize)
+          .toInt();
+      final cropY = ((original.height - cropSize) / 2 - (_offsetY * maxDy))
+          .round()
+          .clamp(0, original.height - cropSize)
+          .toInt();
+
+      final cropped = img.copyCrop(
+        original,
+        x: cropX,
+        y: cropY,
+        width: cropSize,
+        height: cropSize,
+      );
+
+      final resized = img.copyResize(
+        cropped,
+        width: 900,
+        height: 900,
+        interpolation: img.Interpolation.cubic,
+      );
+
+      final jpg = img.encodeJpg(resized, quality: 86);
+
+      final baseDir = Directory.systemTemp;
+      final dir = Directory('${baseDir.path}/uai_capoeira_fotos_editor');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      final output = File(
+        '${dir.path}/foto_aluno_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+
+      if (!await output.parent.exists()) {
+        await output.parent.create(recursive: true);
+      }
+
+      await output.writeAsBytes(jpg, flush: true);
+
+      if (!await output.exists()) {
+        throw Exception('Arquivo editado não foi criado.');
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context, output);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao editar foto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() => _salvando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nome = widget.nomeAluno.trim().isEmpty ? 'Aluno' : widget.nomeAluno.trim();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.92,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade900, Colors.red.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.crop_rounded, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Editar foto do aluno',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                            ),
+                          ),
+                          Text(
+                            nome,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _salvando ? null : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Use o card como referência: deixe o rosto bem no centro para aparecer certo nos cards do app.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.3),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildCardReferencia(),
+                      const SizedBox(height: 16),
+                      _buildSlider(
+                        label: 'Zoom',
+                        value: _zoom,
+                        min: 1.0,
+                        max: 3.0,
+                        divisions: 40,
+                        icon: Icons.zoom_in_rounded,
+                        onChanged: (v) => setState(() => _zoom = v),
+                      ),
+                      _buildSlider(
+                        label: 'Horizontal',
+                        value: _offsetX,
+                        min: -1,
+                        max: 1,
+                        divisions: 40,
+                        icon: Icons.swap_horiz_rounded,
+                        onChanged: (v) => setState(() => _offsetX = v),
+                      ),
+                      _buildSlider(
+                        label: 'Vertical',
+                        value: _offsetY,
+                        min: -1,
+                        max: 1,
+                        divisions: 40,
+                        icon: Icons.swap_vert_rounded,
+                        onChanged: (v) => setState(() => _offsetY = v),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _salvando ? null : _resetar,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Resetar'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _salvando ? null : _salvarImagemEditada,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade900,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                              icon: _salvando
+                                  ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : const Icon(Icons.check_rounded),
+                              label: Text(_salvando ? 'Salvando...' : 'Aplicar'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardReferencia() {
+    return Center(
+      child: Container(
+        width: 210,
+        height: 292,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.green.shade500, width: 2.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      color: Colors.grey.shade100,
+                      child: ClipRect(
+                        child: Transform.translate(
+                          offset: Offset(_offsetX * 58, _offsetY * 58),
+                          child: Transform.scale(
+                            scale: _zoom,
+                            child: Image.file(
+                              widget.imageFile,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.medium,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _GuiaRostoPainter(),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.center,
+                            colors: [Colors.black.withOpacity(0.55), Colors.transparent],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: 10,
+                      child: Text(
+                        'Prévia no card',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(9, 9, 9, 10),
+                color: Colors.green.shade50,
+                child: Center(
+                  child: Container(
+                    width: 128,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade600,
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: Colors.white, size: 17),
+                        SizedBox(width: 6),
+                        Text(
+                          'Presente',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required IconData icon,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: Colors.red.shade900),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 74,
+            child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              activeColor: Colors.red.shade900,
+              onChanged: _salvando ? null : onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuiaRostoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.82)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    final center = Offset(size.width / 2, size.height * 0.42);
+    final oval = Rect.fromCenter(
+      center: center,
+      width: size.width * 0.46,
+      height: size.height * 0.36,
+    );
+
+    canvas.drawOval(oval, paint);
+    canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height), paint..color = Colors.white.withOpacity(0.35));
+    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), paint..color = Colors.white.withOpacity(0.35));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

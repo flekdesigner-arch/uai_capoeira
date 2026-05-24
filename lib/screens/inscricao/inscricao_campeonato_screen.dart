@@ -115,6 +115,8 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
   // Arquivos
   String? _assinaturaUrl;
+  Uint8List? _assinaturaBytes;
+  bool _uploadingAssinatura = false;
   String? _fotoUrl;
   String? _comprovanteUrl;
   Uint8List? _fotoBytes;
@@ -482,6 +484,8 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
       _fotoUrl = null;
       _fotoBytes = null;
       _assinaturaUrl = null;
+      _assinaturaBytes = null;
+      _uploadingAssinatura = false;
       _comprovanteUrl = null;
       _comprovanteBytes = null;
       _alunoEncontrado = false;
@@ -737,7 +741,9 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
     if (_isMounted) {
       setState(() {
         _etapaValida[3] = _autorizacao &&
-            (_recolherAssinatura ? _assinaturaUrl != null : true) &&
+            (_recolherAssinatura
+                ? ((_assinaturaUrl != null || _assinaturaBytes != null) || _assinaturaBytes != null)
+                : true) &&
             categoriaValida &&
             comprovanteValido;
       });
@@ -1094,17 +1100,77 @@ Assinatura do Responsável
           inscricaoId: 'temp_${DateTime.now().millisecondsSinceEpoch}',
           nomeResponsavel: nomeResponsavel,
           nomeAluno: _controllers['nome']!.text,
-          onConfirm: (imageUrl) {
+          onConfirm: (imageBytes) {
             if (_isMounted) {
               setState(() {
-                _assinaturaUrl = imageUrl;
-                _validarEtapaFinal();
+                _assinaturaBytes = imageBytes;
+                _assinaturaUrl = null;
               });
+
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _validarEtapaFinal();
+                  setState(() {});
+                }
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Assinatura registrada com sucesso!'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
             }
           },
         ),
       ),
     );
+  }
+
+  Future<String?> _uploadAssinaturaFirebase() async {
+    if (_assinaturaUrl != null && _assinaturaUrl!.isNotEmpty) {
+      return _assinaturaUrl;
+    }
+
+    if (_assinaturaBytes == null) return null;
+
+    if (_isMounted) {
+      setState(() => _uploadingAssinatura = true);
+    }
+
+    try {
+      final isMaior = _isMaiorIdade();
+      final nomeResponsavel = isMaior
+          ? _controllers['nome']!.text.trim()
+          : _controllers['nome_responsavel']!.text.trim();
+
+      final nomeSeguro = nomeResponsavel
+          .replaceAll(RegExp(r'\s+'), '_')
+          .replaceAll(RegExp(r'[^A-Za-zÀ-ÖØ-öø-ÿ0-9_\-]'), '');
+
+      final assinaturaUrl = await _service.uploadArquivo(
+        _assinaturaBytes!,
+        'assinaturas_campeonato',
+        '${DateTime.now().millisecondsSinceEpoch}_${nomeSeguro.isEmpty ? 'responsavel' : nomeSeguro}.png',
+      );
+
+      if (_isMounted) {
+        setState(() {
+          _assinaturaUrl = assinaturaUrl;
+          _uploadingAssinatura = false;
+        });
+      }
+
+      return assinaturaUrl;
+    } catch (e) {
+      if (_isMounted) {
+        setState(() => _uploadingAssinatura = false);
+      }
+
+      debugPrint('❌ Erro ao enviar assinatura: $e');
+      rethrow;
+    }
   }
 
   // ==================== ENVIO DA INSCRIÇÃO ====================
@@ -1148,6 +1214,15 @@ Assinatura do Responsável
         );
       }
 
+      String? assinaturaUrl = _assinaturaUrl;
+      if (_recolherAssinatura) {
+        assinaturaUrl = await _uploadAssinaturaFirebase();
+
+        if (assinaturaUrl == null || assinaturaUrl.isEmpty) {
+          throw Exception('Assinatura é obrigatória');
+        }
+      }
+
       final isMaior = _isMaiorIdade();
 
       final inscricao = InscricaoModel(
@@ -1176,7 +1251,7 @@ Assinatura do Responsável
         status: 'pendente',
         isMaiorIdade: isMaior,
         assinaturaRecolhida: _recolherAssinatura,
-        assinaturaUrl: _assinaturaUrl,
+        assinaturaUrl: assinaturaUrl,
         nomeCampeonato: _nomeCampeonato,
         dataEvento: _dataEvento,
         taxaPaga: _alunoEncontrado, // 🔥 Se encontrou aluno, já está pago!
@@ -1630,7 +1705,9 @@ Assinatura do Responsável
           const CircularProgressIndicator(),
           const SizedBox(height: 20),
           Text(
-            'Enviando sua inscrição...',
+            _uploadingAssinatura
+                ? 'Enviando assinatura...'
+                : 'Enviando sua inscrição...',
             style: TextStyle(color: Colors.grey.shade700),
           ),
         ],
@@ -2444,7 +2521,7 @@ Assinatura do Responsável
     final isMobile = constraints.maxWidth < 600;
     final padding = isMobile ? 16.0 : 24.0;
     final isMaior = _isMaiorIdade();
-    final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null;
+    final precisaAssinar = _recolherAssinatura && (_assinaturaUrl == null && _assinaturaBytes == null);
 
     // 🔥 FILTRA CATEGORIAS COMPATÍVEIS COM IDADE E SEXO
     final categoriasFiltradas = _categorias.where((cat) => cat.isCompativel(_idade, _sexo)).toList();
@@ -2805,18 +2882,18 @@ Assinatura do Responsável
                   Container(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _assinaturaUrl == null ? _abrirTelaAssinatura : null,
+                      onPressed: (_assinaturaUrl == null && _assinaturaBytes == null) ? _abrirTelaAssinatura : null,
                       icon: Icon(
-                        _assinaturaUrl == null ? Icons.draw : Icons.check_circle,
+                        (_assinaturaUrl == null && _assinaturaBytes == null) ? Icons.draw : Icons.check_circle,
                         color: Colors.white,
                         size: 28,
                       ),
                       label: Text(
-                        _assinaturaUrl == null ? AppStrings.botaoAssinar : AppStrings.botaoAssinado,
+                        (_assinaturaUrl == null && _assinaturaBytes == null) ? AppStrings.botaoAssinar : AppStrings.botaoAssinado,
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _assinaturaUrl == null ? AppColors.primary : AppColors.success,
+                        backgroundColor: (_assinaturaUrl == null && _assinaturaBytes == null) ? AppColors.primary : AppColors.success,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

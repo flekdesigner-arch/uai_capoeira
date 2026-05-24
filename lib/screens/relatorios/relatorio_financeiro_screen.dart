@@ -12,6 +12,9 @@ import 'dart:io';
 // 👈 ALIAS PARA EVITAR CONFLITO DE NOMES
 import 'package:flutter/material.dart' as material;
 
+// 🔥 SERVIÇO DE PDFs DO EVENTO (Confecção, Relatório Geral, Lista de Participantes)
+import 'evento_financeiro_pdf_service.dart';
+
 class RelatorioFinanceiroScreen extends StatefulWidget {
   final String eventoId;
   final String eventoNome;
@@ -29,6 +32,8 @@ class RelatorioFinanceiroScreen extends StatefulWidget {
 class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   final DateFormat _formatter = DateFormat('dd/MM/yyyy');
   bool _isLoading = false;
+  String _loadingEtapa = 'Preparando relatório...';
+  final List<String> _loadingLogs = [];
 
   // Dados consolidados
   double _totalReceitas = 0;
@@ -87,6 +92,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   // USOS DE PATROCÍNIO (alunos beneficiados)
   List<Map<String, dynamic>> _usosPatrocinio = [];
 
+  // 🔥 CONSISTÊNCIA / LIMPEZA AUTOMÁTICA
+  int _participacoesDuplicadasIgnoradas = 0;
+  int _participacoesRemovidasIgnoradas = 0;
+  int _usosPatrocinioOrfaosIgnorados = 0;
+  int _usosPatrocinioDuplicadosIgnorados = 0;
+  Set<String> _chavesParticipantesValidos = {};
+  Set<String> _nomesParticipantesValidos = {};
+  Set<String> _chavesParticipantesPatrocinados = {};
+
   @override
   void initState() {
     super.initState();
@@ -94,45 +108,371 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Future<void> _carregarDados() async {
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadingEtapa = 'Preparando relatório...';
+        _loadingLogs.clear();
+      });
+    }
 
     try {
+      _logCarregamento('🧹 Limpando contadores antigos...');
       _resetarVariaveis();
 
-      // 🔥 CARREGAR EM SEQUÊNCIA, NÃO EM PARALELO!
-      await _carregarPatrocinios();
-      await _carregarParticipacoes();     // 1º Carrega participações
-      await _carregarCamisasAvulsas();    // 2º Depois carrega avulsas (já tem _camisasParticipacoes)
+      _logCarregamento('📌 Buscando participações do evento...');
+      final participacoesValidas = await _buscarParticipacoesValidas();
+      _logCarregamento('✅ Participações válidas: ${participacoesValidas.length}');
+
+      _logCarregamento('🤝 Carregando patrocínios e cruzando com alunos válidos...');
+      await _carregarPatrocinios(participacoesValidas);
+      _logCarregamento('✅ Patrocínios válidos: ${_usosPatrocinio.length} usos');
+
+      _logCarregamento('📊 Processando pagamentos, quitados e inadimplentes...');
+      await _carregarParticipacoes(participacoesValidas);
+      _logCarregamento('✅ Participantes: $_totalParticipantes | Quitados: $_quitados | Patrocinados: $_cobertosPorPatrocinio');
+
+      _logCarregamento('👕 Carregando camisas avulsas...');
+      await _carregarCamisasAvulsas();
+      _logCarregamento('✅ Camisas totais: ${_detalhesCamisas['total_camisas'] ?? 0}');
+
+      _logCarregamento('💰 Carregando gastos do evento...');
       await _carregarGastos();
 
-      setState(() {
-        _saldoLiquido = _totalReceitas - _totalGastos;
-      });
+      if (mounted) {
+        setState(() {
+          _saldoLiquido = _totalReceitas - _totalGastos;
+        });
+      }
 
+      _logCarregamento('🏁 Relatório pronto. Saldo: ${_formatarMoeda(_saldoLiquido)}');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar dados: $e');
+      _logCarregamento('❌ Erro ao carregar dados: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao atualizar relatório: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  void _logCarregamento(String mensagem) {
+    debugPrint(mensagem);
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingEtapa = _limparLogVisual(mensagem);
+      _loadingLogs.add(mensagem);
+
+      if (_loadingLogs.length > 80) {
+        _loadingLogs.removeAt(0);
+      }
+    });
+  }
+
+  String _limparLogVisual(String mensagem) {
+    return mensagem
+        .replaceAll(RegExp(r'^[^A-Za-zÀ-ÖØ-öø-ÿ0-9]+'), '')
+        .trim();
+  }
+
   // 🔥 NOVO MÉTODO PARA RESETAR VARIÁVEIS
   void _resetarVariaveis() {
     _totalReceitas = 0;
     _totalGastos = 0;
+    _saldoLiquido = 0;
     _totalParticipantes = 0;
+
     _quitados = 0;
     _inadimplentes = 0;
     _cobertosPorPatrocinio = 0;
+
     _totalInscricoes = 0;
     _totalCamisas = 0;
     _totalPatrocinios = 0;
+
     _receitasPorForma = {};
     _gastosPorCategoria = {};
+
+    _detalhesCamisas = {
+      'total_camisas': 0,
+      'camisas_pagas': 0,
+      'valor_total_camisas': 0.0,
+      'por_tamanho': <String, int>{},
+    };
+
+    _camisasParticipacoes = {
+      'total': 0,
+      'pagas': 0,
+      'valor': 0.0,
+      'por_tamanho': <String, int>{},
+    };
+
+    _camisasAvulsas = {
+      'total': 0,
+      'pagas': 0,
+      'valor': 0.0,
+      'por_tamanho': <String, int>{},
+    };
+
+    _detalhesPatrocinios = {
+      'total_patrocinadores': 0,
+      'patrocinios_pagos': 0,
+      'valor_total_patrocinios': 0.0,
+      'patrocinios_pendentes': 0,
+    };
+
     _usosPatrocinio = [];
+    _participacoesDuplicadasIgnoradas = 0;
+    _participacoesRemovidasIgnoradas = 0;
+    _usosPatrocinioOrfaosIgnorados = 0;
+    _usosPatrocinioDuplicadosIgnorados = 0;
+    _chavesParticipantesValidos = {};
+    _nomesParticipantesValidos = {};
+    _chavesParticipantesPatrocinados = {};
+  }
+
+
+  // ==================== LIMPEZA / DEDUPLICAÇÃO ====================
+  String _normalizarTexto(dynamic value) {
+    final text = value?.toString().trim().toUpperCase() ?? '';
+
+    return text
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll('Á', 'A')
+        .replaceAll('À', 'A')
+        .replaceAll('Â', 'A')
+        .replaceAll('Ã', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Ê', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ô', 'O')
+        .replaceAll('Õ', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('Ç', 'C');
+  }
+
+  String _chaveParticipante(Map<String, dynamic> data) {
+    final idCampos = [
+      data['aluno_id'],
+      data['alunoId'],
+      data['aluno_uid'],
+      data['aluno_doc_id'],
+      data['aluno_ref_id'],
+      data['uid_aluno'],
+    ];
+
+    for (final id in idCampos) {
+      final value = id?.toString().trim() ?? '';
+
+      if (value.isNotEmpty && value != '0' && value.toLowerCase() != 'null') {
+        return 'id:$value';
+      }
+    }
+
+    return 'nome:${_normalizarTexto(data['aluno_nome'] ?? data['nome'])}';
+  }
+
+  bool _participacaoFoiRemovida(Map<String, dynamic> data) {
+    final status = _normalizarTexto(
+      data['status'] ??
+          data['status_participacao'] ??
+          data['situacao'] ??
+          data['status_evento'],
+    );
+
+    final removida = data['removido'] == true ||
+        data['removido_evento'] == true ||
+        data['excluido'] == true ||
+        data['cancelado'] == true ||
+        data['ativo'] == false;
+
+    return removida ||
+        status == 'REMOVIDO' ||
+        status == 'REMOVIDA' ||
+        status == 'CANCELADO' ||
+        status == 'CANCELADA' ||
+        status == 'EXCLUIDO' ||
+        status == 'EXCLUIDA' ||
+        status == 'INATIVO' ||
+        status == 'INATIVA';
+  }
+
+  int _timestampScore(dynamic value) {
+    if (value is Timestamp) return value.toDate().millisecondsSinceEpoch;
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    return 0;
+  }
+
+  int _pontuacaoParticipacao(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
+    final data = doc.data();
+
+    int score = 0;
+
+    final totalPago = (data['total_pago'] as num?)?.toDouble() ?? 0;
+    final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
+    final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
+
+    if (totalPago > 0) score += 1000000;
+    if (valorInscricao > 0 || valorCamisa > 0) score += 100000;
+    if ((data['tamanho_camisa']?.toString().trim() ?? '').isNotEmpty) {
+      score += 10000;
+    }
+
+    score += _timestampScore(data['atualizado_em']) ~/ 100000;
+    score += _timestampScore(data['data_atualizacao']) ~/ 100000;
+    score += _timestampScore(data['criado_em']) ~/ 100000;
+    score += _timestampScore(data['data_inscricao']) ~/ 100000;
+
+    return score;
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _buscarParticipacoesValidas() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('participacoes_eventos_em_andamento')
+        .where('evento_id', isEqualTo: widget.eventoId)
+        .get();
+
+    final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> unicas = {};
+    int removidas = 0;
+    int duplicadas = 0;
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+
+      if (_participacaoFoiRemovida(data)) {
+        removidas++;
+        continue;
+      }
+
+      final chave = _chaveParticipante(data);
+
+      if (chave == 'nome:') {
+        continue;
+      }
+
+      if (!unicas.containsKey(chave)) {
+        unicas[chave] = doc;
+      } else {
+        duplicadas++;
+
+        final atual = unicas[chave]!;
+        final scoreAtual = _pontuacaoParticipacao(atual);
+        final scoreNovo = _pontuacaoParticipacao(doc);
+
+        if (scoreNovo > scoreAtual) {
+          unicas[chave] = doc;
+        }
+      }
+    }
+
+    final lista = unicas.values.toList()
+      ..sort((a, b) {
+        final nomeA = _normalizarTexto(a.data()['aluno_nome']);
+        final nomeB = _normalizarTexto(b.data()['aluno_nome']);
+
+        return nomeA.compareTo(nomeB);
+      });
+
+    _participacoesRemovidasIgnoradas = removidas;
+    _participacoesDuplicadasIgnoradas = duplicadas;
+    _chavesParticipantesValidos = lista.map((doc) => _chaveParticipante(doc.data())).toSet();
+    _nomesParticipantesValidos = lista
+        .map((doc) => _normalizarTexto(doc.data()['aluno_nome']))
+        .where((nome) => nome.isNotEmpty)
+        .toSet();
+
+    debugPrint('🧹 ===== PARTICIPAÇÕES LIMPAS =====');
+    debugPrint('📌 Lidas no Firestore: ${snapshot.docs.length}');
+    debugPrint('✅ Válidas únicas: ${lista.length}');
+    debugPrint('🗑️ Removidas ignoradas: $removidas');
+    debugPrint('♻️ Duplicadas ignoradas: $duplicadas');
+
+    return lista;
+  }
+
+  bool _usoPertenceAoEventoAtual(Map<String, dynamic> usoData) {
+    final usoEventoId = usoData['evento_id']?.toString().trim();
+
+    if (usoEventoId != null &&
+        usoEventoId.isNotEmpty &&
+        usoEventoId != widget.eventoId) {
+      return false;
+    }
+
+    final chave = _chaveParticipante({
+      'aluno_id': usoData['aluno_id'] ??
+          usoData['alunoId'] ??
+          usoData['aluno_doc_id'] ??
+          usoData['aluno_ref_id'],
+      'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'],
+    });
+
+    final nome = _normalizarTexto(usoData['aluno_nome'] ?? usoData['nome_aluno']);
+
+    return _chavesParticipantesValidos.contains(chave) ||
+        (nome.isNotEmpty && _nomesParticipantesValidos.contains(nome));
+  }
+
+  String _chaveUsoPatrocinio(
+      String patrocinadorId,
+      Map<String, dynamic> usoData,
+      ) {
+    final chaveAluno = _chaveParticipante({
+      'aluno_id': usoData['aluno_id'] ??
+          usoData['alunoId'] ??
+          usoData['aluno_doc_id'] ??
+          usoData['aluno_ref_id'],
+      'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'],
+    });
+
+    final valor = ((usoData['valor'] as num?)?.toDouble() ?? 0).toStringAsFixed(2);
+
+    DateTime? data;
+    final rawData = usoData['data'];
+    if (rawData is Timestamp) data = rawData.toDate();
+    if (rawData is DateTime) data = rawData;
+
+    final dataKey = data == null
+        ? ''
+        : '${data.year}-${data.month.toString().padLeft(2, '0')}-${data.day.toString().padLeft(2, '0')}';
+
+    final observacao = _normalizarTexto(usoData['observacao']);
+
+    return '$patrocinadorId|$chaveAluno|$valor|$dataKey|$observacao';
+  }
+
+  String _chaveParticipanteUso(Map<String, dynamic> usoData) {
+    final chave = _chaveParticipante({
+      'aluno_id': usoData['aluno_id'] ??
+          usoData['alunoId'] ??
+          usoData['aluno_doc_id'] ??
+          usoData['aluno_ref_id'],
+      'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'],
+    });
+
+    if (_chavesParticipantesValidos.contains(chave)) return chave;
+
+    final nome = _normalizarTexto(usoData['aluno_nome'] ?? usoData['nome_aluno']);
+
+    return 'nome:$nome';
   }
 
   // ==================== PATROCÍNIOS ====================
-  Future<void> _carregarPatrocinios() async {
+  Future<void> _carregarPatrocinios(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesValidas,
+      ) async {
     try {
       final patrocinadoresSnapshot = await FirebaseFirestore.instance
           .collection('patrocinadores_eventos')
@@ -145,15 +485,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       double totalPatrocinios = 0;
       int pagos = 0;
       int pendentes = 0;
-      List<Map<String, dynamic>> usos = [];
 
-      for (var patrocinador in patrocinadoresSnapshot.docs) {
+      final usos = <Map<String, dynamic>>[];
+      final usosUnicos = <String>{};
+      final participantesPatrocinados = <String>{};
+
+      int usosOrfaos = 0;
+      int usosDuplicados = 0;
+
+      for (final patrocinador in patrocinadoresSnapshot.docs) {
         final data = patrocinador.data();
         final status = data['status']?.toString() ?? 'PENDENTE';
         final nomePatrocinador = data['nome'] ?? 'Patrocinador';
-
-        debugPrint('\n📌 Patrocinador: $nomePatrocinador (${patrocinador.id})');
-        debugPrint('   - Status: $status');
 
         double valorPago = (data['valor_pago'] as num?)?.toDouble() ?? 0;
 
@@ -161,46 +504,58 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           final saldoInicial = (data['saldo_inicial'] as num?)?.toDouble() ?? 0;
           final saldoDisponivel = (data['saldo_disponivel'] as num?)?.toDouble() ?? 0;
           valorPago = saldoInicial - saldoDisponivel;
-          debugPrint('   - Valor pago calculado: R\$ ${valorPago.toStringAsFixed(2)}');
         }
-
-        debugPrint('   🔍 Buscando usos na subcoleção...');
 
         final usosSnapshot = await patrocinador.reference
             .collection('usos')
             .orderBy('data', descending: true)
             .get();
 
-        debugPrint('   📊 Usos encontrados: ${usosSnapshot.docs.length}');
+        double totalUsosValidos = 0;
 
-        double totalUsos = 0;
-
-        for (var uso in usosSnapshot.docs) {
+        for (final uso in usosSnapshot.docs) {
           final usoData = uso.data();
-          final valorUso = (usoData['valor'] as num?)?.toDouble() ?? 0;
-          totalUsos += valorUso;
 
-          debugPrint('   - Uso: ${usoData['aluno_nome']} - R\$ $valorUso');
+          if (!_usoPertenceAoEventoAtual(usoData)) {
+            usosOrfaos++;
+            continue;
+          }
+
+          final dedupeKey = _chaveUsoPatrocinio(patrocinador.id, usoData);
+
+          if (usosUnicos.contains(dedupeKey)) {
+            usosDuplicados++;
+            continue;
+          }
+
+          usosUnicos.add(dedupeKey);
+
+          final valorUso = (usoData['valor'] as num?)?.toDouble() ?? 0;
+          totalUsosValidos += valorUso;
+
+          final chaveParticipante = _chaveParticipanteUso(usoData);
+          participantesPatrocinados.add(chaveParticipante);
 
           usos.add({
             'patrocinador': nomePatrocinador,
-            'aluno_nome': usoData['aluno_nome'] ?? 'Aluno',
+            'patrocinador_id': patrocinador.id,
+            'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'] ?? 'Aluno',
+            'aluno_chave': chaveParticipante,
             'valor': valorUso,
             'data': usoData['data'] is Timestamp
                 ? (usoData['data'] as Timestamp).toDate()
+                : usoData['data'] is DateTime
+                ? usoData['data']
                 : DateTime.now(),
             'observacao': usoData['observacao'] ?? '',
           });
         }
 
-        if (totalUsos > 0) {
-          if (valorPago == 0) {
-            valorPago = totalUsos;
-            debugPrint('   🔥 Usando valor dos usos: R\$ $valorPago');
-          }
-          totalPatrocinios += valorPago;
-          pagos++;
-        } else if (valorPago > 0) {
+        if (valorPago == 0 && totalUsosValidos > 0) {
+          valorPago = totalUsosValidos;
+        }
+
+        if (valorPago > 0 || totalUsosValidos > 0) {
           totalPatrocinios += valorPago;
           pagos++;
         } else if (status == 'PENDENTE' || status == 'ATRASADO') {
@@ -208,43 +563,52 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         }
       }
 
-      setState(() {
-        _totalPatrocinios = totalPatrocinios;
-        _detalhesPatrocinios = {
-          'total_patrocinadores': patrocinadoresSnapshot.docs.length,
-          'patrocinios_pagos': pagos,
-          'valor_total_patrocinios': totalPatrocinios,
-          'patrocinios_pendentes': pendentes,
-        };
-        _usosPatrocinio = usos;
+      usos.sort((a, b) {
+        final nomeA = _normalizarTexto(a['aluno_nome']);
+        final nomeB = _normalizarTexto(b['aluno_nome']);
+        return nomeA.compareTo(nomeB);
       });
 
-      debugPrint('\n✅ RESUMO PATROCÍNIOS:');
-      debugPrint('   - Total recebido: R\$ ${totalPatrocinios.toStringAsFixed(2)}');
-      debugPrint('   - Patrocinadores pagos: $pagos');
-      debugPrint('   - Usos encontrados: ${usos.length}');
+      if (mounted) {
+        setState(() {
+          _totalPatrocinios = totalPatrocinios;
+          _detalhesPatrocinios = {
+            'total_patrocinadores': patrocinadoresSnapshot.docs.length,
+            'patrocinios_pagos': pagos,
+            'valor_total_patrocinios': totalPatrocinios,
+            'patrocinios_pendentes': pendentes,
+          };
+          _usosPatrocinio = usos;
+          _chavesParticipantesPatrocinados = participantesPatrocinados;
+          _usosPatrocinioOrfaosIgnorados = usosOrfaos;
+          _usosPatrocinioDuplicadosIgnorados = usosDuplicados;
+        });
+      }
 
+      debugPrint('\n✅ RESUMO PATROCÍNIOS LIMPOS:');
+      debugPrint('   - Participações válidas: ${participacoesValidas.length}');
+      debugPrint('   - Total recebido: R\$ ${totalPatrocinios.toStringAsFixed(2)}');
+      debugPrint('   - Usos válidos: ${usos.length}');
+      debugPrint('   - Usos órfãos ignorados: $usosOrfaos');
+      debugPrint('   - Usos duplicados ignorados: $usosDuplicados');
     } catch (e) {
       debugPrint('❌ Erro ao carregar patrocínios: $e');
     }
   }
 
-
-// ==================== PARTICIPAÇÕES ====================
-  Future<void> _carregarParticipacoes() async {
+  // ==================== PARTICIPAÇÕES ====================
+  Future<void> _carregarParticipacoes(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesDocs,
+      ) async {
     try {
-      final participacoesSnapshot = await FirebaseFirestore.instance
-          .collection('participacoes_eventos_em_andamento')
-          .where('evento_id', isEqualTo: widget.eventoId)
-          .get();
-
-      debugPrint('\n📊 ===== CARREGANDO PARTICIPAÇÕES =====');
-      debugPrint('📊 Total de participações: ${participacoesSnapshot.docs.length}');
+      debugPrint('\n📊 ===== CARREGANDO PARTICIPAÇÕES VÁLIDAS =====');
+      debugPrint('📊 Total válido único: ${participacoesDocs.length}');
 
       double totalInscricoes = 0;
       double totalCamisasParticipacoes = 0;
-      Map<String, double> porForma = {};
-      Map<String, int> camisasPorTamanho = {};
+      final porForma = <String, double>{};
+      final camisasPorTamanho = <String, int>{};
+
       int totalCamisasParticipacoesCount = 0;
       int camisasPagasParticipacoesCount = 0;
 
@@ -252,40 +616,33 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       int inadimplentes = 0;
       int cobertosPatrocinio = 0;
 
-      // 🔥 Lista de nomes de participantes com patrocínio
-      Set<String> participantesComPatrocinio = _usosPatrocinio
-          .map((uso) => uso['aluno_nome'] as String)
-          .toSet();
-
-      for (var participacao in participacoesSnapshot.docs) {
+      for (final participacao in participacoesDocs) {
         final data = participacao.data();
+
         final totalPago = (data['total_pago'] as num?)?.toDouble() ?? 0;
         final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
         final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
         final totalDevido = valorInscricao + valorCamisa;
         final tamanhoCamisa = data['tamanho_camisa'] as String?;
         final alunoNome = data['aluno_nome'] as String? ?? '';
+        final chaveParticipante = _chaveParticipante(data);
 
-        bool temPatrocinio = participantesComPatrocinio.contains(alunoNome);
+        final temPatrocinio = _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
+            _chavesParticipantesPatrocinados.contains('nome:${_normalizarTexto(alunoNome)}');
 
-        debugPrint('\n📌 Aluno: $alunoNome');
+        debugPrint('\n📌 Aluno válido: $alunoNome');
         debugPrint('   - Total devido: R\$ $totalDevido');
-        debugPrint('   - Total pago (agregado): R\$ $totalPago');
-        debugPrint('   - Tem patrocínio: $temPatrocinio');
+        debugPrint('   - Total pago: R\$ $totalPago');
+        debugPrint('   - Tem patrocínio válido: $temPatrocinio');
 
-        // 🔥 CLASSIFICAÇÃO DO STATUS (usando o totalPago agregado)
         if (temPatrocinio) {
           cobertosPatrocinio++;
-          debugPrint('   ✅ Classificado: COBERTO POR PATROCÍNIO');
         } else if (totalPago >= totalDevido - 1) {
           quitados++;
-          debugPrint('   ✅ Classificado: QUITADO');
         } else {
           inadimplentes++;
-          debugPrint('   ⚠️ Classificado: INADIMPLENTE');
         }
 
-        // 🔥 CONTABILIZA RECEITAS (usando pagamentos INDIVIDUAIS)
         if (totalPago > 0) {
           final todosPagamentos = await FirebaseFirestore.instance
               .collection('eventos')
@@ -296,85 +653,77 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               .where('status', isEqualTo: 'confirmado')
               .get();
 
-          debugPrint('   💳 Pagamentos individuais encontrados: ${todosPagamentos.docs.length}');
-
-          for (var pag in todosPagamentos.docs) {
+          for (final pag in todosPagamentos.docs) {
             final pagData = pag.data();
             final valor = (pagData['valor'] as num?)?.toDouble() ?? 0;
             final forma = pagData['forma_pagamento'] as String? ?? 'OUTROS';
+            final observacoes = pagData['observacoes']?.toString().toLowerCase() ?? '';
 
-            debugPrint('      - Forma: $forma, Valor: R\$ $valor');
-
-            // 🔥 PULA PATROCÍNIO (JÁ FOI CONTABILIZADO)
-            if (forma == 'PATROCÍNIO') {
-              debugPrint('        ⏭️ Pulando PATROCÍNIO (já contabilizado)');
+            if (forma.toUpperCase() == 'PATROCÍNIO' ||
+                forma.toUpperCase() == 'PATROCINIO') {
               continue;
             }
 
-            // 🔥 SEPARA CAMISA DE INSCRIÇÃO
-            else if (valorCamisa > 0 && pagData['observacoes']?.contains('camisa') == true) {
+            if (valorCamisa > 0 && observacoes.contains('camisa')) {
               totalCamisasParticipacoes += valor;
-              debugPrint('        ✅ Adicionado às CAMISAS: R\$ $valor');
             } else {
               totalInscricoes += valor;
-              debugPrint('        ✅ Adicionado às INSCRIÇÕES: R\$ $valor');
             }
 
             porForma[forma] = (porForma[forma] ?? 0) + valor;
           }
         }
 
-        // 🔥 CONTABILIZA CAMISAS
-        if (tamanhoCamisa != null && tamanhoCamisa.isNotEmpty) {
-          totalCamisasParticipacoesCount++;
-          camisasPorTamanho[tamanhoCamisa] = (camisasPorTamanho[tamanhoCamisa] ?? 0) + 1;
+        if (tamanhoCamisa != null && tamanhoCamisa.trim().isNotEmpty) {
+          final tamanho = tamanhoCamisa.trim();
 
-          // Verifica se a camisa foi paga (considerando que o valor da camisa pode vir de múltiplas fontes)
-          if (totalPago >= valorCamisa - 1) {
+          totalCamisasParticipacoesCount++;
+          camisasPorTamanho[tamanho] = (camisasPorTamanho[tamanho] ?? 0) + 1;
+
+          if (totalPago >= valorCamisa - 1 || temPatrocinio) {
             camisasPagasParticipacoesCount++;
           }
         }
       }
 
-      // 🔥 CALCULA O TOTAL DE RECEITAS (INSCRIÇÕES + CAMISAS + PATROCÍNIOS)
-      double totalReceitasParticipacoes = totalInscricoes + totalCamisasParticipacoes;
+      final totalReceitasParticipacoes = totalInscricoes + totalCamisasParticipacoes;
 
-      setState(() {
-        _totalParticipantes = participacoesSnapshot.docs.length;
-        _quitados = quitados;
-        _inadimplentes = inadimplentes;
-        _cobertosPorPatrocinio = cobertosPatrocinio;
+      if (mounted) {
+        setState(() {
+          _totalParticipantes = participacoesDocs.length;
+          _quitados = quitados;
+          _inadimplentes = inadimplentes;
+          _cobertosPorPatrocinio = cobertosPatrocinio;
 
-        _totalInscricoes = totalInscricoes;
-        _totalCamisas = totalCamisasParticipacoes;
-        _totalReceitas = totalReceitasParticipacoes + _totalPatrocinios;
+          _totalInscricoes = totalInscricoes;
+          _totalCamisas = totalCamisasParticipacoes;
+          _totalReceitas = totalReceitasParticipacoes + _totalPatrocinios;
 
-        _camisasParticipacoes = {
-          'total': totalCamisasParticipacoesCount,
-          'pagas': camisasPagasParticipacoesCount,
-          'valor': totalCamisasParticipacoes,
-          'por_tamanho': camisasPorTamanho,
-        };
+          _camisasParticipacoes = {
+            'total': totalCamisasParticipacoesCount,
+            'pagas': camisasPagasParticipacoesCount,
+            'valor': totalCamisasParticipacoes,
+            'por_tamanho': camisasPorTamanho,
+          };
 
-        porForma.forEach((key, value) {
-          _receitasPorForma[key] = (_receitasPorForma[key] ?? 0) + value;
+          porForma.forEach((key, value) {
+            _receitasPorForma[key] = (_receitasPorForma[key] ?? 0) + value;
+          });
         });
-      });
+      }
 
-      debugPrint('\n✅ RESUMO PARTICIPAÇÕES:');
+      debugPrint('\n✅ RESUMO PARTICIPAÇÕES LIMPAS:');
+      debugPrint('   - Participantes únicos: ${participacoesDocs.length}');
+      debugPrint('   - Duplicadas ignoradas: $_participacoesDuplicadasIgnoradas');
+      debugPrint('   - Removidas ignoradas: $_participacoesRemovidasIgnoradas');
       debugPrint('   - Quitados: $quitados');
       debugPrint('   - Patrocínio: $cobertosPatrocinio');
       debugPrint('   - Inadimplentes: $inadimplentes');
-      debugPrint('   - Inscrições (dinheiro real): R\$ ${totalInscricoes.toStringAsFixed(2)}');
-      debugPrint('   - Camisas: R\$ ${totalCamisasParticipacoes.toStringAsFixed(2)}');
-      debugPrint('   - TOTAL RECEITAS (sem patrocínio): R\$ ${totalReceitasParticipacoes.toStringAsFixed(2)}');
-      debugPrint('   - Patrocínios (já contabilizados): R\$ ${_totalPatrocinios.toStringAsFixed(2)}');
-      debugPrint('   - TOTAL GERAL: R\$ ${(totalReceitasParticipacoes + _totalPatrocinios).toStringAsFixed(2)}');
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar participações: $e');
     }
   }
+
   // ==================== CAMISAS AVULSAS ====================
   Future<void> _carregarCamisasAvulsas() async {
     try {
@@ -433,6 +782,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       debugPrint('❌ Erro ao carregar camisas avulsas: $e');
     }
   }
+
   // ==================== GASTOS ====================
   Future<void> _carregarGastos() async {
     try {
@@ -476,6 +826,216 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       result[key] = (result[key] ?? 0) + value;
     });
     return result;
+  }
+
+  // ==================== NOVO: MÉTODO AUXILIAR PARA LISTA COMPLETA DE PARTICIPANTES ====================
+  /// Retorna uma lista de mapas com todos os campos necessários para os PDFs de participantes,
+  /// incluindo cores da graduação buscadas na coleção `graduacoes`.
+  Future<List<Map<String, dynamic>>> _obterListaParticipantesCompleta() async {
+    final participacoesValidas = await _buscarParticipacoesValidas();
+
+    if (_usosPatrocinio.isEmpty && _chavesParticipantesPatrocinados.isEmpty) {
+      await _carregarPatrocinios(participacoesValidas);
+    }
+
+    final lista = <Map<String, dynamic>>[];
+    final idsGraduacoes = <String>{};
+
+    for (final doc in participacoesValidas) {
+      final d = doc.data();
+      final nome = d['aluno_nome'] ?? '';
+      final totalPago = (d['total_pago'] as num?)?.toDouble() ?? 0;
+      final valorInscricao = (d['valor_inscricao'] as num?)?.toDouble() ?? 0;
+      final valorCamisa = (d['valor_camisa'] as num?)?.toDouble() ?? 0;
+      final totalDevido = valorInscricao + valorCamisa;
+      final chaveParticipante = _chaveParticipante(d);
+
+      final temPatrocinio = _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
+          _chavesParticipantesPatrocinados.contains('nome:${_normalizarTexto(nome)}');
+
+      final status = temPatrocinio
+          ? 'Patrocinado'
+          : (totalPago >= totalDevido - 1 ? 'Quitado' : 'Inadimplente');
+
+      final tamanhoCamisa = d['tamanho_camisa'] ?? '---';
+      final graduacaoNova = d['graduacao_nova'] ?? '---';
+      final graduacaoNovaId = d['graduacao_nova_id'] as String?;
+
+      if (graduacaoNovaId != null &&
+          graduacaoNovaId.isNotEmpty &&
+          graduacaoNovaId != '0') {
+        idsGraduacoes.add(graduacaoNovaId);
+      }
+
+      lista.add({
+        'nome': nome,
+        'status': status,
+        'tamanho_camisa': tamanhoCamisa,
+        'valor_pago': totalPago,
+        'graduacao_nova': graduacaoNova,
+        'graduacao_nova_id': graduacaoNovaId,
+        'hex_cor1': null,
+        'hex_cor2': null,
+      });
+    }
+
+    if (idsGraduacoes.isNotEmpty) {
+      final futures = idsGraduacoes.map(
+            (id) => FirebaseFirestore.instance.collection('graduacoes').doc(id).get(),
+      );
+      final docs = await Future.wait(futures);
+      final coresMap = <String, Map<String, dynamic>>{};
+
+      for (final doc in docs) {
+        if (doc.exists) {
+          coresMap[doc.id] = doc.data()!;
+        }
+      }
+
+      for (final p in lista) {
+        final gId = p['graduacao_nova_id'] as String?;
+
+        if (gId != null && coresMap.containsKey(gId)) {
+          final gradData = coresMap[gId]!;
+          p['hex_cor1'] = gradData['hex_cor1'] as String?;
+          p['hex_cor2'] = gradData['hex_cor2'] as String?;
+        }
+      }
+    }
+
+    return lista;
+  }
+
+  // ==================== DIÁLOGO DE ORDENAÇÃO ====================
+  Future<Map<String, dynamic>?> _mostrarDialogoOrdenacao() async {
+    String campoSelecionado = 'nome';
+    bool crescente = true;
+
+    const campos = {
+      'nome': 'Nome',
+      'status': 'Status',
+      'tamanho_camisa': 'Tamanho Camisa',
+      'valor_pago': 'Valor Pago',
+      'graduacao_nova': 'Graduação',
+    };
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Ordenar lista'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: campoSelecionado,
+                    decoration: const InputDecoration(labelText: 'Campo de ordenação'),
+                    items: campos.entries.map((entry) {
+                      return DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() => campoSelecionado = value!);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Direção:'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ToggleButtons(
+                          isSelected: [crescente, !crescente],
+                          onPressed: (index) {
+                            setState(() => crescente = index == 0);
+                          },
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Crescente'),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Decrescente'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'campo': campoSelecionado,
+                'crescente': crescente,
+              }),
+              child: const Text('Gerar PDF'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Aplica ordenação a uma lista de participantes
+  List<Map<String, dynamic>> _ordenarLista(
+      List<Map<String, dynamic>> lista, String campo, bool crescente) {
+    final copia = List<Map<String, dynamic>>.from(lista);
+    copia.sort((a, b) {
+      final valA = a[campo];
+      final valB = b[campo];
+      int cmp = 0;
+
+      if (valA is String && valB is String) {
+        cmp = valA.compareTo(valB);
+      } else if (valA is num && valB is num) {
+        cmp = valA.compareTo(valB);
+      } else {
+        // fallback: string
+        cmp = (valA?.toString() ?? '').compareTo(valB?.toString() ?? '');
+      }
+      return crescente ? cmp : -cmp;
+    });
+    return copia;
+  }
+
+  // Método comum para PDFs que usam participantes
+  Future<void> _executarComOrdenacao(Function(List<Map<String, dynamic>>) gerarPdf) async {
+    final opcoes = await _mostrarDialogoOrdenacao();
+    if (opcoes == null) return; // cancelou
+
+    final lista = await _obterListaParticipantesCompleta();
+    final listaOrdenada = _ordenarLista(
+      lista,
+      opcoes['campo'] as String,
+      opcoes['crescente'] as bool,
+    );
+
+    try {
+      await gerarPdf(listaOrdenada);
+    } catch (e) {
+      _mostrarErro('Erro ao gerar PDF: $e');
+    }
+  }
+
+  void _mostrarErro(String mensagem) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensagem), backgroundColor: Colors.red),
+      );
+    }
   }
 
   // ==================== EXPORTAR EXCEL ====================
@@ -608,22 +1168,385 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
   }
 
+  // ==================== EXPORTAÇÃO DE PDFs ====================
+  Future<void> _gerarPdfConfeccao() async {
+    try {
+      await EventoFinanceiroPdfService.gerarPdfConfeccaoCamisas(
+        detalhesCamisas: _detalhesCamisas,
+        eventoNome: widget.eventoNome,
+      );
+    } catch (e) {
+      _mostrarErro('Erro ao gerar PDF: $e');
+    }
+  }
+
+  // 🔥 NOVO: PDF Confecção Completo (alunos + avulsas separados)
+  Future<void> _gerarPdfConfeccaoCompleto() async {
+    try {
+      await EventoFinanceiroPdfService.gerarPdfConfeccaoCompleto(
+        camisasAlunos: _camisasParticipacoes,
+        camisasAvulsas: _camisasAvulsas,
+        totalGeral: _detalhesCamisas,
+        eventoNome: widget.eventoNome,
+      );
+    } catch (e) {
+      _mostrarErro('Erro ao gerar PDF: $e');
+    }
+  }
+
+  Future<void> _gerarPdfGeral() async {
+    try {
+      await EventoFinanceiroPdfService.gerarPdfRelatorioGeral(
+        totalReceitas: _totalReceitas,
+        totalGastos: _totalGastos,
+        saldoLiquido: _saldoLiquido,
+        totalParticipantes: _totalParticipantes,
+        quitados: _quitados,
+        inadimplentes: _inadimplentes,
+        cobertosPorPatrocinio: _cobertosPorPatrocinio,
+        totalInscricoes: _totalInscricoes,
+        totalCamisas: _totalCamisas,
+        totalPatrocinios: _totalPatrocinios,
+        receitasPorForma: _receitasPorForma,
+        gastosPorCategoria: _gastosPorCategoria,
+        detalhesCamisas: _detalhesCamisas,
+        detalhesPatrocinios: _detalhesPatrocinios,
+        usosPatrocinio: _usosPatrocinio,
+        eventoNome: widget.eventoNome,
+      );
+    } catch (e) {
+      _mostrarErro('Erro ao gerar PDF: $e');
+    }
+  }
+
+  // ✅ PDF Lista de Participantes (básico, já existente) – agora com diálogo de ordenação
+  Future<void> _gerarPdfParticipantes() async {
+    await _executarComOrdenacao((lista) async {
+      await EventoFinanceiroPdfService.gerarPdfListaParticipantes(
+        participantes: lista,
+        eventoNome: widget.eventoNome,
+      );
+    });
+  }
+
+  // 🔥 NOVO: PDF Conferência de Nomes (pais verificarem) – com diálogo de ordenação
+  Future<void> _gerarPdfConferenciaNomes() async {
+    await _executarComOrdenacao((lista) async {
+      await EventoFinanceiroPdfService.gerarPdfConferenciaNomes(
+        participantes: lista,
+        eventoNome: widget.eventoNome,
+      );
+    });
+  }
+
+  // 🔥 NOVO: PDF Lista Completa com Corda Cortada e Graduação (cores) – com diálogo de ordenação
+  Future<void> _gerarPdfListaCompleta() async {
+    await _executarComOrdenacao((lista) async {
+      await EventoFinanceiroPdfService.gerarPdfListaCompleta(
+        participantes: lista,
+        eventoNome: widget.eventoNome,
+      );
+    });
+  }
+
+  Widget _buildLoadingComLogs() {
+    final ultimosLogs = _loadingLogs.reversed.take(12).toList().reversed.toList();
+
+    return Container(
+      color: Colors.grey.shade50,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(26),
+                border: material.Border.all(color: Colors.green.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.green.shade900,
+                            strokeWidth: 3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Atualizando relatório...',
+                              style: TextStyle(
+                                color: Colors.grey.shade900,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _loadingEtapa,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12.5,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade900,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.terminal_rounded, color: Colors.white, size: 18),
+                            const SizedBox(width: 7),
+                            Text(
+                              'Logs do carregamento',
+                              style: TextStyle(
+                                color: Colors.green.shade100,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 9),
+                        if (ultimosLogs.isEmpty)
+                          const Text(
+                            '> iniciando...',
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          )
+                        else
+                          ...ultimosLogs.map((log) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 5),
+                              child: Text(
+                                '> $log',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                  height: 1.25,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroRelatorioTela() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade900, Colors.green.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.shade900.withOpacity(0.14),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 560;
+
+          final icon = Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(22),
+              border: material.Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: const Icon(
+              Icons.assessment_rounded,
+              color: Colors.white,
+              size: 34,
+            ),
+          );
+
+          final text = Column(
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.eventoNome,
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: narrow ? 21 : 27,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Resumo financeiro, participantes, camisas, patrocínios e relatórios do evento.',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.82),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildHeroChip(Icons.groups_rounded, '$_totalParticipantes participantes'),
+                  _buildHeroChip(Icons.trending_up_rounded, _formatarMoeda(_totalReceitas)),
+                  _buildHeroChip(
+                    _saldoLiquido >= 0 ? Icons.check_circle_rounded : Icons.warning_rounded,
+                    'Saldo ${_formatarMoeda(_saldoLiquido)}',
+                  ),
+                ],
+              ),
+            ],
+          );
+
+          if (narrow) {
+            return Column(
+              children: [
+                icon,
+                const SizedBox(height: 14),
+                text,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: 16),
+              Expanded(child: text),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeroChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: material.Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          '📊 Relatório Financeiro',
+          'Relatório Financeiro',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green.shade900,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
+          // 🔥 MENU DE EXPORTAÇÃO (Excel + PDFs)
+          PopupMenuButton<String>(
             icon: const Icon(Icons.download),
-            onPressed: _exportarExcel,
-            tooltip: 'Exportar Excel',
+            tooltip: 'Exportar relatórios',
+            onSelected: (value) {
+              if (value == 'excel') _exportarExcel();
+              if (value == 'confeccao') _gerarPdfConfeccao();
+              if (value == 'confeccao_completo') _gerarPdfConfeccaoCompleto();
+              if (value == 'geral') _gerarPdfGeral();
+              if (value == 'participantes') _gerarPdfParticipantes();
+              // 🔥 NOVOS PDFs
+              if (value == 'conferencia_nomes') _gerarPdfConferenciaNomes();
+              if (value == 'lista_completa') _gerarPdfListaCompleta();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'excel', child: Text('📊 Exportar Excel')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'confeccao', child: Text('👕 PDF Confecção Camisas (Total)')),
+              PopupMenuItem(value: 'confeccao_completo', child: Text('👕 PDF Confecção Completo (Alunos + Avulsos)')),
+              PopupMenuItem(value: 'geral', child: Text('📄 PDF Relatório Geral')),
+              PopupMenuItem(value: 'participantes', child: Text('👥 PDF Lista Participantes')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'conferencia_nomes', child: Text('📋 PDF Conferência de Nomes (Pais)')),
+              PopupMenuItem(value: 'lista_completa', child: Text('📋 PDF Lista Completa (Corda/Graduação)')),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -632,7 +1555,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingComLogs()
           : RefreshIndicator(
         onRefresh: _carregarDados,
         color: Colors.green.shade900,
@@ -641,6 +1564,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildHeroRelatorioTela(),
+              const SizedBox(height: 16),
               // ===== CARDS DE RESUMO =====
               Container(
                 padding: const EdgeInsets.all(16),
@@ -1645,6 +2570,16 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
               const SizedBox(height: 16),
 
+
+              // ===== CONSISTÊNCIA DOS DADOS =====
+              if (_participacoesDuplicadasIgnoradas > 0 ||
+                  _participacoesRemovidasIgnoradas > 0 ||
+                  _usosPatrocinioOrfaosIgnorados > 0 ||
+                  _usosPatrocinioDuplicadosIgnorados > 0) ...[
+                _buildConsistenciaDadosCard(),
+                const SizedBox(height: 16),
+              ],
+
               // ===== AVISO DE ATUALIZAÇÃO =====
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1672,6 +2607,112 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+
+  Widget _buildConsistenciaDadosCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: material.Border.all(color: Colors.indigo.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.indigo.shade100.withOpacity(0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified_rounded, color: Colors.indigo.shade700),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Conferência automática aplicada',
+                  style: TextStyle(
+                    color: Colors.indigo.shade900,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Ao atualizar, o relatório considera apenas participantes válidos e ignora duplicidades ou usos de patrocínio que ficaram órfãos.',
+            style: TextStyle(
+              color: Colors.indigo.shade900,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildConsistenciaChip(
+                'Participações duplicadas',
+                _participacoesDuplicadasIgnoradas,
+                Colors.orange,
+              ),
+              _buildConsistenciaChip(
+                'Participações removidas',
+                _participacoesRemovidasIgnoradas,
+                Colors.red,
+              ),
+              _buildConsistenciaChip(
+                'Patrocínios órfãos',
+                _usosPatrocinioOrfaosIgnorados,
+                Colors.purple,
+              ),
+              _buildConsistenciaChip(
+                'Patrocínios duplicados',
+                _usosPatrocinioDuplicadosIgnorados,
+                Colors.blue,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConsistenciaChip(String label, int valor, Color cor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: cor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(99),
+        border: material.Border.all(color: cor.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            valor > 0 ? Icons.cleaning_services_rounded : Icons.check_rounded,
+            color: cor,
+            size: 14,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '$label: $valor',
+            style: TextStyle(
+              color: cor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
