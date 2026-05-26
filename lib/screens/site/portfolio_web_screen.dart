@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/evento_model.dart';
 import '../../widgets/timeline_mista_widget.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class PortfolioWebScreen extends StatefulWidget {
   const PortfolioWebScreen({super.key});
@@ -16,6 +17,10 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  final RastreioSiteService _rastreioService = RastreioSiteService();
+  final ScrollController _eventosScrollController = ScrollController();
+  int _maiorPercentualEventos = 0;
+
   String _filtroCidade = 'Todas';
   String _filtroTipo = 'Todos';
 
@@ -25,9 +30,29 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
   @override
   void initState() {
     super.initState();
+
+    _rastreioService.iniciarTela(
+      'portfolio',
+      origem: 'site',
+      metadata: {
+        'aba_inicial': 'linha_do_tempo',
+      },
+    );
+    _rastreioService.marcarTempo('portfolio_tempo');
+    _eventosScrollController.addListener(_registrarRolagemEventos);
+
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging && mounted) {
+        final aba = _tabController.index == 0 ? 'linha_do_tempo' : 'eventos';
+        _rastreioService.registrarClique(
+          nome: 'trocar_aba_portfolio',
+          origem: 'portfolio',
+          metadata: {
+            'aba': aba,
+            'index': _tabController.index,
+          },
+        );
         setState(() {});
       }
     });
@@ -36,8 +61,58 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
 
   @override
   void dispose() {
+    _rastreioService.registrarTempoMarcador(
+      chave: 'portfolio_tempo',
+      tipo: 'tempo_tela',
+      nome: 'portfolio',
+      origem: 'dispose',
+      metadata: {
+        'aba_final': _tabController.index == 0 ? 'linha_do_tempo' : 'eventos',
+        'maior_percentual_eventos': _maiorPercentualEventos,
+        'filtro_cidade': _filtroCidade,
+        'filtro_tipo': _filtroTipo,
+      },
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_portfolio');
+    _eventosScrollController.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _registrarRolagemEventos() {
+    if (!_eventosScrollController.hasClients) return;
+
+    final maxScroll = _eventosScrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+
+    final percentual = ((_eventosScrollController.offset / maxScroll) * 100)
+        .clamp(0, 100)
+        .round();
+
+    final marco = percentual >= 100
+        ? 100
+        : percentual >= 75
+        ? 75
+        : percentual >= 50
+        ? 50
+        : percentual >= 25
+        ? 25
+        : 0;
+
+    if (marco > _maiorPercentualEventos) {
+      _maiorPercentualEventos = marco;
+      _rastreioService.registrarEvento(
+        tipo: 'rolagem',
+        nome: 'portfolio_eventos_$marco%',
+        origem: 'portfolio_eventos',
+        metadata: {
+          'percentual': marco,
+          'filtro_cidade': _filtroCidade,
+          'filtro_tipo': _filtroTipo,
+        },
+      );
+    }
   }
 
   Future<void> _carregarFiltros() async {
@@ -97,6 +172,17 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
       _filtroCidade != 'Todas' || _filtroTipo != 'Todos';
 
   void _limparFiltros() {
+    _rastreioService.registrarFiltro(
+      tela: 'portfolio',
+      filtro: 'limpar_filtros',
+      valor: 'todos',
+      origem: 'portfolio_eventos',
+      metadata: {
+        'cidade_anterior': _filtroCidade,
+        'tipo_anterior': _filtroTipo,
+      },
+    );
+
     setState(() {
       _filtroCidade = 'Todas';
       _filtroTipo = 'Todos';
@@ -104,6 +190,15 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
   }
 
   void _mostrarFiltrosDialog() {
+    _rastreioService.registrarClique(
+      nome: 'abrir_filtros_portfolio',
+      origem: 'portfolio_eventos',
+      metadata: {
+        'filtro_cidade': _filtroCidade,
+        'filtro_tipo': _filtroTipo,
+      },
+    );
+
     String cidadeTemp = _filtroCidade;
     String tipoTemp = _filtroTipo;
 
@@ -229,6 +324,16 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: () {
+                                _rastreioService.registrarFiltro(
+                                  tela: 'portfolio',
+                                  filtro: 'aplicar_filtros',
+                                  valor: '$cidadeTemp | $tipoTemp',
+                                  origem: 'portfolio_eventos',
+                                  metadata: {
+                                    'cidade': cidadeTemp,
+                                    'tipo': tipoTemp,
+                                  },
+                                );
                                 setState(() {
                                   _filtroCidade = cidadeTemp;
                                   _filtroTipo = tipoTemp;
@@ -325,26 +430,15 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          if (isEventosTab)
-            IconButton(
-              tooltip: 'Filtrar eventos',
-              onPressed: _mostrarFiltrosDialog,
-              icon: Badge(
-                isLabelVisible: _temFiltroAtivo,
-                smallSize: 8,
-                child: const Icon(Icons.tune_rounded),
-              ),
-            ),
-        ],
+        actions: const [],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(62),
+          preferredSize: const Size.fromHeight(54),
           child: Container(
-            margin: EdgeInsets.fromLTRB(isMobile ? 10 : 18, 0, isMobile ? 10 : 18, 10),
+            margin: EdgeInsets.fromLTRB(isMobile ? 10 : 18, 0, isMobile ? 10 : 18, 8),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.16)),
             ),
             child: TabBar(
@@ -368,12 +462,12 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
               tabs: const [
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 2),
-                  icon: Icon(Icons.timeline_rounded, size: 18),
+                  icon: Icon(Icons.timeline_rounded, size: 16),
                   text: 'Linha do tempo',
                 ),
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 2),
-                  icon: Icon(Icons.event_available_rounded, size: 18),
+                  icon: Icon(Icons.event_available_rounded, size: 16),
                   text: 'Eventos',
                 ),
               ],
@@ -422,6 +516,17 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           );
         }
 
+        _rastreioService.registrarBuscaOuFiltroResultado(
+          tela: 'portfolio',
+          nome: 'eventos_carregados',
+          total: eventos.length,
+          origem: 'portfolio_eventos',
+          metadata: {
+            'filtro_cidade': _filtroCidade,
+            'filtro_tipo': _filtroTipo,
+          },
+        );
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
@@ -431,10 +536,15 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
             return RefreshIndicator(
               color: Colors.red.shade900,
               onRefresh: () async {
+                _rastreioService.registrarClique(
+                  nome: 'atualizar_portfolio_eventos',
+                  origem: 'portfolio_eventos',
+                );
                 await _carregarFiltros();
                 setState(() {});
               },
               child: ListView(
+                controller: _eventosScrollController,
                 padding: EdgeInsets.fromLTRB(horizontal, 14, horizontal, 26),
                 children: [
                   Center(
@@ -444,6 +554,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _buildHeroEventos(eventos.length, isMobile),
+                          const SizedBox(height: 10),
+                          _buildBotaoFiltroEventosSlim(isMobile),
                           if (_temFiltroAtivo) ...[
                             const SizedBox(height: 12),
                             _buildFiltrosAtivos(),
@@ -465,7 +577,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
 
   Widget _buildHeroEventos(int total, bool isMobile) {
     return Container(
-      padding: EdgeInsets.all(isMobile ? 18 : 22),
+      padding: EdgeInsets.all(isMobile ? 14 : 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [Colors.red.shade900, Colors.red.shade700],
@@ -486,8 +598,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           final narrow = constraints.maxWidth < 560;
 
           final icon = Container(
-            width: 62,
-            height: 62,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.14),
               borderRadius: BorderRadius.circular(22),
@@ -496,7 +608,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
             child: const Icon(
               Icons.photo_library_rounded,
               color: Colors.white,
-              size: 34,
+              size: 28,
             ),
           );
 
@@ -614,6 +726,60 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     );
   }
 
+
+  Widget _buildBotaoFiltroEventosSlim(bool isMobile) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _mostrarFiltrosDialog,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 12 : 14,
+            vertical: isMobile ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.red.shade100),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.025),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Badge(
+                isLabelVisible: _temFiltroAtivo,
+                smallSize: 8,
+                child: Icon(Icons.tune_rounded, color: Colors.red.shade900),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _temFiltroAtivo
+                      ? 'Filtros ativos: $_filtroCidade • $_filtroTipo'
+                      : 'Filtrar eventos por cidade e tipo',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: isMobile ? 12.5 : 13.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Icon(Icons.keyboard_arrow_up_rounded, color: Colors.red.shade900),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFiltrosAtivos() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -711,7 +877,21 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
 
     return InkWell(
-      onTap: () => _mostrarDetalhesEvento(context, evento),
+      onTap: () {
+        _rastreioService.registrarItemVisualizado(
+          tela: 'portfolio',
+          itemTipo: 'evento',
+          itemNome: evento.nome,
+          itemId: null,
+          origem: 'card_evento',
+          metadata: {
+            'cidade': evento.cidade,
+            'tipo': evento.tipo,
+            'data': evento.dataFormatada,
+          },
+        );
+        _mostrarDetalhesEvento(context, evento);
+      },
       borderRadius: BorderRadius.circular(24),
       child: Container(
         constraints: const BoxConstraints(minHeight: 260),
@@ -939,6 +1119,17 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
   }
 
   void _mostrarDetalhesEvento(BuildContext context, EventoModel evento) {
+    _rastreioService.registrarEvento(
+      tipo: 'detalhe',
+      nome: 'abrir_detalhes_evento',
+      origem: 'portfolio',
+      metadata: {
+        'evento_nome': evento.nome,
+        'cidade': evento.cidade,
+        'tipo': evento.tipo,
+      },
+    );
+
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 700;
     final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
@@ -1443,6 +1634,15 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
 
   Future<void> _abrirLink(String url) async {
     final uri = Uri.tryParse(url);
+
+    _rastreioService.registrarClique(
+      nome: 'abrir_link_portfolio',
+      origem: 'portfolio_evento',
+      metadata: {
+        'url': url,
+        'host': uri?.host,
+      },
+    );
 
     if (uri == null) return;
 

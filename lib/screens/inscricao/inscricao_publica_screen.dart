@@ -11,6 +11,7 @@ import 'package:image/image.dart' as img;
 import 'package:uai_capoeira/screens/inscricao/signature_screen.dart';
 import 'package:uai_capoeira/widgets/regimento_dialog.dart';
 import 'package:uai_capoeira/screens/site/landing_page.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class InscricaoPublicaScreen extends StatefulWidget {
   const InscricaoPublicaScreen({super.key});
@@ -22,9 +23,15 @@ class InscricaoPublicaScreen extends StatefulWidget {
 class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final RastreioSiteService _rastreioService = RastreioSiteService();
   final PageController _pageController = PageController();
+  final Map<String, Timer> _debounceRastreioCampos = {};
 
   int _currentStep = 0;
+  DateTime _inicioTelaInscricao = DateTime.now();
+  DateTime _inicioEtapaAtual = DateTime.now();
+  bool _rastreioInscricaoIniciado = false;
+  bool _inscricaoFinalizadaComSucesso = false;
 
   final Map<String, TextEditingController> _controllers = {
     'nome': TextEditingController(),
@@ -91,6 +98,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
     _controllers['cidade']!.text = 'BOCAIÚVA-MG';
 
+    _configurarRastreioCamposDigitados();
+
+    _iniciarRastreioInscricao();
+
     _controllers['nome']!.addListener(_validarEtapa1);
     _controllers['apelido']!.addListener(_validarEtapa1);
     _controllers['data_nascimento']!.addListener(_validarEtapa1);
@@ -122,9 +133,16 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     _controllers['bairro']!.removeListener(_validarEtapa3);
     _controllers['cidade']!.removeListener(_validarEtapa3);
 
+    _registrarSaidaInscricaoSeNecessario(motivo: 'dispose');
+
     for (final controller in _controllers.values) {
       controller.dispose();
     }
+
+    for (final timer in _debounceRastreioCampos.values) {
+      timer.cancel();
+    }
+    _debounceRastreioCampos.clear();
 
     _pageController.dispose();
     super.dispose();
@@ -178,6 +196,121 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     return text?.toUpperCase().trim() ?? '';
   }
 
+  String _etapaAtualRastreio() {
+    return _nomeEtapaRastreio(_currentStep);
+  }
+
+  bool _campoSensivelRastreio(String campo) {
+    return campo == 'cpf' ||
+        campo == 'contato_aluno' ||
+        campo == 'contato_responsavel';
+  }
+
+  String _campoParaEtapaRastreio(String campo) {
+    switch (campo) {
+      case 'nome':
+      case 'apelido':
+      case 'data_nascimento':
+        return 'dados_aluno';
+      case 'cpf':
+        return 'documento';
+      case 'rua':
+      case 'numero':
+      case 'bairro':
+      case 'cidade':
+        return 'endereco';
+      case 'contato_aluno':
+      case 'nome_responsavel':
+      case 'contato_responsavel':
+        return 'contato';
+      default:
+        return _etapaAtualRastreio();
+    }
+  }
+
+  void _configurarRastreioCamposDigitados() {
+    for (final entry in _controllers.entries) {
+      final campo = entry.key;
+      final controller = entry.value;
+
+      controller.addListener(() {
+        _registrarCampoDigitadoDebounce(campo, controller.text);
+      });
+    }
+  }
+
+  void _registrarCampoDigitadoDebounce(String campo, String valor) {
+    _debounceRastreioCampos[campo]?.cancel();
+
+    _debounceRastreioCampos[campo] = Timer(
+      const Duration(milliseconds: 850),
+          () {
+        if (!mounted) return;
+
+        _rastreioService.registrarCampoFormulario(
+          formulario: 'inscricao_publica',
+          campo: campo,
+          valor: valor,
+          etapa: _campoParaEtapaRastreio(campo),
+          origem: 'digitacao',
+          sensivel: _campoSensivelRastreio(campo),
+          metadata: {
+            'etapa_atual': _etapaAtualRastreio(),
+            'etapa_numero': _currentStep + 1,
+          },
+        );
+      },
+    );
+  }
+
+  Map<String, dynamic> _snapshotCamposInscricao() {
+    return {
+      'nome': _controllers['nome']!.text.trim(),
+      'apelido': _controllers['apelido']!.text.trim(),
+      'cpf': _controllers['cpf']!.text.trim(),
+      'data_nascimento': _controllers['data_nascimento']!.text.trim(),
+      'sexo': _sexo ?? '',
+      'rua': _controllers['rua']!.text.trim(),
+      'numero': _controllers['numero']!.text.trim(),
+      'bairro': _controllers['bairro']!.text.trim(),
+      'cidade': _controllers['cidade']!.text.trim(),
+      'contato_aluno': _controllers['contato_aluno']!.text.trim(),
+      'nome_responsavel': _controllers['nome_responsavel']!.text.trim(),
+      'contato_responsavel': _controllers['contato_responsavel']!.text.trim(),
+      'foto_preenchida': _temFoto(),
+      'assinatura_preenchida': _assinaturaUrl != null || _assinaturaBytes != null,
+      'autorizacao': _autorizacao,
+      'idade_calculada': _controllers['data_nascimento']!.text.trim().isEmpty
+          ? null
+          : _calcularIdade(_controllers['data_nascimento']!.text.trim()),
+      'is_maior_idade': _isMaiorIdade(),
+    };
+  }
+
+  void _registrarSnapshotInscricao({
+    required String momento,
+    Map<String, dynamic>? metadata,
+  }) {
+    _rastreioService.registrarSnapshotFormulario(
+      formulario: 'inscricao_publica',
+      momento: momento,
+      etapa: _etapaAtualRastreio(),
+      origem: 'inscricao_publica',
+      campos: _snapshotCamposInscricao(),
+      camposSensiveis: const [
+        'cpf',
+        'contato_aluno',
+        'contato_responsavel',
+      ],
+      metadata: {
+        'etapa_atual': _etapaAtualRastreio(),
+        'etapa_numero': _currentStep + 1,
+        ...?metadata,
+      },
+    );
+  }
+
+
   void _showSuccessSnackbar(String message) {
     if (!mounted) return;
 
@@ -222,6 +355,177 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       );
   }
 
+
+  static const List<String> _nomesEtapasRastreio = [
+    'boas_vindas',
+    'foto_aluno',
+    'dados_aluno',
+    'contato',
+    'endereco',
+    'documento',
+    'revisao',
+  ];
+
+  String _nomeEtapaRastreio(int etapa) {
+    if (etapa < 0 || etapa >= _nomesEtapasRastreio.length) {
+      return 'etapa_$etapa';
+    }
+    return _nomesEtapasRastreio[etapa];
+  }
+
+  int get _tempoTotalInscricaoSegundos {
+    return DateTime.now().difference(_inicioTelaInscricao).inSeconds;
+  }
+
+  int get _tempoEtapaAtualSegundos {
+    return DateTime.now().difference(_inicioEtapaAtual).inSeconds;
+  }
+
+  Map<String, dynamic> _metadataResumoInscricao() {
+    return {
+      'etapa_atual': _currentStep,
+      'nome_etapa_atual': _nomeEtapaRastreio(_currentStep),
+      'tempo_total_segundos': _tempoTotalInscricaoSegundos,
+      'tempo_etapa_segundos': _tempoEtapaAtualSegundos,
+      'tem_foto': _temFoto(),
+      'tem_assinatura': _assinaturaBytes != null || (_assinaturaUrl?.isNotEmpty == true),
+      'recolher_assinatura': _recolherAssinatura,
+      'autorizacao': _autorizacao,
+      'inscricoes_abertas': _inscricoesAbertas,
+      'tem_vagas': _temVagas,
+      'vagas_restantes': _vagasRestantes,
+      'idade_minima': _idadeMinima,
+      'idade_maxima': _idadeMaxima,
+    };
+  }
+
+  void _iniciarRastreioInscricao() {
+    _inicioTelaInscricao = DateTime.now();
+    _inicioEtapaAtual = DateTime.now();
+    _rastreioInscricaoIniciado = true;
+
+    unawaited(
+      _rastreioService.iniciarTela(
+        'inscricao_publica',
+        origem: 'landing_page',
+        metadata: {
+          'formulario': 'aula_experimental',
+          'total_etapas': 7,
+        },
+      ),
+    );
+
+    unawaited(
+      _rastreioService.registrarPaginaVista(
+        'inscricao_publica',
+        'landing_page',
+      ),
+    );
+
+    unawaited(_registrarEntradaEtapa(0, origem: 'init'));
+  }
+
+  Future<void> _registrarEntradaEtapa(
+      int etapa, {
+        String origem = 'navegacao',
+      }) async {
+    _inicioEtapaAtual = DateTime.now();
+
+    await _rastreioService.registrarEtapaFormulario(
+      formulario: 'inscricao_publica',
+      etapa: etapa + 1,
+      nomeEtapa: _nomeEtapaRastreio(etapa),
+      acao: 'entrou',
+      origem: origem,
+      metadata: _metadataResumoInscricao(),
+    );
+  }
+
+  Future<void> _registrarSaidaEtapa(
+      int etapa, {
+        required String destino,
+        String origem = 'navegacao',
+      }) async {
+    await _rastreioService.registrarEtapaFormulario(
+      formulario: 'inscricao_publica',
+      etapa: etapa + 1,
+      nomeEtapa: _nomeEtapaRastreio(etapa),
+      acao: 'saiu',
+      origem: origem,
+      metadata: {
+        ..._metadataResumoInscricao(),
+        'destino': destino,
+        'duracao_etapa_segundos': _tempoEtapaAtualSegundos,
+      },
+    );
+  }
+
+  void _rastrearAcaoInscricao(
+      String acao, {
+        String? origem,
+        Map<String, dynamic>? metadata,
+      }) {
+    unawaited(
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: acao,
+        origem: origem,
+        metadata: {
+          ..._metadataResumoInscricao(),
+          ...?metadata,
+        },
+      ),
+    );
+  }
+
+  void _rastrearErroInscricao(
+      String local,
+      List<String> erros, {
+        String? origem,
+        Map<String, dynamic>? metadata,
+      }) {
+    unawaited(
+      _rastreioService.registrarErroFormulario(
+        formulario: 'inscricao_publica',
+        local: local,
+        erros: erros,
+        origem: origem,
+        metadata: {
+          ..._metadataResumoInscricao(),
+          ...?metadata,
+        },
+      ),
+    );
+  }
+
+  void _registrarSaidaInscricaoSeNecessario({required String motivo}) {
+    if (!_rastreioInscricaoIniciado || _inscricaoFinalizadaComSucesso) return;
+
+    unawaited(
+      _registrarSaidaEtapa(
+        _currentStep,
+        destino: motivo,
+        origem: 'saida_inscricao',
+      ),
+    );
+
+    unawaited(
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: 'abandonou_inscricao',
+        origem: motivo,
+        metadata: _metadataResumoInscricao(),
+      ),
+    );
+
+    unawaited(
+      _rastreioService.finalizarTela(
+        destino: motivo,
+        metadata: _metadataResumoInscricao(),
+      ),
+    );
+  }
+
   void _showCustomErrorDialog({
     required String titulo,
     required List<String> erros,
@@ -257,7 +561,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                   size: 40,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
                 titulo,
                 style: TextStyle(
@@ -267,7 +571,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -337,6 +641,16 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   void _mostrarFeedbackErros() {
     final erros = _errosPorEtapa[_currentStep] ?? [];
+    final errosRastreio = erros.isEmpty
+        ? ['Preencha os campos obrigatórios.']
+        : erros;
+
+    _rastrearErroInscricao(
+      _nomeEtapaRastreio(_currentStep),
+      errosRastreio,
+      origem: 'tentativa_avancar',
+    );
+
     if (erros.isEmpty) {
       _showErrorSnackbar('Preencha os campos obrigatórios.');
       return;
@@ -541,6 +855,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
           _etapaValida[0] = false;
           _carregando = false;
         });
+        _rastrearAcaoInscricao(
+          'configuracao_inscricao_nao_encontrada',
+          origem: 'verificar_inscricoes',
+        );
         return;
       }
 
@@ -566,7 +884,26 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _etapaValida[0] = _inscricoesAbertas && _temVagas;
         _carregando = false;
       });
-    } catch (_) {
+
+      _rastrearAcaoInscricao(
+        'configuracao_inscricao_carregada',
+        origem: 'verificar_inscricoes',
+        metadata: {
+          'inscricoes_abertas': _inscricoesAbertas,
+          'vagas_total': _vagasDisponiveis,
+          'vagas_restantes': _vagasRestantes,
+          'tem_vagas': _temVagas,
+          'idade_minima': _idadeMinima,
+          'idade_maxima': _idadeMaxima,
+          'recolher_assinatura': _recolherAssinatura,
+        },
+      );
+    } catch (e) {
+      _rastrearErroInscricao(
+        'verificar_inscricoes',
+        ['Erro ao verificar disponibilidade: $e'],
+        origem: 'firestore',
+      );
       setState(() {
         _inscricoesAbertas = false;
         _configuracoesCarregadas = true;
@@ -645,7 +982,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Container(
                   width: 180,
                   height: 230,
@@ -665,7 +1002,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -742,8 +1079,15 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     try {
+      _rastrearAcaoInscricao('foto_orientacao_aberta', origem: 'etapa_foto');
+
       final continuar = await _mostrarOrientacaoFotoAluno();
-      if (!continuar) return;
+      if (!continuar) {
+        _rastrearAcaoInscricao('foto_orientacao_cancelada', origem: 'etapa_foto');
+        return;
+      }
+
+      _rastrearAcaoInscricao('foto_orientacao_confirmada', origem: 'etapa_foto');
 
       _setProcessandoFotoLocal('Preparando câmera...');
 
@@ -759,6 +1103,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       final picker = ImagePicker();
 
+      _rastrearAcaoInscricao('camera_aberta', origem: 'etapa_foto');
+
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: 'abrir_camera',
+        etapa: _etapaAtualRastreio(),
+      );
+
       final image = await picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
@@ -769,8 +1121,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       if (image == null) {
         _limparProcessandoFotoLocal();
+        _rastrearAcaoInscricao('foto_camera_cancelada', origem: 'camera');
         return;
       }
+
+      _rastrearAcaoInscricao('foto_capturada', origem: 'camera');
 
       _setProcessandoFotoLocal('Foto recebida. Processando...');
 
@@ -785,6 +1140,15 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       final originalBytes = await image.readAsBytes();
 
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: 'foto_capturada',
+        etapa: _etapaAtualRastreio(),
+        metadata: {
+          'bytes': originalBytes.length,
+        },
+      );
+
       _setProcessandoFotoLocal('Abrindo editor de ajuste...');
 
       // Tempo mínimo visual para evitar sensação de tela vazia/travada.
@@ -797,6 +1161,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         return;
       }
 
+      _rastrearAcaoInscricao('editor_foto_aberto', origem: 'camera');
+
       final bytesEditados = await showDialog<Uint8List?>(
         context: context,
         barrierDismissible: false,
@@ -808,8 +1174,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       if (bytesEditados == null) {
         _limparProcessandoFotoLocal();
+        _rastrearAcaoInscricao('editor_foto_cancelado', origem: 'editor_foto');
         return;
       }
+
+      _rastrearAcaoInscricao('foto_ajustada', origem: 'editor_foto');
 
       setState(() {
         _fotoBytes = bytesEditados;
@@ -820,9 +1189,23 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _statusFotoLocal = '';
       });
 
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: 'foto_ajustada',
+        etapa: _etapaAtualRastreio(),
+        metadata: {
+          'bytes_editados': bytesEditados.length,
+        },
+      );
+
       _validarEtapaFoto();
       _showSuccessSnackbar('📸 Foto ajustada! Ela será enviada ao finalizar a inscrição.');
     } catch (e) {
+      _rastrearErroInscricao(
+        'foto_aluno',
+        ['Erro ao tirar/processar foto: $e'],
+        origem: 'foto',
+      );
       fecharLoading();
       _limparProcessandoFotoLocal();
 
@@ -834,6 +1217,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   Future<void> _uploadFotoFirebase() async {
     if (_fotoBytes == null || _fotoNome == null) return;
+
+    _rastrearAcaoInscricao('upload_foto_iniciado', origem: 'envio_final');
 
     setState(() {
       _uploadingFoto = true;
@@ -861,6 +1246,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       final downloadUrl = await fotoRef.getDownloadURL();
 
+      _rastrearAcaoInscricao('upload_foto_concluido', origem: 'envio_final');
+
+      _rastreioService.registrarAcaoFormulario(
+        formulario: 'inscricao_publica',
+        acao: 'upload_foto_sucesso',
+        etapa: _etapaAtualRastreio(),
+      );
+
       setState(() {
         _fotoUrl = downloadUrl;
         _uploadingFoto = false;
@@ -873,12 +1266,24 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _processandoFotoLocal = false;
         _statusFotoLocal = '';
       });
+      _rastrearErroInscricao(
+        'upload_foto',
+        ['Erro ao fazer upload da foto: $e'],
+        origem: 'firebase_storage',
+      );
+      _rastreioService.registrarErroFormulario(
+        formulario: 'inscricao_publica',
+        etapa: _etapaAtualRastreio(),
+        erro: 'Erro ao fazer upload da foto: $e',
+      );
       _showErrorSnackbar('Erro ao fazer upload da foto: $e');
       rethrow;
     }
   }
 
   void _removerFoto() {
+    _rastrearAcaoInscricao('remover_foto_dialog_aberto', origem: 'foto_aluno');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -900,6 +1305,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
               });
               Navigator.pop(context);
               _validarEtapaFoto();
+              _rastrearAcaoInscricao('foto_removida', origem: 'foto_aluno');
               _showSuccessSnackbar('Foto removida com sucesso');
             },
             style: ElevatedButton.styleFrom(
@@ -962,6 +1368,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   }
 
   Future<void> _abrirTelaAssinatura() async {
+    _rastrearAcaoInscricao('assinatura_abriu', origem: 'revisao');
+
     final isMaior = _isMaiorIdade();
     final nomeResponsavel =
     isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
@@ -974,6 +1382,15 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           nomeResponsavel: nomeResponsavel,
           nomeAluno: _controllers['nome']!.text,
           onConfirm: (imageBytes) {
+            _rastreioService.registrarAcaoFormulario(
+              formulario: 'inscricao_publica',
+              acao: 'assinatura_confirmada',
+              etapa: _etapaAtualRastreio(),
+              metadata: {
+                'bytes': imageBytes.length,
+              },
+            );
+
             setState(() {
               _assinaturaBytes = imageBytes;
               _assinaturaUrl = null;
@@ -986,6 +1403,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               }
             });
 
+            _rastrearAcaoInscricao('assinatura_registrada', origem: 'signature_screen');
             _showSuccessSnackbar('✅ Assinatura registrada com sucesso!');
           },
         ),
@@ -993,13 +1411,18 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     );
 
     if (result == true && mounted) {
+      _rastrearAcaoInscricao('assinatura_confirmada', origem: 'signature_screen');
       _validarEtapaFinal();
+    } else {
+      _rastrearAcaoInscricao('assinatura_cancelada_ou_voltou', origem: 'signature_screen');
     }
   }
 
   Future<void> _uploadAssinaturaFirebase() async {
     if (_assinaturaUrl?.isNotEmpty == true) return;
     if (_assinaturaBytes == null) return;
+
+    _rastrearAcaoInscricao('upload_assinatura_iniciado', origem: 'envio_final');
 
     setState(() => _uploadingAssinatura = true);
 
@@ -1030,6 +1453,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
       final downloadUrl = await assinaturaRef.getDownloadURL();
 
+      _rastrearAcaoInscricao('upload_assinatura_concluido', origem: 'envio_final');
+
       setState(() {
         _assinaturaUrl = downloadUrl;
         _assinaturaBytes = null;
@@ -1037,15 +1462,27 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       });
     } catch (e) {
       setState(() => _uploadingAssinatura = false);
+      _rastrearErroInscricao(
+        'upload_assinatura',
+        ['Erro ao enviar assinatura: $e'],
+        origem: 'firebase_storage',
+      );
       _showErrorSnackbar('Erro ao enviar assinatura: $e');
       rethrow;
     }
   }
 
   Future<void> _enviarInscricao() async {
+    _rastrearAcaoInscricao('tentou_enviar_inscricao', origem: 'revisao');
+
     _validarEtapaFinal();
 
     if (!(_etapaValida[6] ?? false)) {
+      _rastrearErroInscricao(
+        'revisao_envio',
+        _errosPorEtapa[6] ?? ['Revisão inválida'],
+        origem: 'tentativa_envio',
+      );
       _mostrarFeedbackErros();
       return;
     }
@@ -1069,6 +1506,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           _mensagem = 'Desculpe, as vagas para inscrições estão esgotadas.';
           _enviando = false;
         });
+        _rastrearErroInscricao(
+          'envio_inscricao',
+          ['Vagas esgotadas no momento do envio.'],
+          origem: 'vagas',
+          metadata: {'vagas_disponiveis': vagasDisponiveis},
+        );
         _showErrorSnackbar('❌ Vagas esgotadas!');
         return;
       }
@@ -1153,17 +1596,71 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
       dados['endereco'] = enderecoParts.join(', ');
 
-      await _firestore.collection('inscricoes').add(dados);
+      final inscricaoRef = await _firestore.collection('inscricoes').add(dados);
 
       final novoTotal = inscricoesSnapshot.docs.length + 1;
       await _firestore.collection('configuracoes').doc('inscricoes').set({
         'total_inscricoes': novoTotal,
       }, SetOptions(merge: true));
 
+      _inscricaoFinalizadaComSucesso = true;
+
+      unawaited(
+        _registrarSaidaEtapa(
+          _currentStep,
+          destino: 'inscricao_enviada',
+          origem: 'conversao',
+        ),
+      );
+
+      unawaited(
+        _rastreioService.registrarConversao(
+          nome: 'inscricao_publica_enviada',
+          origem: 'formulario_aula_experimental',
+          metadata: {
+            ..._metadataResumoInscricao(),
+            'inscricao_id': inscricaoRef.id,
+            'idade_aluno': _calcularIdade(_controllers['data_nascimento']!.text),
+            'is_maior_idade': isMaior,
+            'tem_cpf': _controllers['cpf']!.text.trim().isNotEmpty,
+            'tempo_total_inscricao_segundos': _tempoTotalInscricaoSegundos,
+          },
+        ),
+      );
+
+      unawaited(
+        _rastreioService.finalizarTela(
+          destino: 'inscricao_enviada',
+          metadata: _metadataResumoInscricao(),
+        ),
+      );
+
+      _rastreioService.registrarConversao(
+        nome: 'inscricao_enviada',
+        origem: 'inscricao_publica',
+        valor: 1,
+        metadata: {
+          'is_maior_idade': isMaior,
+          'idade_calculada': _calcularIdade(_controllers['data_nascimento']!.text),
+          'tem_cpf': _controllers['cpf']!.text.trim().isNotEmpty,
+          'tem_foto': _fotoUrl != null && _fotoUrl!.isNotEmpty,
+          'tem_assinatura': _assinaturaUrl != null && _assinaturaUrl!.isNotEmpty,
+        },
+      );
+
+      _registrarSnapshotInscricao(
+        momento: 'envio_sucesso',
+      );
+
       if (mounted) {
         _mostrarDialogSucesso(dados);
       }
     } catch (e) {
+      _rastrearErroInscricao(
+        'envio_inscricao',
+        ['Erro ao enviar inscrição: $e'],
+        origem: 'firestore_storage',
+      );
       setState(() {
         _mensagem = 'Erro ao enviar inscrição: $e';
         _enviando = false;
@@ -1191,7 +1688,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1229,7 +1726,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: 20,
                         height: 1.05,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1370,6 +1867,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
+                        _rastrearAcaoInscricao('finalizou_dialog_sucesso', origem: 'sucesso');
                         Navigator.of(context).pop();
                         Navigator.pushAndRemoveUntil(
                           context,
@@ -1427,6 +1925,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   void _proximaEtapa() {
     if (_currentStep >= 6) return;
 
+    _rastrearAcaoInscricao(
+      'clicou_avancar_etapa',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
+
     if (_currentStep == 1) _validarEtapaFoto();
     if (_currentStep == 2) _validarEtapa1();
     if (_currentStep == 3) _validarEtapa2();
@@ -1445,7 +1948,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       return;
     }
 
+    final etapaAnterior = _currentStep;
+    final proxima = _currentStep + 1;
+
+    unawaited(
+      _registrarSaidaEtapa(
+        etapaAnterior,
+        destino: _nomeEtapaRastreio(proxima),
+        origem: 'avancar',
+      ),
+    );
+
     setState(() => _currentStep++);
+
+    unawaited(_registrarEntradaEtapa(proxima, origem: 'avancar'));
+
     _pageController.nextPage(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -1455,7 +1972,26 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   void _etapaAnterior() {
     if (_currentStep <= 0) return;
 
+    _rastrearAcaoInscricao(
+      'clicou_voltar_etapa',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
+
+    final etapaAnterior = _currentStep;
+    final destino = _currentStep - 1;
+
+    unawaited(
+      _registrarSaidaEtapa(
+        etapaAnterior,
+        destino: _nomeEtapaRastreio(destino),
+        origem: 'voltar',
+      ),
+    );
+
     setState(() => _currentStep--);
+
+    unawaited(_registrarEntradaEtapa(destino, origem: 'voltar'));
+
     _pageController.previousPage(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -1463,6 +1999,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   }
 
   Future<bool> _onWillPop() async {
+    _rastrearAcaoInscricao(
+      'pressionou_voltar_sistema',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
+
     if (_currentStep == 0) {
       final shouldExit = await showDialog<bool>(
         context: context,
@@ -1484,10 +2025,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   size: 32,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               const Text(
                 'Sair da inscrição?',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1519,7 +2060,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       );
 
       if (shouldExit == true) {
+        _registrarSaidaInscricaoSeNecessario(motivo: 'voltar_sistema_confirmado');
         Navigator.pop(context);
+      } else {
+        _rastrearAcaoInscricao('cancelou_saida_inscricao', origem: 'dialog_saida');
       }
 
       return false;
@@ -1562,6 +2106,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     }
 
     if (!_inscricoesAbertas) {
+      _rastreioService.registrarPaginaVista('inscricao_fechada', 'inscricao_publica');
       return WillPopScope(
         onWillPop: () async {
           Navigator.pop(context);
@@ -1583,7 +2128,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               padding: const EdgeInsets.all(18),
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 480),
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(28),
@@ -1666,15 +2211,17 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         appBar: AppBar(
           title: const Text(
             'Aula Experimental',
-            style: TextStyle(fontWeight: FontWeight.w800),
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
           ),
+          centerTitle: true,
+          toolbarHeight: 50,
           backgroundColor: Colors.red.shade900,
           foregroundColor: Colors.white,
           elevation: 0,
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(7),
+            preferredSize: const Size.fromHeight(4),
             child: LinearProgressIndicator(
-              minHeight: 7,
+              minHeight: 4,
               value: (_currentStep + 1) / 7,
               backgroundColor: Colors.white.withOpacity(0.25),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
@@ -1777,73 +2324,98 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     final atual = etapas[_currentStep];
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.red.shade900, Colors.red.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.red.shade900.withOpacity(0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 380;
+
+        return Container(
+          margin: EdgeInsets.fromLTRB(
+            compact ? 10 : 14,
+            compact ? 8 : 12,
+            compact ? 10 : 14,
+            0,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
+          padding: EdgeInsets.all(compact ? 10 : 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.red.shade900, Colors.red.shade700],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: Icon(atual.$2, color: Colors.white, size: 26),
+            borderRadius: BorderRadius.circular(compact ? 18 : 22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.shade900.withOpacity(0.10),
+                blurRadius: 7,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  atual.$1,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: compact ? 38 : 44,
+                height: compact ? 38 : 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(compact ? 14 : 16),
+                  border: Border.all(color: Colors.white.withOpacity(0.16)),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Etapa ${_currentStep + 1} de 7',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.78),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Icon(
+                  atual.$2,
+                  color: Colors.white,
+                  size: compact ? 21 : 24,
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: LinearProgressIndicator(
-                    minHeight: 6,
-                    value: (_currentStep + 1) / 7,
-                    backgroundColor: Colors.white.withOpacity(0.18),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
+              ),
+              SizedBox(width: compact ? 9 : 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      atual.$1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: compact ? 14 : 15.5,
+                        height: 1.05,
+                      ),
+                    ),
+                    SizedBox(height: compact ? 1 : 2),
+                    Row(
+                      children: [
+                        Text(
+                          'Etapa ${_currentStep + 1}/7',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.78),
+                            fontSize: compact ? 10.5 : 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(99),
+                            child: LinearProgressIndicator(
+                              minHeight: compact ? 5 : 6,
+                              value: (_currentStep + 1) / 7,
+                              backgroundColor: Colors.white.withOpacity(0.18),
+                              valueColor:
+                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1854,18 +2426,18 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
               color: _temVagas ? Colors.blue.shade50 : Colors.red.shade50,
               shape: BoxShape.circle,
             ),
             child: Icon(
               _temVagas ? Icons.waving_hand : Icons.warning,
-              size: 80,
+              size: 58,
               color: _temVagas ? Colors.blue : Colors.red,
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 18),
           Text(
             _temVagas ? 'Olá! Vamos começar?' : 'Que pena!',
             style: TextStyle(
@@ -1875,81 +2447,133 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Text(
             _temVagas
                 ? 'Precisamos de algumas informações para oferecer a melhor experiência.'
                 : 'No momento todas as vagas estão preenchidas.',
-            style: const TextStyle(fontSize: 16, color: Colors.grey),
+            style: const TextStyle(fontSize: 13.5, color: Colors.grey, height: 1.3),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: Colors.amber.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.amber.shade200),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.menu_book, color: Colors.amber.shade900),
-                  ),
-                  title: const Text(
-                    'REGIMENTO INTERNO',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  subtitle: const Text(
-                    'Leia as regras e diretrizes do grupo',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.arrow_forward,
-                      color: Colors.amber.shade900,
-                      size: 20,
-                    ),
-                  ),
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => const RegimentoDialog(),
-                    );
-                  },
+          const SizedBox(height: 14),
+          Material(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                _rastrearAcaoInscricao('abriu_regimento_interno', origem: 'boas_vindas');
+                showDialog(
+                  context: context,
+                  builder: (context) => const RegimentoDialog(),
+                );
+              },
+              borderRadius: BorderRadius.circular(16),
+              splashColor: Colors.amber.withOpacity(0.16),
+              highlightColor: Colors.amber.withOpacity(0.08),
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.amber.shade200),
                 ),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 14, color: Colors.amber),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Leia atentamente antes de prosseguir',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.amber,
-                            fontWeight: FontWeight.w500,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            Icons.menu_book_rounded,
+                            color: Colors.amber.shade900,
+                            size: 22,
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'REGIMENTO INTERNO',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey.shade900,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Leia as regras e diretrizes do grupo',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  fontSize: 11.5,
+                                  height: 1.22,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Colors.amber.shade900,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.58),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade100),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 15,
+                            color: Colors.amber.shade900,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Leia atentamente antes de prosseguir',
+                              style: TextStyle(
+                                fontSize: 11.2,
+                                color: Colors.amber.shade900,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           if (_configuracoesCarregadas)
@@ -2012,20 +2636,20 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         : 0;
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             '📋 DADOS DO ALUNO',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           const Text(
             'Quem vai praticar capoeira?',
             style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           _buildTextField(
             _controllers['nome']!,
             'Nome Completo *',
@@ -2037,7 +2661,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             },
             personNameOnly: true,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildTextField(
             _controllers['apelido']!,
             'Apelido *',
@@ -2049,7 +2673,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             },
             personNameOnly: true,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -2091,6 +2715,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   ],
                   onChanged: (v) {
                     setState(() => _sexo = v);
+                    _rastrearAcaoInscricao(
+                      'selecionou_sexo',
+                      origem: 'dados_aluno',
+                      metadata: {'sexo': v},
+                    );
                     _validarEtapa1();
                   },
                 ),
@@ -2135,12 +2764,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildStepFoto() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [Colors.red.shade900, Colors.red.shade700],
@@ -2158,7 +2787,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             ),
             child: Column(
               children: [
-                const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 42),
+                const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 34),
                 const SizedBox(height: 10),
                 const Text(
                   'Foto do aluno',
@@ -2182,7 +2811,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               ],
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           _buildFotoAlunoCard(tamanhoGrande: true),
           const SizedBox(height: 14),
           if (_processandoFotoLocal) ...[
@@ -2254,7 +2883,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildFotoAlunoCard({bool tamanhoGrande = false}) {
     final temFoto = _temFoto();
-    final double size = tamanhoGrande ? 176 : 120;
+
+    // Mesmo conceito visual do card da chamada: retrato, não quadrado.
+    final double cardW = tamanhoGrande ? 154 : 112;
+    final double cardH = cardW / 0.76;
+    final double imageH = cardH - (tamanhoGrande ? 42 : 36);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2267,10 +2900,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               alignment: Alignment.bottomRight,
               children: [
                 Container(
-                  width: size,
-                  height: size,
+                  width: cardW,
+                  height: cardH,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(24),
                     color: Colors.grey.shade200,
                     border: Border.all(
                       color: temFoto ? Colors.green.shade700 : Colors.red.shade900,
@@ -2285,26 +2918,52 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
-                    child: _fotoUrl != null
-                        ? Image.network(
-                      _fotoUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
-                    )
-                        : _fotoBytes != null
-                        ? Image.memory(
-                      _fotoBytes!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
-                    )
-                        : _buildFotoPlaceholder(),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: cardW,
+                          height: imageH,
+                          child: _fotoUrl != null
+                              ? Image.network(
+                            _fotoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
+                          )
+                              : _fotoBytes != null
+                              ? Image.memory(
+                            _fotoBytes!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildFotoPlaceholder(),
+                          )
+                              : _buildFotoPlaceholder(),
+                        ),
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            color: temFoto ? Colors.green.shade50 : Colors.red.shade50,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              temFoto ? 'Foto pronta' : 'Tirar foto',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: temFoto ? Colors.green.shade800 : Colors.red.shade900,
+                                fontSize: tamanhoGrande ? 10.8 : 10.0,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (_uploadingFoto || _processandoFotoLocal)
                   Container(
-                    width: size,
-                    height: size,
+                    width: cardW,
+                    height: cardH,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(28),
                       color: Colors.black.withOpacity(0.62),
@@ -2424,22 +3083,22 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final isMaior = _isMaiorIdade();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             '📞 CONTATO',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
             isMaior ? 'Como vamos falar com você?' : 'Como vamos falar com vocês?',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           _buildPhoneField(_controllers['contato_aluno']!, 'Telefone do Aluno *'),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (!isMaior) ...[
             _buildTextField(
               _controllers['nome_responsavel']!,
@@ -2465,7 +3124,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildStepEndereco() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2478,7 +3137,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             'Onde vocês moram?',
             style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           _buildTextField(
             _controllers['rua']!,
             'Rua *',
@@ -2544,7 +3203,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildStepCpf() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2557,7 +3216,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             'CPF (opcional)',
             style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -2578,7 +3237,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           _buildCpfField(),
         ],
       ),
@@ -2608,7 +3267,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             child: const Text(
               '✅ REVISÃO E AUTORIZAÇÃO',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Colors.green,
               ),
@@ -2655,34 +3314,54 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           const SizedBox(height: 24),
           _buildTermoElaborado(),
           const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _autorizacao ? Colors.green : Colors.grey.shade300,
-                width: _autorizacao ? 2 : 1,
-              ),
-            ),
-            child: CheckboxListTile(
-              value: _autorizacao,
-              onChanged: (value) {
-                setState(() => _autorizacao = value ?? false);
+          Material(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                setState(() => _autorizacao = !_autorizacao);
                 _validarEtapaFinal();
               },
-              title: Text(
-                isMaior
-                    ? '☑️ Li e concordo com todos os termos acima'
-                    : '☑️ Li e concordo com todos os termos acima como responsável',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: _autorizacao ? Colors.green.shade800 : Colors.black87,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _autorizacao ? Colors.green : Colors.grey.shade300,
+                    width: _autorizacao ? 2 : 1,
+                  ),
                 ),
-              ),
-              controlAffinity: ListTileControlAffinity.leading,
-              activeColor: Colors.green,
-              checkboxShape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Checkbox(
+                      value: _autorizacao,
+                      onChanged: (value) {
+                        setState(() => _autorizacao = value ?? false);
+                        _validarEtapaFinal();
+                      },
+                      activeColor: Colors.green.shade700,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          isMaior
+                              ? '☑️ Li e concordo com todos os termos acima'
+                              : '☑️ Li e concordo com todos os termos acima como responsável',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: _autorizacao ? Colors.green.shade800 : Colors.grey.shade800,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -3018,65 +3697,98 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     return SafeArea(
       top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.045),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 380;
+          final tiny = constraints.maxWidth < 330;
+
+          final continuarLabel = isLast
+              ? (compact ? 'ENVIAR' : 'ENVIAR INSCRIÇÃO')
+              : (compact ? 'PRÓXIMO' : 'CONTINUAR');
+
+          final voltarButton = OutlinedButton.icon(
+            onPressed: _etapaAnterior,
+            icon: Icon(Icons.arrow_back_rounded, size: compact ? 17 : 18),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(compact ? 'VOLTAR' : 'VOLTAR'),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            if (_currentStep > 0) ...[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _etapaAnterior,
-                  icon: const Icon(Icons.arrow_back_rounded, size: 19),
-                  label: const Text('VOLTAR'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade800,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.grey.shade800,
+              side: BorderSide(color: Colors.grey.shade300),
+              padding: EdgeInsets.symmetric(vertical: compact ? 11 : 13),
+              textStyle: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: compact ? 11.5 : 13,
               ),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              flex: _currentStep == 0 ? 2 : 1,
-              child: ElevatedButton.icon(
-                onPressed: isLast ? _enviarInscricao : _proximaEtapa,
-                icon: Icon(
-                  isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
-                  size: 20,
-                ),
-                label: Text(isLast ? 'ENVIAR INSCRIÇÃO' : 'CONTINUAR'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade900,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(compact ? 13 : 16),
               ),
             ),
-          ],
-        ),
+          );
+
+          final nextButton = ElevatedButton.icon(
+            onPressed: isLast ? _enviarInscricao : _proximaEtapa,
+            icon: Icon(
+              isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
+              size: compact ? 17 : 19,
+            ),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(continuarLabel),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(vertical: compact ? 12 : 14),
+              textStyle: TextStyle(
+                fontSize: compact ? 11.5 : 13.5,
+                fontWeight: FontWeight.w900,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(compact ? 13 : 16),
+              ),
+            ),
+          );
+
+          return Container(
+            padding: EdgeInsets.fromLTRB(
+              compact ? 10 : 14,
+              compact ? 7 : 9,
+              compact ? 10 : 14,
+              compact ? 10 : 13,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.045),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: _currentStep == 0
+                ? SizedBox(width: double.infinity, child: nextButton)
+                : tiny
+                ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: double.infinity, child: nextButton),
+                const SizedBox(height: 7),
+                SizedBox(width: double.infinity, child: voltarButton),
+              ],
+            )
+                : Row(
+              children: [
+                Expanded(child: voltarButton),
+                SizedBox(width: compact ? 8 : 10),
+                Expanded(flex: isLast ? 2 : 1, child: nextButton),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -3333,6 +4045,7 @@ class _ProcessandoFotoDialog extends StatelessWidget {
   }
 }
 
+
 class _EditorFotoInscricaoDialog extends StatefulWidget {
   final Uint8List imageBytes;
   final String nomeAluno;
@@ -3343,152 +4056,149 @@ class _EditorFotoInscricaoDialog extends StatefulWidget {
   });
 
   @override
-  State<_EditorFotoInscricaoDialog> createState() => _EditorFotoInscricaoDialogState();
+  State<_EditorFotoInscricaoDialog> createState() =>
+      _EditorFotoInscricaoDialogState();
 }
 
 class _EditorFotoInscricaoDialogState extends State<_EditorFotoInscricaoDialog> {
-  double _zoom = 1.35;
-  double _offsetX = 0;
-  double _offsetY = 0;
-  bool _salvando = false;
+  double _zoom = 1.0;
+  double _offsetX = 0.0;
+  double _offsetY = 0.0;
+  bool _processando = false;
 
   void _resetar() {
     setState(() {
-      _zoom = 1.35;
-      _offsetX = 0;
-      _offsetY = 0;
+      _zoom = 1.0;
+      _offsetX = 0.0;
+      _offsetY = 0.0;
     });
   }
 
-  Future<void> _salvarImagemEditada() async {
-    if (_salvando) return;
+  Future<void> _selecionarFoto() async {
+    if (_processando) return;
 
-    setState(() => _salvando = true);
+    setState(() => _processando = true);
+
+    // Garante que o botão e o overlay de carregando apareçam antes do crop pesado.
+    await Future.delayed(const Duration(milliseconds: 80));
 
     try {
-      final decoded = img.decodeImage(widget.imageBytes);
-
-      if (decoded == null) {
-        throw Exception('Não foi possível abrir essa imagem.');
-      }
-
-      final original = img.bakeOrientation(decoded);
-      final menorLado = math.min(original.width, original.height).toDouble();
-      final cropSize = (menorLado / _zoom)
-          .round()
-          .clamp(120, menorLado.round())
-          .toInt();
-
-      final maxDx = math.max(0.0, (original.width - cropSize) / 2);
-      final maxDy = math.max(0.0, (original.height - cropSize) / 2);
-
-      final cropX = ((original.width - cropSize) / 2 - (_offsetX * maxDx))
-          .round()
-          .clamp(0, original.width - cropSize)
-          .toInt();
-      final cropY = ((original.height - cropSize) / 2 - (_offsetY * maxDy))
-          .round()
-          .clamp(0, original.height - cropSize)
-          .toInt();
-
-      final cropped = img.copyCrop(
-        original,
-        x: cropX,
-        y: cropY,
-        width: cropSize,
-        height: cropSize,
-      );
-
-      final resized = img.copyResize(
-        cropped,
-        width: 900,
-        height: 900,
-        interpolation: img.Interpolation.cubic,
-      );
-
-      final jpg = Uint8List.fromList(img.encodeJpg(resized, quality: 86));
-
+      final bytes = await _gerarImagemFinal();
       if (!mounted) return;
-      Navigator.pop(context, jpg);
+      Navigator.pop(context, bytes);
     } catch (e) {
       if (!mounted) return;
+      setState(() => _processando = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erro ao ajustar foto: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-
-      setState(() => _salvando = false);
     }
+  }
+
+  Future<Uint8List> _gerarImagemFinal() async {
+    final original = img.decodeImage(widget.imageBytes);
+    if (original == null) {
+      throw Exception('Imagem inválida');
+    }
+
+    // Foto final em retrato, no mesmo conceito visual do card da chamada.
+    // Aqui NÃO usamos canvas branco. Fazemos resize cobrindo tudo e depois crop.
+    // Isso evita aquela área branca satânica aparecendo embaixo da foto kkkkk.
+    const outputW = 600;
+    const outputH = 789; // 600 / 0.76
+
+    final safeZoom = math.max(_zoom, 1.0);
+
+    final scaleBase = math.max(
+      outputW / original.width,
+      outputH / original.height,
+    );
+
+    final scale = scaleBase * safeZoom;
+    final resizedW = math.max(outputW, (original.width * scale).round());
+    final resizedH = math.max(outputH, (original.height * scale).round());
+
+    final resized = img.copyResize(
+      original,
+      width: resizedW,
+      height: resizedH,
+      interpolation: img.Interpolation.linear,
+    );
+
+    final maxCropX = math.max(0, resizedW - outputW);
+    final maxCropY = math.max(0, resizedH - outputH);
+
+    // Mesma lógica visual do preview:
+    // offset positivo move a imagem para a direita/baixo,
+    // então o crop precisa andar no sentido oposto.
+    final centerCropX = maxCropX / 2;
+    final centerCropY = maxCropY / 2;
+
+    final cropX = (centerCropX - (_offsetX * outputW * 0.42))
+        .round()
+        .clamp(0, maxCropX);
+
+    final cropY = (centerCropY - (_offsetY * outputH * 0.42))
+        .round()
+        .clamp(0, maxCropY);
+
+    final cropped = img.copyCrop(
+      resized,
+      x: cropX,
+      y: cropY,
+      width: outputW,
+      height: outputH,
+    );
+
+    return Uint8List.fromList(img.encodeJpg(cropped, quality: 88));
   }
 
   @override
   Widget build(BuildContext context) {
-    final nome = widget.nomeAluno.trim().isEmpty ? 'Aluno' : widget.nomeAluno.trim();
+    final alturaTela = MediaQuery.of(context).size.height;
+    final larguraTela = MediaQuery.of(context).size.width;
+    final bemPequeno = alturaTela < 720 || larguraTela < 370;
 
     return Dialog(
-      insetPadding: const EdgeInsets.all(12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: ConstrainedBox(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: bemPequeno ? 10 : 18,
+        vertical: bemPequeno ? 10 : 18,
+      ),
+      backgroundColor: Colors.transparent,
+      child: SafeArea(
+        child: Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.94,
             maxWidth: 520,
+            maxHeight: alturaTela * 0.94,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.red.shade900, Colors.red.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.center_focus_strong_rounded, color: Colors.white),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Ajustar foto do aluno',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 17,
-                            ),
-                          ),
-                          Text(
-                            nome,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.78),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: _salvando ? null : () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
-                    ),
-                  ],
-                ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFECEC),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.22),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
               ),
-              Flexible(
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _buildHeader(bemPequeno),
+              Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(
+                    bemPequeno ? 12 : 18,
+                    bemPequeno ? 12 : 16,
+                    bemPequeno ? 12 : 18,
+                    bemPequeno ? 12 : 16,
+                  ),
                   child: Column(
                     children: [
                       Text(
@@ -3496,75 +4206,15 @@ class _EditorFotoInscricaoDialogState extends State<_EditorFotoInscricaoDialog> 
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.grey.shade700,
-                          fontSize: 13,
                           height: 1.35,
+                          fontSize: bemPequeno ? 12.2 : 13.5,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      _buildCardReferencia(),
-                      const SizedBox(height: 16),
-                      _buildSlider(
-                        label: 'Zoom',
-                        value: _zoom,
-                        min: 1.0,
-                        max: 3.0,
-                        divisions: 40,
-                        icon: Icons.zoom_in_rounded,
-                        onChanged: (v) => setState(() => _zoom = v),
-                      ),
-                      _buildSlider(
-                        label: 'Horizontal',
-                        value: _offsetX,
-                        min: -1,
-                        max: 1,
-                        divisions: 40,
-                        icon: Icons.swap_horiz_rounded,
-                        onChanged: (v) => setState(() => _offsetX = v),
-                      ),
-                      _buildSlider(
-                        label: 'Vertical',
-                        value: _offsetY,
-                        min: -1,
-                        max: 1,
-                        divisions: 40,
-                        icon: Icons.swap_vert_rounded,
-                        onChanged: (v) => setState(() => _offsetY = v),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _salvando ? null : _resetar,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Resetar'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _salvando ? null : _salvarImagemEditada,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.shade900,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 13),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                              ),
-                              icon: _salvando
-                                  ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                                  : const Icon(Icons.check_rounded),
-                              label: Text(_salvando ? 'Salvando...' : 'Usar foto'),
-                            ),
-                          ),
-                        ],
-                      ),
+                      SizedBox(height: bemPequeno ? 10 : 14),
+                      _buildEditorArea(bemPequeno),
+                      SizedBox(height: bemPequeno ? 10 : 14),
+                      _buildControlsSlim(bemPequeno),
                     ],
                   ),
                 ),
@@ -3576,158 +4226,453 @@ class _EditorFotoInscricaoDialogState extends State<_EditorFotoInscricaoDialog> 
     );
   }
 
-  Widget _buildCardReferencia() {
+  Widget _buildHeader(bool compacto) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        compacto ? 14 : 18,
+        compacto ? 14 : 18,
+        compacto ? 10 : 14,
+        compacto ? 13 : 18,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.center_focus_strong_rounded, color: Colors.white, size: 28),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ajustar foto do aluno',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: compacto ? 17 : 21,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  widget.nomeAluno.trim().isEmpty ? 'Aluno' : widget.nomeAluno.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.82),
+                    fontSize: compacto ? 11.5 : 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Fechar',
+            onPressed: _processando ? null : () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditorArea(bool compacto) {
+    // Mesma proporção visual do card da chamada:
+    // SliverGridDelegateWithFixedCrossAxisCount(childAspectRatio: 0.76)
+    final previewW = compacto ? 218.0 : 248.0;
+    final cardH = previewW / 0.76;
+    final actionH = compacto ? 58.0 : 62.0;
+    final previewH = cardH - actionH;
+
     return Center(
       child: Container(
-        width: 210,
-        height: 292,
+        width: previewW,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.green.shade500, width: 2.2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 14,
+              color: Colors.green.shade900.withOpacity(0.14),
+              blurRadius: 13,
               offset: const Offset(0, 5),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Column(
-            children: [
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(
-                      color: Colors.grey.shade100,
-                      child: ClipRect(
-                        child: Transform.translate(
-                          offset: Offset(_offsetX * 58, _offsetY * 58),
-                          child: Transform.scale(
-                            scale: _zoom,
-                            child: Image.memory(
-                              widget.imageBytes,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.medium,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: previewW,
+              height: previewH,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: Transform.translate(
+                        offset: Offset(
+                          _offsetX * previewW * 0.42,
+                          _offsetY * previewH * 0.42,
+                        ),
+                        child: Transform.scale(
+                          scale: _zoom,
+                          child: Image.memory(
+                            widget.imageBytes,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _FotoAlunoGuiaPainter(),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.black.withOpacity(0.72),
+                            Colors.black.withOpacity(0.46),
+                            Colors.transparent,
+                          ],
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                        ),
+                      ),
+                      child: const Text(
+                        'Rosto alinhado nas guias',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_processando)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.58),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.35),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
+                            ),
+                            child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.6,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  'Preparando foto...',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
                     ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: CustomPaint(
-                          painter: _GuiaRostoInscricaoPainter(),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.center,
-                            colors: [
-                              Colors.black.withOpacity(0.55),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Positioned(
-                      left: 10,
-                      right: 10,
-                      bottom: 10,
-                      child: Text(
-                        'Rosto alinhado nas guias',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(9, 9, 9, 10),
-                color: Colors.green.shade50,
-                child: Center(
-                  child: Container(
-                    width: 142,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade600,
-                      borderRadius: BorderRadius.circular(19),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.check_circle_rounded, color: Colors.white, size: 17),
-                        SizedBox(width: 6),
-                        Text(
-                          'Boa para chamada',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
+            ),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compacto ? 9 : 11,
+                compacto ? 8 : 10,
+                compacto ? 9 : 11,
+                compacto ? 10 : 12,
+              ),
+              color: Colors.green.shade50,
+              child: Row(
+                children: [
+                  _buildResetButton(
+                    onTap: _processando ? null : _resetar,
+                    compacto: compacto,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: _buildActionButton(
+                      label: 'Usar esta foto',
+                      icon: Icons.check_circle_rounded,
+                      background: Colors.green.shade700,
+                      onTap: _processando ? null : _selecionarFoto,
+                      compacto: compacto,
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required String label,
+    required IconData icon,
+    required Color background,
+    required VoidCallback? onTap,
+    required bool compacto,
+  }) {
+    final loading = _processando;
+
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: loading
+          ? SizedBox(
+        width: compacto ? 16 : 18,
+        height: compacto ? 16 : 18,
+        child: const CircularProgressIndicator(
+          strokeWidth: 2.2,
+          color: Colors.white,
+        ),
+      )
+          : Icon(icon, size: compacto ? 17 : 19),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(loading ? 'Preparando...' : label),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: background,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: background.withOpacity(0.72),
+        elevation: 0,
+        padding: EdgeInsets.symmetric(
+          horizontal: compacto ? 12 : 14,
+          vertical: compacto ? 11 : 13,
+        ),
+        textStyle: TextStyle(
+          fontSize: compacto ? 12.5 : 13.5,
+          fontWeight: FontWeight.w900,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(99),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResetButton({
+    required VoidCallback? onTap,
+    required bool compacto,
+  }) {
+    return Tooltip(
+      message: 'Resetar ajuste',
+      child: Material(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(99),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            width: compacto ? 43 : 48,
+            height: compacto ? 43 : 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Icon(
+              Icons.restart_alt_rounded,
+              color: Colors.red.shade800,
+              size: compacto ? 22 : 24,
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSlider({
+  Widget _buildControlsSlim(bool compacto) {
+    return Column(
+      children: [
+        _buildSliderTile(
+          label: 'Zoom',
+          icon: Icons.zoom_in_rounded,
+          value: _zoom,
+          min: 1.0,
+          max: 2.4,
+          onChanged: (v) => setState(() => _zoom = v),
+          compacto: compacto,
+        ),
+        SizedBox(height: compacto ? 8 : 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMiniSliderTile(
+                label: 'Horizontal',
+                icon: Icons.swap_horiz_rounded,
+                value: _offsetX,
+                min: -1,
+                max: 1,
+                onChanged: (v) => setState(() => _offsetX = v),
+                compacto: compacto,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMiniSliderTile(
+                label: 'Vertical',
+                icon: Icons.swap_vert_rounded,
+                value: _offsetY,
+                min: -1,
+                max: 1,
+                onChanged: (v) => setState(() => _offsetY = v),
+                compacto: compacto,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSliderTile({
     required String label,
+    required IconData icon,
     required double value,
     required double min,
     required double max,
-    required int divisions,
-    required IconData icon,
     required ValueChanged<double> onChanged,
+    required bool compacto,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: compacto ? 12 : 16,
+        vertical: compacto ? 8 : 10,
+      ),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.red.shade50),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 19, color: Colors.red.shade900),
+          Icon(icon, color: Colors.red.shade900, size: compacto ? 20 : 22),
           const SizedBox(width: 8),
           SizedBox(
-            width: 74,
+            width: compacto ? 54 : 76,
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.grey.shade900,
+                fontSize: compacto ? 12 : 13.5,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: Colors.red.shade700,
+                inactiveTrackColor: Colors.red.shade100,
+                thumbColor: Colors.red.shade700,
+                overlayColor: Colors.red.shade700.withOpacity(0.12),
+                trackHeight: 4,
+              ),
+              child: Slider(
+                value: value,
+                min: min,
+                max: max,
+                onChanged: _processando ? null : onChanged,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniSliderTile({
+    required String label,
+    required IconData icon,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+    required bool compacto,
+  }) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        compacto ? 8 : 10,
+        compacto ? 8 : 9,
+        compacto ? 8 : 10,
+        compacto ? 7 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.red.shade50),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: Colors.red.shade900, size: 17),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: compacto ? 10.5 : 11.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: Colors.red.shade700,
+              inactiveTrackColor: Colors.red.shade100,
+              thumbColor: Colors.red.shade700,
+              overlayColor: Colors.red.shade700.withOpacity(0.12),
+              trackHeight: 3.2,
+            ),
             child: Slider(
               value: value,
               min: min,
               max: max,
-              divisions: divisions,
-              activeColor: Colors.red.shade900,
-              onChanged: _salvando ? null : onChanged,
+              onChanged: _processando ? null : onChanged,
             ),
           ),
         ],
@@ -3735,6 +4680,57 @@ class _EditorFotoInscricaoDialogState extends State<_EditorFotoInscricaoDialog> 
     );
   }
 }
+
+class _FotoAlunoGuiaPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final green = Paint()
+      ..color = Colors.green.shade500
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4;
+
+    final grid = Paint()
+      ..color = Colors.white.withOpacity(0.42)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.9;
+
+    final faceRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(size.width / 2, size.height * 0.46),
+        width: size.width * 0.72,
+        height: size.height * 0.58,
+      ),
+      const Radius.circular(22),
+    );
+
+    canvas.drawRRect(faceRect, green);
+
+    canvas.drawLine(
+      Offset(size.width / 3, 0),
+      Offset(size.width / 3, size.height),
+      grid,
+    );
+    canvas.drawLine(
+      Offset(size.width * 2 / 3, 0),
+      Offset(size.width * 2 / 3, size.height),
+      grid,
+    );
+    canvas.drawLine(
+      Offset(0, size.height / 3),
+      Offset(size.width, size.height / 3),
+      grid,
+    );
+    canvas.drawLine(
+      Offset(0, size.height * 2 / 3),
+      Offset(size.width, size.height * 2 / 3),
+      grid,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 
 class _GuiaRostoInscricaoPainter extends CustomPainter {
   @override

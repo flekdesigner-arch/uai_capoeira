@@ -924,18 +924,24 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('Detalhes do Usuário'),
+        title: const Text(
+          'Detalhes do Usuário',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        centerTitle: true,
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.bug_report),
+            icon: const Icon(Icons.bug_report_rounded),
             onPressed: () => _diagnosticarPermissoesCompleto(context),
-            tooltip: 'Diagnosticar Permissões',
+            tooltip: 'Diagnosticar permissões',
           ),
           IconButton(
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.edit_rounded),
             onPressed: () {
               Navigator.push(
                 context,
@@ -944,22 +950,28 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 ),
               );
             },
-          )
+            tooltip: 'Editar usuário',
+          ),
         ],
       ),
       body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        future: FirebaseFirestore.instance.collection('usuarios').doc(widget.userId).get(),
+        future: FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(widget.userId)
+            .get(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return _buildLoadingState('Carregando usuário...');
           }
+
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("Usuário não encontrado."));
+            return _buildEmptyState();
           }
 
           final data = snapshot.data!.data()!;
           final fotoUrl = data['foto_url'] as String?;
-          final nomeCompleto = data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
+          final nomeCompleto =
+              data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
           final email = data['email'] ?? 'Email não informado';
           final tipo = data['tipo'] ?? 'Tipo não informado';
           final pesoPermissao = data['peso_permissao'] ?? 0;
@@ -971,524 +983,705 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           final aprovadoPor = data['aprovado_por'] as String?;
           final aprovadoPorNome = data['aprovado_por_nome'] as String?;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Cabeçalho com foto e informações básicas
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor: Colors.grey.shade300,
-                        child: ClipOval(
-                          child: fotoUrl != null && fotoUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                            imageUrl: fotoUrl,
-                            fit: BoxFit.cover,
-                            width: 120,
-                            height: 120,
-                            placeholder: (context, url) => const CircularProgressIndicator(),
-                            errorWidget: (context, url, error) => const Icon(Icons.person, size: 60, color: Colors.white),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 620;
+              final wide = constraints.maxWidth >= 960;
+
+              return SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 12 : 20,
+                  compact ? 12 : 18,
+                  compact ? 12 : 20,
+                  28,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1120),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildUserHero(
+                          fotoUrl: fotoUrl,
+                          nome: nomeCompleto.toString(),
+                          email: email.toString(),
+                          tipo: tipo.toString(),
+                          status: statusConta.toString(),
+                          peso: pesoPermissao,
+                          compact: compact,
+                        ),
+                        const SizedBox(height: 14),
+                        _buildActionStrip(compact),
+                        const SizedBox(height: 14),
+                        if (wide)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: Column(
+                                  children: [
+                                    _buildAccessCard(
+                                      tipo: tipo.toString(),
+                                      peso: pesoPermissao,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _buildContactCard(
+                                      contato: contato.toString(),
+                                      email: email.toString(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 4,
+                                child: Column(
+                                  children: [
+                                    _buildStatusCard(statusConta.toString()),
+                                    const SizedBox(height: 14),
+                                    _buildDatesCard(
+                                      dataCadastro: dataCadastro,
+                                      ultimaAtualizacao: ultimaAtualizacao,
+                                      aprovadoEm: aprovadoEm,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           )
-                              : const Icon(Icons.person, size: 60, color: Colors.white),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                        else ...[
+                          _buildStatusCard(statusConta.toString()),
+                          const SizedBox(height: 14),
+                          _buildAccessCard(
+                            tipo: tipo.toString(),
+                            peso: pesoPermissao,
+                          ),
+                          const SizedBox(height: 14),
+                          _buildContactCard(
+                            contato: contato.toString(),
+                            email: email.toString(),
+                          ),
+                          const SizedBox(height: 14),
+                          _buildDatesCard(
+                            dataCadastro: dataCadastro,
+                            ultimaAtualizacao: ultimaAtualizacao,
+                            aprovadoEm: aprovadoEm,
+                          ),
+                        ],
+                        if (aprovadoPor != null || aprovadoPorNome != null) ...[
+                          const SizedBox(height: 14),
+                          _buildApprovalCard(
+                            aprovadoPor: aprovadoPor,
+                            aprovadoPorNome: aprovadoPorNome,
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        _buildIdCard(),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildUserHero({
+    required String? fotoUrl,
+    required String nome,
+    required String email,
+    required String tipo,
+    required String status,
+    required int peso,
+    required bool compact,
+  }) {
+    final tipoColor = _getTipoColor(tipo);
+    final statusColor = _getStatusColor(status);
+    final inicial = nome.trim().isNotEmpty ? nome.trim().substring(0, 1).toUpperCase() : '?';
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 16 : 22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(compact ? 26 : 32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 620;
+
+          final avatar = Container(
+            width: compact ? 94 : 118,
+            height: compact ? 94 : 118,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(compact ? 32 : 40),
+              border: Border.all(color: Colors.white.withOpacity(0.20), width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(compact ? 30 : 38),
+              child: fotoUrl != null && fotoUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+                errorWidget: (context, url, error) => Center(
+                  child: Text(
+                    inicial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 38,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              )
+                  : Center(
+                child: Text(
+                  inicial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          final info = Column(
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            children: [
+              Text(
+                nome,
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 24 : 33,
+                  height: 1.04,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                email,
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.82),
+                  fontSize: compact ? 12.5 : 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _whiteChip(_getTipoIcon(tipo), tipo.toUpperCase()),
+                  _whiteChip(Icons.security_rounded, 'PESO $peso'),
+                  _whiteChip(Icons.circle, _formatStatus(status).toUpperCase()),
+                ],
+              ),
+            ],
+          );
+
+          if (narrow) {
+            return Column(
+              children: [avatar, const SizedBox(height: 14), info],
+            );
+          }
+
+          return Row(
+            children: [
+              avatar,
+              const SizedBox(width: 18),
+              Expanded(child: info),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: tipoColor.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor.withOpacity(0.22)),
+                ),
+                child: Icon(_getTipoIcon(tipo), color: Colors.white, size: 30),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _whiteChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionStrip(bool compact) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tiny = constraints.maxWidth < 420;
+
+        final permissions = ElevatedButton.icon(
+          onPressed: () => _mostrarDialogPermissoes(context),
+          icon: const Icon(Icons.security_rounded),
+          label: const Text('PERMISSÕES'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade900,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        );
+
+        final edit = OutlinedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EditarUsuarioScreen(userId: widget.userId),
+              ),
+            );
+          },
+          icon: const Icon(Icons.edit_rounded),
+          label: const Text('EDITAR'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.grey.shade800,
+            side: BorderSide(color: Colors.grey.shade300),
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        );
+
+        final diagnostic = OutlinedButton.icon(
+          onPressed: () => _diagnosticarPermissoesCompleto(context),
+          icon: const Icon(Icons.bug_report_rounded),
+          label: const Text('DIAGNÓSTICO'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.blue.shade800,
+            side: BorderSide(color: Colors.blue.shade100),
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        );
+
+        if (tiny) {
+          return Column(
+            children: [
+              SizedBox(width: double.infinity, child: permissions),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: edit),
+                  const SizedBox(width: 8),
+                  Expanded(child: diagnostic),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(flex: 2, child: permissions),
+            const SizedBox(width: 8),
+            Expanded(child: edit),
+            const SizedBox(width: 8),
+            Expanded(child: diagnostic),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusCard(String status) {
+    final color = _getStatusColor(status);
+
+    return _premiumCard(
+      title: 'Status da conta',
+      icon: Icons.account_circle_rounded,
+      color: color,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.09),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: color.withOpacity(0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.circle, color: color, size: 13),
+              const SizedBox(width: 7),
+              Text(
+                _formatStatus(status).toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccessCard({
+    required String tipo,
+    required int peso,
+  }) {
+    final isAdmin = peso >= 90;
+    final color = isAdmin ? Colors.red : Colors.blue;
+
+    return _premiumCard(
+      title: 'Acesso e permissões',
+      icon: Icons.admin_panel_settings_rounded,
+      color: color,
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  color.withOpacity(0.08),
+                  color.withOpacity(0.14),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withOpacity(0.14)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isAdmin ? Icons.stars_rounded : Icons.security_rounded,
+                  color: color,
+                  size: 38,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        nomeCompleto,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
+                        isAdmin ? 'Acesso administrativo' : 'Permissão personalizada',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        email,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.grey.shade600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _getTipoColor(tipo).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(_getTipoIcon(tipo), size: 16, color: _getTipoColor(tipo)),
-                            const SizedBox(width: 8),
-                            Text(
-                              tipo.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: _getTipoColor(tipo),
-                              ),
-                            ),
-                          ],
+                        'Tipo: ${tipo.toUpperCase()} • Peso $peso/100',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 24),
-
-                // Status da Conta
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Status da Conta',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: _buildStatusInfo(
-                            'Status',
-                            _formatStatus(statusConta),
-                            _getStatusColor(statusConta),
-                            Icons.account_circle,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Informações de Permissões
-                Card(
-                  elevation: 2,
-                  shadowColor: Colors.black.withOpacity(0.1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Cabeçalho com título e botão alinhados
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade50,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Icon(
-                                    Icons.admin_panel_settings,
-                                    color: Colors.red.shade900,
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'Acessos e ',
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 20,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.red.shade100.withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: ElevatedButton.icon(
-                                onPressed: () => _mostrarDialogPermissoes(context),
-                                icon: const Icon(Icons.security, size: 18),
-                                label: const Text(
-                                  'Permissões',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red.shade900,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Divisor sutil
-                        Container(
-                          height: 1,
-                          color: Colors.grey.shade200,
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Seção de Nível de Acesso
-                        Text(
-                          'NÍVEL DE ACESSO',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade600,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Card de peso de permissão
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: pesoPermissao >= 90
-                                  ? [Colors.red.shade50, Colors.red.shade100]
-                                  : [Colors.blue.shade50, Colors.blue.shade100],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: pesoPermissao >= 90
-                                  ? Colors.red.shade200
-                                  : Colors.blue.shade200,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Peso da Permissão',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: pesoPermissao >= 90
-                                            ? Colors.red.shade900
-                                            : Colors.blue.shade900,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          pesoPermissao.toString(),
-                                          style: TextStyle(
-                                            fontSize: 36,
-                                            fontWeight: FontWeight.bold,
-                                            color: pesoPermissao >= 90
-                                                ? Colors.red.shade900
-                                                : Colors.blue.shade900,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '/ 100',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            color: pesoPermissao >= 90
-                                                ? Colors.red.shade700
-                                                : Colors.blue.shade700,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.9),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  pesoPermissao >= 90
-                                      ? Icons.admin_panel_settings
-                                      : Icons.security,
-                                  size: 40,
-                                  color: pesoPermissao >= 90
-                                      ? Colors.red.shade900
-                                      : Colors.blue.shade900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Badge de Acesso Administrativo (apenas para peso >= 90)
-                        if (pesoPermissao >= 90) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.red.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade100,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    Icons.stars,
-                                    color: Colors.red.shade900,
-                                    size: 18,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Acesso Administrativo Total',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red.shade900,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Este usuário possui privilégios administrativos completos',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.red.shade800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else ...[
-                          const SizedBox(height: 16),
-                          // Informação adicional sobre permissões
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  size: 20,
-                                  color: Colors.grey.shade600,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Configure permissões específicas clicando no botão "Permissões"',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade700,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Informações de Contato
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Contato',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.phone, color: Colors.blue),
-                          title: const Text('Telefone/WhatsApp'),
-                          subtitle: Text(contato),
-                        ),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.email, color: Colors.green),
-                          title: const Text('E-mail'),
-                          subtitle: Text(email),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Informações de Datas
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Registros de Datas',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildDateInfo(
-                          'Data de Cadastro',
-                          _formatTimestamp(dataCadastro),
-                          Icons.calendar_today,
-                        ),
-                        _buildDateInfo(
-                          'Última Atualização',
-                          _formatTimestamp(ultimaAtualizacao),
-                          Icons.update,
-                        ),
-                        if (aprovadoEm != null) ...[
-                          _buildDateInfo(
-                            'Aprovado em',
-                            _formatTimestamp(aprovadoEm),
-                            Icons.verified,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Informações de Aprovação
-                if (aprovadoPor != null || aprovadoPorNome != null) ...[
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Aprovação',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          if (aprovadoPorNome != null)
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.person, color: Colors.purple),
-                              title: const Text('Aprovado por'),
-                              subtitle: Text(aprovadoPorNome),
-                            ),
-                          if (aprovadoPor != null)
-                            Text(
-                              'ID: ${aprovadoPor!.substring(0, 8)}...',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-
-                // ID do Usuário
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Identificação',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SelectableText(
-                          'ID: ${widget.userId}',
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Use este ID para referenciar o usuário em outros sistemas',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
               ],
             ),
-          );
-        },
+          ),
+          if (!isAdmin) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Configure permissões específicas no botão “Permissões”.',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12.5,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactCard({
+    required String contato,
+    required String email,
+  }) {
+    return _premiumCard(
+      title: 'Contato',
+      icon: Icons.contact_phone_rounded,
+      color: Colors.green,
+      child: Column(
+        children: [
+          _infoLine(Icons.phone_rounded, 'Telefone/WhatsApp', contato),
+          const Divider(height: 20),
+          _infoLine(Icons.email_rounded, 'E-mail', email),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatesCard({
+    required Timestamp? dataCadastro,
+    required Timestamp? ultimaAtualizacao,
+    required Timestamp? aprovadoEm,
+  }) {
+    return _premiumCard(
+      title: 'Registros',
+      icon: Icons.event_note_rounded,
+      color: Colors.orange,
+      child: Column(
+        children: [
+          _infoLine(Icons.calendar_today_rounded, 'Data de cadastro', _formatTimestamp(dataCadastro)),
+          const Divider(height: 20),
+          _infoLine(Icons.update_rounded, 'Última atualização', _formatTimestamp(ultimaAtualizacao)),
+          if (aprovadoEm != null) ...[
+            const Divider(height: 20),
+            _infoLine(Icons.verified_rounded, 'Aprovado em', _formatTimestamp(aprovadoEm)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApprovalCard({
+    required String? aprovadoPor,
+    required String? aprovadoPorNome,
+  }) {
+    return _premiumCard(
+      title: 'Aprovação',
+      icon: Icons.verified_user_rounded,
+      color: Colors.purple,
+      child: Column(
+        children: [
+          if (aprovadoPorNome != null)
+            _infoLine(Icons.person_rounded, 'Aprovado por', aprovadoPorNome),
+          if (aprovadoPor != null) ...[
+            if (aprovadoPorNome != null) const Divider(height: 20),
+            _infoLine(Icons.fingerprint_rounded, 'ID do aprovador', '${aprovadoPor.substring(0, aprovadoPor.length > 8 ? 8 : aprovadoPor.length)}...'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdCard() {
+    return _premiumCard(
+      title: 'Identificação',
+      icon: Icons.fingerprint_rounded,
+      color: Colors.grey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            'ID: ${widget.userId}',
+            style: TextStyle(
+              color: Colors.grey.shade800,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Use este ID para referenciar o usuário em outros sistemas.',
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              fontSize: 12,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _premiumCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(0.16)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.032),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardHeader(title: title, icon: icon, color: color),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _cardHeader({
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.14)),
+          ),
+          child: Icon(icon, color: color, size: 21),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: Colors.grey.shade900,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _infoLine(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.grey.shade600, size: 21),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: Colors.grey.shade900,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingState(String message) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.red.shade900),
+            const SizedBox(height: 14),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(26),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_off_rounded, size: 62, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            const Text(
+              'Usuário não encontrado',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
       ),
     );
   }

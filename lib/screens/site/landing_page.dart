@@ -289,10 +289,16 @@ class _LandingPageState extends State<LandingPage> {
       metadata: {'label': label, 'isSpecial': isSpecial},
     );
 
+    if (isSpecial) {
+      Future.delayed(const Duration(milliseconds: 180), () {
+        if (mounted) _mostrarDialogoSenha();
+      });
+      return;
+    }
+
     setState(() {
       _selectedIndex = index;
       _isDrawerOpen = false;
-      if (isSpecial) _mostrarDialogoSenha();
     });
   }
 
@@ -473,35 +479,11 @@ class _LandingPageState extends State<LandingPage> {
           elevation: 0,
           toolbarHeight: isMobile ? 56 : 62,
           titleSpacing: 0,
-          title: Row(
-            children: [
-              if (!isMobile) ...[
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _logoService.buildLogo(height: 30),
-                ),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                child: Text(
-                  _tituloPaginaAtual(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          title: const SizedBox.shrink(),
           leading: Builder(
             builder: (context) {
               return IconButton(
+                tooltip: 'Abrir menu',
                 icon: const Icon(Icons.menu_rounded),
                 onPressed: () {
                   _rastreioService.registrarEvento(
@@ -656,7 +638,7 @@ class _LandingPageState extends State<LandingPage> {
                   builder: (context) {
                     return IconButton(
                       icon: const Icon(Icons.close_rounded, color: Colors.white),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: () => Navigator.pop(context),
                     );
                   },
                 ),
@@ -797,8 +779,17 @@ class _LandingPageState extends State<LandingPage> {
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
-              Navigator.of(context).maybePop();
-              _onMenuItemTap(index, _itensMenu[index]['id'], label, isSpecial);
+              final itemId = index >= 0 && index < _itensMenu.length
+                  ? _itensMenu[index]['id']?.toString() ?? ''
+                  : '';
+
+              Navigator.pop(context);
+
+              Future.delayed(const Duration(milliseconds: 140), () {
+                if (mounted) {
+                  _onMenuItemTap(index, itemId, label, isSpecial);
+                }
+              });
             },
             borderRadius: BorderRadius.circular(14),
             child: Container(
@@ -885,10 +876,6 @@ class _LandingPageState extends State<LandingPage> {
         case 'portfolio':
           return const PortfolioWebScreen();
         case 'acessar_app':
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _mostrarDialogoSenha();
-            if (mounted) setState(() => _selectedIndex = 0);
-          });
           return _buildHomeContent();
         default:
           return _buildHomeContent();
@@ -916,17 +903,17 @@ class _LandingPageState extends State<LandingPage> {
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         paddingHorizontal,
-        isMobile ? 18 : 26,
+        isMobile ? 10 : 22,
         paddingHorizontal,
-        26,
+        22,
       ),
       children: [
         _buildHeroMobileFirst(isMobile),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         _buildSocialRow(isMobile),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         _buildTextoBoasVindas(),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         _buildGridAcessos(isMobile),
         const SizedBox(height: 26),
         _buildFooter(isMobile),
@@ -937,65 +924,56 @@ class _LandingPageState extends State<LandingPage> {
   Widget _buildHeroMobileFirst(bool isMobile) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 18 : 26),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 14 : 24,
+        isMobile ? 16 : 26,
+        isMobile ? 14 : 24,
+        isMobile ? 14 : 22,
+      ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.red.shade900, Colors.red.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(isMobile ? 24 : 30),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(isMobile ? 18 : 28),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          Container(
-            width: isMobile ? 126 : 156,
-            height: isMobile ? 126 : 156,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.13),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: _logoService.buildLogo(height: isMobile ? 88 : 116),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'UAI CAPOEIRA',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: isMobile ? 28 : 38,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.5,
-              height: 1,
+          SizedBox(
+            width: isMobile ? 206 : 270,
+            height: isMobile ? 100 : 128,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: _logoService.buildLogo(height: isMobile ? 96 : 120),
             ),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
             'União, Amizade e Inteligência',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.88),
-              fontSize: isMobile ? 14.5 : 18,
-              fontWeight: FontWeight.w700,
+              color: Colors.grey.shade800,
+              fontSize: isMobile ? 11.5 : 14,
+              height: 1.2,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 12),
           Wrap(
             alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 7,
+            runSpacing: 7,
             children: [
               _buildHeroChip(Icons.verified_rounded, 'Site oficial'),
-              if (_areaAlunoVisivel) _buildHeroChip(Icons.school_rounded, 'Área do Aluno'),
-              if (_inscricoesAbertas) _buildHeroChip(Icons.app_registration_rounded, 'Inscrições'),
+              if (_areaAlunoVisivel)
+                _buildHeroChip(Icons.school_rounded, 'Área do Aluno'),
+              if (_inscricoesAbertas)
+                _buildHeroChip(Icons.app_registration_rounded, 'Inscrições'),
             ],
           ),
         ],
@@ -1005,23 +983,23 @@ class _LandingPageState extends State<LandingPage> {
 
   Widget _buildHeroChip(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.red.shade50,
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        border: Border.all(color: Colors.red.shade100),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 5),
+          Icon(icon, color: Colors.red.shade800, size: 12),
+          const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+            style: TextStyle(
+              color: Colors.red.shade800,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -1222,7 +1200,7 @@ class _LandingPageState extends State<LandingPage> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 132),
+        constraints: const BoxConstraints(minHeight: 126),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1240,13 +1218,13 @@ class _LandingPageState extends State<LandingPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: cor.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(17),
               ),
-              child: Icon(icone, size: 27, color: cor),
+              child: Icon(icone, size: 25, color: cor),
             ),
             const SizedBox(height: 10),
             Text(

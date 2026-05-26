@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class RegimentoScreen extends StatefulWidget {
   const RegimentoScreen({super.key});
@@ -11,13 +12,80 @@ class RegimentoScreen extends StatefulWidget {
 class _RegimentoScreenState extends State<RegimentoScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  final RastreioSiteService _rastreioService = RastreioSiteService();
+  final ScrollController _scrollController = ScrollController();
+  int _maiorPercentualRolagem = 0;
+
   List<Map<String, dynamic>> _secoesRegimento = [];
   bool _carregando = true;
 
   @override
   void initState() {
     super.initState();
+
+    _rastreioService.iniciarTela(
+      'regimento',
+      origem: 'site',
+      metadata: {
+        'descricao': 'Tela pública regimento',
+      },
+    );
+    _rastreioService.marcarTempo('regimento_tempo');
+    _scrollController.addListener(_registrarRolagem);
     _carregarRegimento();
+  }
+
+
+  @override
+  void dispose() {
+    _rastreioService.registrarTempoMarcador(
+      chave: 'regimento_tempo',
+      tipo: 'tempo_tela',
+      nome: 'regimento',
+      origem: 'dispose',
+      metadata: {
+        'maior_percentual_rolagem': _maiorPercentualRolagem,
+        'total_secoes': _secoesRegimento.length,
+      },
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_regimento');
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _registrarRolagem() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+
+    final percentual = ((_scrollController.offset / maxScroll) * 100)
+        .clamp(0, 100)
+        .round();
+
+    final marco = percentual >= 100
+        ? 100
+        : percentual >= 75
+        ? 75
+        : percentual >= 50
+        ? 50
+        : percentual >= 25
+        ? 25
+        : 0;
+
+    if (marco > _maiorPercentualRolagem) {
+      _maiorPercentualRolagem = marco;
+      _rastreioService.registrarEvento(
+        tipo: 'rolagem',
+        nome: 'regimento_$marco%',
+        origem: 'regimento',
+        metadata: {
+          'percentual': marco,
+          'total_secoes': _secoesRegimento.length,
+        },
+      );
+    }
   }
 
   Future<void> _carregarRegimento() async {
@@ -358,7 +426,13 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
             ? _buildLoadingState()
             : RefreshIndicator(
           color: Colors.red.shade900,
-          onRefresh: _carregarRegimento,
+          onRefresh: () async {
+            _rastreioService.registrarClique(
+              nome: 'atualizar_regimento',
+              origem: 'regimento',
+            );
+            await _carregarRegimento();
+          },
           child: _buildContent(isMobile),
         ),
       ),
@@ -398,6 +472,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     }
 
     return ListView(
+      controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         isMobile ? 14 : 24,
         isMobile ? 14 : 22,

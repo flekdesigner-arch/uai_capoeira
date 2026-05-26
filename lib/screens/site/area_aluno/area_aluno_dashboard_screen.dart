@@ -5,6 +5,7 @@ import 'package:xml/xml.dart' as xml;
 import 'area_aluno_solicitar_alteracao_screen.dart';
 import 'area_aluno_frequencia_screen.dart';
 import 'area_aluno_certificados_screen.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class AreaAlunoDashboardScreen extends StatefulWidget {
   final Map<String, dynamic> aluno;
@@ -25,6 +26,8 @@ class AreaAlunoDashboardScreen extends StatefulWidget {
 class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   String? _svgContent;
   String? _cordaSvg;
+
+  final RastreioSiteService _rastreioService = RastreioSiteService();
 
   String get _nome => widget.aluno['nome']?.toString() ?? 'Aluno';
   String get _apelido => widget.aluno['apelido']?.toString() ?? '';
@@ -48,6 +51,32 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   void initState() {
     super.initState();
     _loadCordaSvg();
+
+    _rastreioService.iniciarTela(
+      'area_aluno_dashboard',
+      origem: 'area_aluno_login',
+      metadata: {
+        'aluno_nome': _nome,
+        'aluno_apelido': _apelido,
+        'status': _status,
+        'graduacao': _graduacao,
+        'turma': widget.aluno['turma']?.toString() ?? '',
+      },
+    );
+    _rastreioService.marcarTempo('area_aluno_dashboard_tempo');
+  }
+
+  @override
+  void dispose() {
+    _rastreioService.registrarTempoMarcador(
+      chave: 'area_aluno_dashboard_tempo',
+      tipo: 'tempo_tela',
+      nome: 'area_aluno_dashboard',
+      origem: 'dispose',
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_area_aluno_dashboard');
+    super.dispose();
   }
 
   Future<void> _loadCordaSvg() async {
@@ -671,7 +700,17 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
   Widget _buildDashboardActionCard(_DashboardCardData card) {
     return InkWell(
-      onTap: card.onTap,
+      onTap: () {
+        _rastreioService.registrarClique(
+          nome: 'card_${card.title.toLowerCase().replaceAll(' ', '_')}',
+          origem: 'area_aluno_dashboard',
+          metadata: {
+            'titulo': card.title,
+            'subtitulo': card.subtitle,
+          },
+        );
+        card.onTap();
+      },
       borderRadius: BorderRadius.circular(22),
       child: Container(
         constraints: const BoxConstraints(minHeight: 132),
@@ -771,6 +810,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   void _abrirInfoTurma() {
+    _rastreioService.registrarClique(
+      nome: 'abrir_informacoes_turma',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'turma': widget.aluno['turma']?.toString() ?? '',
+      },
+    );
+
     final turma = _turmaInfo;
 
     if (turma.isEmpty) {
@@ -1125,6 +1172,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
 
   void _abrirInfoAluno() {
+    _rastreioService.registrarClique(
+      nome: 'abrir_informacoes_aluno',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_nome': _nome,
+        'graduacao': _graduacao,
+      },
+    );
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1366,6 +1422,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Future<void> _abrirEmBreveAlteracoes() async {
+    _rastreioService.registrarClique(
+      nome: 'abrir_solicitar_alteracoes',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_nome': _nome,
+      },
+    );
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1378,6 +1442,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Future<void> _abrirEmBreveFrequencia() async {
+    _rastreioService.registrarClique(
+      nome: 'abrir_frequencia',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_nome': _nome,
+      },
+    );
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1390,6 +1462,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Future<void> _abrirEmBreveCertificados() async {
+    _rastreioService.registrarClique(
+      nome: 'abrir_certificados',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_nome': _nome,
+      },
+    );
+
     await Navigator.push(
       context,
       MaterialPageRoute(

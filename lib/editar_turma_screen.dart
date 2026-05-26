@@ -156,26 +156,172 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     _msgConviteWhatsappController.text = 'Olá! Você foi convidado(a) para participar do grupo da turma. Clique no link abaixo para entrar:\n\n';
   }
 
+  int _toInt(dynamic value, {int fallback = 0}) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString()) ?? fallback;
+  }
+
+  bool _usuarioPodeSerProfessor(Map<String, dynamic> data) {
+    final tipo = (data['tipo'] ?? '').toString().toLowerCase().trim();
+    final status = (data['status_conta'] ?? '').toString().toLowerCase().trim();
+    final peso = _toInt(data['peso_permissao']);
+
+    if (status == 'bloqueada' || status == 'inativa') {
+      return false;
+    }
+
+    // Regra correta para turma:
+    // qualquer usuário com peso de professor para cima aparece na seleção.
+    if (peso >= 50) return true;
+
+    // Fallback para bases antigas onde o peso pode não estar preenchido.
+    return tipo == 'professor' ||
+        tipo == 'administrador' ||
+        tipo == 'admin' ||
+        tipo == 'mestre' ||
+        tipo == 'contra-mestre' ||
+        tipo == 'contramestre' ||
+        tipo == 'instrutor';
+  }
+
+  Map<String, dynamic> _mapUsuarioProfessor(
+      String id,
+      Map<String, dynamic> data, {
+        bool selecionadoForaFiltro = false,
+      }) {
+    final nome = (data['nome_completo'] ??
+        data['name'] ??
+        data['nome'] ??
+        'Sem nome')
+        .toString()
+        .trim();
+
+    return {
+      'id': id,
+      'nome': nome.isEmpty ? 'Sem nome' : nome,
+      'email': (data['email'] ?? 'Sem email').toString(),
+      'tipo': (data['tipo'] ?? 'usuário').toString(),
+      'peso': _toInt(data['peso_permissao']),
+      'status': (data['status_conta'] ?? '').toString(),
+      'selecionadoForaFiltro': selecionadoForaFiltro,
+    };
+  }
+
+  void _ordenarProfessoresDisponiveis() {
+    _professoresDisponiveis.sort((a, b) {
+      final aSelecionado = _professoresSelecionados.contains(a['id']);
+      final bSelecionado = _professoresSelecionados.contains(b['id']);
+
+      if (aSelecionado != bSelecionado) {
+        return aSelecionado ? -1 : 1;
+      }
+
+      final pesoA = _toInt(a['peso']);
+      final pesoB = _toInt(b['peso']);
+
+      if (pesoA != pesoB) {
+        return pesoB.compareTo(pesoA);
+      }
+
+      return (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString());
+    });
+  }
+
+  Future<void> _garantirProfessoresSelecionadosVisiveis() async {
+    if (_professoresSelecionados.isEmpty) return;
+
+    final idsVisiveis = _professoresDisponiveis
+        .map((professor) => professor['id'].toString())
+        .toSet();
+
+    final idsFaltando = _professoresSelecionados
+        .where((id) => !idsVisiveis.contains(id))
+        .toList();
+
+    if (idsFaltando.isEmpty) {
+      if (mounted) {
+        setState(() => _ordenarProfessoresDisponiveis());
+      }
+      return;
+    }
+
+    final extras = <Map<String, dynamic>>[];
+
+    for (final id in idsFaltando) {
+      try {
+        final doc = await _firestore.collection('usuarios').doc(id).get();
+
+        if (doc.exists && doc.data() != null) {
+          extras.add(
+            _mapUsuarioProfessor(
+              doc.id,
+              doc.data()!,
+              selecionadoForaFiltro: true,
+            ),
+          );
+        } else {
+          extras.add({
+            'id': id,
+            'nome': 'Usuário não encontrado',
+            'email': 'ID: $id',
+            'tipo': 'indefinido',
+            'peso': 0,
+            'status': 'não encontrado',
+            'selecionadoForaFiltro': true,
+          });
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar professor selecionado $id: $e');
+      }
+    }
+
+    if (!mounted || extras.isEmpty) return;
+
+    setState(() {
+      final idsAtuais = _professoresDisponiveis
+          .map((professor) => professor['id'].toString())
+          .toSet();
+
+      for (final extra in extras) {
+        if (!idsAtuais.contains(extra['id'].toString())) {
+          _professoresDisponiveis.add(extra);
+        }
+      }
+
+      _ordenarProfessoresDisponiveis();
+    });
+  }
+
   Future<void> _carregarProfessores() async {
     try {
-      final snapshot = await _firestore
-          .collection('usuarios')
-          .where('tipo', isEqualTo: 'professor')
-          .get();
+      final snapshot = await _firestore.collection('usuarios').get();
+
+      final professores = snapshot.docs
+          .where((doc) => _usuarioPodeSerProfessor(doc.data()))
+          .map((doc) => _mapUsuarioProfessor(doc.id, doc.data()))
+          .toList();
 
       if (!mounted) return;
+
       setState(() {
-        _professoresDisponiveis = snapshot.docs.map((doc) {
-          final data = doc.data();
-          return {
-            'id': doc.id,
-            'nome': data['nome_completo'] ?? 'Sem nome',
-            'email': data['email'] ?? 'Sem email',
-          };
-        }).toList();
+        _professoresDisponiveis = professores;
+        _ordenarProfessoresDisponiveis();
       });
+
+      await _garantirProfessoresSelecionadosVisiveis();
     } catch (e) {
-      debugPrint('Erro ao carregar professores: $e');
+      debugPrint('Erro ao carregar professores/usuários autorizados: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao carregar professores: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -210,11 +356,16 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
           _dataInicioSelecionada = (data['data_inicio'] as Timestamp).toDate();
         }
 
-        // Carregar professores
+        // Carregar professores selecionados
         final professoresIds = data['professores_ids'] as List<dynamic>? ?? [];
         setState(() {
           _professoresSelecionados = professoresIds.map((id) => id.toString()).toList();
+          _ordenarProfessoresDisponiveis();
         });
+
+        // Se algum professor salvo na turma não vier no filtro normal,
+        // ele entra mesmo assim para não ficar "3 selecionados" e só 1 visível.
+        await _garantirProfessoresSelecionadosVisiveis();
 
         // 🔥 Carregar configuração de dias com horários individuais
         final diasConfiguracao = data['dias_configuracao'] as Map<String, dynamic>?;
@@ -1037,6 +1188,26 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   }
 
   Widget _buildSelecaoProfessores() {
+    final professoresOrdenados = [..._professoresDisponiveis];
+    professoresOrdenados.sort((a, b) {
+      final aSelecionado = _professoresSelecionados.contains(a['id']);
+      final bSelecionado = _professoresSelecionados.contains(b['id']);
+
+      if (aSelecionado != bSelecionado) {
+        return aSelecionado ? -1 : 1;
+      }
+
+      final pesoA = _toInt(a['peso']);
+      final pesoB = _toInt(b['peso']);
+      if (pesoA != pesoB) return pesoB.compareTo(pesoA);
+
+      return (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString());
+    });
+
+    final selecionadosVisiveis = professoresOrdenados
+        .where((professor) => _professoresSelecionados.contains(professor['id']))
+        .length;
+
     return _buildCard(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1045,8 +1216,12 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
             children: [
               const Expanded(
                 child: Text(
-                  'Professores *',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                  'Professores / Responsáveis *',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
               Container(
@@ -1056,6 +1231,11 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                       ? Colors.orange.shade50
                       : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _professoresSelecionados.isEmpty
+                        ? Colors.orange.shade100
+                        : Colors.green.shade100,
+                  ),
                 ),
                 child: Text(
                   '${_professoresSelecionados.length} selecionado${_professoresSelecionados.length == 1 ? '' : 's'}',
@@ -1070,25 +1250,84 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (_professoresDisponiveis.isEmpty)
+          const SizedBox(height: 6),
+          Text(
+            'Aparecem aqui usuários com peso de permissão 50 ou maior, além de tipos compatíveis como professor, instrutor, mestre e administrador.',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+          if (_professoresSelecionados.isNotEmpty &&
+              selecionadosVisiveis != _professoresSelecionados.length) ...[
+            const SizedBox(height: 10),
             Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.orange.shade100),
+              ),
+              child: Text(
+                'Atenção: ${_professoresSelecionados.length - selecionadosVisiveis} professor(es) selecionado(s) não foram encontrados na lista normal e serão buscados pelo ID salvo na turma.',
+                style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (professoresOrdenados.isEmpty)
+            Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
               ),
-              child: const Center(
-                child: Text(
-                  'Nenhum professor cadastrado',
-                  style: TextStyle(color: Colors.grey),
-                ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.person_search_rounded,
+                    color: Colors.grey.shade500,
+                    size: 34,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Nenhum usuário com permissão de professor encontrado',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Verifique se o usuário está ativo e com peso_permissao 50 ou maior.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             )
           else
             Column(
-              children: _professoresDisponiveis.map((professor) {
-                final isSelecionado = _professoresSelecionados.contains(professor['id']);
+              children: professoresOrdenados.map((professor) {
+                final id = professor['id'].toString();
+                final isSelecionado = _professoresSelecionados.contains(id);
+                final foraFiltro = professor['selecionadoForaFiltro'] == true;
+                final peso = _toInt(professor['peso']);
+                final tipo = (professor['tipo'] ?? 'usuário').toString();
+                final status = (professor['status'] ?? '').toString();
+
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   margin: const EdgeInsets.only(bottom: 9),
@@ -1102,32 +1341,77 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                   ),
                   child: CheckboxListTile(
                     dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     title: Text(
-                      professor['nome'],
+                      professor['nome'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: isSelecionado ? Colors.red.shade900 : Colors.grey.shade800,
                       ),
                     ),
-                    subtitle: Text(
-                      professor['email'],
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          professor['email'].toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 5),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 5,
+                          children: [
+                            _buildProfessorBadge(
+                              label: tipo.toUpperCase(),
+                              color: Colors.blue,
+                              icon: Icons.badge_rounded,
+                            ),
+                            _buildProfessorBadge(
+                              label: 'PESO $peso',
+                              color: peso >= 50 ? Colors.green : Colors.orange,
+                              icon: Icons.security_rounded,
+                            ),
+                            if (status.trim().isNotEmpty)
+                              _buildProfessorBadge(
+                                label: status.toUpperCase(),
+                                color: status.toLowerCase() == 'ativa'
+                                    ? Colors.green
+                                    : Colors.orange,
+                                icon: Icons.circle,
+                              ),
+                            if (foraFiltro)
+                              _buildProfessorBadge(
+                                label: 'SALVO NA TURMA',
+                                color: Colors.deepOrange,
+                                icon: Icons.warning_amber_rounded,
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
                     value: isSelecionado,
                     onChanged: (value) {
                       setState(() {
                         if (value == true) {
-                          _professoresSelecionados.add(professor['id']);
+                          if (!_professoresSelecionados.contains(id)) {
+                            _professoresSelecionados.add(id);
+                          }
                         } else {
-                          _professoresSelecionados.remove(professor['id']);
+                          _professoresSelecionados.remove(id);
                         }
+                        _ordenarProfessoresDisponiveis();
                       });
                     },
                     secondary: CircleAvatar(
                       backgroundColor: isSelecionado ? Colors.red.shade900 : Colors.grey.shade300,
                       child: Icon(
-                        Icons.person_rounded,
+                        isSelecionado
+                            ? Icons.check_rounded
+                            : Icons.person_rounded,
                         color: isSelecionado ? Colors.white : Colors.grey.shade700,
                         size: 20,
                       ),
@@ -1138,6 +1422,36 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                 );
               }).toList(),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfessorBadge({
+    required String label,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 10.5),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );

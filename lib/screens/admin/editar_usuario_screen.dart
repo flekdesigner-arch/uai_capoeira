@@ -389,262 +389,582 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
   @override
   Widget build(BuildContext context) {
     if (_carregando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Center(
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.red.shade900),
+                const SizedBox(height: 14),
+                Text(
+                  'Carregando usuário...',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
+    final isNovo = widget.userId == null;
+
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: Text(widget.userId == null ? 'Novo Usuário' : 'Editar Usuário'),
+        title: Text(
+          isNovo ? 'Novo Usuário' : 'Editar Usuário',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        centerTitle: true,
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           if (!_aprovado && _isAdmin && widget.userId != null)
             IconButton(
-              icon: const Icon(Icons.check),
+              icon: const Icon(Icons.verified_user_rounded),
               onPressed: _aprovarUsuario,
-              tooltip: 'Aprovar Usuário',
+              tooltip: 'Aprovar usuário',
             ),
           IconButton(
-            icon: const Icon(Icons.save),
+            icon: const Icon(Icons.save_rounded),
             onPressed: () => _salvarUsuario(),
-            tooltip: 'Salvar Alterações',
+            tooltip: 'Salvar alterações',
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Status atual e informações de aprovação
-              if (_aprovado && _aprovadoPorNome != null)
-                Card(
-                  color: Colors.green[50],
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.verified, color: Colors.green),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'USUÁRIO APROVADO',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                              Text(
-                                'Aprovado por: $_aprovadoPorNome',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              if (_aprovadoEm != null)
-                                Text(
-                                  'Data: ${_aprovadoEm!.toLocal().toString().substring(0, 16)}',
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+      bottomNavigationBar: _buildBottomActions(),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 560;
+          final wide = constraints.maxWidth >= 980;
 
-              const SizedBox(height: 16),
-
-              // Formulário de dados pessoais
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              compact ? 12 : 20,
+              compact ? 12 : 18,
+              compact ? 12 : 20,
+              112,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: Form(
+                  key: _formKey,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Dados Pessoais',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Nome Completo',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.person),
-                        ),
-                        validator: (value) =>
-                        value?.isEmpty ?? true ? 'Campo obrigatório' : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _emailController,
-                        decoration: InputDecoration(
-                          labelText: 'Email',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.email),
-                          suffixIcon: _isAdmin && widget.userId != null
-                              ? IconButton(
-                            icon: const Icon(Icons.vpn_key, color: Colors.red),
-                            onPressed: _resetarSenha,
-                            tooltip: 'Enviar redefinição de senha',
-                          )
-                              : null,
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) =>
-                        value?.isEmpty ?? true ? 'Campo obrigatório' : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _contatoController,
-                        decoration: const InputDecoration(
-                          labelText: 'Telefone/WhatsApp',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.phone),
-                          hintText: '(99) 99999-9999',
-                        ),
-                        keyboardType: TextInputType.phone,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(11),
+                      _buildEditorHero(isNovo: isNovo, compact: compact),
+                      if (_aprovado && _aprovadoPorNome != null) ...[
+                        const SizedBox(height: 14),
+                        _buildApprovedBanner(),
+                      ],
+                      const SizedBox(height: 14),
+                      if (wide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _buildDadosPessoaisCard(),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                children: [
+                                  if (_isAdmin) _buildTipoUsuarioCard(),
+                                  if (_isAdmin && widget.userId != null) ...[
+                                    if (_isAdmin) const SizedBox(height: 14),
+                                    _buildStatusContaCard(),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        _buildDadosPessoaisCard(),
+                        if (_isAdmin) ...[
+                          const SizedBox(height: 14),
+                          _buildTipoUsuarioCard(),
                         ],
-                      ),
+                        if (_isAdmin && widget.userId != null) ...[
+                          const SizedBox(height: 14),
+                          _buildStatusContaCard(),
+                        ],
+                      ],
                     ],
                   ),
                 ),
               ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-              const SizedBox(height: 24),
+  Widget _buildEditorHero({
+    required bool isNovo,
+    required bool compact,
+  }) {
+    final cor = _getTipoColor(_selectedTipo);
 
-              // Seletor de Tipo (só admin) - CORRIGIDO: layout 2 em 2 e centralizado
-              if (_isAdmin)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Tipo de Usuário',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
+    return Container(
+      padding: EdgeInsets.all(compact ? 16 : 22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(compact ? 26 : 32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 640;
 
-                        // GridView para layout 2 em 2
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 1.2,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                          ),
-                          itemCount: _tiposUsuarios.length,
-                          itemBuilder: (context, index) {
-                            final tipo = _tiposUsuarios[index];
-                            return _buildTipoCard(tipo);
-                          },
-                        ),
+          final icon = Container(
+            width: compact ? 58 : 70,
+            height: compact ? 58 : 70,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: Icon(
+              isNovo ? Icons.person_add_alt_1_rounded : Icons.manage_accounts_rounded,
+              color: Colors.white,
+              size: 36,
+            ),
+          );
 
-                        const SizedBox(height: 16),
-                        _buildTipoResumo(),
-                      ],
-                    ),
-                  ),
+          final text = Column(
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            children: [
+              Text(
+                isNovo ? 'Cadastrar usuário' : 'Editar usuário',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 25 : 34,
+                  fontWeight: FontWeight.w900,
+                  height: 1.02,
                 ),
-
-              const SizedBox(height: 24),
-
-              // Status da Conta (só admin)
-// Status da Conta (só admin) - CORRIGIDO: centralizado
-              if (_isAdmin && widget.userId != null)
-                Center( // Adicionado Center widget
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center, // Alterado para center
-                        children: [
-                          const Text(
-                            'Status da Conta',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center, // Adicionado textAlign
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 8, // Adicionado espaçamento vertical
-                            alignment: WrapAlignment.center, // Adicionado para centralizar os chips
-                            children: [
-                              _buildStatusChip('ativa', 'Ativa', Colors.green),
-                              _buildStatusChip('pendente', 'Pendente', Colors.orange),
-                              _buildStatusChip('bloqueada', 'Bloqueada', Colors.red),
-                              _buildStatusChip('inativa', 'Inativa', Colors.grey),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                isNovo
+                    ? 'Crie um acesso inicial para o sistema com senha padrão.'
+                    : 'Atualize dados, tipo de acesso, status e informações do usuário.',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.84),
+                  fontSize: compact ? 12.8 : 15,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
                 ),
-              const SizedBox(height: 32),
-
-              // Botões de ação
-              Row(
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('CANCELAR'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _carregando ? null : () => _salvarUsuario(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade900,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: _carregando
-                          ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.save),
-                      label: Text(_carregando ? 'SALVANDO...' : 'SALVAR'),
-                    ),
-                  ),
+                  _heroChip(Icons.badge_rounded, _selectedTipo.toUpperCase()),
+                  _heroChip(Icons.security_rounded, 'PESO $_pesoPermissao'),
+                  _heroChip(Icons.circle, _selectedStatus.toUpperCase()),
                 ],
               ),
             ],
+          );
+
+          if (narrow) {
+            return Column(
+              children: [icon, const SizedBox(height: 12), text],
+            );
+          }
+
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: 16),
+              Expanded(child: text),
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: cor.withOpacity(0.20),
+                  borderRadius: BorderRadius.circular(19),
+                  border: Border.all(color: Colors.white.withOpacity(0.14)),
+                ),
+                child: Icon(Icons.admin_panel_settings_rounded, color: Colors.white),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _heroChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApprovedBanner() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_rounded, color: Colors.green.shade700, size: 28),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Usuário aprovado',
+                  style: TextStyle(
+                    color: Colors.green.shade900,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Aprovado por: $_aprovadoPorNome'
+                      '${_aprovadoEm != null ? ' • ${_aprovadoEm!.toLocal().toString().substring(0, 16)}' : ''}',
+                  style: TextStyle(
+                    color: Colors.green.shade800,
+                    fontSize: 12,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDadosPessoaisCard() {
+    return _premiumCard(
+      title: 'Dados pessoais',
+      icon: Icons.person_rounded,
+      color: Colors.blue,
+      child: Column(
+        children: [
+          _buildTextField(
+            controller: _nameController,
+            label: 'Nome completo',
+            icon: Icons.person_rounded,
+            validator: (value) =>
+            value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _emailController,
+            label: 'Email',
+            icon: Icons.email_rounded,
+            keyboardType: TextInputType.emailAddress,
+            suffixIcon: _isAdmin && widget.userId != null
+                ? IconButton(
+              icon: Icon(Icons.vpn_key_rounded, color: Colors.red.shade900),
+              onPressed: _resetarSenha,
+              tooltip: 'Enviar redefinição de senha',
+            )
+                : null,
+            validator: (value) =>
+            value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _contatoController,
+            label: 'Telefone/WhatsApp',
+            icon: Icons.phone_rounded,
+            hintText: '(99) 99999-9999',
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTipoUsuarioCard() {
+    return _premiumCard(
+      title: 'Tipo de usuário',
+      icon: Icons.admin_panel_settings_rounded,
+      color: Colors.red,
+      child: Column(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth < 380 ? 1 : 2;
+              const spacing = 10.0;
+              final itemWidth =
+                  (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+              return Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: _tiposUsuarios.map((tipo) {
+                  return SizedBox(
+                    width: itemWidth,
+                    child: _buildTipoCard(tipo),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          _buildTipoResumo(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusContaCard() {
+    return _premiumCard(
+      title: 'Status da conta',
+      icon: Icons.account_circle_rounded,
+      color: Colors.orange,
+      child: Wrap(
+        spacing: 9,
+        runSpacing: 9,
+        alignment: WrapAlignment.center,
+        children: [
+          _buildStatusChip('ativa', 'Ativa', Colors.green),
+          _buildStatusChip('pendente', 'Pendente', Colors.orange),
+          _buildStatusChip('bloqueada', 'Bloqueada', Colors.red),
+          _buildStatusChip('inativa', 'Inativa', Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hintText,
+    TextInputType? keyboardType,
+    Widget? suffixIcon,
+    List<TextInputFormatter>? inputFormatters,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        prefixIcon: Icon(icon),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.red.shade900, width: 1.6),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.red.shade700, width: 1.4),
+        ),
+      ),
+    );
+  }
+
+  Widget _premiumCard({
+    required String title,
+    required IconData icon,
+    required MaterialColor color,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.shade100.withOpacity(0.75)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.032),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: color.shade100),
+                ),
+                child: Icon(icon, color: color.shade800, size: 21),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActions() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.045),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tiny = constraints.maxWidth < 340;
+
+            final cancel = OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('CANCELAR'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.grey.shade800,
+                side: BorderSide(color: Colors.grey.shade300),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            );
+
+            final save = ElevatedButton.icon(
+              onPressed: _carregando ? null : () => _salvarUsuario(),
+              icon: _carregando
+                  ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+                  : const Icon(Icons.save_rounded),
+              label: Text(_carregando ? 'SALVANDO...' : 'SALVAR'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade900,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            );
+
+            if (tiny) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(width: double.infinity, child: save),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, child: cancel),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: cancel),
+                const SizedBox(width: 10),
+                Expanded(flex: 2, child: save),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -658,44 +978,66 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     final Color cor = _getTipoColor(tipoNome);
     final bool isSelected = _selectedTipo == tipoNome;
 
-    return InkWell(
-      onTap: () => _updatePesoFromTipo(tipoNome),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isSelected ? cor.withOpacity(0.1) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? cor : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
+    return Material(
+      color: isSelected ? cor.withOpacity(0.09) : Colors.grey.shade50,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _updatePesoFromTipo(tipoNome),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isSelected ? cor.withOpacity(0.55) : Colors.grey.shade200,
+              width: isSelected ? 1.7 : 1,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icone, color: cor, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              nomeCompleto,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: cor,
-                fontSize: 14,
+          child: Row(
+            children: [
+              Container(
+                width: 39,
+                height: 39,
+                decoration: BoxDecoration(
+                  color: cor.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icone, color: cor, size: 21),
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: cor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nomeCompleto,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: cor,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Peso ${tipo['peso']}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                'Peso: ${tipo['peso']}',
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
+              Icon(
+                isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                color: isSelected ? cor : Colors.grey.shade400,
+                size: 18,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -707,36 +1049,27 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       orElse: () => _tiposUsuarios[0],
     );
 
+    final cor = _getTipoColor(_selectedTipo);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: _getTipoColor(_selectedTipo).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _getTipoColor(_selectedTipo)),
+        color: cor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cor.withOpacity(0.18)),
       ),
       child: Row(
         children: [
-          Icon(
-            tipoAtual['icone'],
-            color: _getTipoColor(_selectedTipo),
-          ),
-          const SizedBox(width: 12),
+          Icon(tipoAtual['icone'], color: cor),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tipoAtual['nomeCompleto'],
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _getTipoColor(_selectedTipo),
-                  ),
-                ),
-                Text(
-                  'Peso de permissão: $_pesoPermissao',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
+            child: Text(
+              '${tipoAtual['nomeCompleto']} • Peso $_pesoPermissao',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: cor,
+                fontSize: 13,
+              ),
             ),
           ),
         ],
@@ -746,23 +1079,35 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
   Widget _buildStatusChip(String status, String label, Color color) {
     final isSelected = _selectedStatus == status;
+
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      onSelected: _isAdmin ? (selected) {
-        if (selected) {
-          setState(() => _selectedStatus = status);
-        }
-      } : null,
-      selectedColor: color.withOpacity(0.2),
-      backgroundColor: Colors.grey[200],
-      labelStyle: TextStyle(
-        color: isSelected ? color : Colors.grey[600],
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      onSelected: _isAdmin
+          ? (selected) {
+        if (selected) setState(() => _selectedStatus = status);
+      }
+          : null,
+      selectedColor: color.withOpacity(0.16),
+      backgroundColor: Colors.grey.shade100,
+      side: BorderSide(
+        color: isSelected ? color.withOpacity(0.42) : Colors.grey.shade200,
       ),
-      avatar: isSelected ? Icon(Icons.check, size: 16, color: color) : null,
+      labelStyle: TextStyle(
+        color: isSelected ? color : Colors.grey.shade700,
+        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+        fontSize: 12,
+      ),
+      avatar: Icon(
+        isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+        size: 16,
+        color: isSelected ? color : Colors.grey.shade400,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
     );
   }
+
+
 
   @override
   void dispose() {

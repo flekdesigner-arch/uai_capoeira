@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'area_aluno_dashboard_screen.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class AreaAlunoLoginScreen extends StatefulWidget {
   const AreaAlunoLoginScreen({super.key});
@@ -20,11 +21,38 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
 
   bool _carregando = false;
 
+  final RastreioSiteService _rastreioService = RastreioSiteService();
+
+
+  @override
+  void initState() {
+    super.initState();
+
+    _rastreioService.iniciarTela(
+      'area_aluno_login',
+      origem: 'site',
+      metadata: {
+        'descricao': 'Tela de login público da Área do Aluno',
+      },
+    );
+    _rastreioService.marcarTempo('area_aluno_login_tempo');
+  }
+
   @override
   void dispose() {
     _dataNascimentoController.dispose();
     _iniciaisController.dispose();
     _telefoneFinalController.dispose();
+
+    _rastreioService.registrarTempoMarcador(
+      chave: 'area_aluno_login_tempo',
+      tipo: 'tempo_tela',
+      nome: 'area_aluno_login',
+      origem: 'dispose',
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_area_aluno_login');
+
     super.dispose();
   }
 
@@ -35,8 +63,36 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         .replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
   }
 
+
+  void _registrarSnapshotLogin(String momento) {
+    _rastreioService.registrarSnapshotFormulario(
+      formulario: 'area_aluno_login',
+      momento: momento,
+      origem: 'area_aluno_login',
+      campos: {
+        'data_nascimento': _dataNascimentoController.text.trim(),
+        'iniciais': _normalizarIniciais(_iniciaisController.text),
+        'telefone_final': _telefoneFinalController.text.trim(),
+      },
+      camposSensiveis: const ['data_nascimento', 'telefone_final'],
+    );
+  }
+
   Future<void> _acessarAreaAluno() async {
-    if (!_formKey.currentState!.validate()) return;
+    _rastreioService.registrarClique(
+      nome: 'tentar_acessar_area_aluno',
+      origem: 'area_aluno_login',
+    );
+    _registrarSnapshotLogin('tentativa_login');
+
+    if (!_formKey.currentState!.validate()) {
+      _rastreioService.registrarErroFormulario(
+        formulario: 'area_aluno_login',
+        local: 'validacao_campos',
+        erros: const ['Campos inválidos ou incompletos'],
+      );
+      return;
+    }
 
     FocusScope.of(context).unfocus();
 
@@ -60,6 +116,18 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       final success = data['success'] == true;
 
       if (!success) {
+        _rastreioService.registrarErroFormulario(
+          formulario: 'area_aluno_login',
+          local: 'validacao_cloud_function',
+          erros: [
+            data['message']?.toString() ??
+                'Não foi possível validar o acesso. Confira os dados e tente novamente.',
+          ],
+          metadata: {
+            'success': false,
+          },
+        );
+
         _mostrarErro(
           data['message']?.toString() ??
               'Não foi possível validar o acesso. Confira os dados e tente novamente.',
@@ -69,6 +137,15 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
 
       final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
       final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+
+      _rastreioService.registrarConversao(
+        nome: 'area_aluno_login_sucesso',
+        origem: 'area_aluno_login',
+        metadata: {
+          'aluno_id': aluno['id']?.toString() ?? aluno['docId']?.toString(),
+          'tem_config': config.isNotEmpty,
+        },
+      );
 
       if (!mounted) return;
 
@@ -87,10 +164,24 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         ),
       );
     } on FirebaseFunctionsException catch (e) {
+      _rastreioService.registrarErroFormulario(
+        formulario: 'area_aluno_login',
+        local: 'firebase_functions',
+        erros: [e.message ?? e.code],
+        metadata: {
+          'code': e.code,
+        },
+      );
+
       _mostrarErro(
         e.message ?? 'Erro ao validar acesso. Tente novamente em instantes.',
       );
     } catch (e) {
+      _rastreioService.registrarErroFormulario(
+        formulario: 'area_aluno_login',
+        local: 'erro_inesperado',
+        erros: ['Erro ao acessar a Área do Aluno: $e'],
+      );
       _mostrarErro('Erro ao acessar a Área do Aluno: $e');
     } finally {
       if (mounted) {

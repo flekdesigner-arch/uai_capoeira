@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/regimento_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RegimentoDialog extends StatefulWidget {
   const RegimentoDialog({super.key});
@@ -9,8 +9,9 @@ class RegimentoDialog extends StatefulWidget {
 }
 
 class _RegimentoDialogState extends State<RegimentoDialog> {
-  final RegimentoService _regimentoService = RegimentoService();
-  List<Map<String, dynamic>> _secoes = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  List<Map<String, dynamic>> _secoesRegimento = [];
   bool _carregando = true;
 
   @override
@@ -20,245 +21,1044 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Future<void> _carregarRegimento() async {
-    final secoes = await _regimentoService.carregarRegimento();
-    setState(() {
-      _secoes = secoes;
-      _carregando = false;
-    });
+    try {
+      final doc =
+      await _firestore.collection('site_conteudo').doc('regimento').get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+
+        if (data.containsKey('secoes') && data['secoes'] is List) {
+          final List<dynamic> secoesRaw = data['secoes'] as List;
+          final secoesConvertidas = <Map<String, dynamic>>[];
+
+          for (final item in secoesRaw) {
+            if (item is Map<String, dynamic>) {
+              secoesConvertidas.add(item);
+            } else if (item is Map) {
+              secoesConvertidas.add(Map<String, dynamic>.from(item));
+            }
+          }
+
+          if (mounted) {
+            setState(() {
+              _secoesRegimento = secoesConvertidas.isNotEmpty
+                  ? secoesConvertidas
+                  : _getSecoesRegimentoPadrao();
+              _carregando = false;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _secoesRegimento = _getSecoesRegimentoPadrao();
+              _carregando = false;
+            });
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _secoesRegimento = _getSecoesRegimentoPadrao();
+            _carregando = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar regimento no diálogo: $e');
+
+      if (mounted) {
+        setState(() {
+          _secoesRegimento = _getSecoesRegimentoPadrao();
+          _carregando = false;
+        });
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _getSecoesRegimentoPadrao() {
+    return [
+      {
+        'titulo': '⚖️ REGRAS GERAIS',
+        'icone': Icons.gavel,
+        'cor': Colors.blue,
+        'conteudo': '🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).\n'
+            '❌ Não é permitido utilizar uniformes de outros grupos.\n'
+            '📢 Participação em eventos externos deve ser comunicada antecipadamente.\n'
+            '⏰ Cumprimento rigoroso dos horários de treinos, rodas e apresentações.\n'
+            '👕 Em dias de roda ou apresentações é obrigatório o uniforme completo (calça branca, camisa e graduação).\n'
+            '🧼 Manter a higiene pessoal: unhas cortadas, roupas limpas e bom cuidado com o uniforme.\n'
+            '🙏 Respeitar mestres, professores, colegas e visitantes, independente de idade ou graduação.\n'
+            '🤝 Ao visitar outras academias ou grupos de capoeira, o aluno deve:\n'
+            '   • Avisar com antecedência os responsáveis do grupo\n'
+            '   • Utilizar sempre a camisa oficial do grupo UAI Capoeira\n'
+            '   • Não participar sem identificação do grupo',
+      },
+      {
+        'titulo': '🆕 NOVOS ALUNOS',
+        'icone': Icons.person_add,
+        'cor': Colors.green,
+        'conteudo': '⏳ Prazo de 2 meses para adquirir o uniforme completo.\n'
+            '👀 Durante esse período, o aluno será avaliado pelos professores.\n'
+            '🎖️ Primeira graduação possível após 6 meses de treino regular.\n'
+            '📅 Indicação para início das atividades: preferencialmente em uma segunda-feira.\n'
+            '📲 Cadastro no sistema + ingresso em grupo de WhatsApp para comunicações.\n'
+            '⚠️ Caso falte por mais de 3 semanas sem justificativa, será considerado desligado.\n'
+            '🙌 Todo aluno deve manter postura respeitosa e colaborativa dentro e fora da academia.',
+      },
+      {
+        'titulo': '🎓 ALUNOS GRADUADOS',
+        'icone': Icons.school,
+        'cor': Colors.orange,
+        'conteudo': '🙏 Respeito, disciplina e comprometimento são indispensáveis.\n'
+            '👕 Uso do uniforme correto nos treinos e apresentações é obrigatório.\n'
+            '⏳ Graduação só pode ser trocada após no mínimo 1 ano, conforme desempenho.\n'
+            '🎭 Em eventos, utilizar somente o uniforme oficial (não camisas promocionais).\n'
+            '⚠️ Faltas por mais de 1 mês sem aviso resultam em desligamento automático.\n'
+            '💪 O graduado deve dar exemplo de postura, ajudando os iniciantes e fortalecendo a roda.',
+      },
+      {
+        'titulo': '⭐ FORMADOS',
+        'icone': Icons.workspace_premium,
+        'cor': Colors.purple,
+        'conteudo': 'São considerados formados os monitores, instrutores, professores, contra-mestres e mestres.\n\n'
+            '📚 Devem estar sempre ativos nos treinos e rodas, transmitindo conhecimento.\n'
+            '🪘 Devem incentivar a prática dos instrumentos, cantos e fundamentos da capoeira.\n'
+            '🌍 Representam o grupo dentro e fora da cidade, mantendo o nome da Associação com honra e responsabilidade.\n\n'
+            '📖 ESTÁGIOS DE FORMAÇÃO:\n\n'
+            '👨‍🎓 MONITOR:\n'
+            '• 🔞 Ter no mínimo 18 anos\n'
+            '• 🎓 Ensino médio completo\n'
+            '• 🔵 Pelo menos 1 ano de graduação na 6ª corda (azul)\n'
+            '• 📖 Capacidade para ministrar aulas, com ou sem auxílio\n'
+            '• 🥁 Conhecimento básico dos instrumentos e toques da capoeira\n'
+            '• ⚔️ Conhecimento dos fundamentos e da história do grupo\n'
+            '• 🪪 Ser associado ativo\n\n'
+            '👨‍🏫 INSTRUTOR:\n'
+            '• ✅ Requisitos de monitor atendidos\n'
+            '• ⏳ No mínimo 4 anos como monitor\n'
+            '• 📖 Capacidade de ministrar e planejar aulas de forma independente\n'
+            '• 🔍 Habilidade de identificar e corrigir dificuldades dos alunos\n'
+            '• 🚀 Busca contínua por conhecimento e aprimoramento\n\n'
+            '👨‍🎓 PROFESSOR:\n'
+            '• ✅ Todos os requisitos anteriores\n'
+            '• 📜 Diploma emitido pelo grupo, com reconhecimento dos mestres e formados\n'
+            '• 🌍 Responsabilidade em representar o grupo oficialmente em eventos nacionais e internacionais\n'
+            '• 🎓 Reconhecimento como profissional da área da Capoeira',
+      },
+    ];
+  }
+
+  IconData _getIconFromName(dynamic iconName) {
+    if (iconName is IconData) return iconName;
+
+    switch (iconName?.toString()) {
+      case 'gavel':
+        return Icons.gavel_rounded;
+      case 'person_add':
+        return Icons.person_add_rounded;
+      case 'school':
+        return Icons.school_rounded;
+      case 'workspace_premium':
+        return Icons.workspace_premium_rounded;
+      case 'groups':
+        return Icons.groups_rounded;
+      case 'shield':
+        return Icons.shield_rounded;
+      case 'warning':
+        return Icons.warning_rounded;
+      case 'info':
+        return Icons.info_rounded;
+      default:
+        return Icons.description_rounded;
+    }
+  }
+
+  Color _resolveColor(dynamic value, {required Color fallback}) {
+    if (value is Color) return value;
+
+    if (value is int) {
+      try {
+        return Color(value);
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+
+      switch (normalized) {
+        case 'blue':
+        case 'azul':
+          return Colors.blue;
+        case 'green':
+        case 'verde':
+          return Colors.green;
+        case 'orange':
+        case 'laranja':
+          return Colors.orange;
+        case 'purple':
+        case 'roxo':
+          return Colors.purple;
+        case 'red':
+        case 'vermelho':
+          return Colors.red;
+        case 'teal':
+          return Colors.teal;
+      }
+
+      try {
+        final cleaned = normalized
+            .replaceAll('#', '')
+            .replaceAll('0x', '')
+            .toUpperCase();
+
+        if (cleaned.length == 6) {
+          return Color(int.parse('FF$cleaned', radix: 16));
+        }
+
+        if (cleaned.length == 8) {
+          return Color(int.parse(cleaned, radix: 16));
+        }
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    return fallback;
+  }
+
+  Color _fallbackColor(int index) {
+    final colors = [
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.red,
+    ];
+
+    return colors[index % colors.length];
+  }
+
+  String _limparTitulo(String titulo) {
+    return titulo.replaceAll(RegExp(r'^[^\wÀ-ÖØ-öø-ÿ]+'), '').trim();
+  }
+
+  List<String> _linhasConteudo(String conteudo) {
+    return conteudo
+        .split('\n')
+        .map((e) => e.trimRight())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+  }
+
+  bool _isTituloInterno(String linha) {
+    final clean = linha.trim();
+
+    if (clean.endsWith(':')) return true;
+
+    final semEmoji = clean.replaceAll(RegExp(r'^[^\wÀ-ÖØ-öø-ÿ]+'), '').trim();
+
+    return semEmoji.length > 3 &&
+        semEmoji == semEmoji.toUpperCase() &&
+        semEmoji.contains(RegExp(r'[A-ZÁ-Ú]'));
+  }
+
+  bool _isBullet(String linha) {
+    final clean = linha.trimLeft();
+    return clean.startsWith('•') ||
+        clean.startsWith('-') ||
+        clean.startsWith('–') ||
+        clean.startsWith('✅') ||
+        clean.startsWith('❌') ||
+        clean.startsWith('🚫') ||
+        clean.startsWith('📢') ||
+        clean.startsWith('⏰') ||
+        clean.startsWith('👕') ||
+        clean.startsWith('🧼') ||
+        clean.startsWith('🙏') ||
+        clean.startsWith('🤝') ||
+        clean.startsWith('⏳') ||
+        clean.startsWith('👀') ||
+        clean.startsWith('🎖️') ||
+        clean.startsWith('📅') ||
+        clean.startsWith('📲') ||
+        clean.startsWith('⚠️') ||
+        clean.startsWith('🙌') ||
+        clean.startsWith('🎭') ||
+        clean.startsWith('💪') ||
+        clean.startsWith('📚') ||
+        clean.startsWith('🪘') ||
+        clean.startsWith('🌍') ||
+        clean.startsWith('🔞') ||
+        clean.startsWith('🎓') ||
+        clean.startsWith('🔵') ||
+        clean.startsWith('📖') ||
+        clean.startsWith('🥁') ||
+        clean.startsWith('⚔️') ||
+        clean.startsWith('🪪') ||
+        clean.startsWith('🔍') ||
+        clean.startsWith('🚀') ||
+        clean.startsWith('📜');
+  }
+
+  IconData _bulletIcon(String linha) {
+    final clean = linha.trimLeft();
+
+    if (clean.startsWith('❌') || clean.startsWith('🚫')) {
+      return Icons.block_rounded;
+    }
+
+    if (clean.startsWith('⚠️')) return Icons.warning_rounded;
+    if (clean.startsWith('✅')) return Icons.check_circle_rounded;
+    if (clean.startsWith('⏰') || clean.startsWith('⏳')) {
+      return Icons.schedule_rounded;
+    }
+
+    if (clean.startsWith('👕') || clean.startsWith('🧼')) {
+      return Icons.checkroom_rounded;
+    }
+
+    if (clean.startsWith('📅')) return Icons.event_rounded;
+    if (clean.startsWith('📲')) return Icons.phone_android_rounded;
+    if (clean.startsWith('🎓') || clean.startsWith('🎖️')) {
+      return Icons.school_rounded;
+    }
+
+    if (clean.startsWith('📚') || clean.startsWith('📖')) {
+      return Icons.menu_book_rounded;
+    }
+
+    if (clean.startsWith('🌍')) return Icons.public_rounded;
+    if (clean.startsWith('🤝') || clean.startsWith('🙏') || clean.startsWith('🙌')) {
+      return Icons.handshake_rounded;
+    }
+
+    return Icons.check_rounded;
+  }
+
+  String _removeBulletEmoji(String linha) {
+    return linha
+        .trim()
+        .replaceFirst(RegExp(r'^(•|-|–)\s*'), '')
+        .replaceFirst(RegExp(r'^[^\wÀ-ÖØ-öø-ÿ]+\s*'), '')
+        .trim();
+  }
+
+  int get _totalOrientacoes {
+    return _secoesRegimento.fold<int>(
+      0,
+          (total, secao) =>
+      total + _linhasConteudo(secao['conteudo']?.toString() ?? '').length,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return Dialog(
-      insetPadding: const EdgeInsets.all(20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      backgroundColor: Colors.transparent,
+      child: SafeArea(
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(
+            maxWidth: 760,
+            maxHeight: size.height * 0.92,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Column(
+              children: [
+                _buildTopBar(),
+                Expanded(
+                  child: _carregando
+                      ? _buildLoadingState()
+                      : _secoesRegimento.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                    color: Colors.red.shade900,
+                    onRefresh: _carregarRegimento,
+                    child: _buildContent(),
+                  ),
+                ),
+                _buildBottomBar(),
+              ],
+            ),
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: Colors.red.shade900,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: const Icon(
+              Icons.gavel_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Regimento Interno',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                  ),
+                ),
+                Text(
+                  'Regras e orientações oficiais',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.78),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Fechar',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
       child: Container(
-        width: double.maxFinite,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.8,
-          maxWidth: 600,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.grey.shade100),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 🔥 CABEÇALHO
+            CircularProgressIndicator(color: Colors.red.shade900),
+            const SizedBox(height: 14),
+            Text(
+              'Carregando regimento...',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 600;
+
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            isCompact ? 12 : 16,
+            isCompact ? 12 : 16,
+            isCompact ? 12 : 16,
+            18,
+          ),
+          children: [
+            _buildHero(isCompact),
+            const SizedBox(height: 12),
+            _buildResumoCards(isCompact),
+            const SizedBox(height: 14),
+            _buildSectionIntro(isCompact),
+            const SizedBox(height: 10),
+            _buildSecoesLayout(isCompact),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHero(bool isCompact) {
+    return Container(
+      padding: EdgeInsets.all(isCompact ? 15 : 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.red.shade900, Colors.red.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.shade900.withOpacity(0.10),
+            blurRadius: 9,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: isCompact ? 58 : 66,
+            height: isCompact ? 58 : 66,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: const Icon(
+              Icons.menu_book_rounded,
+              color: Colors.white,
+              size: 34,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Leia antes de prosseguir',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isCompact ? 22 : 26,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Normas, orientações e valores que fortalecem a organização do Grupo UAI Capoeira.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.82),
+              fontSize: isCompact ? 12.7 : 14,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildWhiteChip(
+                icon: Icons.article_rounded,
+                label:
+                '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
+              ),
+              _buildWhiteChip(
+                icon: Icons.checklist_rounded,
+                label: '$_totalOrientacoes orientações',
+              ),
+              _buildWhiteChip(
+                icon: Icons.verified_rounded,
+                label: 'Leitura oficial',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWhiteChip({
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResumoCards(bool isCompact) {
+    final cards = [
+      _ResumoRegimento(
+        icon: Icons.article_rounded,
+        label: 'Seções',
+        value: _secoesRegimento.length.toString(),
+        color: Colors.blue,
+      ),
+      _ResumoRegimento(
+        icon: Icons.checklist_rounded,
+        label: 'Orientações',
+        value: _totalOrientacoes.toString(),
+        color: Colors.green,
+      ),
+      _ResumoRegimento(
+        icon: Icons.groups_rounded,
+        label: 'Grupo',
+        value: 'UAI',
+        color: Colors.orange,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 8.0;
+        final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: cards.map((card) {
+            return SizedBox(
+              width: itemWidth,
+              child: _buildResumoCard(card, compact: isCompact),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildResumoCard(_ResumoRegimento card, {required bool compact}) {
+    return Container(
+      constraints: BoxConstraints(minHeight: compact ? 82 : 92),
+      padding: EdgeInsets.all(compact ? 9 : 12),
+      decoration: _cardDecoration(borderColor: card.color.withOpacity(0.10)),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(card.icon, color: card.color, size: compact ? 21 : 24),
+          const SizedBox(height: 5),
+          Text(
+            card.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: card.color,
+              fontSize: compact ? 16 : 20,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            card.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: compact ? 9.6 : 10.8,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionIntro(bool isCompact) {
+    return Row(
+      children: [
+        Container(
+          width: 39,
+          height: 39,
+          decoration: BoxDecoration(
+            color: Colors.red.shade900.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            Icons.menu_book_rounded,
+            color: Colors.red.shade900,
+            size: 21,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Orientações do grupo',
+                style: TextStyle(
+                  color: Colors.grey.shade900,
+                  fontSize: isCompact ? 16 : 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                'Leia com atenção cada seção do regimento.',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11.8,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSecoesLayout(bool isCompact) {
+    return Column(
+      children: List.generate(_secoesRegimento.length, (index) {
+        return _buildSecaoLeitura(
+          secao: _secoesRegimento[index],
+          index: index,
+          isCompact: isCompact,
+        );
+      }),
+    );
+  }
+
+  Widget _buildSecaoLeitura({
+    required Map<String, dynamic> secao,
+    required int index,
+    required bool isCompact,
+  }) {
+    final tituloOriginal = secao['titulo']?.toString() ?? 'Seção';
+    final titulo = _limparTitulo(tituloOriginal);
+    final icone = secao['icone'] is IconData
+        ? secao['icone'] as IconData
+        : _getIconFromName(secao['icone']);
+    final cor = _resolveColor(
+      secao['cor'],
+      fallback: _fallbackColor(index),
+    );
+    final conteudo = secao['conteudo']?.toString() ?? '';
+    final linhas = _linhasConteudo(conteudo);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: _cardDecoration(borderColor: cor.withOpacity(0.12)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.all(isCompact ? 13 : 15),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.red.shade900, Colors.red.shade700],
+                  colors: [cor.withOpacity(0.13), cor.withOpacity(0.05)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+                border: Border(
+                  bottom: BorderSide(color: cor.withOpacity(0.10)),
                 ),
               ),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    width: isCompact ? 42 : 46,
+                    height: isCompact ? 42 : 46,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
+                      color: cor.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: cor.withOpacity(0.12)),
                     ),
-                    child: const Icon(
-                      Icons.menu_book,
-                      color: Colors.white,
-                      size: 28,
-                    ),
+                    child: Icon(icone, color: cor, size: isCompact ? 22 : 24),
                   ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'REGIMENTO INTERNO',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'UAI CAPOEIRA',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-
-            // 🔥 CORPO
-            Expanded(
-              child: _carregando
-                  ? const Center(child: CircularProgressIndicator())
-                  : _secoes.isEmpty
-                  ? _buildVazio()
-                  : _buildListaSecoes(),
-            ),
-
-            // 🔥 RODAPÉ
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                border: Border(
-                  top: BorderSide(color: Colors.grey.shade200),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Este é o regimento oficial do grupo',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVazio() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              size: 60,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Regimento não encontrado',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'O regimento interno ainda não foi configurado.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildListaSecoes() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _secoes.length,
-      itemBuilder: (context, index) {
-        final secao = _secoes[index];
-        final cor = Color(secao['cor'] ?? Colors.blue.value);
-        final icone = _regimentoService.getIconFromName(secao['icone'] ?? 'description');
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 5,
-                offset: const Offset(0, 2),
-              ),
-            ],
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // TÍTULO DA SEÇÃO
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cor.withOpacity(0.1),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
-                  ),
-                  border: Border(
-                    bottom: BorderSide(color: cor.withOpacity(0.3)),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cor.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      titulo,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isCompact ? 15.3 : 17,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.grey.shade900,
                       ),
-                      child: Icon(
-                        icone,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: cor.withOpacity(0.12)),
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: TextStyle(
                         color: cor,
-                        size: 20,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        secao['titulo'] ?? 'SEÇÃO',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: cor,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(isCompact ? 12 : 14),
+              child: linhas.isEmpty
+                  ? Text(
+                'Conteúdo não informado.',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+                  : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: List.generate(linhas.length, (i) {
+                  final linha = linhas[i];
+                  return _buildLinhaRegimento(
+                    linha: linha,
+                    cor: cor,
+                    isCompact: isCompact,
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinhaRegimento({
+    required String linha,
+    required Color cor,
+    required bool isCompact,
+  }) {
+    if (_isTituloInterno(linha)) {
+      return Container(
+        margin: const EdgeInsets.only(top: 7, bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: cor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: cor.withOpacity(0.12)),
+        ),
+        child: Text(
+          _limparTitulo(linha),
+          style: TextStyle(
+            color: cor,
+            fontSize: isCompact ? 12.2 : 13.2,
+            fontWeight: FontWeight.w900,
+            height: 1.2,
+          ),
+        ),
+      );
+    }
+
+    if (_isBullet(linha)) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.all(isCompact ? 9 : 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: isCompact ? 25 : 27,
+              height: isCompact ? 25 : 27,
+              decoration: BoxDecoration(
+                color: cor.withOpacity(0.09),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _bulletIcon(linha),
+                color: cor,
+                size: isCompact ? 15 : 16,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                _removeBulletEmoji(linha),
+                style: TextStyle(
+                  color: Colors.grey.shade800,
+                  fontSize: isCompact ? 12.4 : 13.2,
+                  height: 1.34,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+            ),
+          ],
+        ),
+      );
+    }
 
-              // CONTEÚDO DA SEÇÃO
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  secao['conteudo'] ?? 'Conteúdo não disponível',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        linha,
+        style: TextStyle(
+          color: Colors.grey.shade800,
+          fontSize: isCompact ? 12.8 : 13.6,
+          height: 1.45,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(22),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 430),
+          padding: const EdgeInsets.all(22),
+          decoration: _cardDecoration(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.description_outlined,
+                size: 68,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Nenhuma seção encontrada',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                'Cadastre o conteúdo do regimento no painel administrativo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, height: 1.3),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
+
+  Widget _buildBottomBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.045),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('ENTENDI'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration({Color? borderColor}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: borderColor ?? Colors.grey.shade100),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.032),
+          blurRadius: 7,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResumoRegimento {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _ResumoRegimento({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 }

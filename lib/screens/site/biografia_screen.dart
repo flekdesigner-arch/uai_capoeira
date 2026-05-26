@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class BiografiaScreen extends StatefulWidget {
   const BiografiaScreen({super.key});
@@ -11,13 +12,80 @@ class BiografiaScreen extends StatefulWidget {
 class _BiografiaScreenState extends State<BiografiaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  final RastreioSiteService _rastreioService = RastreioSiteService();
+  final ScrollController _scrollController = ScrollController();
+  int _maiorPercentualRolagem = 0;
+
   List<Map<String, dynamic>> _secoesBiografia = [];
   bool _carregando = true;
 
   @override
   void initState() {
     super.initState();
+
+    _rastreioService.iniciarTela(
+      'biografia',
+      origem: 'site',
+      metadata: {
+        'descricao': 'Tela pública biografia',
+      },
+    );
+    _rastreioService.marcarTempo('biografia_tempo');
+    _scrollController.addListener(_registrarRolagem);
     _carregarBiografia();
+  }
+
+
+  @override
+  void dispose() {
+    _rastreioService.registrarTempoMarcador(
+      chave: 'biografia_tempo',
+      tipo: 'tempo_tela',
+      nome: 'biografia',
+      origem: 'dispose',
+      metadata: {
+        'maior_percentual_rolagem': _maiorPercentualRolagem,
+        'total_secoes': _secoesBiografia.length,
+      },
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_biografia');
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _registrarRolagem() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+
+    final percentual = ((_scrollController.offset / maxScroll) * 100)
+        .clamp(0, 100)
+        .round();
+
+    final marco = percentual >= 100
+        ? 100
+        : percentual >= 75
+        ? 75
+        : percentual >= 50
+        ? 50
+        : percentual >= 25
+        ? 25
+        : 0;
+
+    if (marco > _maiorPercentualRolagem) {
+      _maiorPercentualRolagem = marco;
+      _rastreioService.registrarEvento(
+        tipo: 'rolagem',
+        nome: 'biografia_$marco%',
+        origem: 'biografia',
+        metadata: {
+          'percentual': marco,
+          'total_secoes': _secoesBiografia.length,
+        },
+      );
+    }
   }
 
   Future<void> _carregarBiografia() async {
@@ -249,7 +317,13 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
             ? _buildLoadingState()
             : RefreshIndicator(
           color: Colors.red.shade900,
-          onRefresh: _carregarBiografia,
+          onRefresh: () async {
+            _rastreioService.registrarClique(
+              nome: 'atualizar_biografia',
+              origem: 'biografia',
+            );
+            await _carregarBiografia();
+          },
           child: _buildContent(isMobile),
         ),
       ),
@@ -289,6 +363,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     }
 
     return ListView(
+      controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         isMobile ? 14 : 24,
         isMobile ? 14 : 22,

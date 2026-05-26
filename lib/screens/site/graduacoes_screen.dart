@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/core/utils/responsive_utils.dart';
+import 'package:uai_capoeira/services/rastreio_site.dart';
 
 class GraduacoesScreen extends StatefulWidget {
   const GraduacoesScreen({super.key});
@@ -13,6 +14,10 @@ class GraduacoesScreen extends StatefulWidget {
 
 class _GraduacoesScreenState extends State<GraduacoesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final RastreioSiteService _rastreioService = RastreioSiteService();
+  final ScrollController _scrollController = ScrollController();
+  int _maiorPercentualRolagem = 0;
 
   // Cache de 3 dias
   static const int CACHE_DURATION_DAYS = 3;
@@ -31,7 +36,69 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   @override
   void initState() {
     super.initState();
+
+    _rastreioService.iniciarTela(
+      'graduacoes',
+      origem: 'site',
+      metadata: {
+        'descricao': 'Tela pública de graduações',
+      },
+    );
+    _rastreioService.marcarTempo('graduacoes_tempo');
+    _scrollController.addListener(_registrarRolagem);
     _carregarDados();
+  }
+
+  @override
+  void dispose() {
+    _rastreioService.registrarTempoMarcador(
+      chave: 'graduacoes_tempo',
+      tipo: 'tempo_tela',
+      nome: 'graduacoes',
+      origem: 'dispose',
+      metadata: {
+        'maior_percentual_rolagem': _maiorPercentualRolagem,
+        'total_graduacoes': _graduacoes.length,
+      },
+      limparMarcador: true,
+    );
+    _rastreioService.finalizarTela(destino: 'saida_graduacoes');
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _registrarRolagem() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+
+    final percentual = ((_scrollController.offset / maxScroll) * 100)
+        .clamp(0, 100)
+        .round();
+
+    final marco = percentual >= 100
+        ? 100
+        : percentual >= 75
+        ? 75
+        : percentual >= 50
+        ? 50
+        : percentual >= 25
+        ? 25
+        : 0;
+
+    if (marco > _maiorPercentualRolagem) {
+      _maiorPercentualRolagem = marco;
+      _rastreioService.registrarEvento(
+        tipo: 'rolagem',
+        nome: 'graduacoes_$marco%',
+        origem: 'graduacoes',
+        metadata: {
+          'percentual': marco,
+          'total_graduacoes': _graduacoes.length,
+        },
+      );
+    }
   }
 
   Future<void> _carregarDados() async {
@@ -44,6 +111,18 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         setState(() {
           _carregando = false;
         });
+
+        _rastreioService.registrarBuscaOuFiltroResultado(
+          tela: 'graduacoes',
+          nome: 'dados_carregados',
+          total: _graduacoes.length,
+          metadata: {
+            'total_alunos': _totalAlunos,
+            'alunos_ativos': _alunosAtivos,
+            'alunos_inativos': _alunosInativos,
+            'usando_cache': _usandoCache,
+          },
+        );
       }
     } catch (e) {
       debugPrint('❌ Erro ao carregar dados: $e');
@@ -317,9 +396,16 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             : _erroMensagem != null
             ? _buildErrorState(colorScheme)
             : RefreshIndicator(
-          onRefresh: _atualizarDados,
+          onRefresh: () async {
+            _rastreioService.registrarClique(
+              nome: 'atualizar_graduacoes',
+              origem: 'graduacoes',
+            );
+            await _atualizarDados();
+          },
           color: Colors.red.shade900,
           child: ListView(
+            controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
               isMobile ? 14 : 24,
               isMobile ? 14 : 22,
@@ -355,6 +441,14 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   }
 
   Future<void> _atualizarDados() async {
+    _rastreioService.registrarClique(
+      nome: 'atualizar_dados_graduacoes',
+      origem: 'graduacoes',
+      metadata: {
+        'usando_cache': _usandoCache,
+      },
+    );
+
     setState(() {
       _carregando = true;
       _erroMensagem = null;
@@ -722,130 +816,146 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     final isFirst = index == 0;
     final isLast = index == total - 1;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: isMobile ? 42 : 58,
-            child: Column(
-              children: [
-                Expanded(
-                  child: Container(
-                    width: 3,
-                    color: isFirst ? Colors.transparent : Colors.red.shade100,
-                  ),
-                ),
-                Container(
-                  width: isMobile ? 32 : 38,
-                  height: isMobile ? 32 : 38,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [color1, color2],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+    return GestureDetector(
+      onTap: () {
+        _rastreioService.registrarItemVisualizado(
+          tela: 'graduacoes',
+          itemTipo: 'graduacao',
+          itemNome: nome,
+          itemId: corda,
+          metadata: {
+            'index': index,
+            'titulo': titulo,
+            'tipo_publico': tipoPublico,
+            'quantidade_alunos': quantidadeAlunos,
+          },
+        );
+      },
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: isMobile ? 42 : 58,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Container(
+                      width: 3,
+                      color: isFirst ? Colors.transparent : Colors.red.shade100,
                     ),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                  Container(
+                    width: isMobile ? 32 : 38,
+                    height: isMobile ? 32 : 38,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [color1, color2],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color1.withOpacity(0.22),
+                          blurRadius: 7,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          color: _contrastingTextColor(color1),
+                          fontSize: isMobile ? 11 : 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      width: 3,
+                      color: isLast ? Colors.transparent : Colors.red.shade100,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: isMobile ? 6 : 10,
+                  bottom: isLast ? 0 : 14,
+                ),
+                child: Container(
+                  padding: EdgeInsets.all(isMobile ? 14 : 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: color1.withOpacity(0.12)),
                     boxShadow: [
                       BoxShadow(
-                        color: color1.withOpacity(0.22),
+                        color: Colors.black.withOpacity(0.035),
                         blurRadius: 7,
                         offset: const Offset(0, 3),
                       ),
                     ],
                   ),
-                  child: Center(
-                    child: Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        color: _contrastingTextColor(color1),
-                        fontSize: isMobile ? 11 : 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    width: 3,
-                    color: isLast ? Colors.transparent : Colors.red.shade100,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: isMobile ? 6 : 10,
-                bottom: isLast ? 0 : 14,
-              ),
-              child: Container(
-                padding: EdgeInsets.all(isMobile ? 14 : 18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: color1.withOpacity(0.12)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.035),
-                      blurRadius: 7,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: isMobile
-                    ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _buildTimelineCordaPreview(
-                      modifiedSvg: modifiedSvg,
-                      color1: color1,
-                      color2: color2,
-                      isMobile: true,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildTimelineTextContent(
-                      nome: nome,
-                      titulo: titulo,
-                      corda: corda,
-                      tipoPublico: tipoPublico,
-                      descricao: descricao,
-                      quantidadeAlunos: quantidadeAlunos,
-                      centered: true,
-                    ),
-                  ],
-                )
-                    : Row(
-                  children: [
-                    SizedBox(
-                      width: 210,
-                      child: _buildTimelineCordaPreview(
+                  child: isMobile
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildTimelineCordaPreview(
                         modifiedSvg: modifiedSvg,
                         color1: color1,
                         color2: color2,
-                        isMobile: false,
+                        isMobile: true,
                       ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: _buildTimelineTextContent(
+                      const SizedBox(height: 12),
+                      _buildTimelineTextContent(
                         nome: nome,
                         titulo: titulo,
                         corda: corda,
                         tipoPublico: tipoPublico,
                         descricao: descricao,
                         quantidadeAlunos: quantidadeAlunos,
-                        centered: false,
+                        centered: true,
                       ),
-                    ),
-                  ],
+                    ],
+                  )
+                      : Row(
+                    children: [
+                      SizedBox(
+                        width: 210,
+                        child: _buildTimelineCordaPreview(
+                          modifiedSvg: modifiedSvg,
+                          color1: color1,
+                          color2: color2,
+                          isMobile: false,
+                        ),
+                      ),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: _buildTimelineTextContent(
+                          nome: nome,
+                          titulo: titulo,
+                          corda: corda,
+                          tipoPublico: tipoPublico,
+                          descricao: descricao,
+                          quantidadeAlunos: quantidadeAlunos,
+                          centered: false,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permite arquivos temporários/cache usados por câmera, image_picker e crop/edição -->
+    <cache-path
+        name="cache"
+        path="." />
+
+    <external-cache-path
+        name="external_cache"
+        path="." />
+
+    <!-- Permite imagens salvas em área externa do app -->
+    <external-files-path
+        name="external_files"
+        path="." />
+
+    <!-- Permite acesso às imagens públicas quando necessário -->
+    <external-path
+        name="external"
+        path="." />
+
+    <!-- Permite imagens da pasta Pictures -->
+    <external-path
+        name="pictures"
+        path="Pictures/" />
+
+</paths>
