@@ -1,20 +1,21 @@
+import 'dart:async';
 // =====================================================
 // 📱 IMPORTAÇÕES - TELAS DO APP
 // =====================================================
-import 'package:uai_capoeira/screens/turmas/tela_turma_screen.dart';
-import 'package:uai_capoeira/vincular_aluno_turma_screen.dart';
-import 'package:uai_capoeira/screens/admin/admin_screen.dart';
-import 'package:uai_capoeira/screens/alunos/alunos_screen.dart';
-import 'package:uai_capoeira/screens/alunos/aniversariantes_screen.dart';
-import 'package:uai_capoeira/screens/auth/auth_check.dart';
-import 'package:uai_capoeira/screens/auth/splash_auth_screen.dart';
-import 'package:uai_capoeira/profile_screen.dart';
-import 'package:uai_capoeira/turmas_academia_screen.dart';
-import 'package:uai_capoeira/screens/eventos/eventos_screen.dart';
-import 'screens/uniformes/uniformes_screen.dart';
-import 'package:uai_capoeira/widgets/drawer_widget.dart';
-import 'package:uai_capoeira/screens/home_page.dart';
-import 'screens/site/landing_page.dart';
+import 'package:uai_capoeira/modules/turmas/screens/tela_turma_screen.dart';
+import 'package:uai_capoeira/modules/turmas/admin/vincular_aluno_turma_screen.dart';
+import 'package:uai_capoeira/modules/sistema/admin/admin_screen.dart';
+import 'package:uai_capoeira/modules/alunos/screens/alunos_screen.dart';
+import 'package:uai_capoeira/modules/alunos/screens/aniversariantes_screen.dart';
+import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
+import 'package:uai_capoeira/app/splash/splash_auth_screen.dart';
+import 'package:uai_capoeira/modules/usuarios/screens/profile_screen.dart';
+import 'package:uai_capoeira/modules/turmas/screens/turmas_academia_screen.dart';
+import 'package:uai_capoeira/modules/eventos/screens/eventos_screen.dart';
+import 'package:uai_capoeira/modules/uniformes/screens/uniformes_screen.dart';
+import 'package:uai_capoeira/shared/widgets/drawer_widget.dart';
+import 'package:uai_capoeira/app/home_page.dart';
+import 'package:uai_capoeira/modules/site/screens/landing_page.dart';
 
 // =====================================================
 // 🖼️ IMAGENS E CACHE
@@ -33,6 +34,9 @@ import 'firebase_options.dart';
 // 🎨 FLUTTER CORE
 // =====================================================
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/shared/widgets/uai_theme_selector.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 // =====================================================
@@ -47,18 +51,22 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 // =====================================================
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'services/notification_service.dart';
-import 'services/notification_badge_service.dart';
+import 'package:uai_capoeira/shared/services/notification_service.dart';
+import 'package:uai_capoeira/shared/services/notification_badge_service.dart';
 
 // =====================================================
 // 💬 SERVIÇOS
 // =====================================================
-import 'services/mensagem_aniversario_service.dart';
-import 'screens/em_desenvolvimento_screen.dart';
-import 'services/permissao_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:uai_capoeira/services/atualizacao_direta_service.dart';
-import 'package:uai_capoeira/services/atualizacao_dialog_service.dart';
+
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/core/services/atualizacao_dialog_service.dart';
+import 'package:uai_capoeira/core/services/atualizacao_direta_service.dart';
+import 'package:uai_capoeira/modules/alunos/services/mensagem_aniversario_service.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart'
+as area_aluno_dashboard;
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
+import 'package:uai_capoeira/shared/widgets/em_desenvolvimento_screen.dart';
 
 // =====================================================
 // 🔑 CHAVE GLOBAL PARA NAVEGAÇÃO
@@ -168,6 +176,10 @@ Future<void> main() async {
     Intl.defaultLocale = 'pt_BR';
     print('✅ Locale configurado');
 
+    print('🎨 Inicializando tema do app...');
+    await AppThemeController.instance.initialize();
+    print('✅ Tema inicializado');
+
     print('🏁 Chamando runApp...');
     runApp(const UaiCapoeiraApp());
     print('✅ runApp executado');
@@ -198,19 +210,19 @@ class ErrorApp extends StatelessWidget {
       home: Scaffold(
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(16.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 80),
-                const SizedBox(height: 20),
-                const Text(
+                Icon(Icons.error_outline, color: Colors.red, size: 80),
+                SizedBox(height: 20),
+                Text(
                   'Erro ao inicializar o app',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -221,19 +233,19 @@ class ErrorApp extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'Detalhes técnicos:',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 5),
+                SizedBox(height: 5),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Text(
                       stack.toString(),
                       style: TextStyle(
                         fontSize: 10,
-                        color: Colors.grey.shade700,
+                        color: context.uai.textSecondary,
                       ),
                     ),
                   ),
@@ -284,50 +296,187 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
   Widget build(BuildContext context) {
     print('🏢 UaiCapoeiraApp.build()');
 
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      debugShowCheckedModeBanner: false,
-      title: 'UAI CAPOEIRA',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red.shade900),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.red,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-        ),
-      ),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('pt', 'BR'),
-        Locale('en', 'US'),
-      ],
-      locale: const Locale('pt', 'BR'),
+    final themeController = AppThemeController.instance;
 
-      // =====================================================
-      // 🏠 HOME
-      // Web mantém LandingPage.
-      // APK abre SplashAuthScreen para aguardar restauração do login.
-      // =====================================================
-      home: kIsWeb ? const LandingPage() : const SplashAuthScreen(),
+    return AnimatedBuilder(
+      animation: themeController,
+      builder: (context, _) {
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          debugShowCheckedModeBanner: false,
+          title: 'UAI CAPOEIRA',
+          themeMode: themeController.themeMode,
+          theme: AppTheme.buildLight(themeController.currentPreset),
+          darkTheme: AppTheme.buildDark(themeController.currentPreset),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('pt', 'BR'),
+            Locale('en', 'US'),
+          ],
+          locale: const Locale('pt', 'BR'),
+
+          // =====================================================
+          // 🏠 HOME
+          // Web mantém LandingPage.
+          // APK abre SplashAuthScreen para aguardar restauração do login.
+          // =====================================================
+          home: kIsWeb ? PwaEntradaInteligente() : SplashAuthScreen(),
+        );
+      },
     );
   }
 }
+
+
+// =====================================================
+// 🌐 ENTRADA INTELIGENTE DO PWA
+// =====================================================
+class PwaEntradaInteligente extends StatefulWidget {
+  PwaEntradaInteligente({super.key});
+
+  @override
+  State<PwaEntradaInteligente> createState() => _PwaEntradaInteligenteState();
+}
+
+class _PwaEntradaInteligenteState extends State<PwaEntradaInteligente> {
+  Widget? _destino;
+  String _mensagem = 'Verificando sessão salva...';
+
+  @override
+  void initState() {
+    super.initState();
+    _resolverEntrada();
+  }
+
+  Future<User?> _aguardarFirebaseAuth() async {
+    var user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) return user;
+
+    try {
+      user = await FirebaseAuth.instance
+          .idTokenChanges()
+          .first
+          .timeout(Duration(seconds: 2));
+    } on TimeoutException {
+      user = FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      user = FirebaseAuth.instance.currentUser;
+    }
+
+    return user;
+  }
+
+  Future<void> _resolverEntrada() async {
+    try {
+      setState(() => _mensagem = 'Restaurando login do app...');
+
+      final user = await _aguardarFirebaseAuth();
+
+      if (!mounted) return;
+
+      if (user != null) {
+        debugPrint('✅ PWA: sessão Firebase restaurada para ${user.email}');
+        setState(() => _destino = AuthCheck());
+        return;
+      }
+
+      setState(() => _mensagem = 'Verificando Área do Aluno...');
+
+      final sessaoAluno =
+      await AreaAlunoSessionService().restaurarSessaoRevalidando();
+
+      if (!mounted) return;
+
+      if (sessaoAluno != null) {
+        debugPrint('✅ PWA: sessão da Área do Aluno restaurada.');
+
+        setState(() {
+          _destino = area_aluno_dashboard.AreaAlunoDashboardScreen(
+            aluno: Map<String, dynamic>.from(sessaoAluno['aluno'] as Map),
+            config: Map<String, dynamic>.from(sessaoAluno['config'] as Map),
+            authPayload: Map<String, dynamic>.from(
+              sessaoAluno['authPayload'] as Map,
+            ),
+          );
+        });
+        return;
+      }
+
+      debugPrint('ℹ️ PWA: nenhuma sessão salva. Abrindo LandingPage.');
+      setState(() => _destino = LandingPage());
+    } catch (e) {
+      debugPrint('⚠️ Erro ao resolver entrada do PWA: $e');
+
+      if (!mounted) return;
+
+      setState(() => _destino = LandingPage());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final destino = _destino;
+
+    if (destino != null) {
+      return destino;
+    }
+
+    return Scaffold(
+      backgroundColor: context.uai.background,
+      body: Center(
+        child: Container(
+          padding: EdgeInsets.all(24),
+          margin: EdgeInsets.all(22),
+          constraints: BoxConstraints(maxWidth: 360),
+          decoration: BoxDecoration(
+            color: context.uai.card,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: context.uai.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/logoprincipal.png',
+                width: 104,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.sports_martial_arts_rounded,
+                  color: context.uai.primary,
+                  size: 64,
+                ),
+              ),
+              SizedBox(height: 20),
+              CircularProgressIndicator(color: context.uai.primary),
+              SizedBox(height: 14),
+              Text(
+                _mensagem,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 // =====================================================
 // 🎂 WIDGET DO BOTÃO DE ANIVERSARIANTE COM CONTADOR
@@ -361,7 +510,7 @@ class AniversariantesTab extends StatelessWidget {
         final bool temVinculo = snapshot.data ?? false;
 
         if (!temVinculo) {
-          return const SizedBox.shrink();
+          return SizedBox.shrink();
         }
 
         return _buildAniversariantesButton();
@@ -380,8 +529,8 @@ class AniversariantesTab extends StatelessWidget {
         return InkWell(
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-            constraints: const BoxConstraints(minHeight: 48),
+            padding: EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+            constraints: BoxConstraints(minHeight: 48),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -391,7 +540,7 @@ class AniversariantesTab extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.cake,
-                      color: isSelected ? Colors.red.shade900 : Colors.grey,
+                      color: isSelected ? context.uai.primary : context.uai.textMuted,
                       size: 24,
                     ),
                     if (birthdayCount > 0)
@@ -399,20 +548,20 @@ class AniversariantesTab extends StatelessWidget {
                         right: -8,
                         top: -8,
                         child: Container(
-                          padding: const EdgeInsets.all(2),
+                          padding: EdgeInsets.all(2),
                           decoration: BoxDecoration(
-                            color: Colors.red,
+                            color: context.uai.error,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white, width: 1.5),
+                            border: Border.all(color: context.uai.surface, width: 1.5),
                           ),
-                          constraints: const BoxConstraints(
+                          constraints: BoxConstraints(
                             minWidth: 18,
                             minHeight: 18,
                           ),
                           child: Center(
                             child: Text(
                               birthdayCount > 9 ? '9+' : '$birthdayCount',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
@@ -423,13 +572,13 @@ class AniversariantesTab extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Flexible(
                   child: Text(
                     'ANIVERSÁRIOS',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isSelected ? Colors.red.shade900 : Colors.grey,
+                      color: isSelected ? context.uai.primary : context.uai.textMuted,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -463,7 +612,7 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _dialogoAtualizacaoVerificado = false;
 
-  static const List<Widget> _widgetOptions = <Widget>[
+  static final List<Widget> _widgetOptions = <Widget>[
     HomePage(),
     AniversariantesPage(),
   ];
@@ -489,7 +638,7 @@ class _MainScreenState extends State<MainScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao sair: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: context.uai.error,
           ),
         );
       }
@@ -497,6 +646,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildNotificationBell() {
+    final t = context.uai;
+
     return StreamBuilder<int>(
       stream: NotificationBadgeService().getUnreadNotificationsCount(),
       builder: (context, snapshot) {
@@ -505,11 +656,11 @@ class _MainScreenState extends State<MainScreen> {
         return Stack(
           children: [
             IconButton(
-              icon: const Icon(Icons.notifications_outlined),
+              icon: Icon(Icons.notifications_outlined),
               color: Colors.white,
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text('🔔 Tela de notificações - Em breve!'),
                     duration: Duration(seconds: 2),
                   ),
@@ -521,20 +672,20 @@ class _MainScreenState extends State<MainScreen> {
                 right: 8,
                 top: 8,
                 child: Container(
-                  padding: const EdgeInsets.all(2),
+                  padding: EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade700,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white, width: 1.5),
+                    border: Border.all(color: t.surface, width: 1.5),
                   ),
-                  constraints: const BoxConstraints(
+                  constraints: BoxConstraints(
                     minWidth: 18,
                     minHeight: 18,
                   ),
                   child: Center(
                     child: Text(
                       unreadCount > 9 ? '9+' : '$unreadCount',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -552,7 +703,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _verificarAtualizacaoAoEntrar() async {
     if (_dialogoAtualizacaoVerificado) return;
 
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(Duration(seconds: 2));
 
     if (mounted) {
       debugPrint('🔍 Verificando atualização ao entrar...');
@@ -598,6 +749,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.uai;
+
     if (currentUser == null) {
       return const Scaffold(
         body: Center(
@@ -624,7 +777,7 @@ class _MainScreenState extends State<MainScreen> {
               child: Center(
                 child: Text(
                   "Não foi possível carregar os dados.",
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: t.textSecondary),
                 ),
               ),
             );
@@ -647,21 +800,28 @@ class _MainScreenState extends State<MainScreen> {
         },
       ),
       appBar: AppBar(
-        backgroundColor: Colors.red.shade900,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? t.primary,
+        foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           _selectedIndex == 0 ? 'UAI CAPOEIRA' : 'Aniversariantes',
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
         ),
         actions: [
           _buildNotificationBell(),
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: UaiThemeIconButton(),
+          ),
         ],
       ),
       body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        elevation: 8,
+        color: t.card,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         height: 72,
+        shadowColor: Colors.black.withOpacity(0.18),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -669,8 +829,8 @@ class _MainScreenState extends State<MainScreen> {
             InkWell(
               onTap: () => _onItemTapped(0),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-                constraints: const BoxConstraints(minHeight: 48),
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                constraints: BoxConstraints(minHeight: 48),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -678,19 +838,19 @@ class _MainScreenState extends State<MainScreen> {
                     Icon(
                       Icons.home,
                       color: _selectedIndex == 0
-                          ? Colors.red.shade900
-                          : Colors.grey,
+                          ? t.primary
+                          : t.textMuted,
                       size: 24,
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Flexible(
                       child: Text(
                         'INÍCIO',
                         style: TextStyle(
                           fontSize: 11,
                           color: _selectedIndex == 0
-                              ? Colors.red.shade900
-                              : Colors.grey,
+                              ? t.primary
+                              : t.textMuted,
                           fontWeight: _selectedIndex == 0
                               ? FontWeight.bold
                               : FontWeight.normal,

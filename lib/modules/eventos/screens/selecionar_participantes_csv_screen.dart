@@ -1,0 +1,747 @@
+﻿// lib/screens/eventos/selecionar_participantes_csv_screen.dart
+
+import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uai_capoeira/shared/services/google_sheets_oauth_service.dart';
+import 'vincular_certificados_drive_screen.dart'; // 👈 NOVA TELA
+
+class SelecionarParticipantesCsvScreen extends StatefulWidget {
+  final String eventoId;
+  final String eventoNome;
+
+  const SelecionarParticipantesCsvScreen({
+    super.key,
+    required this.eventoId,
+    required this.eventoNome,
+  });
+
+  @override
+  State<SelecionarParticipantesCsvScreen> createState() => _SelecionarParticipantesCsvScreenState();
+}
+
+class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipantesCsvScreen> {
+  Color _readableOn(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  Color _onCard() => _readableOn(context.uai.card);
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  InputDecoration _uaiInputDecoration({
+    required String label,
+    IconData? icon,
+    String? hint,
+    String? prefixText,
+  }) {
+    final accent = _ensureVisible(context.uai.primary, context.uai.card);
+
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixText: prefixText,
+      labelStyle: TextStyle(color: context.uai.textSecondary),
+      hintStyle: TextStyle(color: context.uai.textMuted),
+      prefixIcon: icon == null ? null : Icon(icon, color: accent),
+      filled: true,
+      fillColor: context.uai.cardAlt,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+        borderSide: BorderSide(color: context.uai.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+        borderSide: BorderSide(color: context.uai.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+        borderSide: BorderSide(color: accent, width: 1.4),
+      ),
+    );
+  }
+
+
+  final Map<String, Map<String, dynamic>> _participantes = {};
+  bool _isLoading = true;
+  bool _isGerandoCsv = false;
+  bool _isEnviando = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  final Map<String, String> _cacheCpf = {};
+
+  // Estatísticas
+  int get _totalParticipantes => _participantes.length;
+  int get _selecionadosCount => _participantes.values.where((p) => p['selecionado'] == true).length;
+  bool get _todosSelecionados => _participantes.isNotEmpty && _participantes.values.every((p) => p['selecionado'] == true);
+  int get _totalComGraduacao => _participantes.values.where((p) => p['graduacao_nova'].isNotEmpty).length;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarParticipantes();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text.toLowerCase());
+    });
+  }
+
+  Future<void> _carregarParticipantes() async {
+    setState(() => _isLoading = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('participacoes_eventos_em_andamento')
+          .where('evento_id', isEqualTo: widget.eventoId)
+          .orderBy('aluno_nome')
+          .get();
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final alunoId = data['aluno_id'] ?? '';
+
+        // Buscar foto do aluno
+        String? fotoUrl;
+        try {
+          final alunoDoc = await FirebaseFirestore.instance
+              .collection('alunos')
+              .doc(alunoId)
+              .get();
+          fotoUrl = alunoDoc.data()?['foto_perfil_aluno']?.toString();
+        } catch (e) {
+          debugPrint('Erro ao buscar foto: $e');
+        }
+
+        _participantes[doc.id] = {
+          'id': doc.id,
+          'aluno_id': alunoId,
+          'aluno_nome': data['aluno_nome'] ?? '',
+          'graduacao_nova': data['graduacao_nova']?.toString() ?? '',
+          'selecionado': false,
+          'cpf': '',
+          'foto': fotoUrl,
+          'link_certificado': data['link_certificado']?.toString() ?? '', // 👈 JÁ CARREGA SE TIVER
+        };
+      }
+      setState(() {});
+    } catch (e) {
+      _mostrarMensagem('Erro ao carregar: $e', context.uai.error);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<String> _buscarCpf(String alunoId) async {
+    if (_cacheCpf.containsKey(alunoId)) return _cacheCpf[alunoId]!;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
+      final cpf = doc.data()?['cpf']?.toString() ?? '0';
+      _cacheCpf[alunoId] = cpf;
+      return cpf;
+    } catch (e) {
+      return '0';
+    }
+  }
+
+  void _selecionarTodos(bool? selecionado) {
+    setState(() {
+      for (var entry in _participantes.entries) {
+        entry.value['selecionado'] = selecionado ?? false;
+      }
+    });
+  }
+
+  void _mostrarMensagem(String texto, Color cor) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(texto),
+        backgroundColor: cor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  // ============================================================
+  // AÇÕES PRINCIPAIS
+  // ============================================================
+  Future<void> _enviarViaAPI() async {
+    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+    if (selecionados.isEmpty) {
+      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      return;
+    }
+
+    setState(() => _isEnviando = true);
+    try {
+      for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
+      final resultado = await GoogleSheetsOAuthService().adicionarParticipantes(selecionados);
+      _mostrarMensagem(resultado['mensagem'], resultado['sucesso'] ? context.uai.success : context.uai.error);
+      if (resultado['sucesso']) _selecionarTodos(false);
+    } finally {
+      setState(() => _isEnviando = false);
+    }
+  }
+
+  Future<void> _gerarCsv() async {
+    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+    if (selecionados.isEmpty) {
+      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      return;
+    }
+
+    setState(() => _isGerandoCsv = true);
+    try {
+      for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
+
+      List<List<String>> linhas = [['NOME', 'CPF', 'GRADUAÇÃO']];
+      for (var p in selecionados) {
+        linhas.add([p['aluno_nome'], p['cpf'], p['graduacao_nova'].isEmpty ? 'SEM GRADUAÇÃO' : p['graduacao_nova']]);
+      }
+
+      String csv = linhas.map((linha) => linha.map((campo) {
+        if (campo.contains(',') || campo.contains('"') || campo.contains('\n')) {
+          return '"${campo.replaceAll('"', '""')}"';
+        }
+        return campo;
+      }).join(',')).join('\n');
+
+      final bom = [0xEF, 0xBB, 0xBF];
+      List<int> bytes = [...bom, ...csv.codeUnits];
+
+      final tempDir = await getTemporaryDirectory();
+      final dataHora = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'participantes_${widget.eventoNome.replaceAll(' ', '_')}_$dataHora.csv';
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'Lista de participantes');
+
+      _mostrarMensagem('✅ CSV gerado com ${selecionados.length} participantes!', context.uai.success);
+      _selecionarTodos(false);
+    } catch (e) {
+      _mostrarMensagem('Erro ao gerar CSV', context.uai.error);
+    } finally {
+      setState(() => _isGerandoCsv = false);
+    }
+  }
+
+  // 👇 NOVO MÉTODO: Abrir tela de vincular certificados
+  void _abrirVincularCertificados() {
+    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+
+    if (selecionados.isEmpty) {
+      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VincularCertificadosDriveScreen(
+          participantes: selecionados,
+          eventoId: widget.eventoId,
+          eventoNome: widget.eventoNome,
+        ),
+      ),
+    ).then((atualizar) {
+      if (atualizar == true) {
+        _carregarParticipantes(); // Recarrega a lista se voltou com sucesso
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: context.uai.background,
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.eventoNome,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'Selecionar participantes',
+              style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.9)),
+            ),
+          ],
+        ),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
+        elevation: 0,
+        actions: [
+          // 👇 NOVO BOTÃO DE CERTIFICADOS (Ícone do Google Drive)
+          if (_selecionadosCount > 0)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                icon: Icon(Icons.drive_folder_upload, color: Colors.white),
+                onPressed: _abrirVincularCertificados,
+                tooltip: 'Vincular certificados do Drive',
+              ),
+            ),
+
+          // Botão "Todos" existente
+          if (_participantes.isNotEmpty)
+            Container(
+              margin: EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  Text('  Todos', style: TextStyle(color: Colors.white)),
+                  Checkbox(
+                    value: _todosSelecionados,
+                    onChanged: _selecionarTodos,
+                    activeColor: Colors.white,
+                    checkColor: context.uai.primary,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : Column(
+        children: [
+          // 🔝 PAINEL DE ESTATÍSTICAS
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: context.uai.card,
+              boxShadow: [
+                BoxShadow(
+                  color: context.uai.textMuted.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.people,
+                    value: '$_totalParticipantes',
+                    label: 'Total',
+                    color: context.uai.info,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.check_circle,
+                    value: '$_selecionadosCount',
+                    label: 'Selecionados',
+                    color: context.uai.success,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatCard(
+                    icon: Icons.school,
+                    value: '$_totalComGraduacao',
+                    label: 'Com graduação',
+                    color: context.uai.associacao,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 🔍 BARRA DE PESQUISA
+          Container(
+            padding: EdgeInsets.all(16),
+            color: context.uai.card,
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Buscar participante...',
+                prefixIcon: Icon(Icons.search, color: context.uai.error),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: context.uai.cardAlt,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                  icon: Icon(Icons.clear, color: context.uai.error),
+                  onPressed: () => _searchController.clear(),
+                )
+                    : null,
+              ),
+            ),
+          ),
+
+          // 🎯 BOTÕES DE AÇÃO (só aparecem se houver selecionados)
+          if (_selecionadosCount > 0)
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          onPressed: _gerarCsv,
+                          isLoading: _isGerandoCsv,
+                          icon: Icons.file_download,
+                          label: 'BAIXAR CSV',
+                          color: context.uai.info,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: _buildActionButton(
+                          onPressed: _enviarViaAPI,
+                          isLoading: _isEnviando,
+                          icon: Icons.cloud_upload,
+                          label: 'ENVIAR PLANILHA',
+                          color: context.uai.success,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // 👇 BOTÃO EXTRA DE CERTIFICADO (opcional, pode manter ou remover)
+                  SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _abrirVincularCertificados,
+                      icon: Icon(Icons.drive_folder_upload),
+                      label: Text(
+                        'VINCULAR CERTIFICADOS DO DRIVE (${_selecionadosCount})',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: context.uai.associacao,
+                        foregroundColor: _appBarFg(),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // 👥 LISTA DE PARTICIPANTES
+          Expanded(
+            child: _participantes.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _participantes.length,
+              itemBuilder: (context, index) {
+                final entry = _participantes.entries.elementAt(index);
+                final p = entry.value;
+
+                if (_searchQuery.isNotEmpty && !p['aluno_nome'].toLowerCase().contains(_searchQuery)) {
+                  return const SizedBox.shrink();
+                }
+
+                return _buildParticipantCard(p, index);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard({required IconData icon, required String value, required String label, required Color color}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required VoidCallback onPressed,
+    required bool isLoading,
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return ElevatedButton(
+      onPressed: isLoading ? null : onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: _appBarFg(),
+        padding: EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 2,
+      ),
+      child: isLoading
+          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: context.uai.card, strokeWidth: 2))
+          : Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantCard(Map<String, dynamic> p, int index) {
+    final temGraduacao = p['graduacao_nova'].isNotEmpty;
+    final temCertificado = p['link_certificado'] != null && p['link_certificado'].toString().isNotEmpty;
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: p['selecionado'] ? context.uai.primary : context.uai.cardAlt,
+          width: p['selecionado'] ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: () => setState(() => p['selecionado'] = !p['selecionado']),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // 📸 FOTO DO ALUNO
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: p['selecionado'] ? context.uai.primary : context.uai.border,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.uai.textMuted.withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: p['foto'] != null && p['foto'].toString().isNotEmpty
+                      ? CachedNetworkImage(
+                    imageUrl: p['foto'],
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: context.uai.cardAlt,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: context.uai.error.withOpacity(0.08),
+                      child: Icon(
+                        Icons.person,
+                        color: context.uai.error.withOpacity(0.24),
+                        size: 30,
+                      ),
+                    ),
+                  )
+                      : Container(
+                    color: context.uai.error.withOpacity(0.08),
+                    child: Icon(
+                      Icons.person,
+                      color: context.uai.error.withOpacity(0.24),
+                      size: 30,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: 16),
+
+              // Informações
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            p['aluno_nome'],
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (temCertificado)
+                          Container(
+                            margin: EdgeInsets.only(left: 4),
+                            padding: EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: context.uai.success,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.check,
+                              color: context.uai.card,
+                              size: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: temGraduacao ? context.uai.success.withOpacity(0.08) : context.uai.cardAlt,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.school,
+                                size: 12,
+                                color: temGraduacao ? context.uai.success : context.uai.textSecondary,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                temGraduacao ? p['graduacao_nova'] : 'Sem graduação',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: temGraduacao ? context.uai.success : context.uai.textSecondary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Checkbox personalizado
+              Container(
+                decoration: BoxDecoration(
+                  color: p['selecionado'] ? context.uai.primary : context.uai.cardAlt,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Checkbox(
+                  value: p['selecionado'],
+                  onChanged: (value) => setState(() => p['selecionado'] = value ?? false),
+                  activeColor: context.uai.primary,
+                  checkColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: context.uai.error.withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.people_outline,
+              size: 60,
+              color: context.uai.error.withOpacity(0.24),
+            ),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Nenhum participante no evento',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.uai.textMuted),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Adicione participantes na tela anterior',
+            style: TextStyle(fontSize: 14, color: context.uai.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+}

@@ -3,7 +3,7 @@
   "short_name": "UAI",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#B71C1C",
+  "background_color": "#FFFFFF",
   "theme_color": "#B71C1C",
   "description": "UAI CAPOEIRA - União, Amizade e Inteligência",
   "orientation": "portrait-primary",
