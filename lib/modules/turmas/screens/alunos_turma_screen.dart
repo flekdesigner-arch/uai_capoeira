@@ -86,6 +86,18 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
+  Color _capacidadeColor(double porcentagem) {
+    if (porcentagem >= 0.90) return context.uai.error;
+    if (porcentagem >= 0.70) return context.uai.warning;
+    return context.uai.success;
+  }
+
+  int _parseInt(dynamic value, int fallback) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final Connectivity _connectivity = Connectivity();
@@ -119,6 +131,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   final Map<String, bool> _graduacaoValidaCache = {};
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _alunosCache = [];
+  int _capacidadeMaximaTurma = 0;
+
   bool _isLoading = true;
   bool _hasError = false;
 
@@ -130,6 +144,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     _carregarPermissoes();
     _loadSvg();
     _preloadGraduacoes();
+    _carregarInfoTurma();
     _carregarAlunos();
     _monitorarConectividade();
 
@@ -246,6 +261,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       _svgCache.clear();
       _graduacaoValidaCache.clear();
       await _limparCacheImagens();
+      await _carregarInfoTurma();
       await _carregarAlunosForcado();
       await _preloadGraduacoes();
       if (mounted) {
@@ -407,6 +423,40 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       );
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar graduações: $e');
+    }
+  }
+
+  Future<void> _carregarInfoTurma() async {
+    try {
+      DocumentSnapshot<Map<String, dynamic>> turmaDoc;
+
+      try {
+        turmaDoc = await _firestore
+            .collection('turmas')
+            .doc(widget.turmaId)
+            .get(const GetOptions(source: Source.cache));
+
+        if (!turmaDoc.exists && _isOnline) {
+          turmaDoc = await _firestore
+              .collection('turmas')
+              .doc(widget.turmaId)
+              .get(const GetOptions(source: Source.server));
+        }
+      } catch (_) {
+        turmaDoc = await _firestore
+            .collection('turmas')
+            .doc(widget.turmaId)
+            .get(const GetOptions(source: Source.server));
+      }
+
+      if (!mounted || !turmaDoc.exists) return;
+
+      final data = turmaDoc.data() ?? {};
+      setState(() {
+        _capacidadeMaximaTurma = _parseInt(data['capacidade_maxima'], 0);
+      });
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar capacidade da turma: $e');
     }
   }
 
@@ -893,14 +943,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text(widget.turmaNome, style: TextStyle(fontSize: 16, color: appBarFg, fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            SizedBox(width: 8),
-            Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: _isOnline ? t.success : t.error)),
-          ]),
-          Text('ALUNOS ATIVOS (${_alunosCache.length})', style: TextStyle(fontSize: 12, color: appBarFg.withOpacity(0.82), fontWeight: FontWeight.w700)),
-        ]),
+        title: _buildAppBarTitle(
+          appBarFg: appBarFg,
+          appBarBg: appBarBg,
+        ),
         backgroundColor: appBarBg,
         foregroundColor: appBarFg,
         actions: [
@@ -968,7 +1014,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           ? _buildNoSearchResultsView()
           : Column(
         children: [
-          _buildResumoAlunosHeader(alunosFiltrados.length),
           StreamBuilder<int>(
             stream: _syncService.pendingCountStream,
             initialData: _syncService.currentPendingCount,
@@ -980,6 +1025,82 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
+
+  Widget _buildAppBarTitle({
+    required Color appBarFg,
+    required Color appBarBg,
+  }) {
+    final t = context.uai;
+    final alunosAtivos = _alunosCache.length;
+    final capacidade = _capacidadeMaximaTurma;
+    final temCapacidade = capacidade > 0;
+    final value = temCapacidade
+        ? (alunosAtivos / capacidade).clamp(0.0, 1.0)
+        : 0.0;
+    final porcentagem = temCapacidade ? value : 0.0;
+    final barColor = _capacidadeColor(porcentagem);
+    final barraFundo = appBarFg.withOpacity(0.22);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.turmaNome,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: appBarFg,
+                  fontWeight: FontWeight.w900,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isOnline ? t.success : t.error,
+                border: Border.all(color: appBarFg.withOpacity(0.20)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Row(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: temCapacidade ? value : null,
+                  minHeight: 6,
+                  backgroundColor: barraFundo,
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              temCapacidade
+                  ? '$alunosAtivos/$capacidade'
+                  : '$alunosAtivos ativos',
+              style: TextStyle(
+                color: appBarFg.withOpacity(0.88),
+                fontSize: 10.8,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _buildResumoAlunosHeader(int filtrados) {
     final t = context.uai;

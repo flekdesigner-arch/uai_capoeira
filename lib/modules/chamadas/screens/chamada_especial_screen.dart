@@ -31,6 +31,7 @@ class ViewModeSelector extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.uai.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -121,6 +122,27 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   }
 
   Color _onPrimary() => _readableOn(context.uai.primary);
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff =
+    (color.computeLuminance() - background.computeLuminance()).abs();
+
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
@@ -294,16 +316,43 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     showDialog(
       context: context,
       builder: (context) {
+        final t = context.uai;
+        final primary = _ensureVisible(t.primary, t.surface);
+
         return AlertDialog(
-          backgroundColor: context.uai.surface,
+          backgroundColor: t.surface,
           surfaceTintColor: Colors.transparent,
-          title: Text('Observação para $nomeAluno'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.cardRadius),
+          ),
+          title: Text(
+            'Observação para $nomeAluno',
+            style: TextStyle(
+              color: t.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           content: TextField(
             controller: _observacaoController,
             maxLines: 3,
-            decoration: const InputDecoration(
+            style: TextStyle(color: t.textPrimary),
+            cursorColor: primary,
+            decoration: InputDecoration(
               hintText: 'Digite uma observação...',
-              border: OutlineInputBorder(),
+              hintStyle: TextStyle(color: t.textMuted),
+              filled: true,
+              fillColor: t.cardAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(t.inputRadius),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(t.inputRadius),
+                borderSide: BorderSide(color: t.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(t.inputRadius),
+                borderSide: BorderSide(color: primary, width: 1.4),
+              ),
             ),
           ),
           actions: [
@@ -321,14 +370,19 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('✅ Observação salva!'),
+                        content: const Text('✅ Observação salva!'),
                         backgroundColor: context.uai.success,
+                        behavior: SnackBarBehavior.floating,
                       ),
                     );
                   }
                   Navigator.pop(context);
                 }
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: _readableOn(primary),
+              ),
               child: const Text('Salvar'),
             ),
           ],
@@ -371,23 +425,43 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     if (presentes == 0) {
       final confirm = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('❌ Nenhum aluno presente'),
-          content: const Text(
-            'Deseja salvar a chamada especial mesmo sem nenhum aluno presente?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text('Cancelar'),
+        builder: (context) {
+          final t = context.uai;
+          final warning = _ensureVisible(t.warning, t.surface);
+
+          return AlertDialog(
+            backgroundColor: t.surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(t.cardRadius),
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: context.uai.warning),
-              child: const Text('Salvar mesmo assim'),
+            title: Text(
+              '❌ Nenhum aluno presente',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ],
-        ),
+            content: Text(
+              'Deseja salvar a chamada especial mesmo sem nenhum aluno presente?',
+              style: TextStyle(color: t.textSecondary, height: 1.3),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: warning,
+                  foregroundColor: _readableOn(warning),
+                ),
+                child: const Text('Salvar mesmo assim'),
+              ),
+            ],
+          );
+        },
       );
 
       if (confirm != true) return;
@@ -489,6 +563,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   // TELA DE CONCLUSÃO DA CHAMADA
   // ============================================
   void _mostrarTelaConclusao(Map<String, dynamic> dados) {
+    final success = _ensureVisible(context.uai.success, context.uai.background);
+    final onSuccess = _readableOn(success);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -502,7 +579,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [context.uai.success, context.uai.success],
+              colors: [success, success],
             ),
           ),
           child: Column(
@@ -514,7 +591,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 builder: (context, value, child) {
                   return Transform.scale(
                     scale: value,
-                    child: Icon(Icons.celebration, size: 80, color: _onPrimary()),
+                    child: Icon(Icons.celebration, size: 80, color: onSuccess),
                   );
                 },
               ),
@@ -523,19 +600,19 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 dados['duplicate'] == true
                     ? '⚠️ CHAMADA ESPECIAL JÁ EXISTIA!'
                     : '🎉 CHAMADA ESPECIAL CONCLUÍDA!',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _onPrimary()),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSuccess),
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: 10),
               Text(
                 DateFormat("dd/MM/yyyy", 'pt_BR').format(widget.dataSelecionada),
-                style: TextStyle(fontSize: 16, color: _onPrimary().withOpacity(0.72)),
+                style: TextStyle(fontSize: 16, color: onSuccess.withOpacity(0.72)),
               ),
               SizedBox(height: 20),
               Container(
                 padding: EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: _onPrimary().withOpacity(0.20),
+                  color: onSuccess.withOpacity(0.20),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Row(
@@ -555,7 +632,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               SizedBox(height: 10),
               Text(
                 'Tipo de aula: $_tipoAula',
-                style: TextStyle(fontSize: 12, color: _onPrimary().withOpacity(0.72)),
+                style: TextStyle(fontSize: 12, color: onSuccess.withOpacity(0.72)),
               ),
               const SizedBox(height: 25),
               TweenAnimationBuilder<Duration>(
@@ -570,13 +647,13 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                     children: [
                       LinearProgressIndicator(
                         value: value.inSeconds / 5,
-                        backgroundColor: _onPrimary().withOpacity(0.30),
-                        valueColor: AlwaysStoppedAnimation<Color>(_onPrimary()),
+                        backgroundColor: onSuccess.withOpacity(0.30),
+                        valueColor: AlwaysStoppedAnimation<Color>(onSuccess),
                       ),
                       SizedBox(height: 8),
                       Text(
                         'Fechando em ${value.inSeconds} segundos...',
-                        style: TextStyle(color: _onPrimary().withOpacity(0.72), fontSize: 12),
+                        style: TextStyle(color: onSuccess.withOpacity(0.72), fontSize: 12),
                       ),
                     ],
                   );
@@ -590,7 +667,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 },
                 child: Text(
                   'FECHAR AGORA',
-                  style: TextStyle(color: _onPrimary(), fontWeight: FontWeight.bold),
+                  style: TextStyle(color: onSuccess, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -601,12 +678,28 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   }
 
   Widget _buildResumoItem(String value, String label, IconData icon) {
+    final success = _ensureVisible(context.uai.success, context.uai.background);
+    final onSuccess = _readableOn(success);
+
     return Column(
       children: [
-        Icon(icon, color: _onPrimary(), size: 24),
-        SizedBox(height: 5),
-        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _onPrimary())),
-        Text(label, style: TextStyle(fontSize: 11, color: _onPrimary().withOpacity(0.72))),
+        Icon(icon, color: onSuccess, size: 24),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: onSuccess,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: onSuccess.withOpacity(0.72),
+          ),
+        ),
       ],
     );
   }
@@ -661,8 +754,19 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 0,
+      color: estaPresente
+          ? Color.alphaBlend(context.uai.success.withOpacity(0.08), context.uai.card)
+          : context.uai.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: estaPresente
+              ? context.uai.success.withOpacity(0.45)
+              : context.uai.border,
+        ),
+      ),
       child: Container(
         margin: EdgeInsets.all(0),
         child: ListTile(
@@ -727,7 +831,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               ],
             ),
           ),
-          tileColor: estaPresente ? context.uai.success.withOpacity(0.10).withOpacity(0.3) : null,
+          tileColor: Colors.transparent,
           onTap: () => _togglePresenca(alunoId),
         ),
       ),
@@ -741,11 +845,16 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     final fotoUrl = aluno['foto'] as String?;
 
     return Card(
-      elevation: 4,
+      elevation: 0,
+      color: context.uai.card,
+      surfaceTintColor: Colors.transparent,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: estaPresente ? context.uai.success : Colors.transparent, width: estaPresente ? 2 : 0),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: estaPresente ? context.uai.success : context.uai.border,
+          width: estaPresente ? 2 : 1,
+        ),
       ),
       child: InkWell(
         onTap: () => _togglePresenca(alunoId),
@@ -791,10 +900,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                         child: Container(
                           padding: EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: _onPrimary().withOpacity(0.90),
+                            color: context.uai.surface.withOpacity(0.92),
                             shape: BoxShape.circle,
                             boxShadow: [
-                              BoxShadow(color: context.uai.textPrimary.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2)),
+                              BoxShadow(color: Colors.black.withOpacity(0.16), blurRadius: 4, offset: const Offset(0, 2)),
                             ],
                           ),
                           child: Icon(Icons.note_add, size: 16, color: context.uai.info),
@@ -845,7 +954,13 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   }
 
   Widget _placeholderIcon({double size = 50}) {
-    return Center(child: Icon(Icons.person, size: size, color: _onPrimary()));
+    return Center(
+      child: Icon(
+        Icons.person_rounded,
+        size: size,
+        color: context.uai.textMuted,
+      ),
+    );
   }
 
   Widget _buildStatItem({
@@ -886,8 +1001,8 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: _onPrimary(),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -912,7 +1027,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: context.uai.primary))
           : _isSaving && _mostrarProgresso
           ? _buildTelaProgresso()
           : Column(
@@ -921,7 +1036,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           Container(
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _onPrimary(),
+              color: context.uai.surface,
               border: Border(bottom: BorderSide(color: context.uai.border)),
             ),
             child: Column(
@@ -934,7 +1049,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                         children: [
                           Text(
                             _diaSemana,
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: context.uai.textPrimary,
+                            ),
                           ),
                           Container(
                             margin: EdgeInsets.only(top: 4),
@@ -945,7 +1064,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                             ),
                             child: Text(
                               'TIPO: $_tipoAula',
-                              style: TextStyle(fontSize: 10, color: _onPrimary(), fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 10, color: _readableOn(context.uai.primary), fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
@@ -1048,14 +1167,14 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           Container(
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _onPrimary(),
+              color: context.uai.surface,
               border: Border(top: BorderSide(color: context.uai.border)),
             ),
             child: ElevatedButton.icon(
               onPressed: _isSaving ? null : _salvarChamada,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                foregroundColor: _onPrimary(),
+                backgroundColor: _appBarBg(),
+                foregroundColor: _appBarFg(),
                 minimumSize: const Size(double.infinity, 55),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -1063,7 +1182,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                   ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: _onPrimary()),
+                child: CircularProgressIndicator(strokeWidth: 2, color: _appBarFg()),
               )
                   : const Icon(Icons.save, size: 24),
               label: _isSaving

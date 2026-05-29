@@ -81,6 +81,18 @@ class _UniformesScreenState extends State<UniformesScreen>
         .toColor();
   }
 
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  Color _tabSelectedBg() => _appBarFg();
+
+  Color _tabSelectedFg() => _readableOn(_tabSelectedBg());
+
+  Color _tabUnselectedFg() => _appBarFg().withOpacity(0.82);
+
   @override
   void initState() {
     super.initState();
@@ -168,42 +180,81 @@ class _UniformesScreenState extends State<UniformesScreen>
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: const Text(
-          'GESTÃO DE UNIFORMES',
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
+        iconTheme: IconThemeData(color: _appBarFg()),
+        actionsIconTheme: IconThemeData(color: _appBarFg()),
+        titleTextStyle: TextStyle(
+          color: _appBarFg(),
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: const [
-            Tab(icon: Icon(Icons.inventory), text: 'ESTOQUE'),
-            Tab(icon: Icon(Icons.sell), text: 'VENDAS'),
-            Tab(icon: Icon(Icons.payment), text: 'PENDÊNCIAS'),
-            Tab(icon: Icon(Icons.shopping_cart), text: 'PEDIDOS'),
-            Tab(icon: Icon(Icons.local_shipping), text: 'REMESSAS'),
-          ],
+        title: const Text('GESTÃO DE UNIFORMES'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(54),
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: _appBarFg().withOpacity(0.08),
+              border: Border(
+                top: BorderSide(color: _appBarFg().withOpacity(0.10)),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
+              indicator: BoxDecoration(
+                color: _tabSelectedBg(),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              labelColor: _tabSelectedFg(),
+              unselectedLabelColor: _tabUnselectedFg(),
+              labelStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+              overlayColor: WidgetStatePropertyAll(
+                _appBarFg().withOpacity(0.08),
+              ),
+              tabs: const [
+                Tab(icon: Icon(Icons.inventory_rounded), text: 'ESTOQUE'),
+                Tab(icon: Icon(Icons.sell_rounded), text: 'VENDAS'),
+                Tab(icon: Icon(Icons.payment_rounded), text: 'PENDÊNCIAS'),
+                Tab(icon: Icon(Icons.shopping_cart_rounded), text: 'PEDIDOS'),
+                Tab(icon: Icon(Icons.local_shipping_rounded), text: 'REMESSAS'),
+              ],
+            ),
+          ),
         ),
         actions: [
           if (_tabController.index != 2)
             IconButton(
-              icon: const Icon(Icons.add_circle_outline, size: 28),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 28),
               tooltip: _getAddTooltip(),
               onPressed: _onAddPressed,
             ),
           IconButton(
-            icon: const Icon(Icons.bar_chart),
+            icon: const Icon(Icons.bar_chart_rounded),
             tooltip: 'Relatório Financeiro',
             onPressed: () => _abrirRelatorioFinanceiro(),
           ),
           if (_tabController.index == 4)
             IconButton(
-              icon: const Icon(Icons.business),
+              icon: const Icon(Icons.business_rounded),
               tooltip: 'Fornecedores',
               onPressed: () async {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const FornecedoresListScreen()),
+                    builder: (_) => const FornecedoresListScreen(),
+                  ),
                 );
                 if (mounted) setState(() {});
               },

@@ -434,14 +434,14 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 700;
 
-    // IMPORTANTE:
     // Esta tela é usada dentro da LandingPage, que já possui AppBar.
-    // Por isso aqui NÃO existe Scaffold/AppBar, evitando duas barras no site público.
+    // Removemos o segundo cabeçalho com ícone/título e mantemos só um
+    // seletor simples para alternar entre Linha do tempo e Eventos.
     return ColoredBox(
       color: t.background,
       child: Column(
         children: [
-          _buildTopoPortfolio(isMobile),
+          _buildPortfolioTabSelector(isMobile),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -452,6 +452,87 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPortfolioTabSelector(bool isMobile) {
+    final t = context.uai;
+    final primary = _ensureVisible(t.primary, t.surface);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 14 : 22,
+        10,
+        isMobile ? 14 : 22,
+        10,
+      ),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border(bottom: BorderSide(color: t.border)),
+        boxShadow: t.softShadow,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1160),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: isMobile ? 40 : 44,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: t.card,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: t.border),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    indicator: BoxDecoration(
+                      color: primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    dividerColor: Colors.transparent,
+                    labelColor: _readableOn(primary),
+                    unselectedLabelColor: t.textSecondary,
+                    labelStyle: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: isMobile ? 11.5 : 12.5,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: isMobile ? 11.5 : 12.5,
+                    ),
+                    tabs: const [
+                      Tab(
+                        height: 32,
+                        text: 'Linha do tempo',
+                      ),
+                      Tab(
+                        height: 32,
+                        text: 'Eventos',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_tabController.index == 1) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Filtrar eventos',
+                  onPressed: _mostrarFiltrosDialog,
+                  icon: Badge(
+                    isLabelVisible: _temFiltroAtivo,
+                    smallSize: 8,
+                    child: Icon(Icons.tune_rounded, color: primary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -460,12 +460,12 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(quadradoSize * 0.05),
                                     border: Border.all(
-                                      color: context.uai.textPrimary,
+                                      color: Colors.white,
                                       width: 3,
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: context.uai.textPrimary.withOpacity(0.3),
+                                        color: Colors.black.withOpacity(0.3),
                                         blurRadius: 10,
                                         spreadRadius: 2,
                                       ),
@@ -505,18 +505,18 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                   primeiroESegundoNome.toUpperCase(),
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: context.uai.textPrimary,
+                                    color: Colors.white,
                                     fontSize: 38 * (alturaReal/1600 * 1.3),
                                     fontWeight: FontWeight.bold,
                                     fontFamily: 'Arial',
-                                    shadows: [
+                                    shadows: const [
                                       Shadow(
-                                        color: context.uai.textPrimary,
+                                        color: Colors.black,
                                         blurRadius: 8,
                                         offset: Offset(2, 2),
                                       ),
                                       Shadow(
-                                        color: context.uai.textPrimary,
+                                        color: Colors.black,
                                         blurRadius: 8,
                                         offset: Offset(-2, -2),
                                       ),
@@ -542,19 +542,19 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                             linhas[i],
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
-                                              color: context.uai.textPrimary,
+                                              color: Colors.white,
                                               fontSize: 32 * (alturaReal/1600 * 1.3),
                                               fontFamily: 'Arial',
                                               fontWeight: FontWeight.w600,
                                               height: 1.0,
-                                              shadows: [
+                                              shadows: const [
                                                 Shadow(
-                                                  color: context.uai.textPrimary,
+                                                  color: Colors.black,
                                                   blurRadius: 6,
                                                   offset: Offset(2, 2),
                                                 ),
                                                 Shadow(
-                                                  color: context.uai.textPrimary,
+                                                  color: Colors.black,
                                                   blurRadius: 6,
                                                   offset: Offset(-2, -2),
                                                 ),

@@ -3337,6 +3337,21 @@ class DetalhesChamadaScreen extends StatelessWidget {
     return context.uai.primaryDark;
   }
 
+  Color _ensureVisible(Color color, Color background) {
+    final diff =
+    (color.computeLuminance() - background.computeLuminance()).abs();
+
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.74 : 0.30)
+        .withSaturation((hsl.saturation + 0.12).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dataChamada = data['data_chamada'] as Timestamp?;
@@ -3350,6 +3365,13 @@ class DetalhesChamadaScreen extends StatelessWidget {
 
     final alunosPresentes = alunos.where((a) => (a['presente'] ?? false)).toList();
     final alunosAusentes = alunos.where((a) => !(a['presente'] ?? false)).toList();
+
+    final headerFg = _readableOn(context.uai.primary);
+    final headerMuted = headerFg.withOpacity(0.78);
+    final statusAccent = _ensureVisible(
+      _getStatusColor(context, percentual),
+      context.uai.primary,
+    );
 
     return Scaffold(
       backgroundColor: context.uai.background,
@@ -3386,25 +3408,25 @@ class DetalhesChamadaScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Chamada Registrada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: context.uai.card)),
+                            Text('Chamada Registrada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: headerFg)),
                             SizedBox(height: 5),
-                            Text(_formatarData(dataChamada), style: TextStyle(fontSize: 12, color: context.uai.card.withOpacity(0.78))),
+                            Text(_formatarData(dataChamada), style: TextStyle(fontSize: 12, color: headerMuted, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
                       Container(
                         padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: context.uai.card.withOpacity(0.15), shape: BoxShape.circle),
-                        child: Icon(Icons.assignment_turned_in_rounded, size: 28, color: context.uai.card),
+                        decoration: BoxDecoration(color: headerFg.withOpacity(0.16), shape: BoxShape.circle, border: Border.all(color: headerFg.withOpacity(0.14))),
+                        child: Icon(Icons.assignment_turned_in_rounded, size: 28, color: headerFg),
                       ),
                     ],
                   ),
                   SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildInfoPill(context, Icons.school_rounded, tipoAula, Colors.white)),
+                      Expanded(child: _buildInfoPill(context, Icons.school_rounded, tipoAula, headerFg)),
                       SizedBox(width: 10),
-                      Expanded(child: _buildInfoPill(context, Icons.person_rounded, 'Prof. $professorNome', Colors.white)),
+                      Expanded(child: _buildInfoPill(context, Icons.person_rounded, 'Prof. $professorNome', headerFg)),
                     ],
                   ),
                   SizedBox(height: 22),
@@ -3414,12 +3436,12 @@ class DetalhesChamadaScreen extends StatelessWidget {
                       SizedBox(
                         width: 126,
                         height: 126,
-                        child: CircularProgressIndicator(value: percentual, strokeWidth: 12, backgroundColor: context.uai.card.withOpacity(0.22), valueColor: AlwaysStoppedAnimation<Color>(_getStatusColor(context, percentual))),
+                        child: CircularProgressIndicator(value: percentual, strokeWidth: 12, backgroundColor: headerFg.withOpacity(0.22), valueColor: AlwaysStoppedAnimation<Color>(statusAccent)),
                       ),
                       Column(
                         children: [
-                          Text('${(percentual * 100).toInt()}%', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: context.uai.card)),
-                          Text('Presença', style: TextStyle(fontSize: 12, color: context.uai.card.withOpacity(0.75))),
+                          Text('${(percentual * 100).toInt()}%', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: headerFg)),
+                          Text('Presença', style: TextStyle(fontSize: 12, color: headerMuted, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ],
@@ -3428,9 +3450,9 @@ class DetalhesChamadaScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildSimpleStatDetail(context: context, value: presentes.toString(), label: 'Presentes', color: context.uai.success.withOpacity(0.55), icon: Icons.check_circle_rounded),
-                      _buildSimpleStatDetail(context: context, value: ausentes.toString(), label: 'Ausentes', color: context.uai.error.withOpacity(0.28), icon: Icons.cancel_rounded),
-                      _buildSimpleStatDetail(context: context, value: totalAlunos.toString(), label: 'Total', color: context.uai.info.withOpacity(0.16), icon: Icons.people_rounded),
+                      _buildSimpleStatDetail(context: context, value: presentes.toString(), label: 'Presentes', color: _ensureVisible(context.uai.success, context.uai.primary), icon: Icons.check_circle_rounded, foreground: headerFg),
+                      _buildSimpleStatDetail(context: context, value: ausentes.toString(), label: 'Ausentes', color: _ensureVisible(context.uai.error, context.uai.primary), icon: Icons.cancel_rounded, foreground: headerFg),
+                      _buildSimpleStatDetail(context: context, value: totalAlunos.toString(), label: 'Total', color: _ensureVisible(context.uai.info, context.uai.primary), icon: Icons.people_rounded, foreground: headerFg),
                     ],
                   ),
                 ],
@@ -3492,13 +3514,27 @@ class DetalhesChamadaScreen extends StatelessWidget {
 
   Widget _buildInfoPill(BuildContext context, IconData icon, String text, Color color) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-      decoration: BoxDecoration(color: context.uai.card.withOpacity(0.13), borderRadius: BorderRadius.circular(14), border: Border.all(color: context.uai.card.withOpacity(0.12))),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.16)),
+      ),
       child: Row(
         children: [
           Icon(icon, size: 14, color: color),
-          SizedBox(width: 6),
-          Expanded(child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color), overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -3513,14 +3549,44 @@ class DetalhesChamadaScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSimpleStatDetail({required BuildContext context, required String value, required String label, required Color color, required IconData icon}) {
+  Widget _buildSimpleStatDetail({
+    required BuildContext context,
+    required String value,
+    required String label,
+    required Color color,
+    required IconData icon,
+    required Color foreground,
+  }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(padding: EdgeInsets.all(9), decoration: BoxDecoration(color: context.uai.card.withOpacity(0.14), shape: BoxShape.circle), child: Icon(icon, size: 20, color: color)),
-        SizedBox(height: 5),
-        Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: TextStyle(fontSize: 10, color: context.uai.card.withOpacity(0.70), fontWeight: FontWeight.w500), textAlign: TextAlign.center),
+        Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: foreground.withOpacity(0.14),
+            shape: BoxShape.circle,
+            border: Border.all(color: foreground.withOpacity(0.14)),
+          ),
+          child: Icon(icon, size: 20, color: color),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: foreground.withOpacity(0.74),
+            fontWeight: FontWeight.w700,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }

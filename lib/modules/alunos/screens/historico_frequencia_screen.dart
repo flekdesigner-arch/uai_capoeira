@@ -13,6 +13,24 @@ Color _readableOn(Color background) {
       : const Color(0xFFFFFFFF);
 }
 
+Color _onPrimaryGlobal(BuildContext context) {
+  final t = context.uai;
+  final temaEscuro =
+      t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+  // No Verde Neon o primary costuma ser claro, mas o tema é dark.
+  // Em cards com primaryGradient, branco fica mais legível.
+  if (temaEscuro) return Colors.white;
+
+  return _readableOn(t.primary);
+}
+
+Color _appBarBgOf(BuildContext context) =>
+    Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+Color _appBarFgOf(BuildContext context) =>
+    Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBgOf(context));
+
 
 // ============================================
 // 🔥 CACHE EM MEMÓRIA PARA ECONOMIZAR LEITURAS
@@ -103,6 +121,22 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
+
+  Color _onPrimary() {
+    final t = context.uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return Colors.white;
+
+    return _readableOn(t.primary);
+  }
+
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -691,31 +725,46 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       context: context,
       builder: (_) {
         return AlertDialog(
+          backgroundColor: context.uai.surface,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(context.uai.cardRadius),
           ),
           title: Row(
             children: [
               Icon(Icons.all_inclusive_rounded, color: context.uai.primary),
-              SizedBox(width: 8),
-              Expanded(child: Text('Carregar todo histórico?')),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Carregar todo histórico?',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ],
           ),
           content: Text(
             'Esse filtro busca todos os logs do aluno. Depois da primeira busca, o resultado fica em cache por 30 minutos.',
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text('CANCELAR'),
+              child: const Text('CANCELAR'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                backgroundColor: _appBarBg(),
+                foregroundColor: _appBarFg(),
               ),
-              child: Text('CARREGAR'),
+              child: const Text('CARREGAR'),
             ),
           ],
         );
@@ -757,18 +806,33 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           children: [
             Text(
               'Histórico de Frequência',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: _appBarFg(),
+              ),
             ),
             Text(
               widget.alunoNome,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _appBarFg().withOpacity(0.82),
+              ),
             ),
           ],
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
+        titleTextStyle: TextStyle(
+          color: _appBarFg(),
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+        iconTheme: IconThemeData(color: _appBarFg()),
+        actionsIconTheme: IconThemeData(color: _appBarFg()),
         elevation: 2,
         actions: [
           if (_isOffline)
@@ -854,6 +918,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                         Text(
                           'Filtros da frequência',
                           style: TextStyle(
+                            color: context.uai.textPrimary,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                             height: 1.05,
@@ -900,7 +965,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Widget _buildModoChip() {
-    final color = _usaTempoReal ? context.uai.success : context.uai.textMuted;
+    final color = _ensureVisible(
+      _usaTempoReal ? context.uai.success : context.uai.textMuted,
+      context.uai.surface,
+    );
     final text = _usaTempoReal ? 'AO VIVO' : 'FILTRO';
 
     return Container(
@@ -935,6 +1003,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Widget _buildFiltroDropdownPeriodo() {
     return DropdownButtonFormField<String>(
       value: _filtroPeriodo,
+      style: TextStyle(
+        color: context.uai.textPrimary,
+        fontWeight: FontWeight.w700,
+      ),
       isExpanded: true,
       borderRadius: BorderRadius.circular(16),
       dropdownColor: context.uai.surface,
@@ -960,7 +1032,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 child: Text(
                   periodo,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -977,6 +1052,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Widget _buildFiltroDropdownTipoAula() {
     return DropdownButtonFormField<String?>(
       value: _filtroTipoAula,
+      style: TextStyle(
+        color: context.uai.textPrimary,
+        fontWeight: FontWeight.w700,
+      ),
       isExpanded: true,
       borderRadius: BorderRadius.circular(16),
       dropdownColor: context.uai.surface,
@@ -1006,7 +1085,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -1027,6 +1109,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, color: color, size: 20),
+      labelStyle: TextStyle(
+        color: context.uai.textSecondary,
+        fontWeight: FontWeight.w700,
+      ),
+      floatingLabelStyle: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w900,
+      ),
       filled: true,
       fillColor: context.uai.cardAlt,
       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1097,7 +1187,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               SizedBox(height: 16),
               Text(
                 'Ops! Algo deu errado',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: context.uai.textPrimary,
+                ),
               ),
               SizedBox(height: 8),
               Text(
@@ -1111,8 +1205,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 icon: Icon(Icons.refresh),
                 label: Text('Tentar novamente'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                  foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                  backgroundColor: _appBarBg(),
+                  foregroundColor: _appBarFg(),
                 ),
               ),
             ],
@@ -1166,6 +1260,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                   child: Text(
                     'Histórico de aulas (${_historicoItems.length})',
                     style: TextStyle(
+                      color: context.uai.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1258,14 +1353,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: context.uai.card.withOpacity(0.15),
+                color: _onPrimary().withOpacity(0.14),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
                 _getTituloPeriodo(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: context.uai.textPrimary,
+                  color: _onPrimary(),
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.5,
@@ -1277,8 +1372,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               _getSubtituloPeriodo(),
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: context.uai.card.withOpacity(0.72),
+                color: _onPrimary().withOpacity(0.78),
                 fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
             SizedBox(height: 20),
@@ -1327,7 +1423,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: _totalAulas > 0 ? _percentualPresenca / 100 : 0,
-                backgroundColor: context.uai.card.withOpacity(0.25),
+                backgroundColor: _onPrimary().withOpacity(0.22),
                 valueColor: AlwaysStoppedAnimation<Color>(
                   _percentualPresenca >= 80
                       ? context.uai.success
@@ -1393,8 +1489,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           Container(
             padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: context.uai.card.withOpacity(0.15),
+              color: _onPrimary().withOpacity(0.14),
               shape: BoxShape.circle,
+              border: Border.all(color: _onPrimary().withOpacity(0.14)),
             ),
             child: Icon(icon, color: color, size: 26),
           ),
@@ -1402,7 +1499,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           Text(
             valor,
             style: TextStyle(
-              color: context.uai.textPrimary,
+              color: _onPrimary(),
               fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
@@ -1411,7 +1508,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: context.uai.card.withOpacity(0.8),
+              color: _onPrimary().withOpacity(0.80),
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -1438,14 +1535,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Text(
               label,
               style: TextStyle(
-                color: context.uai.card.withOpacity(0.7),
+                color: _onPrimary().withOpacity(0.74),
                 fontSize: 10,
               ),
             ),
             Text(
               valor,
               style: TextStyle(
-                color: context.uai.textPrimary,
+                color: _onPrimary(),
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
@@ -1485,7 +1582,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               Expanded(
                 child: Text(
                   'Presenças por Dia',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -1520,6 +1621,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
   Widget _buildDiaCard(String dia, int qtd) {
     final ativo = qtd > 0;
+    final accent = _ensureVisible(context.uai.primary, context.uai.cardAlt);
 
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8),
@@ -1537,7 +1639,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
-              color: ativo ? context.uai.primary : context.uai.textMuted,
+              color: ativo ? accent : context.uai.textMuted,
             ),
           ),
           SizedBox(height: 2),
@@ -1546,7 +1648,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: ativo ? context.uai.primary : context.uai.textMuted,
+              color: ativo ? accent : context.uai.textMuted,
             ),
           ),
         ],
@@ -1571,7 +1673,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               Expanded(
                 child: Text(
                   'Por Tipo de Aula',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -1581,7 +1687,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             spacing: 8,
             runSpacing: 8,
             children: _presencasPorTipoAula.entries.map((entry) {
-              final cor = _corTipoAula(entry.key);
+              final cor = _ensureVisible(_corTipoAula(entry.key), context.uai.card);
 
               return Container(
                 padding:
@@ -1652,7 +1758,12 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       child: Card(
         elevation: presente ? 3 : 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        color: context.uai.card,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: context.uai.border),
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => _mostrarDetalhesAula(item),
@@ -1698,6 +1809,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                             child: Text(
                               _dateFormat.format(data),
                               style: TextStyle(
+                                color: context.uai.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1782,19 +1894,21 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Widget _buildTag(String label, Color color) {
+    final accent = _ensureVisible(color, context.uai.card);
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: accent.withOpacity(0.10),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: accent.withOpacity(0.30)),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          color: color,
+          color: accent,
         ),
       ),
     );
@@ -1853,7 +1967,7 @@ class _DetalheAulaDialog extends StatefulWidget {
   final String alunoId;
   final String alunoNome;
 
-  _DetalheAulaDialog({
+  const _DetalheAulaDialog({
     required this.item,
     required this.alunoId,
     required this.alunoNome,
@@ -1885,7 +1999,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
 
     _piscaController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 800),
     );
 
     _piscaAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
@@ -1899,6 +2013,44 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
   void dispose() {
     _piscaController.dispose();
     super.dispose();
+  }
+
+  Color _readableOnLocal(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+
+  Color _ensureVisibleLocal(Color color, Color background) {
+    final diff =
+    (color.computeLuminance() - background.computeLuminance()).abs();
+
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ??
+          _readableOnLocal(_appBarBg());
+
+  Color _onGradientText() {
+    final t = context.uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return Colors.white;
+
+    return _readableOnLocal(t.primary);
   }
 
   Future<void> _buscarChamada() async {
@@ -1985,6 +2137,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
 
   @override
   Widget build(BuildContext context) {
+    final t = context.uai;
     final item = widget.item;
     final data = item['data'] as DateTime;
     final presente = item['presente'] as bool;
@@ -1994,98 +2147,76 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.all(14),
       child: Container(
-        constraints: BoxConstraints(maxHeight: 650, maxWidth: 680),
+        constraints: const BoxConstraints(maxHeight: 680, maxWidth: 700),
         decoration: BoxDecoration(
-          color: context.uai.textPrimary,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: context.uai.textPrimary.withOpacity(0.2),
-              blurRadius: 20,
-              offset: Offset(0, 10),
-            ),
-          ],
+          color: t.surface,
+          borderRadius: BorderRadius.circular(t.cardRadius + 6),
+          border: Border.all(color: t.border),
+          boxShadow: t.cardShadow,
         ),
-        child: SingleChildScrollView(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(t.cardRadius + 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildHeader(data, presente),
-              Padding(
-                padding: EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _buildChip(Icons.school, tipoAula, _corTipo(tipoAula)),
-                        _buildChip(
-                          Icons.assignment_ind_rounded,
-                          'Aula registrada por: $professor',
-                          context.uai.associacao,
-                        ),
-                      ],
-                    ),
-                    if (observacao.isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: context.uai.warning.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: context.uai.warning.withOpacity(0.25)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.note_rounded,
-                              size: 16,
-                              color: context.uai.warning,
-                            ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                observacao,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: context.uai.warning,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 16),
-                    Divider(),
-                    SizedBox(height: 8),
-                    _buildChamadaContent(),
-                    SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                          foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildChip(
+                            Icons.school_rounded,
+                            tipoAula,
+                            _corTipo(tipoAula),
                           ),
-                        ),
-                        child: Text(
-                          'FECHAR',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                          _buildChip(
+                            Icons.assignment_ind_rounded,
+                            'Aula registrada por: $professor',
+                            t.associacao,
+                          ),
+                        ],
                       ),
+                      if (observacao.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _buildObservacaoBox(observacao),
+                      ],
+                      const SizedBox(height: 16),
+                      Divider(color: t.border),
+                      const SizedBox(height: 10),
+                      _buildChamadaContent(),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                decoration: BoxDecoration(
+                  color: t.surface,
+                  border: Border(top: BorderSide(color: t.border)),
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('FECHAR'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _appBarBg(),
+                    foregroundColor: _appBarFg(),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -2096,68 +2227,159 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
   }
 
   Widget _buildHeader(DateTime data, bool presente) {
+    final t = context.uai;
+    final baseColor = presente ? t.success : t.error;
+    final statusColor = _ensureVisibleLocal(baseColor, t.surface);
+    final onStatus = _onGradientText();
+
     return Container(
-      padding: EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 10, 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: presente
-              ? [context.uai.success, context.uai.success.withOpacity(0.74)]
-              : [context.uai.primaryDark, context.uai.error],
+          colors: [
+            statusColor,
+            Color.alphaBlend(statusColor.withOpacity(0.80), t.primary),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       child: Column(
         children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.uai.card.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.person, color: context.uai.textPrimary, size: 40),
-                SizedBox(height: 8),
-                Text(
-                  widget.alunoNome.toUpperCase(),
-                  style: TextStyle(
-                    color: context.uai.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: onStatus.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: onStatus.withOpacity(0.16)),
                 ),
-                SizedBox(height: 8),
-                Container(
-                  padding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: context.uai.card.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    presente ? '✅ PRESENTE' : '❌ AUSENTE',
-                    style: TextStyle(
-                      color: context.uai.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                child: Icon(
+                  Icons.person_rounded,
+                  color: onStatus,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.alunoNome.toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: onStatus,
+                        fontSize: 17,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        _buildHeaderPill(
+                          icon: presente
+                              ? Icons.check_circle_rounded
+                              : Icons.cancel_rounded,
+                          label: presente ? 'PRESENTE' : 'AUSENTE',
+                          onColor: onStatus,
+                        ),
+                        _buildHeaderPill(
+                          icon: Icons.calendar_today_rounded,
+                          label: _fullDateFormat.format(data),
+                          onColor: onStatus,
+                        ),
+                        _buildHeaderPill(
+                          icon: Icons.access_time_rounded,
+                          label: _timeFormat.format(data),
+                          onColor: onStatus,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
+              ),
+              IconButton(
+                tooltip: 'Fechar',
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(Icons.close_rounded, color: onStatus),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderPill({
+    required IconData icon,
+    required String label,
+    required Color onColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: onColor.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: onColor.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: onColor, size: 13),
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 230),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: onColor,
+                fontSize: 10.8,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          SizedBox(height: 12),
-          Text(
-            _fullDateFormat.format(data),
-            style: TextStyle(color: context.uai.card.withOpacity(0.9), fontSize: 13),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            _timeFormat.format(data),
-            style: TextStyle(color: context.uai.card.withOpacity(0.8), fontSize: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildObservacaoBox(String observacao) {
+    final t = context.uai;
+    final warning = _ensureVisibleLocal(t.warning, t.card);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(warning.withOpacity(0.08), t.card),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: warning.withOpacity(0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.note_rounded, size: 18, color: warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              observacao,
+              style: TextStyle(
+                fontSize: 13,
+                color: t.textPrimary,
+                height: 1.3,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -2165,22 +2387,49 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
   }
 
   Widget _buildChamadaContent() {
+    final t = context.uai;
+
     if (_carregandoChamada) {
       return Center(
         child: Padding(
-          padding: EdgeInsets.all(20),
-          child: CircularProgressIndicator(color: context.uai.error),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: t.primary),
+              const SizedBox(height: 12),
+              Text(
+                'Carregando detalhes da chamada...',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (_erro != null) {
       return Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(t.error.withOpacity(0.08), t.card),
+            borderRadius: BorderRadius.circular(t.inputRadius),
+            border: Border.all(color: t.error.withOpacity(0.18)),
+          ),
           child: Text(
             _erro!,
-            style: TextStyle(color: context.uai.textMuted, fontSize: 13),
+            style: TextStyle(
+              color: _ensureVisibleLocal(t.error, t.card),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -2188,70 +2437,102 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
     }
 
     if (_chamadaData == null) {
-      return SizedBox.shrink();
+      return const SizedBox.shrink();
     }
 
     return Column(
       children: [
-        Container(
-          padding: EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: context.uai.error.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.groups, color: context.uai.primary, size: 18),
-              SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _chamadaData!['turma_nome']?.toString() ?? 'Turma',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.primary,
-                      ),
-                    ),
-                    Text(
-                      '${_chamadaData!['presentes'] ?? 0} presentes de ${_chamadaData!['total_alunos'] ?? 0} alunos',
-                      style: TextStyle(fontSize: 11, color: context.uai.primaryDark),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: context.uai.textPrimary,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${_chamadaData!['porcentagem_frequencia'] ?? 0}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: context.uai.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 12),
+        _buildResumoChamadaCard(),
+        const SizedBox(height: 12),
         ..._alunosChamada.map(_buildAlunoChamadaTile),
       ],
     );
   }
 
+  Widget _buildResumoChamadaCard() {
+    final t = context.uai;
+    final primary = _ensureVisibleLocal(t.primary, t.card);
+    final turmaNome = _chamadaData!['turma_nome']?.toString() ?? 'Turma';
+    final presentes = _chamadaData!['presentes'] ?? 0;
+    final total = _chamadaData!['total_alunos'] ?? 0;
+    final porcentagem = _chamadaData!['porcentagem_frequencia'] ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(primary.withOpacity(0.07), t.card),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: primary.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(Icons.groups_rounded, color: primary),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  turmaNome,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: t.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$presentes presentes de $total alunos',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: t.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: primary,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              '$porcentagem%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: _readableOnLocal(primary),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAlunoChamadaTile(Map<String, dynamic> aluno) {
+    final t = context.uai;
     final isDestaque = aluno['aluno_id']?.toString() == widget.alunoId;
     final nome = aluno['aluno_nome']?.toString() ?? 'Sem nome';
     final presente = aluno['presente'] == true;
     final observacao = aluno['observacao']?.toString() ?? '';
+
+    final statusColor = _ensureVisibleLocal(
+      presente ? t.success : t.error,
+      t.card,
+    );
 
     return AnimatedBuilder(
       animation: _piscaAnimation,
@@ -2261,25 +2542,23 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
         return Opacity(
           opacity: opacidade,
           child: Container(
-            margin: EdgeInsets.only(bottom: 6),
-            padding: EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 7),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: isDestaque
-                  ? (presente ? context.uai.success.withOpacity(0.18) : context.uai.error.withOpacity(0.16))
-                  : context.uai.cardAlt,
-              borderRadius: BorderRadius.circular(10),
+                  ? Color.alphaBlend(statusColor.withOpacity(0.12), t.card)
+                  : t.cardAlt,
+              borderRadius: BorderRadius.circular(t.inputRadius),
               border: Border.all(
-                color: isDestaque
-                    ? (presente ? context.uai.success : context.uai.error)
-                    : context.uai.border,
-                width: isDestaque ? 2.5 : 1,
+                color: isDestaque ? statusColor : t.border,
+                width: isDestaque ? 2.2 : 1,
               ),
               boxShadow: isDestaque
                   ? [
                 BoxShadow(
-                  color: (presente ? context.uai.success : context.uai.error)
-                      .withOpacity(0.3),
+                  color: statusColor.withOpacity(0.22),
                   blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
               ]
                   : null,
@@ -2287,41 +2566,61 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
             child: Row(
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 9,
+                  height: 9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: presente ? context.uai.success : context.uai.error,
+                    color: statusColor,
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         nome,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 12.5,
                           fontWeight:
-                          isDestaque ? FontWeight.bold : FontWeight.normal,
-                          color:
-                          isDestaque ? context.uai.textPrimary : context.uai.textSecondary,
+                          isDestaque ? FontWeight.w900 : FontWeight.w700,
+                          color: isDestaque ? statusColor : t.textPrimary,
                         ),
                       ),
                       if (observacao.isNotEmpty)
                         Padding(
-                          padding: EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             observacao,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10,
-                              color: context.uai.textMuted,
+                              fontSize: 10.5,
+                              color: t.textSecondary,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
                         ),
                     ],
+                  ),
+                ),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Color.alphaBlend(statusColor.withOpacity(0.08), t.card),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: statusColor.withOpacity(0.14)),
+                  ),
+                  child: Text(
+                    presente ? 'P' : 'A',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
@@ -2333,25 +2632,28 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
   }
 
   Widget _buildChip(IconData icon, String label, Color color) {
+    final t = context.uai;
+    final accent = _ensureVisibleLocal(color, t.card);
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: accent.withOpacity(0.14)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: color),
-          SizedBox(width: 4),
+          Icon(icon, size: 12, color: accent),
+          const SizedBox(width: 5),
           Flexible(
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: color,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: accent,
               ),
               overflow: TextOverflow.ellipsis,
             ),

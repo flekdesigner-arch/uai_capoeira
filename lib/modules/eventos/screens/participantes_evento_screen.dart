@@ -1015,8 +1015,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     }
 
     return lista.where((p) {
-      if (_searchParticipantesQuery.isNotEmpty &&
-          !p.alunoNome.toLowerCase().contains(_searchParticipantesQuery)) return false;
+      // Pesquisa de participantes removida a pedido.
+      // Mantém apenas filtros por status, pagamento, graduação e camisa.
       if (_filtroStatus == 'pagos' && !p.estaQuitado) return false;
       if (_filtroStatus == 'pendentes' && p.estaQuitado) return false;
 
@@ -1602,36 +1602,92 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== GRID COM HEADER STICKY ====================
+  // ==================== GRID COM DASHBOARD ROLANDO + FILTRO FIXO ====================
   Widget _buildGridView(List<ParticipacaoModel> participantes) {
     final filtrados = _aplicarFiltros(participantes);
 
-    return Column(
-      children: [
-        _buildDashboard(),
-        _buildParticipantesSearchBar(),
-        Expanded(
-          child: GridView.builder(
-            key: const PageStorageKey('participantes_grid_view'),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-            padding: const EdgeInsets.all(12),
-            itemCount: filtrados.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+    return CustomScrollView(
+      key: const PageStorageKey('participantes_grid_custom_scroll_view'),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+      slivers: [
+        SliverToBoxAdapter(child: _buildDashboard()),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _StickyHeaderDelegate(
+            height: 74,
+            child: _buildParticipantesFilterHeader(
+              totalFiltrado: filtrados.length,
+              totalGeral: participantes.length,
             ),
-            itemBuilder: (ctx, i) => _buildParticipantCardGrade(filtrados[i]),
           ),
         ),
+        if (filtrados.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.people_outline_rounded,
+                      size: 62,
+                      color: context.uai.textMuted,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Nenhum participante nesse filtro',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.uai.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Altere o filtro para visualizar outros participantes.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.uai.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.all(12),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 0.75,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                    (ctx, i) => _buildParticipantCardGrade(filtrados[i]),
+                childCount: filtrados.length,
+              ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 18)),
       ],
     );
   }
 
-  Widget _buildParticipantesSearchBar() {
+  Widget _buildParticipantesFilterHeader({
+    required int totalFiltrado,
+    required int totalGeral,
+  }) {
+    final primary = _ensureVisible(context.uai.primary, context.uai.surface);
+
     return Container(
-      key: const ValueKey('participantes_search_header_fixed'),
+      key: const ValueKey('participantes_filter_header_sticky'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: BoxDecoration(
         color: context.uai.surface,
@@ -1639,43 +1695,58 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           top: BorderSide(color: context.uai.border),
           bottom: BorderSide(color: context.uai.border),
         ),
+        boxShadow: context.uai.softShadow,
       ),
-      child: Column(
+      child: Row(
         children: [
-          _buildSearchField(
-            controller: _searchParticipantesController,
-            focusNode: _searchParticipantesFocusNode,
-            hint: 'Pesquisar participantes...',
-            hasValue: _searchParticipantesQuery.isNotEmpty,
-            onChanged: _onSearchParticipantesChanged,
-            onClear: () {
-              _searchParticipantesController.clear();
-              setState(() => _searchParticipantesQuery = '');
-              _searchParticipantesFocusNode.requestFocus();
-            },
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-                  child: Row(
-                    children: [
-                      _buildFiltroChip('TODOS', 'todos'),
-                      const SizedBox(width: 8),
-                      _buildFiltroChip('💰 PAGOS', 'pagos'),
-                      const SizedBox(width: 8),
-                      _buildFiltroChip('⏳ PENDENTES', 'pendentes'),
-                    ],
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+              child: Row(
+                children: [
+                  _buildFiltroChip('TODOS', 'todos'),
+                  const SizedBox(width: 8),
+                  _buildFiltroChip('💰 PAGOS', 'pagos'),
+                  const SizedBox(width: 8),
+                  _buildFiltroChip('⏳ PENDENTES', 'pendentes'),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: primary.withOpacity(0.14)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.people_alt_rounded,
+                          size: 14,
+                          color: primary,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$totalFiltrado/$totalGeral',
+                          style: TextStyle(
+                            color: primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _buildViewModeRow(),
-            ],
+            ),
           ),
+          const SizedBox(width: 8),
+          _buildViewModeRow(),
         ],
       ),
     );
@@ -1838,35 +1909,26 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
           return Column(
             children: [
-              if (_viewMode != 0)
+              if (_viewMode == 2)
                 Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(children: [
-                    Expanded(
-                      child: _buildSearchField(
-                        controller: _searchParticipantesController,
-                        focusNode: _searchParticipantesFocusNode,
-                        hint: 'Pesquisar participantes...',
-                        hasValue: _searchParticipantesQuery.isNotEmpty,
-                        onChanged: _onSearchParticipantesChanged,
-                        onClear: () {
-                          _searchParticipantesController.clear();
-                          setState(() => _searchParticipantesQuery = '');
-                          _searchParticipantesFocusNode.requestFocus();
-                        },
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                  child: Row(
+                    children: [
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Filtros avançados',
+                        icon: Icon(
+                          Icons.filter_alt_rounded,
+                          color: _filtroStatusPagamento.isNotEmpty ||
+                              _filtroGraduacaoId != null ||
+                              _filtroStatusCamisa != null
+                              ? context.uai.primary
+                              : context.uai.textMuted,
+                        ),
+                        onPressed: _mostrarFiltrosAvancados,
                       ),
-                    ),
-                    SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(
-                        Icons.filter_alt_rounded,
-                        color: _filtroStatusPagamento.isNotEmpty || _filtroGraduacaoId != null || _filtroStatusCamisa != null
-                            ? context.uai.primary
-                            : context.uai.textMuted,
-                      ),
-                      onPressed: _mostrarFiltrosAvancados,
-                    ),
-                  ]),
+                    ],
+                  ),
                 ),
               if (_viewMode == 1)
                 Padding(

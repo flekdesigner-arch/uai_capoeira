@@ -30,7 +30,24 @@ Color _readableOn(Color background) {
 
 Color _onCard(BuildContext context) => _readableOn(context.uai.card);
 Color _onCardMuted(BuildContext context) => _onCard(context).withOpacity(0.68);
-Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
+
+Color _onPrimary(BuildContext context) {
+  final t = context.uai;
+  final temaEscuro =
+      t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+  // No tema Verde Neon o primary é claro, mas o tema é dark.
+  // Para cabeçalhos com primaryGradient, branco fica muito mais legível.
+  if (temaEscuro) return Colors.white;
+
+  return _readableOn(t.primary);
+}
+
+Color _appBarBgOf(BuildContext context) =>
+    Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+Color _appBarFgOf(BuildContext context) =>
+    Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBgOf(context));
 
 class CacheService {
   static final CacheService _instance = CacheService._internal();
@@ -271,7 +288,22 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
   Color _onCardMuted([BuildContext? c]) => _onCard(c ?? context).withOpacity(0.68);
-  Color _onPrimary([BuildContext? c]) => _readableOn((c ?? context).uai.primary);
+
+  Color _onPrimary([BuildContext? c]) {
+    final t = (c ?? context).uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return Colors.white;
+
+    return _readableOn(t.primary);
+  }
+
+  Color _appBarBg([BuildContext? c]) =>
+      Theme.of(c ?? context).appBarTheme.backgroundColor ?? (c ?? context).uai.primary;
+
+  Color _appBarFg([BuildContext? c]) =>
+      Theme.of(c ?? context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg(c));
 
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -545,8 +577,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       barrierDismissible: true,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: context.uai.surface,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(context.uai.cardRadius),
           ),
           title: Row(
             children: [
@@ -561,6 +595,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
+                  color: context.uai.textPrimary,
                 ),
               ),
             ],
@@ -571,7 +606,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             children: [
               Text(
                 'Você não tem permissão para $acao.',
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: context.uai.textPrimary,
+                ),
               ),
               SizedBox(height: 16),
               Container(
@@ -760,8 +798,22 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Convidar para Grupo'),
-          content: Text('Enviar convite para o grupo para:'),
+          backgroundColor: context.uai.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(context.uai.cardRadius),
+          ),
+          title: Text(
+            'Convidar para Grupo',
+            style: TextStyle(
+              color: context.uai.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: Text(
+            'Enviar convite para o grupo para:',
+            style: TextStyle(color: context.uai.textSecondary),
+          ),
           actions: [
             if (contatoAluno.isNotEmpty)
               ElevatedButton(
@@ -1005,12 +1057,24 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         context: context,
         builder: (context) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            backgroundColor: context.uai.surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+            ),
             title: Row(
               children: [
                 Icon(Icons.school_rounded, color: context.uai.associacao),
                 SizedBox(width: 8),
-                Expanded(child: Text('Enviar acesso da Área do Aluno')),
+                Expanded(
+                  child: Text(
+                    'Enviar acesso da Área do Aluno',
+                    style: TextStyle(
+                      color: context.uai.textPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
               ],
             ),
             content: Column(
@@ -1059,7 +1123,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     backgroundColor: destino['label'] == 'Aluno'
                         ? context.uai.success
                         : context.uai.info,
-                    foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                    foregroundColor: _readableOn(
+                      destino['label'] == 'Aluno'
+                          ? context.uai.success
+                          : context.uai.info,
+                    ),
                   ),
                 );
               }),
@@ -1214,8 +1282,22 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Desativar Aluno'),
-        content: Text('Tem certeza que deseja desativar este aluno?'),
+        backgroundColor: context.uai.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        ),
+        title: Text(
+          'Desativar Aluno',
+          style: TextStyle(
+            color: context.uai.textPrimary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        content: Text(
+          'Tem certeza que deseja desativar este aluno?',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1225,8 +1307,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: context.uai.warning,
+              foregroundColor: _readableOn(context.uai.warning),
             ),
-            child: Text('Desativar', style: TextStyle(color: context.uai.card)),
+            child: Text('Desativar'),
           ),
         ],
       ),
@@ -1358,7 +1441,18 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: Text('Ativar Aluno'),
+            backgroundColor: context.uai.surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+            ),
+            title: Text(
+              'Ativar Aluno',
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             content: SizedBox(
               width: double.maxFinite,
               child: SingleChildScrollView(
@@ -1367,7 +1461,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   children: [
                     Text(
                       'Selecione a turma para vincular o aluno:',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: context.uai.textPrimary,
+                      ),
                     ),
                     SizedBox(height: 16),
                     ...turmas.map((turma) {
@@ -1378,8 +1476,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
                       return Card(
                         margin: EdgeInsets.only(bottom: 8),
-                        color: isSelected ? context.uai.error.withOpacity(0.10) :
-                        !temVaga ? context.uai.cardAlt : null,
+                        color: isSelected
+                            ? Color.alphaBlend(context.uai.error.withOpacity(0.08), context.uai.card)
+                            : !temVaga
+                            ? context.uai.cardAlt
+                            : context.uai.card,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
@@ -1423,7 +1524,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
                                                 color: isSelected ? context.uai.primary :
-                                                !temVaga ? context.uai.textSecondary : Colors.black,
+                                                !temVaga ? context.uai.textSecondary : context.uai.textPrimary,
                                               ),
                                             ),
                                           ),
@@ -1551,11 +1652,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.success,
+                  foregroundColor: _readableOn(context.uai.success),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text('Ativar', style: TextStyle(color: context.uai.card)),
+                child: Text('Ativar'),
               ),
             ],
           );
@@ -1672,7 +1774,18 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: Text('Mudar de Turma'),
+            backgroundColor: context.uai.surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+            ),
+            title: Text(
+              'Mudar de Turma',
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             content: SizedBox(
               width: double.maxFinite,
               child: SingleChildScrollView(
@@ -1681,7 +1794,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   children: [
                     Text(
                       'Selecione a nova turma para o aluno:',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: context.uai.textPrimary,
+                      ),
                     ),
                     SizedBox(height: 16),
                     ...turmas.map((turma) {
@@ -1693,9 +1810,13 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
                       return Card(
                         margin: EdgeInsets.only(bottom: 8),
-                        color: isSelected ? context.uai.error.withOpacity(0.10) :
-                        isTurmaAtual ? context.uai.cardAlt :
-                        !temVaga ? context.uai.cardAlt : null,
+                        color: isSelected
+                            ? Color.alphaBlend(context.uai.error.withOpacity(0.08), context.uai.card)
+                            : isTurmaAtual
+                            ? context.uai.cardAlt
+                            : !temVaga
+                            ? context.uai.cardAlt
+                            : context.uai.card,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
@@ -1742,7 +1863,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 fontWeight: FontWeight.bold,
                                                 color: isSelected ? context.uai.primary :
                                                 isTurmaAtual ? context.uai.textPrimary :
-                                                !temVaga ? context.uai.textSecondary : Colors.black,
+                                                !temVaga ? context.uai.textSecondary : context.uai.textPrimary,
                                               ),
                                             ),
                                           ),
@@ -1922,11 +2043,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.primary,
+                  foregroundColor: _readableOn(context.uai.primary),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text('Confirmar', style: TextStyle(color: context.uai.card)),
+                child: Text('Confirmar'),
               ),
             ],
           );
@@ -2170,7 +2292,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: _onCard(context),
+                              color: _onPrimary(context),
                             ),
                           ),
                           Text(
@@ -2265,7 +2387,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 label: Text('LIGAR AGORA'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: color,
-                                  foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                                  foregroundColor: _readableOn(color),
                                   padding: EdgeInsets.symmetric(vertical: 13),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                 ),
@@ -2281,12 +2403,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   _abrirWhatsApp(numero, mensagem: 'Olá, preciso falar sobre $nomeAluno.');
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                                  foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                                  backgroundColor: _appBarBg(context),
+                                  foregroundColor: _appBarFg(context),
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                 ),
-                                child: _buildWhatsAppIcon(enabled: true, color: context.uai.card),
+                                child: _buildWhatsAppIcon(enabled: true, color: _appBarFg(context)),
                               ),
                             ),
                           ],
@@ -2365,8 +2487,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     Container(
                       padding: EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: context.uai.card.withOpacity(0.15),
+                        color: _onPrimary(context).withOpacity(0.14),
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _onPrimary(context).withOpacity(0.16)),
                       ),
                       child: Icon(Icons.health_and_safety_rounded, color: _onPrimary(context), size: 28),
                     ),
@@ -2386,7 +2509,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           SizedBox(height: 2),
                           Text(
                             'Acesso rápido para ligar ou chamar no WhatsApp',
-                            style: TextStyle(fontSize: 12, color: context.uai.card.withOpacity(0.70)),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _onPrimary(context).withOpacity(0.78),
+                            ),
                           ),
                         ],
                       ),
@@ -2423,7 +2549,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: context.uai.error,
                           disabledBackgroundColor: context.uai.border,
-                          foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                          foregroundColor: _readableOn(context.uai.error),
                           disabledForegroundColor: context.uai.textSecondary,
                           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -2450,8 +2576,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 'Contato principal: $nomePrincipal • ${_formatarTelefoneVisual(contatoPrincipal)}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: context.uai.primary,
-                                  fontWeight: FontWeight.w600,
+                                  color: context.uai.textPrimary,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
@@ -2724,7 +2850,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: color,
                     disabledBackgroundColor: context.uai.border,
-                    foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                    foregroundColor: _readableOn(color),
                     disabledForegroundColor: context.uai.textSecondary,
                     elevation: 0,
                     padding: EdgeInsets.symmetric(vertical: 10),
@@ -2743,12 +2869,15 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.uai.success,
                     disabledBackgroundColor: context.uai.border,
-                    foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                    foregroundColor: _readableOn(context.uai.success),
                     elevation: 0,
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: _buildWhatsAppIcon(enabled: temNumero, color: context.uai.card),
+                  child: _buildWhatsAppIcon(
+                    enabled: temNumero,
+                    color: _readableOn(context.uai.success),
+                  ),
                 ),
               ),
             ],
@@ -2786,7 +2915,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             children: [
               CircularProgressIndicator(color: context.uai.error),
               SizedBox(height: 20),
-              Text('Carregando informações...'),
+              Text(
+                'Carregando informações...',
+                style: TextStyle(color: context.uai.textSecondary),
+              ),
             ],
           ),
         ),
@@ -2807,14 +2939,21 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             children: [
               Icon(Icons.error_outline, size: 60, color: context.uai.error),
               SizedBox(height: 20),
-              Text('Aluno não encontrado', style: TextStyle(fontSize: 18)),
+              Text(
+                'Aluno não encontrado',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: context.uai.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.primary,
                 ),
-                child: Text('Voltar', style: TextStyle(color: context.uai.card)),
+                child: Text('Voltar'),
               ),
             ],
           ),
@@ -3046,7 +3185,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           color: isAtivo ? context.uai.success : context.uai.warning,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _onCard(context),
+                            color: context.uai.card,
                             width: 2,
                           ),
                         ),
@@ -3694,7 +3833,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
       avatar: Icon(
         icon,
         size: 16,
-        color: isSelected ? Colors.white : context.uai.textSecondary,
+        color: isSelected ? _readableOn(context.uai.primary) : context.uai.textSecondary,
       ),
       selected: isSelected,
       onSelected: (selected) {
@@ -3710,7 +3849,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
       },
       selectedColor: context.uai.primary,
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : context.uai.textPrimary,
+        color: isSelected ? _readableOn(context.uai.primary) : context.uai.textPrimary,
         fontSize: 12,
       ),
       backgroundColor: context.uai.cardAlt,
@@ -3726,11 +3865,28 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
     final anoSelecionado = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: Text('Selecione o ano'),
+        backgroundColor: context.uai.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        ),
+        title: Text(
+          'Selecione o ano',
+          style: TextStyle(
+            color: context.uai.textPrimary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
         children: anos.map((ano) {
           return SimpleDialogOption(
             onPressed: () => Navigator.pop(context, ano),
-            child: Text(ano),
+            child: Text(
+              ano,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           );
         }).toList(),
       ),
@@ -3773,6 +3929,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                 label: Text('Tentar novamente'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.primary,
+                  foregroundColor: _readableOn(context.uai.primary),
                 ),
               ),
             ],
@@ -3834,6 +3991,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
+                                      color: context.uai.textPrimary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -3996,6 +4154,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
+                                  color: context.uai.textPrimary,
                                 ),
                               ),
                               Text(
@@ -4021,6 +4180,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
+                      color: context.uai.textPrimary,
                     ),
                   ),
                   SizedBox(height: 12),
@@ -4061,7 +4221,10 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                             ),
                             title: Text(
                               _formatarData(data),
-                              style: TextStyle(fontSize: 13),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: context.uai.textPrimary,
+                              ),
                             ),
                             trailing: Text(
                               log['tipo_aula']?.toString() ?? 'N/A',
@@ -4085,8 +4248,8 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                       icon: Icon(Icons.history, size: 18),
                       label: Text('FECHAR'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                        backgroundColor: _appBarBgOf(context),
+                        foregroundColor: _appBarFgOf(context),
                         minimumSize: Size(double.infinity, 45),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

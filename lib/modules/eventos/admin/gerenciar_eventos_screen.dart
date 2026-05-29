@@ -731,9 +731,18 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       backgroundColor: t.primary,
       foregroundColor: onPrimary,
       flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsetsDirectional.only(start: 18, bottom: 14),
+        // Quando esta tela é aberta por Navigator.push, o SliverAppBar cria
+        // automaticamente a setinha de voltar. Por isso o título precisa começar
+        // depois da área do leading, senão ele fica por cima da seta.
+        titlePadding: EdgeInsetsDirectional.only(
+          start: Navigator.canPop(context) ? 72 : 18,
+          bottom: 14,
+          end: 16,
+        ),
         title: Text(
           'Gerenciar Eventos',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: onPrimary,
             fontWeight: FontWeight.w900,

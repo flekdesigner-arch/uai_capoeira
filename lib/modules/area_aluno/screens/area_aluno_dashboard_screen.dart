@@ -239,7 +239,37 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
   void _abrirTelaMenuAluno(Widget tela) {
     Navigator.pop(context);
-    Navigator.push(context, MaterialPageRoute(builder: (_) => tela));
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _blindarTelaPublicaAreaAluno(tela),
+      ),
+    );
+  }
+
+  Widget _blindarTelaPublicaAreaAluno(Widget tela) {
+    final t = context.uai;
+
+    // Algumas telas públicas do site foram feitas para abrir dentro da
+    // LandingPage, que já fornece Material/Scaffold/DefaultTextStyle.
+    // Quando abrimos essas mesmas telas direto pela Área do Aluno,
+    // precisamos blindar o conteúdo para não herdar/faltar estilo e
+    // evitar aqueles sublinhados amarelos do Flutter.
+    return Material(
+      color: t.background,
+      child: DefaultTextStyle.merge(
+        style: TextStyle(
+          color: t.textPrimary,
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent,
+        ),
+        child: IconTheme.merge(
+          data: IconThemeData(color: t.textPrimary),
+          child: tela,
+        ),
+      ),
+    );
   }
 
   Future<void> _abrirInfoAluno() async {

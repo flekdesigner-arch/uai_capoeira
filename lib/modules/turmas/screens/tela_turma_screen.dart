@@ -284,6 +284,14 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
   }
 
   Color _onPrimaryText(UaiThemeTokens t) {
+    // Cabeçalhos com primaryGradient precisam ficar legíveis nos 4 temas oficiais.
+    // No Verde Neon, o primary pode ser claro, mas o tema inteiro é dark;
+    // se usar _readableOn(primary), o texto fica escuro e perde leitura no card.
+    final temaEscuro = t.background.computeLuminance() < 0.45 ||
+        t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return Colors.white;
+
     return _readableOn(t.primary);
   }
 

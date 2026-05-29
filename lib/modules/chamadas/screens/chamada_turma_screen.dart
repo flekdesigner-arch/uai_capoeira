@@ -42,9 +42,24 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         : const Color(0xFFFFFFFF);
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  Color _onPrimary() {
+    final t = context.uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+    // No Verde Neon o primary pode ser claro, mas o tema inteiro é dark.
+    // Em headers/progressos com gradiente, branco fica muito mais legível.
+    if (temaEscuro) return Colors.white;
+
+    return _readableOn(t.primary);
+  }
+
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   Color _ensureVisible(Color color, Color background) {
     final diff = (color.computeLuminance() - background.computeLuminance()).abs();
@@ -57,6 +72,18 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         .withLightness(bgIsDark ? 0.72 : 0.32)
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
+  }
+
+  Color _saveButtonBg() {
+    final t = context.uai;
+    return _ensureVisible(t.primary, t.cardAlt);
+  }
+
+  Color _saveButtonFg() => _readableOn(_saveButtonBg());
+
+  Color _headerAccent(Color color) {
+    final bg = context.uai.primary;
+    return _ensureVisible(color, bg);
   }
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -305,6 +332,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: context.uai.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
         title: Icon(Icons.warning_amber, color: context.uai.warning, size: 50),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -318,11 +348,19 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               'Outro professor assumiu o controle desta chamada:\n\n'
                   '👤 ${ocupante['usuario_nome'] ?? 'Professor'}',
               textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             SizedBox(height: 8),
             Text(
               'Você será redirecionado.',
-              style: TextStyle(fontStyle: FontStyle.italic),
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
@@ -333,8 +371,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               if (mounted) Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-              foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+              backgroundColor: _appBarBg(),
+              foregroundColor: _appBarFg(),
             ),
             child: const Text('OK'),
           ),
@@ -703,6 +741,34 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         firstDate: DateTime(2020, 1, 1),
         lastDate: DateTime(2026, 12, 31),
         locale: const Locale('pt', 'BR'),
+        builder: (context, child) {
+          final primary = _ensureVisible(context.uai.primary, context.uai.surface);
+
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: ColorScheme(
+                brightness: context.uai.background.computeLuminance() < 0.45
+                    ? Brightness.dark
+                    : Brightness.light,
+                primary: primary,
+                onPrimary: _readableOn(primary),
+                secondary: primary,
+                onSecondary: _readableOn(primary),
+                error: context.uai.error,
+                onError: _readableOn(context.uai.error),
+                surface: context.uai.surface,
+                onSurface: context.uai.textPrimary,
+              ),
+              dialogTheme: DialogThemeData(
+                backgroundColor: context.uai.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(context.uai.cardRadius),
+                ),
+              ),
+            ),
+            child: child!,
+          );
+        },
       );
 
       if (dataSelecionada == null) return;
@@ -711,14 +777,29 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: const Text('📅 CHAMADA ESPECIAL'),
+            backgroundColor: context.uai.surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+            ),
+            title: Text(
+              '📅 CHAMADA ESPECIAL',
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Data selecionada: ${DateFormat('dd/MM/yyyy').format(dataSelecionada)}',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
                 SizedBox(height: 16),
                 Text(
@@ -726,7 +807,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                       '• Pode ser qualquer dia (inclusive retroativo)\n'
                       '• A chamada será salva normalmente\n'
                       '• Os alunos serão os mesmos da turma atual',
-                  style: TextStyle(fontSize: 14),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: context.uai.textSecondary,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -738,8 +824,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                  foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                  backgroundColor: _appBarBg(),
+                  foregroundColor: _appBarFg(),
                 ),
                 child: const Text('CONTINUAR'),
               ),
@@ -951,6 +1037,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: context.uai.surface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text('Limpar marcações?'),
         content: Text(
@@ -965,8 +1053,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-              foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+              backgroundColor: _appBarBg(),
+              foregroundColor: _appBarFg(),
             ),
             child: const Text('Limpar'),
           ),
@@ -995,13 +1083,30 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Observação para $nomeAluno'),
+          backgroundColor: context.uai.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+          title: Text('Observação para $nomeAluno', style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900)),
           content: TextField(
             controller: _observacaoController,
             maxLines: 3,
+            style: TextStyle(color: context.uai.textPrimary),
             decoration: InputDecoration(
               hintText: 'Digite uma observação...',
-              border: OutlineInputBorder(),
+              hintStyle: TextStyle(color: context.uai.textMuted),
+              filled: true,
+              fillColor: context.uai.cardAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.uai.inputRadius),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                borderSide: BorderSide(color: context.uai.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                borderSide: BorderSide(color: context.uai.primary, width: 1.4),
+              ),
             ),
           ),
           actions: [
@@ -1093,6 +1198,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: context.uai.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
         title: Icon(Icons.timer_off, color: context.uai.error, size: 50),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1110,6 +1218,11 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               'O tempo para realizar esta chamada expirou.\n\n'
                   'Outro professor pode ter assumido o controle.',
               textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -1120,8 +1233,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               if (mounted) Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-              foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+              backgroundColor: _appBarBg(),
+              foregroundColor: _appBarFg(),
             ),
             child: Text('VOLTAR'),
           ),
@@ -1158,8 +1271,18 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('❌ Nenhum aluno presente'),
-          content: Text('Deseja salvar a chamada mesmo sem nenhum aluno presente?'),
+          backgroundColor: context.uai.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+          title: Text('❌ Nenhum aluno presente', style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900)),
+          content: Text(
+            'Deseja salvar a chamada mesmo sem nenhum aluno presente?',
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1167,7 +1290,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: context.uai.warning),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: context.uai.warning,
+                foregroundColor: _readableOn(context.uai.warning),
+              ),
               child: const Text('Salvar mesmo assim'),
             ),
           ],
@@ -1434,7 +1560,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             child: AnimatedContainer(
               duration: Duration(milliseconds: 180),
               decoration: BoxDecoration(
-                color: context.uai.textPrimary,
+                color: context.uai.card,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
                   color: estaPresente ? context.uai.success : context.uai.error.withOpacity(0.70),
@@ -1484,7 +1610,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                                       Text(
                                         nomeAluno,
                                         style: TextStyle(
-                                          color: context.uai.textPrimary,
+                                          color: Colors.white,
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
                                           height: 1.08,
@@ -1496,7 +1622,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                                         Text(
                                           '"$apelido"',
                                           style: TextStyle(
-                                            color: context.uai.card.withOpacity(0.70),
+                                            color: Colors.white.withOpacity(0.74),
                                             fontSize: 10,
                                             fontStyle: FontStyle.italic,
                                           ),
@@ -1528,7 +1654,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                                     backgroundColor: estaPresente
                                         ? context.uai.success
                                         : context.uai.primary,
-                                    foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                                    foregroundColor: _readableOn(
+                                      estaPresente ? context.uai.success : context.uai.primary,
+                                    ),
                                     padding: const EdgeInsets.symmetric(horizontal: 10),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(19),
@@ -1578,7 +1706,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                                 ? Icons.sticky_note_2_rounded
                                 : Icons.note_add_outlined,
                             size: 17,
-                            color: temObservacao ? Colors.white : context.uai.info,
+                            color: temObservacao
+                                ? _readableOn(context.uai.warning)
+                                : _ensureVisible(context.uai.info, Colors.white),
                           ),
                         ),
                       ),
@@ -1595,7 +1725,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                               ? context.uai.success
                               : context.uai.error,
                           shape: BoxShape.circle,
-                          border: Border.all(color: context.uai.textPrimary, width: 2),
+                          border: Border.all(color: context.uai.card, width: 2),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.18),
@@ -1627,7 +1757,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     return Container(
       margin: EdgeInsets.fromLTRB(16, 0, 16, 10),
       decoration: BoxDecoration(
-        color: context.uai.textPrimary,
+        color: context.uai.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: estaPresente ? context.uai.success.withOpacity(0.55) : context.uai.border,
@@ -1743,7 +1873,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               : Icon(
             Icons.person_rounded,
             size: placeholderSize,
-            color: context.uai.textPrimary,
+            color: context.uai.textMuted,
           ),
         ),
       );
@@ -1792,7 +1922,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   Widget _placeholderIcon({double size = 50}) {
-    return Center(child: Icon(Icons.person, size: size, color: context.uai.card));
+    return Center(
+      child: Icon(
+        Icons.person_rounded,
+        size: size,
+        color: context.uai.textMuted,
+      ),
+    );
   }
 
   // ============================================
@@ -1823,13 +1959,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         children: [
           Row(
             children: [
-              Icon(Icons.fact_check_rounded, color: context.uai.textPrimary, size: 19),
+              Icon(Icons.fact_check_rounded, color: _onPrimary(), size: 19),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   widget.turmaNome,
                   style: TextStyle(
-                    color: context.uai.textPrimary,
+                    color: _onPrimary(),
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                     height: 1.0,
@@ -1841,7 +1977,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               Text(
                 '${DateFormat('dd/MM').format(_dataChamada)} • $_tipoAulaHoje',
                 style: TextStyle(
-                  color: context.uai.card.withOpacity(0.78),
+                  color: _onPrimary().withOpacity(0.78),
                   fontSize: 10.5,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1851,11 +1987,11 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           SizedBox(height: 8),
           Row(
             children: [
-              _buildHeaderTinyStat('P', presentes, context.uai.success.withOpacity(0.22)),
+              _buildHeaderTinyStat('P', presentes, context.uai.success),
               SizedBox(width: 6),
-              _buildHeaderTinyStat('A', ausentes, context.uai.error.withOpacity(0.16)),
+              _buildHeaderTinyStat('A', ausentes, context.uai.error),
               SizedBox(width: 6),
-              _buildHeaderTinyStat('T', total, Colors.white.withOpacity(0.16)),
+              _buildHeaderTinyStat('T', total, _onPrimary()),
               SizedBox(width: 8),
               Expanded(
                 child: ClipRRect(
@@ -1863,13 +1999,15 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   child: LinearProgressIndicator(
                     value: total > 0 ? presentes / total : 0,
                     minHeight: 6,
-                    backgroundColor: context.uai.card.withOpacity(0.20),
+                    backgroundColor: _onPrimary().withOpacity(0.20),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      presentes == 0
-                          ? context.uai.error.withOpacity(0.28)
-                          : presentes == total
-                          ? context.uai.success.withOpacity(0.22)
-                          : context.uai.warning.withOpacity(0.22),
+                      _headerAccent(
+                        presentes == 0
+                            ? context.uai.error
+                            : presentes == total
+                            ? context.uai.success
+                            : context.uai.warning,
+                      ),
                     ),
                   ),
                 ),
@@ -1878,7 +2016,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               Text(
                 '$porcentagem%',
                 style: TextStyle(
-                  color: context.uai.textPrimary,
+                  color: _onPrimary(),
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1894,9 +2032,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: context.uai.card.withOpacity(0.11),
+        color: _onPrimary().withOpacity(0.13),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.uai.card.withOpacity(0.08)),
+        border: Border.all(color: _onPrimary().withOpacity(0.16)),
       ),
       child: RichText(
         text: TextSpan(
@@ -1904,7 +2042,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             TextSpan(
               text: '$label ',
               style: TextStyle(
-                color: context.uai.card.withOpacity(0.70),
+                color: _onPrimary().withOpacity(0.70),
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -1912,7 +2050,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             TextSpan(
               text: '$value',
               style: TextStyle(
-                color: color,
+                color: _ensureVisible(color, context.uai.primary),
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -1933,9 +2071,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         decoration: BoxDecoration(
-          color: context.uai.card.withOpacity(0.11),
+          color: _onPrimary().withOpacity(0.13),
           borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: context.uai.card.withOpacity(0.10)),
+          border: Border.all(color: _onPrimary().withOpacity(0.16)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1955,7 +2093,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               child: Text(
                 label,
                 style: TextStyle(
-                  color: context.uai.card.withOpacity(0.76),
+                  color: _onPrimary().withOpacity(0.76),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1996,7 +2134,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           Text(
             label,
             style: TextStyle(
-              color: context.uai.card.withOpacity(0.78),
+              color: _onPrimary().withOpacity(0.78),
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -2006,18 +2144,38 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     );
   }
 
-  Widget _buildStatItem({required String value, required String label, required Color color, required IconData icon}) {
+  Widget _buildStatItem({
+    required String value,
+    required String label,
+    required Color color,
+    required IconData icon,
+  }) {
+    final accent = _ensureVisible(color, context.uai.card);
+
     return Column(
       children: [
         Row(
           children: [
-            Icon(icon, size: 14, color: color),
-            SizedBox(width: 4),
-            Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+            Icon(icon, size: 14, color: accent),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: accent,
+              ),
+            ),
           ],
         ),
-        SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 10, color: context.uai.textSecondary)),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: context.uai.textSecondary,
+          ),
+        ),
       ],
     );
   }
@@ -2128,7 +2286,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           Container(
             padding: EdgeInsets.symmetric(horizontal: 9, vertical: 7),
             decoration: BoxDecoration(
-              color: context.uai.textPrimary,
+              color: context.uai.card,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: context.uai.border),
               boxShadow: context.uai.softShadow,
@@ -2186,7 +2344,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 11, vertical: 8),
           decoration: BoxDecoration(
-            color: context.uai.textPrimary,
+            color: context.uai.card,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: context.uai.border),
           ),
@@ -2224,14 +2382,14 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
         avatar: Icon(
           icon,
           size: 15,
-          color: ativo ? Colors.white : context.uai.textSecondary,
+          color: ativo ? _readableOn(context.uai.primary) : context.uai.textSecondary,
         ),
         label: Text(
           filtro,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: ativo ? Colors.white : context.uai.textSecondary,
+            color: ativo ? _readableOn(context.uai.primary) : context.uai.textSecondary,
           ),
         ),
         selectedColor: context.uai.primary,
@@ -2253,25 +2411,27 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     required Color color,
     required VoidCallback onTap,
   }) {
+    final accent = _ensureVisible(color, context.uai.card);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: accent.withOpacity(0.12),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.24)),
+          border: Border.all(color: accent.withOpacity(0.24)),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 14, color: color),
+            Icon(icon, size: 14, color: accent),
             SizedBox(width: 3),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: color,
+                color: accent,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -2341,14 +2501,14 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_upload, size: 60, color: context.uai.card),
+                Icon(Icons.cloud_upload, size: 60, color: _onPrimary()),
                 SizedBox(height: 20),
                 Text(
                   'PROCESSANDO CHAMADA',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: context.uai.textPrimary,
+                    color: _onPrimary(),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -2356,20 +2516,21 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(
-                    color: context.uai.card.withOpacity(0.2),
+                    color: _onPrimary().withOpacity(0.14),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _onPrimary().withOpacity(0.16)),
                   ),
                   child: Text(
                     _statusMensagem,
                     style: TextStyle(
                       fontSize: 14,
-                      color: context.uai.card.withOpacity(0.9),
+                      color: _onPrimary().withOpacity(0.9),
                     ),
                     textAlign: TextAlign.center,
                   ),
                 ),
                 SizedBox(height: 30),
-                CircularProgressIndicator(color: context.uai.card),
+                CircularProgressIndicator(color: _onPrimary()),
               ],
             ),
           ),
@@ -2386,8 +2547,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       return Scaffold(
         backgroundColor: context.uai.background,
         appBar: AppBar(
-          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-          foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+          backgroundColor: _appBarBg(),
+          foregroundColor: _appBarFg(),
           title: Text('VERIFICANDO CHAMADA'),
         ),
         body: Center(
@@ -2414,8 +2575,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       return Scaffold(
         backgroundColor: context.uai.background,
         appBar: AppBar(
-          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-          foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+          backgroundColor: _appBarBg(),
+          foregroundColor: _appBarFg(),
           title: Text('Erro de Autenticação'),
           leading: IconButton(icon: Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
         ),
@@ -2442,8 +2603,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                 ElevatedButton.icon(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                    foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                    backgroundColor: _appBarBg(),
+                    foregroundColor: _appBarFg(),
                     padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   ),
                   icon: Icon(Icons.arrow_back),
@@ -2459,8 +2620,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2477,8 +2638,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                 icon: Icon(Icons.calendar_month, size: 18),
                 label: Text('ESPECIAL', style: TextStyle(fontSize: 12)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: context.uai.card,
-                  foregroundColor: context.uai.primary,
+                  backgroundColor: _appBarFg().withOpacity(0.18),
+                  foregroundColor: _appBarFg(),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   elevation: 2,
@@ -2513,8 +2674,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
         title: Text('CHAMADA OCUPADA'),
         leading: IconButton(icon: Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
       ),
@@ -2560,7 +2721,14 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   children: [
                     Icon(Icons.person, size: 50, color: context.uai.warning),
                     SizedBox(height: 10),
-                    Text(ocupanteNome, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(
+                      ocupanteNome,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: context.uai.textPrimary,
+                      ),
+                    ),
                     SizedBox(height: 5),
                     Text('Desde às $horaOcupacao', style: TextStyle(fontSize: 14, color: context.uai.textSecondary)),
                   ],
@@ -2576,8 +2744,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               ElevatedButton.icon(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                  foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                  backgroundColor: _appBarBg(),
+                  foregroundColor: _appBarFg(),
                   padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -2621,8 +2789,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   child: OutlinedButton.icon(
                     onPressed: _salvandoChamada ? null : _confirmarLimparChamada,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: context.uai.primary,
-                      side: BorderSide(color: context.uai.error.withOpacity(0.16)),
+                      foregroundColor: _ensureVisible(context.uai.primary, context.uai.cardAlt),
+                      side: BorderSide(
+                        color: _ensureVisible(context.uai.error, context.uai.cardAlt).withOpacity(0.24),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -2641,8 +2811,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   child: ElevatedButton(
                     onPressed: _salvandoChamada ? null : _salvarChamada,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                      foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                      backgroundColor: _saveButtonBg(),
+                      foregroundColor: _saveButtonFg(),
+                      disabledBackgroundColor: context.uai.border,
+                      disabledForegroundColor: context.uai.textSecondary,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -2658,7 +2830,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: context.uai.textPrimary,
+                            color: _saveButtonFg(),
                           ),
                         ),
                         SizedBox(width: 10),
@@ -2715,8 +2887,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                backgroundColor: _appBarBg(),
+                foregroundColor: _appBarFg(),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               icon: const Icon(Icons.arrow_back),
@@ -2769,19 +2941,19 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             ),
             child: Column(
               children: [
-                Icon(Icons.celebration, size: 60, color: context.uai.card),
+                Icon(Icons.celebration, size: 60, color: _readableOn(context.uai.success)),
                 SizedBox(height: 10),
                 Text(
                   '🎉 CHAMADA CONCLUÍDA!',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: context.uai.card),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _readableOn(context.uai.success)),
                   textAlign: TextAlign.center,
                 ),
                 SizedBox(height: 8),
                 Text(
                   DateFormat("EEEE, dd/MM/yyyy", 'pt_BR').format(dataChamada),
-                  style: TextStyle(fontSize: 14, color: context.uai.card.withOpacity(0.9)),
+                  style: TextStyle(fontSize: 14, color: _readableOn(context.uai.success).withOpacity(0.9)),
                 ),
-                Text('Horário: $horaFormatada', style: TextStyle(fontSize: 13, color: context.uai.card.withOpacity(0.8))),
+                Text('Horário: $horaFormatada', style: TextStyle(fontSize: 13, color: _readableOn(context.uai.success).withOpacity(0.8))),
                 SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2792,31 +2964,31 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(_getTipoAulaIcon(tipoAula), size: 14, color: context.uai.card),
+                      Icon(_getTipoAulaIcon(tipoAula), size: 14, color: _readableOn(context.uai.success)),
                       SizedBox(width: 6),
-                      Text('TIPO DA AULA: $tipoAula', style: TextStyle(fontSize: 12, color: context.uai.textPrimary, fontWeight: FontWeight.w500)),
+                      Text('TIPO DA AULA: $tipoAula', style: TextStyle(fontSize: 12, color: _readableOn(context.uai.success), fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ),
                 SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(color: context.uai.card.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: _readableOn(context.uai.success).withOpacity(0.16), borderRadius: BorderRadius.circular(20)),
                   child: Column(
                     children: [
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.person, size: 16, color: context.uai.card),
+                          Icon(Icons.person, size: 16, color: _readableOn(context.uai.success)),
                           SizedBox(width: 8),
-                          Text('Professor: $professorNome', style: TextStyle(fontSize: 13, color: context.uai.textPrimary, fontWeight: FontWeight.w500)),
+                          Text('Professor: $professorNome', style: TextStyle(fontSize: 13, color: _readableOn(context.uai.success), fontWeight: FontWeight.w500)),
                         ],
                       ),
                       if (professorId.isNotEmpty) ...[
                         SizedBox(height: 4),
                         Text(
                           'ID: ${professorId.length > 6 ? professorId.substring(0, 6) : professorId}...',
-                          style: TextStyle(fontSize: 10, color: context.uai.card.withOpacity(0.7), fontStyle: FontStyle.italic),
+                          style: TextStyle(fontSize: 10, color: _readableOn(context.uai.success).withOpacity(0.70), fontStyle: FontStyle.italic),
                         ),
                       ],
                     ],
@@ -2979,8 +3151,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                color: context.uai.card,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  side: BorderSide(color: context.uai.border),
+                ),
                 child: Padding(
                   padding: EdgeInsets.all(15),
                   child: Column(
@@ -3042,7 +3219,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                         },
                         builder: (context, value, child) {
                           final seconds = value.inSeconds;
-                          return Text('Fechando em $seconds segundos...', style: TextStyle(color: context.uai.info, fontWeight: FontWeight.w600));
+                          return Text(
+                            'Fechando em $seconds segundos...',
+                            style: TextStyle(
+                              color: _ensureVisible(context.uai.info, context.uai.card),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          );
                         },
                       ),
                     ],
@@ -3054,8 +3237,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                   child: ElevatedButton.icon(
                     onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                      foregroundColor: _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                      backgroundColor: _appBarBg(),
+                      foregroundColor: _appBarFg(),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 3,
