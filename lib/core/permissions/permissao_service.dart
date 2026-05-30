@@ -53,7 +53,7 @@ class PermissaoService {
   static const String chaveGerenciarPatrocinadoresEvento = 'pode_gerenciar_patrocinadores_evento';
   static const String chaveGerenciarGastosEvento = 'pode_gerenciar_gastos_evento';
   static const String chaveVerRelatorioEvento = 'pode_ver_relatorio_evento';
-  static const String chaveGerarCertificadosEvento = 'pode_gerar_certificados';
+  static const String chaveGerarCertificadosEvento = 'pode_gerar_certificados_evento';
 
   /// Aliases/compatibilidade.
   ///
@@ -131,6 +131,7 @@ class PermissaoService {
       'pode_visualizar_relatorio_evento',
     ],
     chaveGerarCertificadosEvento: [
+      'pode_gerar_certificados',
       'pode_emitir_certificados',
       'pode_gerar_certificado_evento',
     ],

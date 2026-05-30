@@ -15,6 +15,7 @@ import 'package:uai_capoeira/modules/eventos/admin/gerenciar_participacoes_scree
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_graduacoes_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_site_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_logo_screen.dart';
+import 'package:uai_capoeira/modules/certificados/screens/certificado_preview_teste_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -382,6 +383,13 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Participações, pagamentos e certificados',
                             color: t.warning,
                             tela: const GerenciarParticipacoesScreen(),
+                          ),
+                          _AdminCardData(
+                            icon: Icons.history_edu_rounded,
+                            title: 'Configurar Certificados',
+                            subtitle: 'Templates, prévias e geração automática por SVG',
+                            color: t.inscricoes,
+                            tela: const CertificadoPreviewTesteScreen(),
                           ),
                         ],
                       ),

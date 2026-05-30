@@ -13,6 +13,7 @@ import 'gastos_evento_screen.dart';
 import 'patrocinadores_evento_screen.dart';
 import 'camisas_evento_screen.dart';
 import 'package:uai_capoeira/modules/eventos/reports/relatorio_financeiro_screen.dart';
+import 'package:uai_capoeira/modules/eventos/gerador_certificados/screens/gerador_certificados_evento_screen.dart';
 
 class DetalhesEventoAndamentoScreen extends StatefulWidget {
   final EventoModel evento;
@@ -814,6 +815,19 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     );
   }
 
+  void _abrirGeradorCertificados() {
+    final eventoComId = widget.evento.copyWith(id: widget.eventoId);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GeradorCertificadosEventoScreen(
+          evento: eventoComId,
+        ),
+      ),
+    ).then((_) => _carregarDados());
+  }
+
   Widget _buildHeader(EventoModel evento) {
     final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
 
@@ -1079,6 +1093,14 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
             ).then((_) => _carregarDados());
           },
         ),
+      if (_podeGerarCertificados)
+        _buildMenuButton(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Gerador de certificados',
+          subtitle: 'Gerar PDFs, PNGs, impressão em lotes e pacote para gráfica',
+          color: context.uai.associacao,
+          onTap: _abrirGeradorCertificados,
+        ),
       if (_podeGerenciarGastos)
         _buildMenuButton(
           icon: Icons.attach_money_rounded,
@@ -1198,7 +1220,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Você pode visualizar este evento, mas ainda não tem permissão para gerenciar participantes, gastos, patrocinadores, camisas ou relatórios.',
+              'Você pode visualizar este evento, mas ainda não tem permissão para gerenciar participantes, certificados, gastos, patrocinadores, camisas ou relatórios.',
               style: TextStyle(
                 color: context.uai.warning,
                 height: 1.28,

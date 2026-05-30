@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.55+1
+version: 2.0.57+1
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -55,6 +55,7 @@ dependencies:
   pdf: ^3.10.7                        # 📑 Criar arquivos PDF (certificados, relatórios)
   printing: ^5.11.1                   # 🖨️ Imprimir documentos direto do app
   flutter_pdfview: ^1.3.2             # 👁️ Visualizar PDF dentro do app
+  file_saver: ^0.2.14                # 💾 Salvar PDFs/PNGs gerados no app/web
   excel: ^2.0.0                       # 📊 Criar/ler planilhas Excel (relatórios)
   csv: ^6.0.0                         # 📋 Manipular arquivos CSV (importar/exportar dados)
   xml: ^6.3.0                         # 📄 Ler arquivos XML
@@ -150,6 +151,8 @@ flutter:
   assets:
     # 🖼️ Imagens
     - assets/images/
+    - assets/certificados/
+    - assets/fontes/
     - assets/images/fundo_aniversario_app_flutter.png
     - assets/images/logo_uai.png
     - assets/images/google_logo.png
@@ -168,6 +171,62 @@ flutter:
 
     # 🔑 Credenciais
     - assets/credentials.json
+
+  # 🔤 FONTES DOS CERTIFICADOS
+  fonts:
+    - family: Arial
+      fonts:
+        - asset: assets/fontes/arial.ttf
+        - asset: assets/fontes/arialbd.ttf
+          weight: 700
+        - asset: assets/fontes/ariali.ttf
+          style: italic
+        - asset: assets/fontes/arialbi.ttf
+          weight: 700
+          style: italic
+
+    - family: ArialNarrow
+      fonts:
+        - asset: assets/fontes/ARIALN.TTF
+        - asset: assets/fontes/ARIALNB.TTF
+          weight: 700
+        - asset: assets/fontes/ARIALNI.TTF
+          style: italic
+        - asset: assets/fontes/ARIALNBI.TTF
+          weight: 700
+          style: italic
+
+    - family: ArialRounded
+      fonts:
+        - asset: assets/fontes/ARLRDBD.TTF
+          weight: 700
+
+    - family: SitkaText
+      fonts:
+        - asset: assets/fontes/Sitka.ttc
+        - asset: assets/fontes/SitkaB.ttc
+          weight: 700
+        - asset: assets/fontes/SitkaI.ttc
+          style: italic
+        - asset: assets/fontes/SitkaZ.ttc
+          weight: 700
+          style: italic
+
+    - family: Square721BT
+      fonts:
+        - asset: assets/fontes/Square721 BT Roman.ttf
+        - asset: assets/fontes/Square721 BT Bold.ttf
+          weight: 700
+
+    - family: Square721CnBT
+      fonts:
+        - asset: assets/fontes/Square721 Cn BT Roman.ttf
+        - asset: assets/fontes/Square721 Cn BT Bold.ttf
+          weight: 700
+
+    - family: EngraversGothicBT
+      fonts:
+        - asset: assets/fontes/EngraversGothic BT.ttf
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DE ÍCONES DO APP

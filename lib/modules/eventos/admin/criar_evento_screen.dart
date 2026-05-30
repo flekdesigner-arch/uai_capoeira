@@ -9,6 +9,7 @@ import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
+import 'package:uai_capoeira/modules/eventos/widgets/evento_certificado_config_dialog.dart';
 
 class CriarEventoScreen extends StatefulWidget {
   final EventoModel? evento;
@@ -71,6 +72,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   List<String> _tamanhosSelecionados = [];
 
   bool _temCertificado = false;
+  ConfiguracoesCertificadoEvento _configCertificado =
+  ConfiguracoesCertificadoEvento.padrao();
   bool _mostrarNoPortfolioWeb = false;
 
   String _status = 'andamento';
@@ -220,6 +223,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _camisaObrigatoria = e.camisaObrigatoria;
 
     _temCertificado = e.temCertificado;
+    _configCertificado = e.configuracoesCertificadoEvento;
     _mostrarNoPortfolioWeb = e.mostrarNoPortfolioWeb;
     _status = e.status;
   }
@@ -957,6 +961,232 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  Future<void> _abrirConfigCertificado() async {
+    if (!_podeSalvarEvento) {
+      _mostrarSemPermissao(
+        'Você não tem permissão para configurar certificados.',
+      );
+      return;
+    }
+
+    final resultado = await EventoCertificadoConfigDialog.show(
+      context: context,
+      configuracaoInicial: _configCertificado.copyWith(
+        ativo: _temCertificado,
+      ),
+    );
+
+    if (resultado == null || !mounted) return;
+
+    setState(() {
+      _configCertificado = resultado;
+      _temCertificado = resultado.ativo;
+    });
+
+    _showSnack(
+      'Configurações do certificado atualizadas. Salve o evento para gravar.',
+      type: _SnackType.success,
+    );
+  }
+
+  Widget _buildCertificadoResumoCard() {
+    final t = context.uai;
+    final config = _configCertificado;
+    final assinaturas = config.assinaturasValidas;
+    final primary = _ensureVisible(t.primary, t.cardAlt);
+    final success = _ensureVisible(t.success, t.cardAlt);
+    final warning = _ensureVisible(t.warning, t.cardAlt);
+
+    String modeloLabel() {
+      switch (config.modeloPadrao) {
+        case 'CERTIFICADO':
+          return 'Certificado simples';
+        case 'CERTIFICADOCOMCPF':
+          return 'Certificado com CPF';
+        case 'DIPLOMA':
+          return 'Diploma';
+        case ConfiguracoesCertificadoEvento.modeloAutomatico:
+        default:
+          return 'Automático pela graduação';
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(
+          color: _temCertificado ? success.withOpacity(0.20) : t.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: (_temCertificado ? success : warning).withOpacity(0.11),
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+                child: Icon(
+                  _temCertificado
+                      ? Icons.verified_rounded
+                      : Icons.info_outline_rounded,
+                  color: _temCertificado ? success : warning,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _temCertificado
+                          ? 'Certificados configurados'
+                          : 'Certificados desativados',
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _temCertificado
+                          ? '${assinaturas.length} assinatura(s) • ${modeloLabel()}'
+                          : 'Ative para configurar assinaturas e modelo.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11.7,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_temCertificado) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _certificadoChip(
+                  icon: Icons.auto_awesome_rounded,
+                  label: modeloLabel(),
+                  color: primary,
+                ),
+                _certificadoChip(
+                  icon: Icons.location_city_rounded,
+                  label: config.usarCidadeDoEvento
+                      ? 'Cidade do evento'
+                      : 'Cidade personalizada',
+                  color: t.info,
+                ),
+                _certificadoChip(
+                  icon: Icons.calendar_month_rounded,
+                  label: config.usarDataDoEvento
+                      ? 'Data do evento'
+                      : 'Data personalizada',
+                  color: t.warning,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...assinaturas.take(5).map((assinatura) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.draw_rounded,
+                      color: t.textMuted,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        '${assinatura.nome}  •  ${assinatura.apelido}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _abrirConfigCertificado,
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: Text(
+                _temCertificado
+                    ? 'CONFIGURAR ASSINATURAS'
+                    : 'ATIVAR E CONFIGURAR',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primary,
+                side: BorderSide(color: primary.withOpacity(0.30)),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _certificadoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.cardAlt);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: accent.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: accent, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCertificadoSimples() {
     return _buildToggleCard(
       value: _temCertificado,
@@ -966,7 +1196,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       inactiveText: 'Este evento NÃO terá certificados',
       activeColor: context.uai.success,
       onChanged: (value) {
-        setState(() => _temCertificado = value);
+        setState(() {
+          _temCertificado = value;
+          _configCertificado = _configCertificado.copyWith(ativo: value);
+        });
       },
     );
   }
@@ -1100,8 +1333,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             ? _linkPlaylistController.text.trim()
             : null,
         temCertificado: _temCertificado,
-        configuracoesCertificado: null,
-        modeloCertificadoId: null,
+        configuracoesCertificado:
+        _temCertificado ? _configCertificado.toMap() : null,
+        modeloCertificadoId: _temCertificado
+            ? _configCertificado.modeloPadrao
+            : null,
         modeloCertificadoPath: null,
         criadoEm: null,
         atualizadoEm: null,
@@ -2097,13 +2333,15 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                       child: Column(
                         children: [
                           _buildCertificadoSimples(),
+                          const SizedBox(height: 10),
+                          _buildCertificadoResumoCard(),
                           if (_temCertificado) ...[
                             const SizedBox(height: 10),
                             _infoBox(
                               icon: Icons.info_rounded,
                               color: t.success,
                               text:
-                              'Os certificados serão gerados com base nas graduações dos alunos.',
+                              'Os certificados serão gerados usando as assinaturas configuradas aqui e os dados reais do evento.',
                             ),
                           ],
                         ],

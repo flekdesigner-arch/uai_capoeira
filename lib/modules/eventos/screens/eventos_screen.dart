@@ -736,6 +736,110 @@ class _EventosScreenState extends State<EventosScreen>
     );
   }
 
+  String? _normalizarBannerUrl(EventoModel evento) {
+    final raw = evento.linkBanner?.trim();
+
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    // CachedNetworkImage só consegue abrir http/https diretamente.
+    // Se algum evento estiver salvo com gs://, path local ou texto inválido,
+    // a imagem não aparece nessa tela.
+    final uri = Uri.tryParse(raw);
+
+    if (uri == null || !uri.hasScheme) {
+      debugPrint('🖼️ [Eventos] Banner inválido para "${evento.nome}": $raw');
+      return null;
+    }
+
+    final scheme = uri.scheme.toLowerCase();
+
+    if (scheme != 'http' && scheme != 'https') {
+      debugPrint(
+        '🖼️ [Eventos] Banner ignorado para "${evento.nome}". '
+            'Use URL http/https. Valor atual: $raw',
+      );
+      return null;
+    }
+
+    return uri.toString();
+  }
+
+  Widget _buildEventoBannerImage(EventoModel evento) {
+    final url = _normalizarBannerUrl(evento);
+
+    if (url == null) {
+      return _buildEventoBannerFallback(
+        icon: Icons.image_not_supported_outlined,
+        label: 'Sem banner',
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      fadeInDuration: const Duration(milliseconds: 180),
+      fadeOutDuration: const Duration(milliseconds: 100),
+      useOldImageOnUrlChange: true,
+      memCacheWidth: 900,
+      placeholder: (context, _) {
+        return Container(
+          color: context.uai.cardAlt,
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: context.uai.primary,
+              ),
+            ),
+          ),
+        );
+      },
+      errorWidget: (context, url, error) {
+        debugPrint(
+          '🖼️ [Eventos] Erro ao carregar banner de "${evento.nome}": $error | $url',
+        );
+
+        return _buildEventoBannerFallback(
+          icon: Icons.broken_image_outlined,
+          label: 'Imagem indisponível',
+        );
+      },
+    );
+  }
+
+  Widget _buildEventoBannerFallback({
+    required IconData icon,
+    required String label,
+  }) {
+    final accent = _ensureVisible(context.uai.primary, context.uai.cardAlt);
+
+    return Container(
+      color: context.uai.cardAlt,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: context.uai.textMuted, size: 28),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: accent.withOpacity(0.72),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEventoCard(
       EventoModel evento,
       String docId,
@@ -809,28 +913,7 @@ class _EventosScreenState extends State<EventosScreen>
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        evento.linkBanner != null && evento.linkBanner!.isNotEmpty
-                            ? CachedNetworkImage(
-                          imageUrl: evento.linkBanner!,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: context.uai.cardAlt,
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: context.uai.cardAlt,
-                            child: Icon(
-                              Icons.image,
-                              color: context.uai.textMuted,
-                            ),
-                          ),
-                        )
-                            : Container(
-                          color: context.uai.cardAlt,
-                          child: Icon(
-                            Icons.image,
-                            color: context.uai.textMuted,
-                          ),
-                        ),
+                        _buildEventoBannerImage(evento),
 
                         Positioned(
                           top: 7,
