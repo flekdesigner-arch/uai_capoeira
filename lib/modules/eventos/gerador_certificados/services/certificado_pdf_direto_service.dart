@@ -197,26 +197,22 @@ class CertificadoPdfDiretoService {
   }) {
     final widgets = <pw.Widget>[];
 
-    void addSingle({
-      required String id,
+    void addTextBox({
       required String text,
+      required double xMm,
+      required double yMm,
+      required double widthMm,
+      required double heightMm,
       required double fontSize,
       required pw.Font? font,
       PdfColor? color,
       pw.Alignment alignment = pw.Alignment.bottomCenter,
-      double rightPaddingMm = 0,
-      double widthExtraMm = 0,
+      pw.TextAlign textAlign = pw.TextAlign.center,
       double minScale = 0.35,
     }) {
-      final slot = slots[id];
-      if (slot == null || text.trim().isEmpty) return;
+      if (text.trim().isEmpty) return;
 
-      final extraLeft = widthExtraMm / 2;
-      final left = ((slot.x - extraLeft) * sx) + (rightPaddingMm * sx);
-      final top = slot.y * sy;
-      final width =
-          ((slot.width + widthExtraMm) * sx) - (rightPaddingMm * sx);
-      final height = slot.height * sy;
+      final width = widthMm * sx;
       final fitted = _fitFontSize(
         text,
         fontSize,
@@ -226,15 +222,15 @@ class CertificadoPdfDiretoService {
 
       widgets.add(
         pw.Positioned(
-          left: left,
-          top: top,
+          left: xMm * sx,
+          top: yMm * sy,
           child: pw.Container(
             width: width,
-            height: height,
+            height: heightMm * sy,
             alignment: alignment,
             child: pw.Text(
               text,
-              textAlign: pw.TextAlign.center,
+              textAlign: textAlign,
               maxLines: 1,
               style: pw.TextStyle(
                 font: font,
@@ -245,6 +241,90 @@ class CertificadoPdfDiretoService {
             ),
           ),
         ),
+      );
+    }
+
+    void addSingle({
+      required String id,
+      required String text,
+      required double fontSize,
+      required pw.Font? font,
+      PdfColor? color,
+      pw.Alignment alignment = pw.Alignment.bottomCenter,
+      double rightPaddingMm = 0,
+      double widthExtraMm = 0,
+      double topOffsetMm = 0,
+      double heightExtraMm = 0,
+      double minScale = 0.35,
+    }) {
+      final slot = slots[id];
+      if (slot == null || text.trim().isEmpty) return;
+
+      final extraLeft = widthExtraMm / 2;
+      final xMm = (slot.x - extraLeft) + rightPaddingMm;
+      final yMm = slot.y + topOffsetMm;
+      final widthMm = (slot.width + widthExtraMm) - rightPaddingMm;
+      final heightMm = slot.height + heightExtraMm;
+
+      addTextBox(
+        text: text,
+        xMm: xMm,
+        yMm: yMm,
+        widthMm: widthMm,
+        heightMm: heightMm,
+        fontSize: fontSize,
+        font: font,
+        color: color,
+        alignment: alignment,
+        minScale: minScale,
+      );
+    }
+
+    void addCpf() {
+      // CPF só deve aparecer nos modelos que realmente exigem CPF:
+      // CERTIFICADOCOMCPF e DIPLOMA.
+      // No certificado simples, mesmo que o aluno tenha CPF cadastrado,
+      // o campo não deve ser desenhado.
+      if (!tipo.exigeCpf) return;
+
+      final cpf = data.cpfFormatado.trim();
+      if (cpf.isEmpty) return;
+
+      final slot = slots[CertificadoSlotIds.cpf];
+
+      if (slot != null) {
+        addTextBox(
+          text: cpf,
+          xMm: slot.x + 1.1,
+          yMm: slot.y - 0.42,
+          widthMm: slot.width + 10.0,
+          heightMm: slot.height + 1.7,
+          fontSize: 11.2,
+          font: _arialBold ?? _arial ?? _squareBold ?? _square,
+          alignment: pw.Alignment.centerLeft,
+          minScale: 0.30,
+        );
+        return;
+      }
+
+      // Os SVGs de CERTIFICADOCOMCPF e DIPLOMA têm a caixa-guia do CPF,
+      // mas ela veio sem id="cpf". A prévia Flutter usa coordenada manual,
+      // por isso aparece na tela; o PDF direto precisa desse fallback.
+      //
+      // Caixa-guia real identificada no SVG:
+      // <polygon points="133.2307,91.3142 170.8651,91.3142 ..."/>
+      // O texto fixo "CPF:" já faz parte do SVG, então aqui vai só o número.
+      // O número fica alinhado da esquerda para a direita dentro da caixa-guia.
+      addTextBox(
+        text: cpf,
+        xMm: 132.9,
+        yMm: 90.62,
+        widthMm: 47.0,
+        heightMm: 5.7,
+        fontSize: 11.2,
+        font: _arialBold ?? _arial ?? _squareBold ?? _square,
+        alignment: pw.Alignment.centerLeft,
+        minScale: 0.30,
       );
     }
 
@@ -287,16 +367,12 @@ class CertificadoPdfDiretoService {
       text: data.alunoNome,
       fontSize: 20.2,
       font: _arialBold,
+      topOffsetMm: -1.0,
+      heightExtraMm: 1.0,
       minScale: 0.42,
     );
 
-    addSingle(
-      id: CertificadoSlotIds.cpf,
-      text: data.cpfFormatado,
-      fontSize: 13.0,
-      font: _squareBold ?? _square,
-      alignment: pw.Alignment.bottomLeft,
-    );
+    addCpf();
 
     addSingle(
       id: CertificadoSlotIds.graduacaoNova,

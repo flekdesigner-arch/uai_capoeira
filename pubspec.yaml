@@ -1,16 +1,14 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.57+1
+version: 2.0.59+1
 
 # =============================================
 # 🔧 VERSÕES DO SDK
 # =============================================
 environment:
-  sdk: ">=3.10.8 <4.0.0"  # Versão do Dart
-  flutter: ">=3.22.0"     # Versão do Flutter
-
-
+  sdk: ">=3.10.8 <4.0.0"
+  flutter: ">=3.22.0"
 
 # =============================================
 # 📦 DEPENDÊNCIAS PRINCIPAIS (PRODUÇÃO)
@@ -20,126 +18,126 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
-    sdk: flutter      # Tradução do app (português, inglês, etc)
+    sdk: flutter
 
   # =============================================
   # 🔥 FIREBASE (Backend completo)
   # =============================================
-  firebase_core: ^3.5.0               # 🧠 NÚCLEO - Obrigatório para qualquer serviço Firebase
-  firebase_auth: ^5.3.0               # 🔐 Autenticação (email/senha, Google, etc)
-  cloud_firestore: ^5.0.1             # 📊 Banco de dados NoSQL (onde ficam alunos, eventos, etc)
-  firebase_storage: ^12.0.1           # 📁 Armazenamento de arquivos (fotos, PDFs, vídeos)
-  firebase_messaging: ^15.2.4         # 🔔 Notificações push (avisos de eventos, mensagens)
-  firebase_app_check: ^0.3.2+1        # 🛡️ Segurança extra contra bots e ataques
-  firebase_analytics: ^11.3.0         # 📈 Estatísticas de uso do app
-  cloud_functions: ^5.0.0             # ⚡ Funções serverless (regras de negócio no backend)
+  firebase_core: ^3.5.0
+  firebase_auth: ^5.3.0
+  cloud_firestore: ^5.0.1
+  firebase_storage: ^12.0.1
+  firebase_messaging: ^15.2.4
+  firebase_app_check: ^0.3.2+1
+  firebase_analytics: ^11.3.0
+  cloud_functions: ^5.0.0
 
   # 🔐 Login com Google
-  google_sign_in: ^6.1.5              # 🅱️ Botão "Entrar com Google"
+  google_sign_in: ^6.1.5
   shared_preferences: ^2.3.3
 
   # =============================================
   # 🎨 INTERFACE E ANIMAÇÕES
   # =============================================
-  cupertino_icons: ^1.0.8             # 🍎 Ícones no estilo iOS
-  flutter_svg: ^2.0.10+1              # 🖼️ Mostrar imagens SVG (logo vetorizada)
-  shimmer: ^3.0.0                     # ✨ Efeito de brilho (loading skeleton do Facebook)
-  flutter_animate: ^4.5.0             # 🎬 Animações fáceis (fade, slide, scale)
-  animations: ^2.0.11                 # 🎪 Animações prontas (transições entre telas)
-  confetti: ^0.7.0                    # 🎉 Chuva de confetes (celebrações)
-  flutter_colorpicker: ^1.1.0         # 🎨 Seletor de cores (personalização)
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10+1
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  animations: ^2.0.11
+  confetti: ^0.7.0
+  flutter_colorpicker: ^1.1.0
 
   # =============================================
   # 📄 MANIPULAÇÃO DE DOCUMENTOS
   # =============================================
-  pdf: ^3.10.7                        # 📑 Criar arquivos PDF (certificados, relatórios)
-  printing: ^5.11.1                   # 🖨️ Imprimir documentos direto do app
-  flutter_pdfview: ^1.3.2             # 👁️ Visualizar PDF dentro do app
-  file_saver: ^0.2.14                # 💾 Salvar PDFs/PNGs gerados no app/web
-  excel: ^2.0.0                       # 📊 Criar/ler planilhas Excel (relatórios)
-  csv: ^6.0.0                         # 📋 Manipular arquivos CSV (importar/exportar dados)
-  xml: ^6.3.0                         # 📄 Ler arquivos XML
-  archive: ^3.4.10                    # 📦 Criar/extrair arquivos ZIP
+  pdf: ^3.10.7
+  printing: ^5.11.1
+  flutter_pdfview: ^1.3.2
+  file_saver: ^0.2.14
+  excel: ^2.0.0
+  csv: ^6.0.0
+  xml: ^6.3.0
+  archive: ^3.4.10
 
   # =============================================
   # 🖼️ IMAGENS E ARQUIVOS
   # =============================================
-  image_picker: ^1.1.2                # 📸 Tirar foto ou escolher da galeria
-  cached_network_image: ^3.3.1        # 🖼️ Carregar imagens da internet com cache
-  file_picker: ^8.1.2                 # 📂 Selecionar arquivos do celular
-  flutter_cache_manager: ^3.3.0       # 💾 Cache de arquivos em geral
+  image_picker: ^1.1.2
+  cached_network_image: ^3.3.1
+  file_picker: ^8.1.2
+  flutter_cache_manager: ^3.3.0
 
   # =============================================
   # 🌐 INTERNET E REDE
   # =============================================
-  http: ^1.2.1                        # 🌍 Fazer requisições HTTP (APIs externas)
-  connectivity_plus: ^6.0.0           # 📶 Verificar se tem internet (WiFi/4G/5G)
-  webview_flutter: ^4.7.0             # 🌐 Abrir páginas web dentro do app
+  http: ^1.2.1
+  connectivity_plus: ^6.0.0
+  webview_flutter: ^4.7.0
   universal_html: ^2.2.4
 
   # =============================================
   # 📁 ARQUIVOS E PERMISSÕES
   # =============================================
-  path_provider: ^2.1.3               # 📍 Descobrir pastas do sistema (Documentos, Cache)
-  permission_handler: ^11.3.1         # 🔓 Pedir permissões (câmera, armazenamento)
-  open_filex: ^4.4.0                  # 📂 Abrir arquivos em outros apps
+  path_provider: ^2.1.3
+  permission_handler: ^11.3.1
+  open_filex: ^4.4.0
 
   # =============================================
   # 📱 INFORMAÇÕES DO DISPOSITIVO
   # =============================================
-  package_info_plus: ^8.0.0           # 📦 Info do app (versão, nome do pacote)
-  device_info_plus: ^9.1.0            # 📱 Info do celular (modelo, Android/iOS)
+  package_info_plus: ^8.0.0
+  device_info_plus: ^9.1.0
 
   # =============================================
   # 📅 DATAS E FORMATAÇÃO
   # =============================================
-  intl: ^0.20.2                       # 📆 Formatar datas, números, moedas (R$)
+  intl: ^0.20.2
 
   # =============================================
   # 🔗 INTEGRAÇÕES
   # =============================================
-  url_launcher: ^6.3.0                # 🔗 Abrir links (WhatsApp, telefone, email, maps)
-  share_plus: ^10.0.0                 # 📤 Compartilhar conteúdo (texto, imagens)
+  url_launcher: ^6.3.0
+  share_plus: ^10.0.0
 
   # =============================================
   # 🔔 NOTIFICAÇÕES
   # =============================================
-  flutter_local_notifications: ^17.2.0  # 🔔 Notificações locais (lembretes agendados)
+  flutter_local_notifications: ^17.2.0
 
   # =============================================
   # 📊 GRÁFICOS
   # =============================================
-  fl_chart: ^0.68.0                   # 📈 Gráficos (linha, barra, pizza)
+  fl_chart: ^0.68.0
 
   # =============================================
   # 🛠️ UTILITÁRIOS
   # =============================================
-  collection: ^1.18.0                 # 🧰 Funções extras para Listas/Mapas
-  async: ^2.11.0                      # ⏳ Programação assíncrona avançada
-  uuid: ^4.4.0                        # 🎫 Gerar IDs únicos
+  collection: ^1.18.0
+  async: ^2.11.0
+  uuid: ^4.4.0
 
   # =============================================
   # 📊 GOOGLE SHEETS (Integração)
   # =============================================
-  googleapis: ^13.0.0                 # 📊 API do Google (Sheets, Drive, etc)
-  googleapis_auth: ^1.5.0             # 🔑 Autenticar com APIs do Google
+  googleapis: ^13.0.0
+  googleapis_auth: ^1.5.0
 
   # =============================================
   # 💾 BANCO DE DADOS LOCAL (Offline)
   # =============================================
-  hive: ^2.2.3                        # 📦 Banco NoSQL local (cache offline)
-  hive_flutter: ^1.1.0                # 🔌 Integração do Hive com Flutter
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
 
 # =============================================
 # 🛠️ DEPENDÊNCIAS DE DESENVOLVIMENTO
 # =============================================
 dev_dependencies:
   flutter_test:
-    sdk: flutter                      # 🧪 Testes unitários
-  flutter_lints: ^6.0.0               # 📏 Boas práticas de código
-  image: ^4.1.7                       # 🖼️ Manipular imagens (gerar ícones)
-  flutter_launcher_icons: ^0.14.1     # 🎨 Gerar ícones do app
-  flutter_native_splash: ^2.4.4       # 🚀 Gerar splash nativo do Android/iOS
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  image: ^4.1.7
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.4
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DO FLUTTER
@@ -158,6 +156,8 @@ flutter:
     - assets/images/google_logo.png
     - assets/logoprincipal.png
     - assets/images/logo_uai_tema.svg
+    - assets/logo_uai_tema_seguro.svg
+    - assets/uai_capoeira_logo.svg
 
     # 📊 Dados de migração
     - assets/dadosalunos.csv
@@ -172,7 +172,12 @@ flutter:
     # 🔑 Credenciais
     - assets/credentials.json
 
-  # 🔤 FONTES DOS CERTIFICADOS
+  # 🔤 FONTES DO APP / CERTIFICADOS
+  #
+  # IMPORTANTE:
+  # - A fonte Sitka foi removida porque não existe mais em assets/fontes.
+  # - As famílias abaixo podem ser usadas por TextStyle(fontFamily: "...").
+  # - No PDF direto, estes mesmos arquivos também podem ser carregados por asset path.
   fonts:
     - family: Arial
       fonts:
@@ -201,16 +206,10 @@ flutter:
         - asset: assets/fontes/ARLRDBD.TTF
           weight: 700
 
-    - family: SitkaText
+    - family: ArialBlack
       fonts:
-        - asset: assets/fontes/Sitka.ttc
-        - asset: assets/fontes/SitkaB.ttc
-          weight: 700
-        - asset: assets/fontes/SitkaI.ttc
-          style: italic
-        - asset: assets/fontes/SitkaZ.ttc
-          weight: 700
-          style: italic
+        - asset: assets/fontes/ariblk.ttf
+          weight: 900
 
     - family: Square721BT
       fonts:
@@ -227,6 +226,22 @@ flutter:
     - family: EngraversGothicBT
       fonts:
         - asset: assets/fontes/EngraversGothic BT.ttf
+
+    - family: AngelinaMalika
+      fonts:
+        - asset: assets/fontes/Angelina Malika Personal Use.ttf
+
+    - family: Autography
+      fonts:
+        - asset: assets/fontes/Autography.otf
+
+    - family: Bigtimes
+      fonts:
+        - asset: assets/fontes/Bigtimes.otf
+
+    - family: PhotographSignature
+      fonts:
+        - asset: assets/fontes/Photograph Signature.ttf
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DE ÍCONES DO APP

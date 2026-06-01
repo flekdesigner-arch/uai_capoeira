@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/widgets.dart';
 
@@ -12,14 +13,17 @@ class GeradorCertificadoEventoService {
   final CertificadoExportService _exportService;
   final CertificadoEventoMapperService _mapperService;
   final FirebaseStorage _storage;
+  final FirebaseFirestore _firestore;
 
   GeradorCertificadoEventoService({
     CertificadoExportService? exportService,
     CertificadoEventoMapperService? mapperService,
     FirebaseStorage? storage,
+    FirebaseFirestore? firestore,
   })  : _exportService = exportService ?? const CertificadoExportService(),
         _mapperService = mapperService ?? CertificadoEventoMapperService(),
-        _storage = storage ?? FirebaseStorage.instance;
+        _storage = storage ?? FirebaseStorage.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
 
   Future<Uint8List> capturarPngDaPreview(
       GlobalKey repaintKey, {
@@ -106,6 +110,10 @@ class GeradorCertificadoEventoService {
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
   }) async {
+    if (pdfBytes.isEmpty) {
+      throw Exception('PDF vazio. Não é possível salvar certificado.');
+    }
+
     if (evento.eventoId.trim().isEmpty) {
       throw Exception('Evento sem ID. Não é possível salvar certificado.');
     }
@@ -145,12 +153,20 @@ class GeradorCertificadoEventoService {
     return ref.getDownloadURL();
   }
 
-  Future<String> gerarUploadERegistrarPdf({
-    required GlobalKey repaintKey,
+  Future<String> uploadPdfDiretoERegistrar({
+    required Uint8List pdfBytes,
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
   }) async {
-    final pdfBytes = await gerarPdfDaPreview(repaintKey);
+    if (participante.participacaoId.trim().isEmpty) {
+      throw Exception('Participação sem ID. Não é possível vincular certificado.');
+    }
+
+    final dadosAntigos = await _buscarDadosCertificadoAntigo(
+      participacaoId: participante.participacaoId,
+    );
+
+    await _tentarApagarCertificadoAntigoDoStorage(dadosAntigos);
 
     final link = await uploadPdfDoParticipante(
       pdfBytes: pdfBytes,
@@ -158,15 +174,105 @@ class GeradorCertificadoEventoService {
       participante: participante,
     );
 
+    final storagePath =
+        'eventos/${evento.eventoId}/certificados/${participante.participacaoId}/${nomeArquivoBase(evento: evento, participante: participante, extensao: 'pdf')}';
+
     await _mapperService.marcarCertificadoGerado(
       participacaoId: participante.participacaoId,
       linkCertificado: link,
-      storagePath:
-      'eventos/${evento.eventoId}/certificados/${participante.participacaoId}/${nomeArquivoBase(evento: evento, participante: participante, extensao: 'pdf')}',
+      storagePath: storagePath,
       tipoArquivo: 'pdf',
     );
 
     return link;
+  }
+
+  Future<String> gerarUploadERegistrarPdf({
+    required GlobalKey repaintKey,
+    required CertificadoEventoData evento,
+    required CertificadoParticipanteData participante,
+  }) async {
+    final pdfBytes = await gerarPdfDaPreview(repaintKey);
+
+    return uploadPdfDiretoERegistrar(
+      pdfBytes: pdfBytes,
+      evento: evento,
+      participante: participante,
+    );
+  }
+
+  Future<Map<String, dynamic>> _buscarDadosCertificadoAntigo({
+    required String participacaoId,
+  }) async {
+    try {
+      final doc = await _firestore
+          .collection('participacoes_eventos_em_andamento')
+          .doc(participacaoId)
+          .get();
+
+      return doc.data() ?? <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<void> _tentarApagarCertificadoAntigoDoStorage(
+      Map<String, dynamic> dados,
+      ) async {
+    final storagePath = _primeiroTextoNaoVazio([
+      dados['certificado_storage_path'],
+      dados['storage_path_certificado'],
+      dados['certificado_path'],
+      dados['link_certificado_storage_path'],
+    ]);
+
+    if (storagePath != null) {
+      try {
+        await _storage.ref().child(storagePath).delete();
+        return;
+      } on FirebaseException catch (e) {
+        if (e.code != 'object-not-found') {
+          // Continua tentando pelo link, se houver.
+        }
+      } catch (_) {
+        // Continua tentando pelo link, se houver.
+      }
+    }
+
+    final link = _primeiroTextoNaoVazio([
+      dados['link_certificado'],
+      dados['certificado_url'],
+      dados['url_certificado'],
+    ]);
+
+    if (link == null || !_pareceUrlFirebaseStorage(link)) {
+      return;
+    }
+
+    try {
+      await _storage.refFromURL(link).delete();
+    } on FirebaseException catch (e) {
+      if (e.code == 'object-not-found') return;
+    } catch (_) {
+      // Link externo, link antigo inválido ou sem permissão: não bloqueia o novo upload.
+    }
+  }
+
+  bool _pareceUrlFirebaseStorage(String value) {
+    final lower = value.toLowerCase();
+
+    return lower.contains('firebasestorage.googleapis.com') ||
+        lower.contains('storage.googleapis.com') ||
+        lower.startsWith('gs://');
+  }
+
+  String? _primeiroTextoNaoVazio(List<dynamic> values) {
+    for (final value in values) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) return text;
+    }
+
+    return null;
   }
 
   String nomeArquivoBase({
@@ -174,18 +280,9 @@ class GeradorCertificadoEventoService {
     required CertificadoParticipanteData participante,
     String? extensao,
   }) {
-    final eventoSlug = _slugify(evento.eventoNome);
     final alunoSlug = _slugify(participante.alunoNome);
-    final graduacaoSlug = _slugify(participante.graduacaoNova);
-    final tipoSlug = _slugify(participante.certificadoOuDiploma);
 
-    final base = [
-      'certificado',
-      if (eventoSlug.isNotEmpty) eventoSlug,
-      if (tipoSlug.isNotEmpty) tipoSlug,
-      if (alunoSlug.isNotEmpty) alunoSlug,
-      if (graduacaoSlug.isNotEmpty) graduacaoSlug,
-    ].join('_');
+    final base = alunoSlug.isEmpty ? 'certificado' : alunoSlug.toUpperCase();
 
     if (extensao == null || extensao.trim().isEmpty) return base;
 

@@ -107,6 +107,21 @@ class CertificadoFileShareService {
     }
 
     final nome = _garantirExtensao(nomeArquivo, 'pdf');
+
+    // PWA/Web não possui implementação do path_provider.
+    // Antes o botão COMPARTILHAR caía em getTemporaryDirectory() e gerava:
+    // MissingPluginException(No implementation found for method getTemporaryDirectory...).
+    // Na Web o comportamento correto é baixar o arquivo pelo navegador.
+    if (kIsWeb) {
+      await FileSaver.instance.saveFile(
+        name: nome.replaceAll('.pdf', ''),
+        bytes: bytes,
+        ext: 'pdf',
+        mimeType: MimeType.pdf,
+      );
+      return;
+    }
+
     final file = await _gravarTemporario(
       bytes: bytes,
       nomeArquivo: nome,
@@ -135,6 +150,17 @@ class CertificadoFileShareService {
     }
 
     final nome = _garantirExtensao(nomeArquivo, 'png');
+
+    if (kIsWeb) {
+      await FileSaver.instance.saveFile(
+        name: nome.replaceAll('.png', ''),
+        bytes: bytes,
+        ext: 'png',
+        mimeType: MimeType.png,
+      );
+      return;
+    }
+
     final file = await _gravarTemporario(
       bytes: bytes,
       nomeArquivo: nome,

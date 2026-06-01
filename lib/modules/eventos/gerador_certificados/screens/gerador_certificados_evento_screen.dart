@@ -68,7 +68,6 @@ class _GeradorCertificadosEventoScreenState
   int _progressoTotal = 0;
 
   CertificadoParticipanteData? _renderParticipante;
-  CertificadoPacoteGraficaGerado? _ultimoPacoteGerado;
 
   String _busca = '';
   CertificadoFiltroParticipantes _filtro =
@@ -354,6 +353,10 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _abrirPreview(CertificadoParticipanteData participante) async {
+    // IMPORTANTE:
+    // Ao voltar da prévia, não recarrega mais tudo do servidor automaticamente.
+    // A tela do gerador mantém os dados em memória/cache para ficar instantânea.
+    // Para atualizar de verdade, use o botão atualizar ou puxe a lista para baixo.
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) {
@@ -365,7 +368,16 @@ class _GeradorCertificadosEventoScreenState
       ),
     );
 
-    await _carregarParticipantes(forcarServidor: true);
+    if (!mounted) return;
+
+    debugPrint(
+      '🧾 [GeradorCertificados] voltou da prévia mantendo cache local: ${_participantes.length} participantes',
+    );
+
+    setState(() {
+      _carregando = false;
+      _erro = null;
+    });
   }
 
   Future<void> _marcarImpresso(CertificadoParticipanteData participante) async {
@@ -534,44 +546,102 @@ class _GeradorCertificadosEventoScreenState
       return;
     }
 
+    final confirmar = await _confirmarAcao(
+      titulo: 'Gerar e vincular certificados?',
+      mensagem:
+      'O sistema vai gerar PDFs diretos, enviar para o Firebase Storage e vincular o novo link na participação. '
+          'Se já existir certificado antigo no Firebase Storage, ele será removido. Links externos, como Drive, serão apenas substituídos.',
+      confirmar: 'GERAR E VINCULAR',
+    );
+
+    if (confirmar != true) return;
+
     setState(() {
       _processandoLote = true;
       _progressoAtual = 0;
       _progressoTotal = selecionados.length;
       _statusProcessamento = 'Gerando e vinculando certificados...';
+      _renderParticipante = null;
+      _logsProcessamento.clear();
+      _addLogProcessamentoSemSetState(
+        'Iniciando geração direta de ${selecionados.length} certificado(s).',
+      );
     });
 
+    var gerados = 0;
+    var pulados = 0;
+
     try {
+      await Future<void>.delayed(const Duration(milliseconds: 160));
+      await WidgetsBinding.instance.endOfFrame;
+
       for (var i = 0; i < selecionados.length; i++) {
         final participante = selecionados[i];
 
         if (!participante.estaProntoParaGerar) {
+          pulados++;
+          _addLogProcessamentoSemSetState(
+            'Ignorado: ${participante.alunoNome} sem dados suficientes.',
+          );
           continue;
         }
+
+        if (!mounted) return;
 
         setState(() {
           _progressoAtual = i + 1;
           _statusProcessamento =
-          'Salvando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
-          _renderParticipante = participante;
+          'Gerando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+          _renderParticipante = null;
+          _addLogProcessamentoSemSetState(
+            'Gerando PDF direto: ${participante.alunoNome}',
+          );
         });
 
-        await _aguardarRenderizacao();
-
-        await _geradorService.gerarUploadERegistrarPdf(
-          repaintKey: _batchExportKey,
+        final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
           evento: _eventoData,
           participante: participante,
         );
+
+        await _geradorService.uploadPdfDiretoERegistrar(
+          pdfBytes: pdfBytes,
+          evento: _eventoData,
+          participante: participante,
+        );
+
+        gerados++;
+
+        if (!mounted) return;
+
+        setState(() {
+          _statusProcessamento =
+          'Vinculado ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+          _addLogProcessamentoSemSetState(
+            'PDF enviado e link vinculado: ${participante.alunoNome}',
+          );
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 45));
       }
 
       if (!mounted) return;
 
-      _mostrarInfo('Certificados gerados e vinculados com sucesso.');
+      setState(() {
+        _statusProcessamento = 'Atualizando lista do servidor...';
+        _addLogProcessamentoSemSetState(
+          'Concluído. Gerados: $gerados • Ignorados: $pulados.',
+        );
+      });
+
+      _mostrarInfo('Certificados gerados e vinculados: $gerados. Ignorados: $pulados.');
       _limparSelecao();
       await _carregarParticipantes(forcarServidor: true);
     } catch (e) {
       if (!mounted) return;
+
+      setState(() {
+        _addLogProcessamentoSemSetState('Erro ao gerar/vincular: $e');
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -592,6 +662,7 @@ class _GeradorCertificadosEventoScreenState
       }
     }
   }
+
 
   Future<void> _criarLotesImpressao() async {
     if (_processandoLote) return;
@@ -1040,7 +1111,6 @@ class _GeradorCertificadosEventoScreenState
       final zipMb = pacote.zipBytes.length / (1024 * 1024);
 
       setState(() {
-        _ultimoPacoteGerado = pacote;
         _statusProcessamento =
         'ZIP pronto: ${zipMb.toStringAsFixed(1)} MB';
         _addLogProcessamentoSemSetState(
@@ -1765,6 +1835,32 @@ class _GeradorCertificadosEventoScreenState
     );
   }
 
+  String get _tituloProcessamentoOverlay {
+    final status = (_statusProcessamento ?? '').toLowerCase();
+
+    if (status.contains('zip') ||
+        status.contains('pacote') ||
+        status.contains('compactando')) {
+      return 'Gerando pacote ZIP';
+    }
+
+    if (status.contains('relatório') || status.contains('relatorio')) {
+      return 'Gerando relatório';
+    }
+
+    if (status.contains('vinculando') ||
+        status.contains('vinculado') ||
+        status.contains('salvando')) {
+      return 'Gerando e vinculando';
+    }
+
+    if (status.contains('lote')) {
+      return 'Criando lotes de impressão';
+    }
+
+    return 'Processando certificados';
+  }
+
   Widget _buildProcessamentoOverlay() {
     final t = context.uai;
     final primary = _ensureVisible(t.primary, t.card);
@@ -1813,7 +1909,7 @@ class _GeradorCertificadosEventoScreenState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Gerando pacote ZIP',
+                              _tituloProcessamentoOverlay,
                               style: TextStyle(
                                 color: t.textPrimary,
                                 fontWeight: FontWeight.w900,
@@ -1951,7 +2047,9 @@ class _GeradorCertificadosEventoScreenState
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Não feche a tela até aparecer “ZIP pronto”.',
+                    _tituloProcessamentoOverlay == 'Gerando pacote ZIP'
+                        ? 'Não feche a tela até aparecer “ZIP pronto”.'
+                        : 'Não feche a tela até o processamento terminar.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: t.textMuted,

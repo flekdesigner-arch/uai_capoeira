@@ -213,10 +213,10 @@ class _PreviewCertificadoParticipanteScreenState
 
 
   Future<void> _salvarVinculo() async {
-    await _garantirExportPronto();
+    final pdfBytes = await _gerarPdfDireto();
 
-    final link = await _geradorService.gerarUploadERegistrarPdf(
-      repaintKey: _exportKey,
+    final link = await _geradorService.uploadPdfDiretoERegistrar(
+      pdfBytes: pdfBytes,
       evento: evento,
       participante: participante,
     );

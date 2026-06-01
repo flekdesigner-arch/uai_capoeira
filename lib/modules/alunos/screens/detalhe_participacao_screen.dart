@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 
 class DetalheParticipacaoScreen extends StatefulWidget {
   final Map<String, dynamic> participacao;
@@ -32,6 +33,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   String? _svgContent;
   String? _svgColorido;
   String? _eventoDocId;
+  String? _certificadoServidor;
 
   bool _isLoading = true;
 
@@ -84,6 +86,116 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
 
     return null;
+  }
+
+  String? _extrairCertificadoUrl(Map<String, dynamic>? data) {
+    return _pickFirstString(data, const [
+      'link_certificado',
+      'linkCertificado',
+      'certificado_url',
+      'certificadoUrl',
+      'url_certificado',
+      'urlCertificado',
+      'certificado',
+      'certificado_link',
+      'certificadoLink',
+      'pdf_certificado',
+      'pdfCertificado',
+      'arquivo_certificado',
+      'arquivoCertificado',
+    ]);
+  }
+
+  String? _certificadoUrl() {
+    return _certificadoServidor ??
+        _extrairCertificadoUrl(widget.participacao);
+  }
+
+  String _tipoLinkCertificado(String link) {
+    final lower = link.toLowerCase();
+
+    if (lower.contains('firebasestorage.googleapis.com') ||
+        lower.contains('storage.googleapis.com') ||
+        lower.contains('appspot.com')) {
+      return 'Firebase Storage';
+    }
+
+    if (lower.contains('drive.google.com')) {
+      return 'Google Drive';
+    }
+
+    return 'Link externo';
+  }
+
+  String _normalizarLinkVisualizacao(String link) {
+    var finalUrl = link.trim();
+
+    if (finalUrl.contains('drive.google.com')) {
+      final regex = RegExp(r'/d/([a-zA-Z0-9_-]+)');
+      final match = regex.firstMatch(finalUrl);
+
+      if (match != null && match.groupCount >= 1) {
+        final fileId = match.group(1);
+        finalUrl = 'https://drive.google.com/file/d/$fileId/preview';
+      }
+    }
+
+    return finalUrl;
+  }
+
+  Future<void> _buscarCertificadoServidor() async {
+    final candidatosColecoes = <String>[
+      'participacoes_eventos_concluidas',
+      'participacoes_concluidas',
+      'participacoes_eventos_finalizadas',
+      'participacoes_eventos',
+      'participacoes_eventos_em_andamento',
+    ];
+
+    for (final collection in candidatosColecoes) {
+      try {
+        final doc = await _firestore
+            .collection(collection)
+            .doc(widget.participacaoId)
+            .get();
+
+        if (!doc.exists) continue;
+
+        final link = _extrairCertificadoUrl(doc.data());
+        if (link != null) {
+          _certificadoServidor = link;
+          debugPrint('📄 Certificado encontrado em $collection: $link');
+          return;
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar certificado em $collection: $e');
+      }
+    }
+
+    final eventoId = _getEventoId();
+    if (eventoId != null) {
+      try {
+        final subDoc = await _firestore
+            .collection('eventos')
+            .doc(eventoId)
+            .collection('participacoes')
+            .doc(widget.participacaoId)
+            .get();
+
+        if (subDoc.exists) {
+          final link = _extrairCertificadoUrl(subDoc.data());
+          if (link != null) {
+            _certificadoServidor = link;
+            debugPrint('📄 Certificado encontrado em eventos/$eventoId/participacoes: $link');
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar certificado na subcoleção do evento: $e');
+      }
+    }
+
+    _certificadoServidor = _extrairCertificadoUrl(widget.participacao);
   }
 
   String? _getEventoId() {
@@ -247,6 +359,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           _alunoDetalhes = alunoDoc.data();
         }
       }
+
+      await _buscarCertificadoServidor();
 
       if (nomeGraduacao != null) {
         await _buscarCoresPorNome(nomeGraduacao);
@@ -483,9 +597,24 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     if (cleaned == null) return;
 
     try {
-      final uri = Uri.parse(cleaned);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final uri = Uri.parse(_normalizarLinkVisualizacao(cleaned));
+
+      // Não usa canLaunchUrl como bloqueio: em alguns Android ele retorna false
+      // mesmo existindo navegador, gerando "component name is null".
+      final openedExternal = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (openedExternal) return;
+
+      final openedDefault = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+      );
+
+      if (!openedDefault) {
+        _showSnack('Não foi possível abrir o link', context.uai.error);
       }
     } catch (e) {
       debugPrint('Erro ao abrir link: $e');
@@ -494,30 +623,21 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _abrirPDF(String? url) async {
+    await _abrirLink(url);
+  }
+
+  Future<void> _compartilharCertificado(String? url) async {
     final cleaned = _stringLimpa(url);
     if (cleaned == null) return;
 
-    var pdfUrl = cleaned;
-
-    if (cleaned.contains('drive.google.com')) {
-      final regex = RegExp(r'/d/([a-zA-Z0-9_-]+)');
-      final match = regex.firstMatch(cleaned);
-
-      if (match != null && match.groupCount >= 1) {
-        final fileId = match.group(1);
-        pdfUrl = 'https://drive.google.com/file/d/$fileId/preview';
-      }
-    }
-
     try {
-      final uri = Uri.parse(pdfUrl);
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      await Share.share(
+        'Certificado de ${_alunoNome()} - ${_nomeEvento()}\n\n$cleaned',
+        subject: 'Certificado - ${_alunoNome()}',
+      );
     } catch (e) {
-      debugPrint('Erro ao abrir PDF: $e');
-      _showSnack('Não foi possível abrir o PDF', context.uai.error);
+      debugPrint('Erro ao compartilhar certificado: $e');
+      _showSnack('Não foi possível compartilhar o certificado', context.uai.error);
     }
   }
 
@@ -572,16 +692,6 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         _stringLimpa(widget.participacao['graduacao_nova']) ??
         _stringLimpa(widget.participacao['graduacao_atual']) ??
         'Graduação não informada';
-  }
-
-  String? _certificadoUrl() {
-    return _pickFirstString(widget.participacao, const [
-      'link_certificado',
-      'certificadoUrl',
-      'certificado_url',
-      'url_certificado',
-      'linkCertificado',
-    ]);
   }
 
   String? _alunoFotoUrl() {
@@ -1109,28 +1219,26 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Widget _buildCertificadoCard(String certificado) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(context.uai.cardRadius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _abrirPDF(certificado),
-        splashColor: context.uai.error.withOpacity(0.12),
-        highlightColor: context.uai.error.withOpacity(0.06),
-        child: Container(
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            color: Color.alphaBlend(
-              context.uai.error.withOpacity(0.08),
-              context.uai.card,
-            ),
-            borderRadius: BorderRadius.circular(context.uai.cardRadius),
-            border: Border.all(color: context.uai.error.withOpacity(0.22)),
-            boxShadow: context.uai.softShadow,
-          ),
-          child: Row(
+    final origem = _tipoLinkCertificado(certificado);
+    final accent = _ensureVisible(context.uai.success, context.uai.card);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          accent.withOpacity(0.08),
+          context.uai.card,
+        ),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        border: Border.all(color: accent.withOpacity(0.22)),
+        boxShadow: context.uai.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              _iconBox(Icons.picture_as_pdf_rounded, context.uai.error),
+              _iconBox(Icons.picture_as_pdf_rounded, accent),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1146,70 +1254,170 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
+                      'Origem: $origem',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
                       certificado,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _onCardMuted(),
-                        fontSize: 11.5,
+                        fontSize: 11,
+                        height: 1.2,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.open_in_new_rounded, color: context.uai.textMuted),
             ],
           ),
-        ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 430;
+
+              final abrir = ElevatedButton.icon(
+                onPressed: () => _abrirPDF(certificado),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('ABRIR / BAIXAR'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: _readableOn(accent),
+                  minimumSize: const Size(double.infinity, 46),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                  ),
+                ),
+              );
+
+              final compartilhar = OutlinedButton.icon(
+                onPressed: () => _compartilharCertificado(certificado),
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('COMPARTILHAR'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: accent,
+                  side: BorderSide(color: accent.withOpacity(0.48)),
+                  minimumSize: const Size(double.infinity, 46),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                  ),
+                ),
+              );
+
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    abrir,
+                    const SizedBox(height: 10),
+                    compartilhar,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: abrir),
+                  const SizedBox(width: 10),
+                  Expanded(child: compartilhar),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildActions(String? certificado) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back_rounded),
-            label: const Text('VOLTAR'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 50),
-              side: BorderSide(color: context.uai.border),
-              foregroundColor: context.uai.textPrimary,
-              textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-              ),
+        if (certificado != null) ...[
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 430;
+
+              final abrir = ElevatedButton.icon(
+                onPressed: () => _abrirPDF(certificado),
+                icon: const Icon(Icons.picture_as_pdf_rounded),
+                label: const Text('ABRIR / BAIXAR'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                      context.uai.primary,
+                  foregroundColor:
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                      _readableOn(
+                        Theme.of(context).appBarTheme.backgroundColor ??
+                            context.uai.primary,
+                      ),
+                  minimumSize: const Size(double.infinity, 50),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                  ),
+                ),
+              );
+
+              final compartilhar = OutlinedButton.icon(
+                onPressed: () => _compartilharCertificado(certificado),
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('COMPARTILHAR'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  side: BorderSide(color: context.uai.border),
+                  foregroundColor: context.uai.textPrimary,
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                  ),
+                ),
+              );
+
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    abrir,
+                    const SizedBox(height: 10),
+                    compartilhar,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: abrir),
+                  const SizedBox(width: 12),
+                  Expanded(child: compartilhar),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+        OutlinedButton.icon(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('VOLTAR'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 50),
+            side: BorderSide(color: context.uai.border),
+            foregroundColor: context.uai.textPrimary,
+            textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(context.uai.buttonRadius),
             ),
           ),
         ),
-        if (certificado != null) ...[
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () => _abrirPDF(certificado),
-              icon: const Icon(Icons.picture_as_pdf_rounded),
-              label: const Text('CERTIFICADO'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                Theme.of(context).appBarTheme.backgroundColor ??
-                    context.uai.primary,
-                foregroundColor: Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(
-                      Theme.of(context).appBarTheme.backgroundColor ??
-                          context.uai.primary,
-                    ),
-                minimumSize: const Size(double.infinity, 50),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-                ),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

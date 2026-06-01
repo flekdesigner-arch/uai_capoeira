@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -61,6 +62,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   double _totalPago = 0;
   double _saldo = 0;
 
+  String? _linkCertificadoServidor;
+
   // Dados do evento (taxas, camisas, etc)
   Map<String, dynamic>? _dadosEvento;
 
@@ -72,6 +75,133 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   // 🔥 ÚLTIMO NÍVEL INFANTIL
   final int _ultimoNivelInfantil = 8;
+
+  Color _readableOn(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff =
+    (color.computeLuminance() - background.computeLuminance()).abs();
+
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  String? _stringLimpa(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    if (text.toLowerCase() == 'null') return null;
+    return text;
+  }
+
+  String? _extrairLinkCertificado(Map<String, dynamic>? data) {
+    if (data == null) return null;
+
+    final candidatos = <dynamic>[
+      data['link_certificado'],
+      data['linkCertificado'],
+      data['certificado_url'],
+      data['certificadoUrl'],
+      data['url_certificado'],
+      data['urlCertificado'],
+      data['certificado'],
+      data['certificado_link'],
+      data['certificadoLink'],
+    ];
+
+    for (final item in candidatos) {
+      final clean = _stringLimpa(item);
+      if (clean != null) return clean;
+    }
+
+    return null;
+  }
+
+  String? _certificadoAtual() {
+    final candidatos = <dynamic>[
+      _linkCertificadoServidor,
+      _participacao.linkCertificado,
+      widget.participacao['link_certificado'],
+      widget.participacao['linkCertificado'],
+      widget.participacao['certificado_url'],
+      widget.participacao['certificadoUrl'],
+      widget.participacao['url_certificado'],
+      widget.participacao['urlCertificado'],
+      widget.participacao['certificado'],
+      widget.participacao['certificado_link'],
+      widget.participacao['certificadoLink'],
+    ];
+
+    for (final item in candidatos) {
+      final clean = _stringLimpa(item);
+      if (clean != null) return clean;
+    }
+
+    return null;
+  }
+
+  String _tipoLinkCertificado(String link) {
+    final lower = link.toLowerCase();
+
+    if (lower.contains('firebasestorage.googleapis.com') ||
+        lower.contains('storage.googleapis.com') ||
+        lower.contains('appspot.com')) {
+      return 'Firebase Storage';
+    }
+
+    if (lower.contains('drive.google.com')) {
+      return 'Google Drive';
+    }
+
+    return 'Link externo';
+  }
+
+  void _showSnackTema(
+      String mensagem, {
+        required Color background,
+        IconData? icon,
+      }) {
+    if (!mounted) return;
+
+    final fg = _readableOn(background);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: fg, size: 18),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                mensagem,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: background,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
 
   @override
   void initState() {
@@ -186,10 +316,12 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       if (docSnapshot.exists) {
         final data = docSnapshot.data()!;
+        _linkCertificadoServidor = _extrairLinkCertificado(data);
         debugPrint('🔍 DADOS NO FIRESTORE:');
         debugPrint('   - valorInscricao: ${data['valor_inscricao']}');
         debugPrint('   - valorCamisa: ${data['valor_camisa']}');
         debugPrint('   - total_pago: ${data['total_pago']}');
+        debugPrint('   - linkCertificado: $_linkCertificadoServidor');
       }
 
       // 🔥 1º - Carrega a participação ATUALIZADA do Firestore
@@ -201,6 +333,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             widget.participacaoId,
             participacaoAtualizada,
           );
+          _linkCertificadoServidor =
+              _extrairLinkCertificado(participacaoAtualizada) ??
+                  _linkCertificadoServidor;
         });
 
         debugPrint('📊 Participação carregada:');
@@ -261,14 +396,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   void _mostrarSemPermissao([
     String mensagem = 'Você não tem permissão para executar esta ação.',
   ]) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
+    _showSnackTema(
+      mensagem,
+      background: context.uai.error,
+      icon: Icons.lock_rounded,
     );
   }
 
@@ -1510,23 +1641,29 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<String?> _obterLinkCertificadoReal() async {
-    // 🔥 PRIORIDADE 1: link que já veio no model/tela
-    final linkModel = _participacao.linkCertificado?.trim();
-    if (linkModel != null && linkModel.isNotEmpty) {
-      return linkModel;
+    // 🔥 PRIORIDADE 1: qualquer link que já veio no model/tela/servidor.
+    final linkAtual = _certificadoAtual();
+    if (linkAtual != null && linkAtual.isNotEmpty) {
+      debugPrint(
+        '📄 Certificado usado ao finalizar (${_tipoLinkCertificado(linkAtual)}): $linkAtual',
+      );
+      return linkAtual;
     }
 
-    // 🔥 PRIORIDADE 2: busca direto no documento em andamento
-    // Isso evita finalizar com link fake ou apagar o link real do Drive.
+    // 🔥 PRIORIDADE 2: busca direto no documento em andamento.
+    // Híbrido: aceita Firebase Storage, Google Drive ou link externo.
     try {
       final doc = await FirebaseFirestore.instance
           .collection('participacoes_eventos_em_andamento')
           .doc(widget.participacaoId)
           .get();
 
-      final linkFirestore = doc.data()?['link_certificado']?.toString().trim();
+      final linkFirestore = _extrairLinkCertificado(doc.data());
 
       if (linkFirestore != null && linkFirestore.isNotEmpty) {
+        debugPrint(
+          '📄 Certificado encontrado no Firestore (${_tipoLinkCertificado(linkFirestore)}): $linkFirestore',
+        );
         return linkFirestore;
       }
     } catch (e) {
@@ -1710,19 +1847,23 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       builder: (context, snapshot) {
         final fotoUrl = snapshot.data?['foto'];
 
+        final inicial = _participacao.alunoNome.trim().isNotEmpty
+            ? _participacao.alunoNome.trim()[0].toUpperCase()
+            : '?';
+
         return CircleAvatar(
           radius: 40,
-          backgroundColor: Colors.white,
+          backgroundColor: context.uai.card,
           backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
               ? NetworkImage(fotoUrl)
               : null,
           child: fotoUrl == null || fotoUrl.isEmpty
               ? Text(
-            _participacao.alunoNome[0].toUpperCase(),
+            inicial,
             style: TextStyle(
               fontSize: 32,
-              color: Colors.red.shade900,
-              fontWeight: FontWeight.bold,
+              color: context.uai.primary,
+              fontWeight: FontWeight.w900,
             ),
           )
               : null,
@@ -1733,15 +1874,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.uai;
+    final certificado = _certificadoAtual();
+
     return Scaffold(
+      backgroundColor: t.background,
       appBar: AppBar(
         title: Text(
           _participacao.alunoNome,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
         ),
-        backgroundColor: Colors.red.shade900,
-        foregroundColor: Colors.white,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -1749,524 +1893,1118 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             tooltip: 'Recarregar dados e permissões',
           ),
           if (_podeFinalizarAgora())
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: BorderRadius.circular(20),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
               child: IconButton(
-                icon: const Icon(Icons.check_circle, color: Colors.white),
+                icon: Icon(Icons.check_circle, color: t.success),
                 onPressed: _isLoading ? null : _finalizarParticipacao,
                 tooltip: 'Finalizar participação',
               ),
             ),
         ],
       ),
-      backgroundColor: Colors.grey.shade50,
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: Colors.red.shade900))
+          ? _buildLoadingTema()
           : RefreshIndicator(
         onRefresh: _recarregarTudo,
-        color: Colors.red.shade900,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // === CARD DO ALUNO ===
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.red.shade900,
-                      Colors.red.shade700,
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.shade900.withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    _buildFotoAluno(),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _participacao.alunoNome,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: _participacao.corStatus,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _participacao.textoStatus,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        color: t.primary,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontal = constraints.maxWidth < 620 ? 14.0 : 22.0;
 
-              const SizedBox(height: 20),
-
-              // === SEÇÃO DE WHATSAPP (APENAS 2 BOTÕES COM SVG) ===
-              FutureBuilder<Map<String, dynamic>>(
-                future: _buscarDadosAlunoAtualizados(),
-                builder: (context, snapshot) {
-                  final dadosAluno = snapshot.data ?? {};
-
-                  return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(
-                        color: Colors.red.shade100,
-                        width: 1.5,
-                      ),
-                    ),
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 30),
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 980),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'Contatos Rápidos',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red[900],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildWhatsAppButtons(dadosAluno),
-                      ],
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 20),
-
-              // === RESUMO FINANCEIRO ===
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.shade200,
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '📊 RESUMO FINANCEIRO',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInfoCard(
-                            'Total',
-                            _formatarMoeda(_participacao.valorTotal),
-                            Icons.receipt,
-                            Colors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildInfoCard(
-                            'Pago',
-                            _formatarMoeda(_totalPago),
-                            Icons.check_circle,
-                            Colors.green,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildInfoCard(
-                            'Saldo',
-                            _formatarMoeda(_saldo),
-                            Icons.pending,
-                            _saldo > 0 ? Colors.orange : Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // === PAGAMENTOS ===
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.shade200,
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '💰 PAGAMENTOS',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                        if (_podeRegistrarPagamento && !_participacao.estaFinalizado && _saldo > 0)
-                          ElevatedButton.icon(
-                            onPressed: _registrarPagamento,
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Novo'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(80, 36),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    if (_pagamentos.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Icon(Icons.payment, size: 40, color: Colors.grey.shade400),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Nenhum pagamento registrado',
-                                style: TextStyle(color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      ..._pagamentos.map((p) => _buildPagamentoCard(p)),
-
-                    if (_participacao.parcelas > 0 && _saldo > 0) ...[
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Parcelas pendentes:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._buildParcelasPendentes(),
-                    ],
-                  ],
-                ),
-              ),
-
-              if (_podeRegistrarPagamento && !_participacao.estaFinalizado && _saldo > 0) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _registrarPagamento,
-                    icon: const Icon(Icons.pix),
-                    label: Text(
-                      'NOVO PAGAMENTO (${_formatarMoeda(_saldo)})',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 20),
-
-              // === CAMISA ===
-              _buildInfoSection(
-                icon: Icons.shopping_bag,
-                title: 'CAMISA',
-                color: Colors.blue,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildInfoRow(
-                        'Tamanho',
-                        _participacao.tamanhoCamisa ?? 'Não definido',
-                        icon: Icons.straighten,
-                      ),
-                    ),
-                    Expanded(
-                      child: _buildInfoRow(
-                        'Status',
-                        _participacao.camisaEntregue ? 'Entregue' : 'Pendente',
-                        icon: _participacao.camisaEntregue
-                            ? Icons.check_circle
-                            : Icons.access_time,
-                        iconColor: _participacao.camisaEntregue ? Colors.green : Colors.orange,
-                      ),
-                    ),
-                    if (_podeEditarCamisa)
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: _editarCamisa,
-                      ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // === GRADUAÇÃO ===
-              if (_participacao.isBatizado)
-                _buildInfoSection(
-                  icon: Icons.school,
-                  title: 'GRADUAÇÃO',
-                  color: Colors.purple,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildInfoRow(
-                              'Atual',
-                              _participacao.graduacao ?? '—',
-                              icon: Icons.circle,
-                              iconColor: _getCorGraduacao(_participacao.graduacao),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, color: Colors.grey.shade400),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildInfoRow(
-                              'Nova',
-                              _participacao.graduacaoNova ?? '—',
-                              icon: Icons.circle,
-                              iconColor: _getCorGraduacao(_participacao.graduacaoNova),
-                              textColor: _participacao.graduacaoNova != null
-                                  ? Colors.green
-                                  : null,
-                            ),
-                          ),
-                          if (_podeEditarGraduacao && !_participacao.estaFinalizado)
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: _editarGraduacao,
-                            ),
+                        _buildAlunoHeaderTema(),
+                        const SizedBox(height: 14),
+                        _buildContatosRapidosTema(),
+                        const SizedBox(height: 14),
+                        _buildResumoFinanceiroTema(),
+                        const SizedBox(height: 14),
+                        _buildPagamentosSectionTema(),
+                        if (_podeRegistrarPagamento &&
+                            !_participacao.estaFinalizado &&
+                            _saldo > 0) ...[
+                          const SizedBox(height: 12),
+                          _buildNovoPagamentoButtonTema(),
                         ],
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 20),
-
-              // === CERTIFICADO ===
-              if (_participacao.linkCertificado != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: InkWell(
-                    onTap: () => _abrirLink(_participacao.linkCertificado),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.picture_as_pdf,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Certificado',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                'Clique para visualizar',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.open_in_new, color: Colors.green.shade700),
+                        const SizedBox(height: 14),
+                        _buildCamisaSectionTema(),
+                        if (_participacao.isBatizado) ...[
+                          const SizedBox(height: 14),
+                          _buildGraduacaoSectionTema(),
+                        ],
+                        const SizedBox(height: 14),
+                        _buildCertificadoHibridoCardTema(certificado),
+                        const SizedBox(height: 14),
+                        if (_podeFinalizarAgora()) _buildFinalizarButtonTema(),
+                        if (!_participacao.estaFinalizado &&
+                            !_podeFinalizarAgora())
+                          _buildAvisoAguardandoEventoTema(),
                       ],
                     ),
                   ),
                 ),
               ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 20),
+  Widget _buildLoadingTema() {
+    final t = context.uai;
 
-              // === BOTÃO FINALIZAR ===
-              if (_podeFinalizarAgora())
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _finalizarParticipacao,
-                    icon: const Icon(Icons.check_circle),
-                    label: Text(
-                      _participacao.isBatizado
-                          ? 'FINALIZAR PARTICIPAÇÃO (atualiza graduação)'
-                          : 'FINALIZAR PARTICIPAÇÃO',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(t.cardRadius + 2),
+          border: Border.all(color: t.border),
+          boxShadow: t.cardShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: t.primary),
+            const SizedBox(height: 14),
+            Text(
+              'Carregando participação...',
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlunoHeaderTema() {
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: t.primaryGradient,
+        borderRadius: BorderRadius.circular(t.cardRadius + 4),
+        boxShadow: t.cardShadow,
+      ),
+      child: Row(
+        children: [
+          _buildFotoAluno(),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _participacao.alunoNome,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: onPrimary,
+                    height: 1.08,
                   ),
                 ),
-
-              // === AVISO ===
-              if (!_participacao.estaFinalizado && !_podeFinalizarAgora())
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info, color: Colors.orange.shade700),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '⏳ Aguardando data do evento',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
-                            ),
-                            Text(
-                              'A finalização estará disponível a partir de ${_formatarData(_participacao.dataEvento)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _heroChipTema(
+                      icon: Icons.verified_rounded,
+                      label: _participacao.textoStatus,
+                      color: onPrimary,
+                    ),
+                    if (_participacao.presente)
+                      _heroChipTema(
+                        icon: Icons.how_to_reg_rounded,
+                        label: 'Presente',
+                        color: onPrimary,
                       ),
-                    ],
+                    if (_carregandoPermissoes)
+                      _heroChipTema(
+                        icon: Icons.sync_rounded,
+                        label: 'Permissões...',
+                        color: onPrimary,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroChipTema({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContatosRapidosTema() {
+    final t = context.uai;
+
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _buscarDadosAlunoAtualizados(),
+      builder: (context, snapshot) {
+        final dadosAluno = snapshot.data ?? {};
+        final contatoAluno = dadosAluno['contato_aluno'] as String? ?? '';
+        final contatoResponsavel =
+        dadosAluno['contato_responsavel'] as String?;
+
+        return _sectionCardTema(
+          icon: Icons.chat_rounded,
+          title: 'Contatos rápidos',
+          subtitle: 'WhatsApp do aluno ou responsável',
+          color: t.success,
+          slim: true,
+          child: Row(
+            children: [
+              Expanded(
+                child: _whatsButtonTema(
+                  label: 'Aluno',
+                  onPressed: contatoAluno.isNotEmpty
+                      ? () => _abrirWhatsApp(contatoAluno)
+                      : null,
+                  color: t.success,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _whatsButtonTema(
+                  label: 'Responsável',
+                  onPressed: contatoResponsavel != null &&
+                      contatoResponsavel.isNotEmpty
+                      ? () => _abrirWhatsApp(contatoResponsavel)
+                      : null,
+                  color: t.info,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _whatsButtonTema({
+    required String label,
+    required VoidCallback? onPressed,
+    required Color color,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+    final enabled = onPressed != null;
+
+    return Material(
+      color: Color.alphaBlend(
+        accent.withOpacity(enabled ? 0.08 : 0.03),
+        t.card,
+      ),
+      borderRadius: BorderRadius.circular(t.inputRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 58),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(t.inputRadius),
+            border: Border.all(
+              color: enabled ? accent.withOpacity(0.18) : t.border,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildWhatsAppIcon(enabled: enabled, color: accent),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    color: enabled ? t.textPrimary : t.textMuted,
                   ),
                 ),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResumoFinanceiroTema() {
+    final t = context.uai;
+
+    return _sectionCardTema(
+      icon: Icons.account_balance_wallet_rounded,
+      title: 'Resumo financeiro',
+      subtitle: 'Total, pago e saldo',
+      color: t.info,
+      slim: true,
+      child: Row(
+        children: [
+          Expanded(
+            child: _miniInfoCardTema(
+              'Total',
+              _formatarMoeda(_participacao.valorTotal),
+              Icons.receipt_rounded,
+              t.info,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _miniInfoCardTema(
+              'Pago',
+              _formatarMoeda(_totalPago),
+              Icons.check_circle_rounded,
+              t.success,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _miniInfoCardTema(
+              'Saldo',
+              _formatarMoeda(_saldo),
+              Icons.pending_rounded,
+              _saldo > 0 ? t.warning : t.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniInfoCardTema(
+      String label,
+      String value,
+      IconData icon,
+      Color color,
+      ) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 66),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: accent.withOpacity(0.16)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: accent, size: 17),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w900,
+                color: accent,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 10,
+              color: t.textSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPagamentosSectionTema() {
+    final t = context.uai;
+
+    return _sectionCardTema(
+      icon: Icons.payments_rounded,
+      title: 'Pagamentos',
+      subtitle: _pagamentos.isEmpty
+          ? 'Nenhum pagamento registrado'
+          : '${_pagamentos.length} pagamento(s) no histórico',
+      color: t.success,
+      trailing: _podeRegistrarPagamento &&
+          !_participacao.estaFinalizado &&
+          _saldo > 0
+          ? TextButton.icon(
+        onPressed: _registrarPagamento,
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: const Text('Novo'),
+        style: TextButton.styleFrom(
+          foregroundColor: t.success,
+          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      )
+          : null,
+      child: Column(
+        children: [
+          if (_pagamentos.isEmpty)
+            _emptyBoxTema(
+              icon: Icons.payment_rounded,
+              title: 'Nenhum pagamento registrado',
+              subtitle: 'Quando houver pagamento, ele aparecerá aqui.',
+              color: t.textMuted,
+            )
+          else
+            ..._pagamentos.map(_buildPagamentoCardTema),
+          if (_participacao.parcelas > 0 && _saldo > 0) ...[
+            const SizedBox(height: 12),
+            Divider(color: t.border),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Parcelas pendentes',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ..._buildParcelasPendentesTema(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNovoPagamentoButtonTema() {
+    final t = context.uai;
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _registrarPagamento,
+        icon: const Icon(Icons.pix_rounded),
+        label: Text(
+          'NOVO PAGAMENTO (${_formatarMoeda(_saldo)})',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: t.success,
+          foregroundColor: _readableOn(t.success),
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCamisaSectionTema() {
+    final t = context.uai;
+
+    return _sectionCardTema(
+      icon: Icons.shopping_bag_rounded,
+      title: 'Camisa',
+      subtitle: 'Tamanho e status de entrega',
+      color: t.info,
+      trailing: _podeEditarCamisa
+          ? IconButton(
+        onPressed: _editarCamisa,
+        icon: Icon(Icons.edit_rounded, color: t.info),
+        tooltip: 'Editar camisa',
+      )
+          : null,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 480;
+          final tamanho = _infoTileTema(
+            'Tamanho',
+            _participacao.tamanhoCamisa ?? 'Não definido',
+            Icons.straighten_rounded,
+            t.info,
+          );
+          final status = _infoTileTema(
+            'Status',
+            _participacao.camisaEntregue ? 'Entregue' : 'Pendente',
+            _participacao.camisaEntregue
+                ? Icons.check_circle_rounded
+                : Icons.access_time_rounded,
+            _participacao.camisaEntregue ? t.success : t.warning,
+          );
+
+          if (narrow) {
+            return Column(
+              children: [
+                tamanho,
+                const SizedBox(height: 10),
+                status,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: tamanho),
+              const SizedBox(width: 12),
+              Expanded(child: status),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildGraduacaoSectionTema() {
+    final t = context.uai;
+    final atualColor =
+    _ensureVisible(_getCorGraduacao(_participacao.graduacao), t.card);
+    final novaColor =
+    _ensureVisible(_getCorGraduacao(_participacao.graduacaoNova), t.card);
+
+    return _sectionCardTema(
+      icon: Icons.school_rounded,
+      title: 'Graduação',
+      subtitle: 'Graduação atual e nova graduação no evento',
+      color: t.associacao,
+      trailing: _podeEditarGraduacao && !_participacao.estaFinalizado
+          ? IconButton(
+        onPressed: _editarGraduacao,
+        icon: Icon(Icons.edit_rounded, color: t.info),
+        tooltip: 'Editar graduação',
+      )
+          : null,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 560;
+
+          final atual = _infoTileTema(
+            'Atual',
+            _participacao.graduacao ?? '—',
+            Icons.circle_rounded,
+            atualColor,
+          );
+
+          final nova = _infoTileTema(
+            'Nova',
+            _participacao.graduacaoNova ?? '—',
+            Icons.circle_rounded,
+            novaColor,
+          );
+
+          if (narrow) {
+            return Column(
+              children: [
+                atual,
+                const SizedBox(height: 10),
+                Icon(Icons.arrow_downward_rounded, color: t.textMuted),
+                const SizedBox(height: 10),
+                nova,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: atual),
+              const SizedBox(width: 10),
+              Icon(Icons.arrow_forward_rounded, color: t.textMuted),
+              const SizedBox(width: 10),
+              Expanded(child: nova),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCertificadoHibridoCardTema(String? link) {
+    final t = context.uai;
+    final temCertificado = link != null && link.isNotEmpty;
+    final accent = temCertificado
+        ? _ensureVisible(t.success, t.card)
+        : _ensureVisible(t.warning, t.card);
+
+    return Material(
+      color: t.card,
+      borderRadius: BorderRadius.circular(t.cardRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: temCertificado ? () => _abrirLink(link) : null,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(accent.withOpacity(0.07), t.card),
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: accent.withOpacity(0.20)),
+            boxShadow: t.softShadow,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _iconBoxTema(
+                temCertificado
+                    ? Icons.picture_as_pdf_rounded
+                    : Icons.hourglass_empty_rounded,
+                accent,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      temCertificado
+                          ? 'Certificado vinculado'
+                          : 'Certificado ainda não vinculado',
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      temCertificado
+                          ? 'Origem: ${_tipoLinkCertificado(link)} • toque para abrir'
+                          : 'Gere pelo gerador de certificados ou vincule um link antes de finalizar.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 12,
+                        height: 1.25,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (temCertificado) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        link,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textMuted,
+                          fontSize: 10.8,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (temCertificado) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.open_in_new_rounded, color: accent, size: 22),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinalizarButtonTema() {
+    final t = context.uai;
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _finalizarParticipacao,
+        icon: const Icon(Icons.check_circle_rounded),
+        label: Text(
+          _participacao.isBatizado
+              ? 'FINALIZAR PARTICIPAÇÃO (atualiza graduação)'
+              : 'FINALIZAR PARTICIPAÇÃO',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: t.success,
+          foregroundColor: _readableOn(t.success),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvisoAguardandoEventoTema() {
+    final t = context.uai;
+    final warning = _ensureVisible(t.warning, t.card);
+
+    return _alertBoxTema(
+      icon: Icons.info_rounded,
+      color: warning,
+      title: 'Aguardando data do evento',
+      text:
+      'A finalização estará disponível a partir de ${_formatarData(_participacao.dataEvento)}',
+    );
+  }
+
+  Widget _buildPagamentoCardTema(PagamentoModel pagamento) {
+    final t = context.uai;
+    final confirmed = pagamento.status == 'confirmado';
+    final cor = _ensureVisible(confirmed ? t.success : t.warning, t.card);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cor.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: cor.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          _iconBoxTema(
+            confirmed ? Icons.check_circle_rounded : Icons.schedule_rounded,
+            cor,
+            size: 42,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _formatarMoeda(pagamento.valor),
+                  style: TextStyle(
+                    color: cor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${pagamento.formaPagamento} • ${_formatarData(pagamento.dataPagamento)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: t.textSecondary, fontSize: 11.5),
+                ),
+                if ((pagamento.observacoes ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    pagamento.observacoes!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: t.textMuted, fontSize: 10.5),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _statusChipTema(pagamento.status.toUpperCase(), cor),
+              if ((_podeEditarPagamento || _podeExcluirPagamento) &&
+                  !_participacao.estaFinalizado) ...[
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_podeEditarPagamento)
+                      _smallIconButtonTema(
+                        icon: Icons.edit_rounded,
+                        color: t.info,
+                        onTap: () => _editarPagamento(pagamento),
+                      ),
+                    if (_podeExcluirPagamento)
+                      _smallIconButtonTema(
+                        icon: Icons.delete_outline_rounded,
+                        color: t.error,
+                        onTap: () => _excluirPagamento(pagamento),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildParcelasPendentesTema() {
+    final t = context.uai;
+    final parcelas = <Widget>[];
+
+    if (_saldo <= 0) return parcelas;
+
+    final sugestoes = _gerarSugestoesPagamento();
+
+    if (sugestoes.isEmpty) {
+      parcelas.add(
+        _alertBoxTema(
+          icon: Icons.warning_amber_rounded,
+          color: t.warning,
+          title: 'Saldo pendente',
+          text: 'Ainda existe saldo pendente.',
+        ),
+      );
+      return parcelas;
+    }
+
+    for (final valor in sugestoes) {
+      parcelas.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: t.warning.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(t.inputRadius),
+            border: Border.all(color: t.warning.withOpacity(0.16)),
+          ),
+          child: Row(
+            children: [
+              _iconBoxTema(Icons.payments_rounded, t.warning, size: 34),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  valor >= _saldo - 0.01
+                      ? 'Quitar saldo restante'
+                      : 'Pagamento sugerido',
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                _formatarMoeda(valor),
+                style: TextStyle(
+                  color: _ensureVisible(t.warning, t.card),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return parcelas;
+  }
+
+  Widget _sectionCardTema({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required Widget child,
+    Widget? trailing,
+    bool slim = false,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      padding: EdgeInsets.all(slim ? 13 : 15),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: accent.withOpacity(0.16)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _iconBoxTema(icon, accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.25,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+          SizedBox(height: slim ? 10 : 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _infoTileTema(
+      String label,
+      String value,
+      IconData icon,
+      Color color,
+      ) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: accent.withOpacity(0.14)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10.8,
+                    color: t.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 13.2,
+                    fontWeight: FontWeight.w900,
+                    color: t.textPrimary,
+                    height: 1.18,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconBoxTema(IconData icon, Color color, {double size = 42}) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(t.buttonRadius),
+        border: Border.all(color: accent.withOpacity(0.20)),
+      ),
+      child: Icon(icon, color: accent, size: size * 0.52),
+    );
+  }
+
+  Widget _smallIconButtonTema({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final accent = _ensureVisible(color, context.uai.card);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(9),
+      child: Padding(
+        padding: const EdgeInsets.all(5),
+        child: Icon(icon, size: 18, color: accent),
+      ),
+    );
+  }
+
+  Widget _statusChipTema(String label, Color color) {
+    final accent = _ensureVisible(color, context.uai.card);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.11),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: accent.withOpacity(0.14)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: accent,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyBoxTema({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.cardAlt);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 36, color: accent),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _alertBoxTema({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String text,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: accent.withOpacity(0.18)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: accent, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 12,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2614,15 +3352,53 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _abrirLink(String? url) async {
-    if (url == null || url.isEmpty) return;
+    final cleaned = _stringLimpa(url);
+    if (cleaned == null) return;
 
     try {
-      final Uri uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      var finalUrl = cleaned;
+
+      // Drive antigo/compartilhado: abre em modo preview.
+      if (cleaned.contains('drive.google.com')) {
+        final regex = RegExp(r'/d/([a-zA-Z0-9_-]+)');
+        final match = regex.firstMatch(cleaned);
+
+        if (match != null && match.groupCount >= 1) {
+          final fileId = match.group(1);
+          finalUrl = 'https://drive.google.com/file/d/$fileId/preview';
+        }
+      }
+
+      final uri = Uri.parse(finalUrl);
+
+      // Não usa canLaunchUrl como bloqueio, porque em alguns Android ele retorna
+      // false mesmo tendo navegador instalado, gerando log "component name is null".
+      final openedExternal = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (openedExternal) return;
+
+      final openedDefault = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+      );
+
+      if (!openedDefault) {
+        _showSnackTema(
+          'Não foi possível abrir o certificado.',
+          background: context.uai.error,
+          icon: Icons.error_outline_rounded,
+        );
       }
     } catch (e) {
       debugPrint('Erro ao abrir link: $e');
+      _showSnackTema(
+        'Erro ao abrir certificado: $e',
+        background: context.uai.error,
+        icon: Icons.error_outline_rounded,
+      );
     }
   }
 
