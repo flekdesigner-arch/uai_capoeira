@@ -40,6 +40,7 @@ class _PreviewCertificadoParticipanteScreenState
 
   bool _processando = false;
   String? _acaoAtual;
+  final List<String> _logsProcessamento = <String>[];
 
   CertificadoParticipanteData get participante => widget.participante;
   CertificadoEventoData get evento => widget.evento;
@@ -63,6 +64,29 @@ class _PreviewCertificadoParticipanteScreenState
         .withLightness(bgIsDark ? 0.72 : 0.32)
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
+  }
+
+  void _addLogProcessamento(String mensagem) {
+    final horario = DateTime.now();
+    final hh = horario.hour.toString().padLeft(2, '0');
+    final mm = horario.minute.toString().padLeft(2, '0');
+    final ss = horario.second.toString().padLeft(2, '0');
+    final linha = '[$hh:$mm:$ss] $mensagem';
+
+    debugPrint('🧾 [PreviewCertificado] $linha');
+
+    if (!mounted) return;
+
+    setState(() {
+      _logsProcessamento.add(linha);
+      if (_logsProcessamento.length > 60) {
+        _logsProcessamento.removeRange(0, _logsProcessamento.length - 60);
+      }
+    });
+  }
+
+  void _limparLogs() {
+    _logsProcessamento.clear();
   }
 
   Color _cor(String hex, {Color fallback = const Color(0xFF9E9E9E)}) {
@@ -125,6 +149,7 @@ class _PreviewCertificadoParticipanteScreenState
     setState(() {
       _processando = true;
       _acaoAtual = label;
+      _limparLogs();
     });
 
     try {
@@ -213,12 +238,17 @@ class _PreviewCertificadoParticipanteScreenState
 
 
   Future<void> _salvarVinculo() async {
+    _addLogProcessamento('Gerando PDF direto de ${participante.alunoNome}...');
+
     final pdfBytes = await _gerarPdfDireto();
+
+    _addLogProcessamento('PDF gerado. Iniciando upload e substituição inteligente...');
 
     final link = await _geradorService.uploadPdfDiretoERegistrar(
       pdfBytes: pdfBytes,
       evento: evento,
       participante: participante,
+      onLog: _addLogProcessamento,
     );
 
     if (!mounted) return;
@@ -443,10 +473,17 @@ class _PreviewCertificadoParticipanteScreenState
           _infoLine('Evento', evento.eventoNome),
           _infoLine('Aluno', participante.alunoNome),
           _infoLine('CPF', participante.temCpf ? participante.cpf : 'Não informado'),
+          _infoLine(
+            'Sexo',
+            participante.sexoNormalizado.isEmpty
+                ? 'Não informado'
+                : participante.sexoNormalizado,
+          ),
           _infoLine('Graduação', participante.graduacaoNova),
           _infoLine('Modelo', participante.certificadoOuDiploma),
           _infoLine('Cidade/Data', evento.localData),
           _infoLine('Assinaturas', '${evento.assinaturas.length} configurada(s)'),
+          _infoLine('Textos 2.0', '${evento.configuracoes.textos.length} campo(s) configurado(s)'),
           _infoLine(
             'Status',
             participante.temCertificadoGerado
@@ -506,7 +543,70 @@ class _PreviewCertificadoParticipanteScreenState
             onTap: () => _executar('Salvar e vincular', _salvarVinculo),
             filled: true,
           ),
+          if (_processando || _logsProcessamento.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildLogsProcessamentoCard(),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildLogsProcessamentoCard() {
+    final t = context.uai;
+    final primary = _ensureVisible(t.primary, t.card);
+    final ultimosLogs = _logsProcessamento.length <= 6
+        ? _logsProcessamento
+        : _logsProcessamento.sublist(_logsProcessamento.length - 6);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.border),
+      ),
+      child: ultimosLogs.isEmpty
+          ? Text(
+        'Aguardando logs...',
+        style: TextStyle(
+          color: t.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      )
+          : Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: ultimosLogs.map((log) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.terminal_rounded,
+                  color: primary,
+                  size: 13,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    log,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 10.2,
+                      height: 1.12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -524,6 +624,7 @@ class _PreviewCertificadoParticipanteScreenState
       cor2: cor2,
       corContorno: contorno,
       data: data,
+      textosConfig: evento.configuracoes.textos,
       exportKey: null,
       showHeader: true,
       showDebugInfo: false,
@@ -555,6 +656,7 @@ class _PreviewCertificadoParticipanteScreenState
                 cor2: cor2,
                 corContorno: contorno,
                 data: data,
+                textosConfig: evento.configuracoes.textos,
                 exportKey: _exportKey,
                 showHeader: false,
                 showDebugInfo: false,

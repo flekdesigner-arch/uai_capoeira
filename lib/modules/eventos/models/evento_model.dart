@@ -2,6 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class EventoModel {
+  // ───────────────────── PADRÕES DE CAMISA ─────────────────────
+  static const String modelagemNormal = 'NORMAL';
+  static const String modelagemBabyLook = 'BABY_LOOK';
+
+  static const String tipoManga = 'MANGA';
+  static const String tipoMangaLonga = 'MANGA_LONGA';
+  static const String tipoRegata = 'REGATA';
+
+  static const List<String> tamanhosPadraoCamisa = [
+    '1A',
+    '2A',
+    '4A',
+    '6A',
+    '8A',
+    '10A',
+    '12A',
+    '14A',
+    'PP',
+    'P',
+    'M',
+    'G',
+    'GG',
+    'EGG',
+  ];
+
+  static const List<String> modelagensPadraoCamisa = [
+    modelagemNormal,
+    modelagemBabyLook,
+  ];
+
+  static const List<String> tiposPadraoCamisa = [
+    tipoManga,
+    tipoMangaLonga,
+    tipoRegata,
+  ];
+
+  static const Map<String, double> valoresPadraoPorTipoCamisa = {
+    tipoManga: 0.0,
+    tipoMangaLonga: 0.0,
+    tipoRegata: 0.0,
+  };
+
   // 📅 DADOS BÁSICOS
   final String? id;
   final String nome;
@@ -24,7 +66,19 @@ class EventoModel {
   // 👕 CONFIGURAÇÕES DE CAMISA
   final bool temCamisa;
   final double? valorCamisa;
+
+  /// Valores de confecção/venda por tipo de camisa.
+  ///
+  /// Compatibilidade:
+  /// - eventos antigos podem ter apenas `valorCamisa`;
+  /// - se este mapa não existir, o sistema usa `valorCamisa` como valor padrão
+  ///   para MANGA, MANGA_LONGA e REGATA;
+  /// - se uma camisa antiga não tiver tipo, assume MANGA.
+  final Map<String, double> valoresPorTipoCamisa;
+
   final List<String> tamanhosDisponiveis;
+  final List<String> modelagensCamisaDisponiveis;
+  final List<String> tiposCamisaDisponiveis;
   final bool camisaObrigatoria;
 
   // 🎯 REGRAS POR TIPO
@@ -69,7 +123,10 @@ class EventoModel {
     this.dataLimitePrimeiraParcela,
     required this.temCamisa,
     this.valorCamisa,
+    this.valoresPorTipoCamisa = valoresPadraoPorTipoCamisa,
     required this.tamanhosDisponiveis,
+    this.modelagensCamisaDisponiveis = modelagensPadraoCamisa,
+    this.tiposCamisaDisponiveis = tiposPadraoCamisa,
     required this.camisaObrigatoria,
     required this.alteraGraduacao,
     required this.geraCertificado,
@@ -128,6 +185,9 @@ class EventoModel {
     final configCertificadoRaw =
         data['configuracoes_certificado'] ?? data['configuracoesCertificado'];
 
+    final valorCamisaBase = (data['valorCamisa'] as num?)?.toDouble() ??
+        (data['valor_camisa'] as num?)?.toDouble();
+
     return EventoModel(
       id: doc.id,
       nome: data['nome'] ?? '',
@@ -157,10 +217,28 @@ class EventoModel {
           _timestampToDateTime(data['data_limite_primeira_parcela']),
 
       temCamisa: data['temCamisa'] ?? data['tem_camisa'] ?? false,
-      valorCamisa: (data['valorCamisa'] as num?)?.toDouble() ??
-          (data['valor_camisa'] as num?)?.toDouble(),
-      tamanhosDisponiveis: List<String>.from(
-        data['tamanhosDisponiveis'] ?? data['tamanhos_disponiveis'] ?? [],
+      valorCamisa: valorCamisaBase,
+      valoresPorTipoCamisa: _normalizarValoresPorTipoCamisa(
+        data['valoresPorTipoCamisa'] ??
+            data['valores_por_tipo_camisa'] ??
+            data['valoresTipoCamisa'] ??
+            data['valores_tipo_camisa'],
+        valorPadrao: valorCamisaBase,
+      ),
+      tamanhosDisponiveis: _normalizarListaTamanhos(
+        data['tamanhosDisponiveis'] ?? data['tamanhos_disponiveis'],
+      ),
+      modelagensCamisaDisponiveis: _normalizarListaModelagens(
+        data['modelagensCamisaDisponiveis'] ??
+            data['modelagens_camisa_disponiveis'] ??
+            data['modelagensDisponiveis'] ??
+            data['modelagens_disponiveis'],
+      ),
+      tiposCamisaDisponiveis: _normalizarListaTiposCamisa(
+        data['tiposCamisaDisponiveis'] ??
+            data['tipos_camisa_disponiveis'] ??
+            data['tiposDisponiveis'] ??
+            data['tipos_disponiveis'],
       ),
       camisaObrigatoria:
       data['camisaObrigatoria'] ?? data['camisa_obrigatoria'] ?? false,
@@ -220,7 +298,15 @@ class EventoModel {
 
       'temCamisa': temCamisa,
       if (valorCamisa != null) 'valorCamisa': valorCamisa,
-      'tamanhosDisponiveis': tamanhosDisponiveis,
+      'valoresPorTipoCamisa': _normalizarValoresPorTipoCamisa(
+        valoresPorTipoCamisa,
+        valorPadrao: valorCamisa,
+      ),
+      'tamanhosDisponiveis': _normalizarListaTamanhos(tamanhosDisponiveis),
+      'modelagensCamisaDisponiveis':
+      _normalizarListaModelagens(modelagensCamisaDisponiveis),
+      'tiposCamisaDisponiveis':
+      _normalizarListaTiposCamisa(tiposCamisaDisponiveis),
       'camisaObrigatoria': camisaObrigatoria,
 
       'alteraGraduacao': alteraGraduacao,
@@ -269,7 +355,10 @@ class EventoModel {
     DateTime? dataLimitePrimeiraParcela,
     bool? temCamisa,
     double? valorCamisa,
+    Map<String, double>? valoresPorTipoCamisa,
     List<String>? tamanhosDisponiveis,
+    List<String>? modelagensCamisaDisponiveis,
+    List<String>? tiposCamisaDisponiveis,
     bool? camisaObrigatoria,
     bool? alteraGraduacao,
     bool? geraCertificado,
@@ -305,7 +394,19 @@ class EventoModel {
       dataLimitePrimeiraParcela ?? this.dataLimitePrimeiraParcela,
       temCamisa: temCamisa ?? this.temCamisa,
       valorCamisa: valorCamisa ?? this.valorCamisa,
-      tamanhosDisponiveis: tamanhosDisponiveis ?? this.tamanhosDisponiveis,
+      valoresPorTipoCamisa: _normalizarValoresPorTipoCamisa(
+        valoresPorTipoCamisa ?? this.valoresPorTipoCamisa,
+        valorPadrao: valorCamisa ?? this.valorCamisa,
+      ),
+      tamanhosDisponiveis: _normalizarListaTamanhos(
+        tamanhosDisponiveis ?? this.tamanhosDisponiveis,
+      ),
+      modelagensCamisaDisponiveis: _normalizarListaModelagens(
+        modelagensCamisaDisponiveis ?? this.modelagensCamisaDisponiveis,
+      ),
+      tiposCamisaDisponiveis: _normalizarListaTiposCamisa(
+        tiposCamisaDisponiveis ?? this.tiposCamisaDisponiveis,
+      ),
       camisaObrigatoria: camisaObrigatoria ?? this.camisaObrigatoria,
       alteraGraduacao: alteraGraduacao ?? this.alteraGraduacao,
       geraCertificado: geraCertificado ?? this.geraCertificado,
@@ -332,6 +433,199 @@ class EventoModel {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     return null;
+  }
+
+  static double _asDouble(dynamic value, {double fallback = 0.0}) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return fallback;
+
+    return double.tryParse(text.replaceAll(',', '.')) ?? fallback;
+  }
+
+  static Map<String, double> _normalizarValoresPorTipoCamisa(
+      dynamic value, {
+        double? valorPadrao,
+      }) {
+    final fallback = valorPadrao ?? 0.0;
+
+    final result = <String, double>{
+      tipoManga: fallback,
+      tipoMangaLonga: fallback,
+      tipoRegata: fallback,
+    };
+
+    if (value is Map) {
+      value.forEach((key, rawValue) {
+        final tipo = _normalizarTipoCamisa(key);
+        result[tipo] = _asDouble(rawValue, fallback: fallback);
+      });
+    }
+
+    return result;
+  }
+
+  static List<String> _normalizarListaTamanhos(dynamic value) {
+    final source = value is List ? value : const [];
+
+    final result = <String>[];
+
+    for (final item in source) {
+      final text = item?.toString().trim().toUpperCase() ?? '';
+      if (text.isEmpty) continue;
+
+      final clean = text
+          .replaceAll(' ', '')
+          .replaceAll('ANOS', 'A')
+          .replaceAll('ANO', 'A');
+
+      if (!result.contains(clean)) result.add(clean);
+    }
+
+    if (result.isEmpty) {
+      return List<String>.from(tamanhosPadraoCamisa);
+    }
+
+    result.sort(_compararTamanhosCamisa);
+    return result;
+  }
+
+  static int _compararTamanhosCamisa(String a, String b) {
+    final ordem = <String, int>{
+      '1A': 1,
+      '2A': 2,
+      '4A': 4,
+      '6A': 6,
+      '8A': 8,
+      '10A': 10,
+      '12A': 12,
+      '14A': 14,
+      'PP': 100,
+      'P': 101,
+      'M': 102,
+      'G': 103,
+      'GG': 104,
+      'EGG': 105,
+      'XG': 106,
+      'XXG': 107,
+    };
+
+    final ia = ordem[a] ?? 999;
+    final ib = ordem[b] ?? 999;
+
+    if (ia != ib) return ia.compareTo(ib);
+    return a.compareTo(b);
+  }
+
+  static List<String> _normalizarListaModelagens(dynamic value) {
+    final source = value is List ? value : const [];
+    final result = <String>[];
+
+    for (final item in source) {
+      final clean = _normalizarModelagemCamisa(item);
+      if (!result.contains(clean)) result.add(clean);
+    }
+
+    if (result.isEmpty) return List<String>.from(modelagensPadraoCamisa);
+
+    result.sort((a, b) {
+      final ordem = {
+        modelagemNormal: 0,
+        modelagemBabyLook: 1,
+      };
+
+      return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+    });
+
+    return result;
+  }
+
+  static List<String> _normalizarListaTiposCamisa(dynamic value) {
+    final source = value is List ? value : const [];
+    final result = <String>[];
+
+    for (final item in source) {
+      final clean = _normalizarTipoCamisa(item);
+      if (!result.contains(clean)) result.add(clean);
+    }
+
+    if (result.isEmpty) return List<String>.from(tiposPadraoCamisa);
+
+    result.sort((a, b) {
+      final ordem = {
+        tipoManga: 0,
+        tipoMangaLonga: 1,
+        tipoRegata: 2,
+      };
+
+      return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+    });
+
+    return result;
+  }
+
+  static String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return modelagemBabyLook;
+    }
+
+    return modelagemNormal;
+  }
+
+  static String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return tipoMangaLonga;
+    }
+
+    if (clean == 'REGATA') {
+      return tipoRegata;
+    }
+
+    return tipoManga;
+  }
+
+  static String modelagemCamisaLabel(String value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case modelagemBabyLook:
+        return 'Baby Look';
+      case modelagemNormal:
+      default:
+        return 'Normal';
+    }
+  }
+
+  static String tipoCamisaLabel(String value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case tipoMangaLonga:
+        return 'Manga Longa';
+      case tipoRegata:
+        return 'Regata';
+      case tipoManga:
+      default:
+        return 'Manga';
+    }
   }
 
   String get dataFormatada {
@@ -376,10 +670,26 @@ class EventoModel {
   bool get isCampeonato => tipo.toUpperCase().contains('CAMPEONATO');
   bool get isAulao => tipo.toUpperCase().contains('AULÃO');
 
-  double getValorTotal({bool comCamisa = true}) {
+  double valorCamisaPorTipo(String? tipoCamisa) {
+    if (!temCamisa) return 0.0;
+
+    final tipo = _normalizarTipoCamisa(tipoCamisa);
+    final valores = _normalizarValoresPorTipoCamisa(
+      valoresPorTipoCamisa,
+      valorPadrao: valorCamisa,
+    );
+
+    return valores[tipo] ?? valorCamisa ?? 0.0;
+  }
+
+  double get valorCamisaManga => valorCamisaPorTipo(tipoManga);
+  double get valorCamisaMangaLonga => valorCamisaPorTipo(tipoMangaLonga);
+  double get valorCamisaRegata => valorCamisaPorTipo(tipoRegata);
+
+  double getValorTotal({bool comCamisa = true, String? tipoCamisa}) {
     double total = valorInscricao;
-    if (comCamisa && temCamisa && valorCamisa != null) {
-      total += valorCamisa!;
+    if (comCamisa && temCamisa) {
+      total += valorCamisaPorTipo(tipoCamisa ?? tipoManga);
     }
     return total;
   }
@@ -398,7 +708,17 @@ class EventoModel {
   }
 
   bool tamanhoDisponivel(String tamanho) {
-    return tamanhosDisponiveis.contains(tamanho);
+    return tamanhosDisponiveis.contains(tamanho.trim().toUpperCase());
+  }
+
+  bool modelagemCamisaDisponivel(String modelagem) {
+    return modelagensCamisaDisponiveis.contains(
+      _normalizarModelagemCamisa(modelagem),
+    );
+  }
+
+  bool tipoCamisaDisponivel(String tipoCamisa) {
+    return tiposCamisaDisponiveis.contains(_normalizarTipoCamisa(tipoCamisa));
   }
 
   Color get corDoTipo {
@@ -483,12 +803,28 @@ class ConfiguracoesCertificadoEvento {
   final bool usarCidadeDoEvento;
   final bool usarDataDoEvento;
 
+  /// Configuração visual dinâmica dos textos do certificado.
+  ///
+  /// Chaves principais:
+  /// - nome
+  /// - cpf
+  /// - graduacao
+  /// - frase
+  /// - assinatura_nome
+  /// - assinatura_apelido
+  /// - local_data
+  ///
+  /// Essa estrutura é salva dentro de `configuracoes_certificado.textos`
+  /// no Firestore. Se algum campo não existir, o sistema usa o padrão atual.
+  final Map<String, CertificadoTextoCampoConfig> textos;
+
   const ConfiguracoesCertificadoEvento({
     required this.ativo,
     required this.modeloPadrao,
     required this.assinaturas,
     required this.usarCidadeDoEvento,
     required this.usarDataDoEvento,
+    this.textos = CertificadoTextoCampoConfig.defaults,
   });
 
   factory ConfiguracoesCertificadoEvento.padrao() {
@@ -497,6 +833,7 @@ class ConfiguracoesCertificadoEvento {
       modeloPadrao: modeloAutomatico,
       usarCidadeDoEvento: true,
       usarDataDoEvento: true,
+      textos: CertificadoTextoCampoConfig.defaults,
       assinaturas: [
         AssinaturaCertificadoEvento(
           nome: 'ALTAIR ALVES BARROSO',
@@ -541,6 +878,11 @@ class ConfiguracoesCertificadoEvento {
           .toList();
     }
 
+    final rawTextos = map['textos'] ??
+        map['config_textos'] ??
+        map['configuracoes_texto'] ??
+        map['texto_config'];
+
     return ConfiguracoesCertificadoEvento(
       ativo: map['ativo'] ?? map['usar_configuracao_personalizada'] ?? true,
       modeloPadrao: map['modelo_padrao']?.toString() ?? modeloAutomatico,
@@ -549,6 +891,7 @@ class ConfiguracoesCertificadoEvento {
       assinaturas: assinaturas.isEmpty
           ? ConfiguracoesCertificadoEvento.padrao().assinaturas
           : assinaturas,
+      textos: CertificadoTextoCampoConfig.mergeWithDefaults(rawTextos),
     );
   }
 
@@ -558,6 +901,7 @@ class ConfiguracoesCertificadoEvento {
     List<AssinaturaCertificadoEvento>? assinaturas,
     bool? usarCidadeDoEvento,
     bool? usarDataDoEvento,
+    Map<String, CertificadoTextoCampoConfig>? textos,
   }) {
     return ConfiguracoesCertificadoEvento(
       ativo: ativo ?? this.ativo,
@@ -565,6 +909,7 @@ class ConfiguracoesCertificadoEvento {
       assinaturas: assinaturas ?? this.assinaturas,
       usarCidadeDoEvento: usarCidadeDoEvento ?? this.usarCidadeDoEvento,
       usarDataDoEvento: usarDataDoEvento ?? this.usarDataDoEvento,
+      textos: textos ?? this.textos,
     );
   }
 
@@ -575,6 +920,12 @@ class ConfiguracoesCertificadoEvento {
         .toList();
   }
 
+  CertificadoTextoCampoConfig textoConfig(String campo) {
+    return textos[campo] ??
+        CertificadoTextoCampoConfig.defaults[campo] ??
+        CertificadoTextoCampoConfig.padraoGenerico;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'ativo': ativo,
@@ -582,7 +933,395 @@ class ConfiguracoesCertificadoEvento {
       'usar_cidade_do_evento': usarCidadeDoEvento,
       'usar_data_do_evento': usarDataDoEvento,
       'assinaturas': assinaturasValidas.map((e) => e.toMap()).toList(),
+      'textos': textos.map((key, value) => MapEntry(key, value.toMap())),
     };
+  }
+}
+
+@immutable
+class CertificadoTextoCampoConfig {
+  static const String campoNome = 'nome';
+  static const String campoCpf = 'cpf';
+  static const String campoGraduacao = 'graduacao';
+  static const String campoFrase = 'frase';
+  static const String campoAssinaturaNome = 'assinatura_nome';
+  static const String campoAssinaturaApelido = 'assinatura_apelido';
+  static const String campoLocalData = 'local_data';
+
+  static const List<String> fontesDisponiveis = [
+    'Arial',
+    'ArialBold',
+    'ArialItalic',
+    'ArialBoldItalic',
+    'ArialNarrow',
+    'ArialNarrowBold',
+    'ArialBlack',
+    'ArialRounded',
+    'EngraversGothicBT',
+    'Square721BT',
+    'Square721BTBold',
+    'Square721CnBT',
+    'Square721CnBTBold',
+    'Autography',
+    'PhotographSignature',
+    'Bigtimes',
+    'AngelinaMalika',
+  ];
+
+  static const List<String> alinhamentosDisponiveis = [
+    'left',
+    'center',
+    'right',
+  ];
+
+  final String fonte;
+  final double tamanho;
+  final String corHex;
+  final String alinhamento;
+  final double lineHeight;
+
+  /// Deslocamento vertical do texto dentro da caixa-guia, em milímetros.
+  /// 0.0 é o padrão de fábrica. Valores negativos sobem, positivos descem.
+  final double verticalOffsetMm;
+
+  /// upper = MAIÚSCULAS
+  /// lower = minúsculas
+  /// title = Iniciais Maiúsculas
+  /// none = mantém como veio
+  final String textCase;
+  final bool uppercase;
+  final bool negrito;
+  final bool autoAjustar;
+
+  const CertificadoTextoCampoConfig({
+    required this.fonte,
+    required this.tamanho,
+    required this.corHex,
+    required this.alinhamento,
+    required this.lineHeight,
+    this.verticalOffsetMm = 0.0,
+    this.textCase = 'upper',
+    required this.uppercase,
+    required this.negrito,
+    required this.autoAjustar,
+  });
+
+  static const CertificadoTextoCampoConfig padraoGenerico =
+  CertificadoTextoCampoConfig(
+    fonte: 'Arial',
+    tamanho: 15.0,
+    corHex: '#1A0202',
+    alinhamento: 'center',
+    lineHeight: 1.0,
+    uppercase: true,
+    negrito: false,
+    autoAjustar: true,
+  );
+
+  static const Map<String, CertificadoTextoCampoConfig> defaults = {
+    campoNome: CertificadoTextoCampoConfig(
+      fonte: 'Arial',
+      tamanho: 20.0,
+      corHex: '#1A0202',
+      alinhamento: 'center',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: true,
+      autoAjustar: true,
+    ),
+    campoCpf: CertificadoTextoCampoConfig(
+      fonte: 'Arial',
+      tamanho: 12.0,
+      corHex: '#1A0202',
+      alinhamento: 'left',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: true,
+      autoAjustar: true,
+    ),
+    campoGraduacao: CertificadoTextoCampoConfig(
+      fonte: 'Arial',
+      tamanho: 16.0,
+      corHex: '#1A0202',
+      alinhamento: 'left',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: true,
+      autoAjustar: true,
+    ),
+    campoFrase: CertificadoTextoCampoConfig(
+      fonte: 'EngraversGothicBT',
+      tamanho: 15.0,
+      corHex: '#1A0202',
+      alinhamento: 'center',
+      lineHeight: 1.22,
+      uppercase: true,
+      negrito: false,
+      autoAjustar: false,
+    ),
+    campoAssinaturaNome: CertificadoTextoCampoConfig(
+      fonte: 'Arial',
+      tamanho: 15.0,
+      corHex: '#1A0202',
+      alinhamento: 'center',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: false,
+      autoAjustar: true,
+    ),
+    campoAssinaturaApelido: CertificadoTextoCampoConfig(
+      fonte: 'Arial',
+      tamanho: 11.5,
+      corHex: '#1A0202',
+      alinhamento: 'center',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: false,
+      autoAjustar: true,
+    ),
+    campoLocalData: CertificadoTextoCampoConfig(
+      fonte: 'Square721BTBold',
+      tamanho: 10.5,
+      corHex: '#1A0202',
+      alinhamento: 'center',
+      lineHeight: 1.0,
+      uppercase: true,
+      negrito: true,
+      autoAjustar: true,
+    ),
+  };
+
+  factory CertificadoTextoCampoConfig.fromMap(
+      Map<String, dynamic>? map, {
+        CertificadoTextoCampoConfig fallback = padraoGenerico,
+      }) {
+    if (map == null || map.isEmpty) return fallback;
+
+    return CertificadoTextoCampoConfig(
+      fonte: _asString(map['fonte'], fallback.fonte),
+      tamanho: _normalizarTamanhoPt(
+        _asDouble(map['tamanho'], fallback.tamanho),
+      ),
+      corHex: _normalizarHex(_asString(map['cor'], fallback.corHex)),
+      alinhamento: _normalizarAlinhamento(
+        _asString(map['alinhamento'], fallback.alinhamento),
+      ),
+      lineHeight: _asDouble(
+        map['lineHeight'] ?? map['line_height'] ?? map['espacamento_linhas'],
+        fallback.lineHeight,
+      ),
+      verticalOffsetMm: _asDouble(
+        map['verticalOffsetMm'] ??
+            map['vertical_offset_mm'] ??
+            map['topOffsetMm'] ??
+            map['offsetY'] ??
+            map['yOffset'],
+        fallback.verticalOffsetMm,
+      ),
+      textCase: _normalizarTextCase(
+        _asString(
+          map['textCase'] ??
+              map['text_case'] ??
+              map['caixaTexto'] ??
+              map['caixa_texto'],
+          fallback.textCase,
+        ),
+      ),
+      uppercase: _asBool(map['uppercase'], fallback.uppercase),
+      negrito: _asBool(map['negrito'] ?? map['bold'], fallback.negrito),
+      autoAjustar: _asBool(
+        map['autoAjustar'] ?? map['auto_ajustar'],
+        fallback.autoAjustar,
+      ),
+    );
+  }
+
+  static Map<String, CertificadoTextoCampoConfig> mergeWithDefaults(
+      dynamic raw,
+      ) {
+    final merged = Map<String, CertificadoTextoCampoConfig>.from(defaults);
+
+    if (raw is Map) {
+      final rawMap = Map<String, dynamic>.from(raw);
+
+      for (final entry in rawMap.entries) {
+        final key = entry.key.toString();
+        final fallback = merged[key] ?? padraoGenerico;
+
+        if (entry.value is Map) {
+          merged[key] = CertificadoTextoCampoConfig.fromMap(
+            Map<String, dynamic>.from(entry.value as Map),
+            fallback: fallback,
+          );
+        }
+      }
+    }
+
+    return merged;
+  }
+
+  CertificadoTextoCampoConfig copyWith({
+    String? fonte,
+    double? tamanho,
+    String? corHex,
+    String? alinhamento,
+    double? lineHeight,
+    double? verticalOffsetMm,
+    String? textCase,
+    bool? uppercase,
+    bool? negrito,
+    bool? autoAjustar,
+  }) {
+    return CertificadoTextoCampoConfig(
+      fonte: fonte ?? this.fonte,
+      tamanho: tamanho ?? this.tamanho,
+      corHex: corHex ?? this.corHex,
+      alinhamento: alinhamento ?? this.alinhamento,
+      lineHeight: lineHeight ?? this.lineHeight,
+      verticalOffsetMm: verticalOffsetMm ?? this.verticalOffsetMm,
+      textCase: textCase ?? this.textCase,
+      uppercase: uppercase ?? this.uppercase,
+      negrito: negrito ?? this.negrito,
+      autoAjustar: autoAjustar ?? this.autoAjustar,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'fonte': fonte,
+      'tamanho': tamanho,
+      'cor': corHex,
+      'alinhamento': alinhamento,
+      'lineHeight': lineHeight,
+      'verticalOffsetMm': verticalOffsetMm,
+      'topOffsetMm': verticalOffsetMm,
+      'textCase': textCase,
+      'uppercase': uppercase,
+      'negrito': negrito,
+      'autoAjustar': autoAjustar,
+    };
+  }
+
+  String aplicarCaixa(String value) {
+    final clean = value.trim();
+    if (clean.isEmpty) return '';
+
+    switch (textCase) {
+      case 'lower':
+        return clean.toLowerCase();
+      case 'title':
+        return _toTitleCase(clean);
+      case 'none':
+        return clean;
+      case 'upper':
+      default:
+      // Mantém compatibilidade: se algum dado antigo vier com uppercase=false,
+      // respeita o antigo como "original".
+        return uppercase ? clean.toUpperCase() : clean;
+    }
+  }
+
+  static String _toTitleCase(String value) {
+    final lower = value.toLowerCase();
+
+    return lower.replaceAllMapped(
+      RegExp(r'(^|[\s\-/])([a-záàâãäéèêëíìîïóòôõöúùûüç])'),
+          (match) {
+        final prefix = match.group(1) ?? '';
+        final letter = match.group(2) ?? '';
+        return '$prefix${letter.toUpperCase()}';
+      },
+    );
+  }
+
+  static String _normalizarTextCase(String value) {
+    final clean = value.trim().toLowerCase();
+
+    if (clean == 'lower' ||
+        clean == 'minusculo' ||
+        clean == 'minúsculo' ||
+        clean == 'minuscula' ||
+        clean == 'minúscula') {
+      return 'lower';
+    }
+
+    if (clean == 'title' ||
+        clean == 'iniciais' ||
+        clean == 'capitalizado' ||
+        clean == 'capitalize') {
+      return 'title';
+    }
+
+    if (clean == 'none' || clean == 'original' || clean == 'normal') {
+      return 'none';
+    }
+
+    return 'upper';
+  }
+
+  static double _normalizarTamanhoPt(double value) {
+    // Compatibilidade com a primeira versão do Certificado 2.0:
+    // valores visuais antigos ficavam entre 3 e 8; agora o painel usa pt real.
+    if (value > 0 && value < 9.0) return value * 3.0;
+    return value;
+  }
+
+  static String _asString(dynamic value, String fallback) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? fallback : text;
+  }
+
+  static double _asDouble(dynamic value, double fallback) {
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().replaceAll(',', '.').trim();
+    if (text == null || text.isEmpty) return fallback;
+
+    return double.tryParse(text) ?? fallback;
+  }
+
+  static bool _asBool(dynamic value, bool fallback) {
+    if (value is bool) return value;
+
+    final text = value?.toString().trim().toLowerCase();
+    if (text == null || text.isEmpty) return fallback;
+
+    if (text == 'true' || text == '1' || text == 'sim' || text == 'yes') {
+      return true;
+    }
+
+    if (text == 'false' || text == '0' || text == 'nao' || text == 'não') {
+      return false;
+    }
+
+    return fallback;
+  }
+
+  static String _normalizarHex(String value) {
+    final clean = value.trim().toUpperCase();
+
+    if (RegExp(r'^#[0-9A-F]{6}$').hasMatch(clean)) return clean;
+
+    final withoutHash = clean.replaceAll('#', '');
+    if (RegExp(r'^[0-9A-F]{6}$').hasMatch(withoutHash)) {
+      return '#$withoutHash';
+    }
+
+    return '#1A0202';
+  }
+
+  static String _normalizarAlinhamento(String value) {
+    final clean = value.trim().toLowerCase();
+
+    if (clean == 'left' || clean == 'esquerda' || clean == 'start') {
+      return 'left';
+    }
+
+    if (clean == 'right' || clean == 'direita' || clean == 'end') {
+      return 'right';
+    }
+
+    return 'center';
   }
 }
 

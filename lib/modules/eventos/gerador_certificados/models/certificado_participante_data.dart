@@ -13,6 +13,7 @@ class CertificadoParticipanteData {
   final String alunoId;
   final String alunoNome;
   final String cpf;
+  final String sexo;
   final String alunoFoto;
   final String eventoNome;
   final String tipoEvento;
@@ -54,6 +55,7 @@ class CertificadoParticipanteData {
     required this.alunoId,
     required this.alunoNome,
     required this.cpf,
+    this.sexo = '',
     required this.alunoFoto,
     required this.eventoNome,
     required this.tipoEvento,
@@ -109,6 +111,17 @@ class CertificadoParticipanteData {
       aluno?['documento'],
     ]);
 
+    final sexo = _normalizarSexo(
+      _firstNotEmpty([
+        participacao['sexo'],
+        participacao['aluno_sexo'],
+        participacao['sexo_aluno'],
+        aluno?['sexo'],
+        aluno?['genero'],
+        aluno?['gênero'],
+      ]),
+    );
+
     final graduacaoNovaId = _firstNotEmpty([
       participacao['graduacao_nova_id'],
       participacao['nova_graduacao_id'],
@@ -133,6 +146,7 @@ class CertificadoParticipanteData {
       alunoId: alunoId,
       alunoNome: alunoNome,
       cpf: cpf,
+      sexo: sexo,
       alunoFoto: _firstNotEmpty([
         participacao['aluno_foto'],
         aluno?['foto'],
@@ -202,6 +216,30 @@ class CertificadoParticipanteData {
 
   bool get temCpf => cpf.trim().isNotEmpty;
 
+  bool get sexoFeminino {
+    final s = sexo.trim().toUpperCase();
+    return s == 'FEMININO' ||
+        s == 'F' ||
+        s == 'MULHER' ||
+        s == 'MENINA' ||
+        s == 'ALUNA';
+  }
+
+  bool get sexoMasculino {
+    final s = sexo.trim().toUpperCase();
+    return s == 'MASCULINO' ||
+        s == 'M' ||
+        s == 'HOMEM' ||
+        s == 'MENINO' ||
+        s == 'ALUNO';
+  }
+
+  String get sexoNormalizado {
+    if (sexoFeminino) return 'FEMININO';
+    if (sexoMasculino) return 'MASCULINO';
+    return sexo.trim().toUpperCase();
+  }
+
   bool get temCertificadoGerado {
     return certificadoGerado ||
         (linkCertificado != null && linkCertificado!.trim().isNotEmpty);
@@ -244,6 +282,7 @@ class CertificadoParticipanteData {
     return CertificadoPreviewData(
       alunoNome: alunoNome,
       cpf: cpf,
+      sexo: sexoNormalizado,
       graduacaoNova: graduacaoNova,
       frase: frase,
       localData: evento.localData,
@@ -265,6 +304,7 @@ class CertificadoParticipanteData {
       'aluno_id': alunoId,
       'aluno_nome': alunoNome,
       'cpf': cpf,
+      'sexo': sexoNormalizado,
       'evento_nome': eventoNome,
       'tipo_evento': tipoEvento,
       'graduacao_atual': graduacaoAtual,
@@ -299,6 +339,7 @@ class CertificadoParticipanteData {
     String? alunoId,
     String? alunoNome,
     String? cpf,
+    String? sexo,
     String? alunoFoto,
     String? eventoNome,
     String? tipoEvento,
@@ -338,6 +379,7 @@ class CertificadoParticipanteData {
       alunoId: alunoId ?? this.alunoId,
       alunoNome: alunoNome ?? this.alunoNome,
       cpf: cpf ?? this.cpf,
+      sexo: sexo ?? this.sexo,
       alunoFoto: alunoFoto ?? this.alunoFoto,
       eventoNome: eventoNome ?? this.eventoNome,
       tipoEvento: tipoEvento ?? this.tipoEvento,
@@ -381,6 +423,30 @@ class CertificadoParticipanteData {
       certificadoTipoArquivo:
       certificadoTipoArquivo ?? this.certificadoTipoArquivo,
     );
+  }
+
+  static String _normalizarSexo(String value) {
+    final clean = value.trim().toUpperCase();
+
+    if (clean.isEmpty) return '';
+
+    if (clean == 'F' ||
+        clean == 'FEMININO' ||
+        clean == 'MULHER' ||
+        clean == 'MENINA' ||
+        clean == 'ALUNA') {
+      return 'FEMININO';
+    }
+
+    if (clean == 'M' ||
+        clean == 'MASCULINO' ||
+        clean == 'HOMEM' ||
+        clean == 'MENINO' ||
+        clean == 'ALUNO') {
+      return 'MASCULINO';
+    }
+
+    return clean;
   }
 
   static String _asString(dynamic value) {

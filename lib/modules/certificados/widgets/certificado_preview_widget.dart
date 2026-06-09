@@ -6,6 +6,7 @@ import 'package:uai_capoeira/modules/certificados/models/certificado_preview_dat
 import 'package:uai_capoeira/modules/certificados/models/certificado_slot_model.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
+import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 
 class CertificadoPreviewWidget extends StatefulWidget {
   final CertificadoTemplateTipo tipo;
@@ -19,6 +20,10 @@ class CertificadoPreviewWidget extends StatefulWidget {
   final GlobalKey? exportKey;
   final double? maxHeight;
 
+  /// Configuração visual dinâmica dos textos.
+  /// Quando não vier nada, usa o padrão atual do certificado.
+  final Map<String, CertificadoTextoCampoConfig>? textosConfig;
+
   const CertificadoPreviewWidget({
     super.key,
     required this.tipo,
@@ -31,6 +36,7 @@ class CertificadoPreviewWidget extends StatefulWidget {
     this.showTextOverlay = true,
     this.exportKey,
     this.maxHeight,
+    this.textosConfig,
   });
 
   @override
@@ -58,6 +64,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         oldWidget.cor2 != widget.cor2 ||
         oldWidget.corContorno != widget.corContorno ||
         oldWidget.data != widget.data ||
+        oldWidget.textosConfig != widget.textosConfig ||
         oldWidget.showTextOverlay != widget.showTextOverlay;
 
     if (changed) {
@@ -152,7 +159,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                       const SizedBox(height: 2),
                       Text(
                         widget.showTextOverlay
-                            ? 'Prévia com textos posicionados pelo SVG guia'
+                            ? 'Prévia com textos dinâmicos pelo SVG guia'
                             : 'Prévia SVG com corda dinâmica',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -466,6 +473,82 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     );
   }
 
+  CertificadoTextoCampoConfig _textoConfig(String campo) {
+    return widget.textosConfig?[campo] ??
+        CertificadoTextoCampoConfig.defaults[campo] ??
+        CertificadoTextoCampoConfig.padraoGenerico;
+  }
+
+  double _ptToPreviewMm(double pt) {
+    if (pt <= 0) return pt;
+
+    // Compatibilidade: se vier config antiga na escala visual, mantém.
+    if (pt < 9.0) return pt;
+
+    // O SVG trabalha em mm; 3pt ≈ 1 unidade visual usada no certificado.
+    return pt / 3.0;
+  }
+
+  Color _colorFromHex(String value, Color fallback) {
+    final clean = value.trim().replaceAll('#', '').toUpperCase();
+
+    if (!RegExp(r'^[0-9A-F]{6}$').hasMatch(clean)) return fallback;
+
+    return Color(int.parse('FF$clean', radix: 16));
+  }
+
+  TextAlign _textAlignFromConfig(String value) {
+    final clean = value.trim().toLowerCase();
+
+    if (clean == 'left' || clean == 'esquerda' || clean == 'start') {
+      return TextAlign.left;
+    }
+
+    if (clean == 'right' || clean == 'direita' || clean == 'end') {
+      return TextAlign.right;
+    }
+
+    return TextAlign.center;
+  }
+
+  FontWeight _fontWeightFromConfig(CertificadoTextoCampoConfig config) {
+    return config.negrito ? FontWeight.w900 : FontWeight.w500;
+  }
+
+  String _textoAplicado(String value, CertificadoTextoCampoConfig config) {
+    return config.aplicarCaixa(value);
+  }
+
+  String _applyTextCase(String value, String textCase, bool uppercase) {
+    final clean = value.trim();
+    if (clean.isEmpty) return '';
+
+    switch (textCase) {
+      case 'lower':
+        return clean.toLowerCase();
+      case 'title':
+        return _toTitleCase(clean);
+      case 'none':
+        return clean;
+      case 'upper':
+      default:
+        return uppercase ? clean.toUpperCase() : clean;
+    }
+  }
+
+  String _toTitleCase(String value) {
+    final lower = value.toLowerCase();
+
+    return lower.replaceAllMapped(
+      RegExp(r'(^|[\s\-/])([a-záàâãäéèêëíìîïóòôõöúùûüç])'),
+          (match) {
+        final prefix = match.group(1) ?? '';
+        final letter = match.group(2) ?? '';
+        return '$prefix${letter.toUpperCase()}';
+      },
+    );
+  }
+
   List<Widget> _buildTextOverlay({
     required CertificadoPreviewData data,
     required Map<String, CertificadoSlotModel> slots,
@@ -476,7 +559,18 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     final widgets = <Widget>[];
 
     const vinhoTexto = Color(0xFF1A0202);
-    const linhaPontilhada = Color(0xFF8E2025);
+
+    final cfgNome = _textoConfig(CertificadoTextoCampoConfig.campoNome);
+    final cfgCpf = _textoConfig(CertificadoTextoCampoConfig.campoCpf);
+    final cfgGraduacao =
+    _textoConfig(CertificadoTextoCampoConfig.campoGraduacao);
+    final cfgFrase = _textoConfig(CertificadoTextoCampoConfig.campoFrase);
+    final cfgAssinaturaNome =
+    _textoConfig(CertificadoTextoCampoConfig.campoAssinaturaNome);
+    final cfgAssinaturaApelido =
+    _textoConfig(CertificadoTextoCampoConfig.campoAssinaturaApelido);
+    final cfgLocalData =
+    _textoConfig(CertificadoTextoCampoConfig.campoLocalData);
 
     Alignment bottomAlignmentFromTextAlign(TextAlign align) {
       switch (align) {
@@ -516,6 +610,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       String? fontFamily,
       double letterSpacingMm = 0.0,
       bool uppercase = false,
+      String textCase = 'upper',
+      bool autoAjustar = true,
       double height = 1.0,
       double bottomOffsetMm = 0.0,
       double leftOffsetMm = 0.0,
@@ -541,7 +637,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
               fit: BoxFit.scaleDown,
               alignment: bottomAlignmentFromTextAlign(align),
               child: Text(
-                uppercase ? clean.toUpperCase() : clean,
+                _applyTextCase(clean, textCase, uppercase),
                 maxLines: 1,
                 textAlign: align,
                 style: TextStyle(
@@ -570,6 +666,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       double height = 1.25,
       int? maxLines,
       bool uppercase = false,
+      String textCase = 'upper',
       bool alignTop = false,
       double topOffsetMm = 0.0,
       double leftOffsetMm = 0.0,
@@ -593,18 +690,17 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
             alignment: alignTop
                 ? Alignment.topCenter
                 : centerAlignmentFromTextAlign(align),
-            child: Text(
-              uppercase ? clean.toUpperCase() : clean,
+            child: _PreviewParagraphText(
+              text: _applyTextCase(clean, textCase, uppercase),
               textAlign: align,
               maxLines: maxLines,
-              softWrap: true,
-              overflow: TextOverflow.visible,
+              lineHeight: height,
               style: TextStyle(
                 color: color,
                 fontSize: fontSizeMm * scale,
                 fontWeight: fontWeight,
                 fontFamily: fontFamily,
-                height: height,
+                height: 1.0,
               ),
             ),
           ),
@@ -619,76 +715,86 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     addSingleLine(
       slotId: CertificadoSlotIds.alunoNome,
       value: data.alunoNome,
-      fontSizeMm: 6.65,
-      fontWeight: FontWeight.w900,
-      color: vinhoTexto,
-      fontFamily: 'Arial',
+      fontSizeMm: _ptToPreviewMm(cfgNome.tamanho),
+      fontWeight: _fontWeightFromConfig(cfgNome),
+      color: _colorFromHex(cfgNome.corHex, vinhoTexto),
+      align: _textAlignFromConfig(cfgNome.alinhamento),
+      fontFamily: cfgNome.fonte,
       letterSpacingMm: 0.015,
-      uppercase: true,
-      bottomOffsetMm: 0.08,
+      uppercase: cfgNome.uppercase,
+      textCase: cfgNome.textCase,
+      topOffsetMm: -1.0 + cfgNome.verticalOffsetMm,
+      bottomOffsetMm: 1.08,
     );
 
-    // CPF: Square721BT.
-    // Alguns guias podem não ter o retângulo com id="cpf".
-    // Quando isso acontecer, criamos um slot fallback entre o nome e a graduação.
+    // CPF só aparece nos modelos que exigem CPF.
+    // No certificado simples, mesmo que o aluno tenha CPF cadastrado, não desenha.
+    //
+    // O PDF direto usa fallback manual porque alguns SVGs têm a guia do CPF
+    // sem id="cpf". A prévia segue a mesma lógica para ficar fiel à impressão.
     if (widget.tipo.exigeCpf && data.cpfFormatado.isNotEmpty) {
       final cpfSlotOriginal = slots[CertificadoSlotIds.cpf];
-      final nomeSlot = slots[CertificadoSlotIds.alunoNome];
-      final graduacaoSlot = slots[CertificadoSlotIds.graduacaoNova];
 
       final cpfSlot = cpfSlotOriginal ??
-          (nomeSlot != null && graduacaoSlot != null
-              ? CertificadoSlotModel(
+          const CertificadoSlotModel(
             id: CertificadoSlotIds.cpf,
-            x: nomeSlot.x + (nomeSlot.width * 0.34),
-            y: nomeSlot.bottom + 0.25,
-            width: nomeSlot.width * 0.32,
-            height: (graduacaoSlot.y - nomeSlot.bottom).clamp(3.0, 6.0),
-          )
-              : null);
+            x: 132.9,
+            y: 90.62,
+            width: 47.0,
+            height: 5.7,
+          );
 
-      if (cpfSlot != null) {
-        widgets.add(
-          _PositionedSlotText(
-            slot: cpfSlot,
-            scale: scale,
-            heightExtra: 0.08 * scale,
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.bottomCenter,
-                child: Text(
-                  data.cpfFormatado,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: vinhoTexto,
-                    fontSize: 3.55 * scale,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Square721BT',
-                    height: 1.0,
-                  ),
+      widgets.add(
+        _PositionedSlotText(
+          slot: cpfSlot,
+          scale: scale,
+          topOffset: ((cpfSlotOriginal == null ? 0.0 : -0.42) +
+              cfgCpf.verticalOffsetMm) *
+              scale,
+          leftOffset: cpfSlotOriginal == null ? 0 : 1.1 * scale,
+          widthExtra: cpfSlotOriginal == null ? 0 : 10.0 * scale,
+          heightExtra: cpfSlotOriginal == null ? 0 : 1.7 * scale,
+          child: Align(
+            alignment: centerAlignmentFromTextAlign(
+              _textAlignFromConfig(cfgCpf.alinhamento),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: centerAlignmentFromTextAlign(
+                _textAlignFromConfig(cfgCpf.alinhamento),
+              ),
+              child: Text(
+                _textoAplicado(data.cpfFormatado, cfgCpf),
+                maxLines: 1,
+                textAlign: _textAlignFromConfig(cfgCpf.alinhamento),
+                style: TextStyle(
+                  color: _colorFromHex(cfgCpf.corHex, vinhoTexto),
+                  fontSize: _ptToPreviewMm(cfgCpf.tamanho) * scale,
+                  fontWeight: _fontWeightFromConfig(cfgCpf),
+                  fontFamily: cfgCpf.fonte,
+                  height: cfgCpf.lineHeight,
                 ),
               ),
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
     // Graduação: 3mm para a direita, Arial Bold, cor do nome.
     addSingleLine(
       slotId: CertificadoSlotIds.graduacaoNova,
-      value: data.graduacaoNova,
-      fontSizeMm: 5.25,
-      fontWeight: FontWeight.w900,
-      color: vinhoTexto,
-      align: TextAlign.left,
-      fontFamily: 'Arial',
-      uppercase: true,
+      value: _graduacaoExibidaComGenero(data.graduacaoNova, data),
+      fontSizeMm: _ptToPreviewMm(cfgGraduacao.tamanho),
+      fontWeight: _fontWeightFromConfig(cfgGraduacao),
+      color: _colorFromHex(cfgGraduacao.corHex, vinhoTexto),
+      align: _textAlignFromConfig(cfgGraduacao.alinhamento),
+      fontFamily: cfgGraduacao.fonte,
+      uppercase: cfgGraduacao.uppercase,
+      textCase: cfgGraduacao.textCase,
       leftOffsetMm: 3.0,
       widthExtraMm: -3.0,
+      topOffsetMm: cfgGraduacao.verticalOffsetMm,
       bottomOffsetMm: 0.10,
     );
 
@@ -701,15 +807,16 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         tituloGraduacao: _tituloParaTipo(widget.tipo),
         corda: data.graduacaoNova,
       ),
-      fontSizeMm: 5.05,
-      fontWeight: FontWeight.w500,
-      color: vinhoTexto,
-      align: TextAlign.center,
-      fontFamily: 'EngraversGothicBT',
-      height: 1.22,
-      uppercase: true,
+      fontSizeMm: _ptToPreviewMm(cfgFrase.tamanho),
+      fontWeight: _fontWeightFromConfig(cfgFrase),
+      color: _colorFromHex(cfgFrase.corHex, vinhoTexto),
+      align: _textAlignFromConfig(cfgFrase.alinhamento),
+      fontFamily: cfgFrase.fonte,
+      height: cfgFrase.lineHeight,
+      uppercase: cfgFrase.uppercase,
+      textCase: cfgFrase.textCase,
       alignTop: true,
-      topOffsetMm: 0.55,
+      topOffsetMm: 0.55 + cfgFrase.verticalOffsetMm,
       leftOffsetMm: -2.0,
       widthExtraMm: 4.0,
     );
@@ -723,22 +830,28 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       addSingleLine(
         slotId: 'assinatura$numero',
         value: assinatura.nome,
-        fontSizeMm: 5.05,
-        fontWeight: FontWeight.w500,
-        color: vinhoTexto,
-        fontFamily: 'Arial',
-        uppercase: true,
+        fontSizeMm: _ptToPreviewMm(cfgAssinaturaNome.tamanho),
+        fontWeight: _fontWeightFromConfig(cfgAssinaturaNome),
+        color: _colorFromHex(cfgAssinaturaNome.corHex, vinhoTexto),
+        align: _textAlignFromConfig(cfgAssinaturaNome.alinhamento),
+        fontFamily: cfgAssinaturaNome.fonte,
+        uppercase: cfgAssinaturaNome.uppercase,
+        textCase: cfgAssinaturaNome.textCase,
+        topOffsetMm: cfgAssinaturaNome.verticalOffsetMm,
         bottomOffsetMm: 0.05,
       );
 
       addSingleLine(
         slotId: 'apelido$numero',
         value: assinatura.apelido,
-        fontSizeMm: 3.85,
-        fontWeight: FontWeight.w500,
-        color: vinhoTexto,
-        fontFamily: 'SitkaText',
-        uppercase: true,
+        fontSizeMm: _ptToPreviewMm(cfgAssinaturaApelido.tamanho),
+        fontWeight: _fontWeightFromConfig(cfgAssinaturaApelido),
+        color: _colorFromHex(cfgAssinaturaApelido.corHex, vinhoTexto),
+        align: _textAlignFromConfig(cfgAssinaturaApelido.alinhamento),
+        fontFamily: cfgAssinaturaApelido.fonte,
+        uppercase: cfgAssinaturaApelido.uppercase,
+        textCase: cfgAssinaturaApelido.textCase,
+        topOffsetMm: cfgAssinaturaApelido.verticalOffsetMm,
         bottomOffsetMm: 0.05,
       );
     }
@@ -746,16 +859,54 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     addSingleLine(
       slotId: CertificadoSlotIds.localData,
       value: data.localData,
-      fontSizeMm: 3.55,
-      fontWeight: FontWeight.w700,
-      color: vinhoTexto,
-      fontFamily: 'Square721BT',
+      fontSizeMm: _ptToPreviewMm(cfgLocalData.tamanho),
+      fontWeight: _fontWeightFromConfig(cfgLocalData),
+      color: _colorFromHex(cfgLocalData.corHex, vinhoTexto),
+      align: _textAlignFromConfig(cfgLocalData.alinhamento),
+      fontFamily: cfgLocalData.fonte,
       letterSpacingMm: 0.01,
-      uppercase: true,
+      uppercase: cfgLocalData.uppercase,
+      textCase: cfgLocalData.textCase,
+      topOffsetMm: cfgLocalData.verticalOffsetMm,
       bottomOffsetMm: 0.08,
     );
 
     return widgets;
+  }
+
+  String _graduacaoExibidaComGenero(
+      String graduacao,
+      CertificadoPreviewData data,
+      ) {
+    if (!data.sexoFeminino) return graduacao;
+
+    var out = graduacao.trim().toUpperCase();
+    if (out.isEmpty) return out;
+
+    final substituicoes = <String, String>{
+      'CONTRA-MESTRE': 'CONTRA-MESTRA',
+      'CONTRA MESTRE': 'CONTRA MESTRA',
+      'CONTRAMESTRE': 'CONTRAMESTRA',
+      'C. MESTRE': 'C. MESTRA',
+      'C.MESTRE': 'C.MESTRA',
+      'CM. MESTRE': 'CM. MESTRA',
+      'CM.MESTRE': 'CM.MESTRA',
+      'MONITOR': 'MONITORA',
+      'INSTRUTOR': 'INSTRUTORA',
+      'PROFESSOR': 'PROFESSORA',
+      'MESTRE': 'MESTRA',
+      'FORMADO': 'FORMADA',
+      'GRADUADO': 'GRADUADA',
+    };
+
+    for (final entry in substituicoes.entries) {
+      out = out.replaceAll(
+        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(entry.key) + '(?![A-ZÀ-Ú])'),
+        entry.value,
+      );
+    }
+
+    return out;
   }
 
   String _tituloParaTipo(CertificadoTemplateTipo tipo) {
@@ -766,20 +917,6 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         return 'INSTRUTOR';
       case CertificadoTemplateTipo.diploma:
         return 'PROFESSOR';
-    }
-  }
-
-  Alignment _alignmentFromTextAlign(TextAlign align) {
-    switch (align) {
-      case TextAlign.left:
-      case TextAlign.start:
-        return Alignment.centerLeft;
-      case TextAlign.right:
-      case TextAlign.end:
-        return Alignment.centerRight;
-      case TextAlign.center:
-      case TextAlign.justify:
-        return Alignment.center;
     }
   }
 
@@ -830,6 +967,99 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         );
       },
     );
+  }
+}
+
+class _PreviewParagraphText extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  final TextAlign textAlign;
+  final int? maxLines;
+  final double lineHeight;
+
+  const _PreviewParagraphText({
+    required this.text,
+    required this.style,
+    required this.textAlign,
+    required this.lineHeight,
+    this.maxLines,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final lines = _wrap(
+          text,
+          style: style,
+          maxWidth: constraints.maxWidth,
+        );
+
+        final visibleLines = maxLines == null
+            ? lines
+            : lines.take(maxLines!.clamp(0, lines.length)).toList();
+
+        final fontSize = style.fontSize ?? 12;
+        final lineStep = fontSize * (lineHeight <= 0 ? 1.16 : lineHeight);
+
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (var i = 0; i < visibleLines.length; i++)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: i * lineStep,
+                  child: Text(
+                    visibleLines[i],
+                    textAlign: textAlign,
+                    maxLines: 1,
+                    overflow: TextOverflow.visible,
+                    style: style,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  List<String> _wrap(
+      String value, {
+        required TextStyle style,
+        required double maxWidth,
+      }) {
+    final words = value.trim().replaceAll(RegExp(r'\s+'), ' ').split(' ');
+    final lines = <String>[];
+    var current = '';
+
+    for (final word in words) {
+      final candidate = current.isEmpty ? word : '$current $word';
+
+      if (_fits(candidate, style, maxWidth) || current.isEmpty) {
+        current = candidate;
+      } else {
+        lines.add(current);
+        current = word;
+      }
+    }
+
+    if (current.isNotEmpty) lines.add(current);
+    return lines;
+  }
+
+  bool _fits(String value, TextStyle style, double maxWidth) {
+    final painter = TextPainter(
+      text: TextSpan(text: value, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: double.infinity);
+
+    return painter.width <= maxWidth;
   }
 }
 

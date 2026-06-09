@@ -1,4 +1,4 @@
-﻿// lib/screens/admin/admin_screen.dart
+﻿// lib/modules/sistema/admin/admin_screen.dart
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +16,7 @@ import 'package:uai_capoeira/modules/sistema/migrations/migracao_graduacoes_scre
 import 'package:uai_capoeira/modules/site/admin/gerenciar_site_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_logo_screen.dart';
 import 'package:uai_capoeira/modules/certificados/screens/certificado_preview_teste_screen.dart';
+import 'package:uai_capoeira/modules/sistema/atualizacoes/admin/controle_atualizacoes_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -355,6 +356,13 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Usuários, cargos e permissões do sistema',
                             color: t.primary,
                             tela: GerenciarUsuariosScreen(),
+                          ),
+                          _AdminCardData(
+                            icon: Icons.system_update_alt_rounded,
+                            title: 'Controle de Atualizações',
+                            subtitle: 'Upload de APK, versões, histórico e obrigatoriedade',
+                            color: t.success,
+                            tela: const ControleAtualizacoesScreen(),
                           ),
                           _AdminCardData(
                             icon: Icons.workspace_premium_rounded,

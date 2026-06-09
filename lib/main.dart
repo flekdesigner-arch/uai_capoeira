@@ -37,7 +37,8 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/shared/widgets/uai_theme_selector.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 // =====================================================
 // 📅 DATAS E INTERNACIONALIZAÇÃO
@@ -67,6 +68,8 @@ import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_scr
 as area_aluno_dashboard;
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/shared/widgets/em_desenvolvimento_screen.dart';
+import 'package:uai_capoeira/shared/widgets/update_gate.dart';
+import 'package:uai_capoeira/shared/screens/notificacoes/notificacoes_screen.dart';
 
 // =====================================================
 // 🔑 CHAVE GLOBAL PARA NAVEGAÇÃO
@@ -75,6 +78,13 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // =====================================================
 // 🔔 HANDLER PARA NOTIFICAÇÕES EM BACKGROUND
+// =====================================================
+// Importante:
+// - Quando a mensagem vem com message.notification, o Android/Firebase
+//   já exibe a notificação automaticamente com o app fechado/background.
+// - Se a gente chamar flutterLocalNotificationsPlugin.show() também,
+//   aparecem 2 notificações no APK.
+// - Então só exibimos manualmente se for mensagem "data-only".
 // =====================================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -89,26 +99,74 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   print('📨 Background message: ${message.messageId}');
+  print('📨 Background notification: ${message.notification?.title}');
+  print('📨 Background data: ${message.data}');
 
-  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+  // =====================================================
+  // ✅ EVITA DUPLICIDADE NO APK
+  // =====================================================
+  // Se veio payload.notification, o Android/Firebase já mostra sozinho.
+  // Não chamamos notificação local de novo.
+  // =====================================================
+  if (message.notification != null) {
+    print(
+        '✅ Mensagem com notification detectada. '
+            'Android/Firebase já exibirá automaticamente. Evitando duplicidade.'
+    );
+    return;
+  }
+
+  // =====================================================
+  // 🔔 CASO DATA-ONLY
+  // =====================================================
+  // Se no futuro você enviar apenas data: { title, body },
+  // aí mostramos manualmente pelo flutter_local_notifications.
+  // =====================================================
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  FlutterLocalNotificationsPlugin();
+
+  const AndroidInitializationSettings androidSettings =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  const InitializationSettings initSettings = InitializationSettings(
+    android: androidSettings,
+  );
+
+  await flutterLocalNotificationsPlugin.initialize(initSettings);
+
+  const AndroidNotificationDetails androidDetails =
+  AndroidNotificationDetails(
     'background_channel',
     'Notificações',
+    channelDescription: 'Notificações em segundo plano do UAI Capoeira',
     importance: Importance.high,
     priority: Priority.high,
+    icon: '@mipmap/ic_launcher',
+    enableLights: true,
+    enableVibration: true,
+    playSound: true,
   );
 
   const NotificationDetails details = NotificationDetails(
     android: androidDetails,
   );
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+  final String title =
+      message.data['title']?.toString() ??
+          message.data['titulo']?.toString() ??
+          'UAI CAPOEIRA';
+
+  final String body =
+      message.data['body']?.toString() ??
+          message.data['mensagem']?.toString() ??
+          'Nova notificação';
 
   await flutterLocalNotificationsPlugin.show(
     message.hashCode,
-    message.notification?.title ?? 'UAI CAPOEIRA',
-    message.notification?.body ?? 'Nova notificação',
+    title,
+    body,
     details,
+    payload: message.data.toString(),
   );
 }
 
@@ -154,11 +212,41 @@ Future<void> main() async {
     }
 
     print('📦 Configurando Firestore...');
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-    print('✅ Firestore configurado');
+
+    final bool isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+    if (isWindowsDesktop) {
+      // =====================================================
+      // 🖥️ FIRESTORE NO WINDOWS DESKTOP
+      // =====================================================
+      // No Windows, o cache persistente pode deixar o Firestore preso
+      // em estado offline durante os testes/execução desktop.
+      //
+      // Para o app Windows administrativo, priorizamos conexão direta
+      // com o servidor e desativamos a persistência local.
+      // APK e PWA continuam com o comportamento normal abaixo.
+      // =====================================================
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: false,
+      );
+
+      try {
+        await FirebaseFirestore.instance.enableNetwork();
+        print(
+          '✅ Firestore configurado para Windows Desktop sem cache persistente',
+        );
+      } catch (e) {
+        print('⚠️ Não foi possível ativar rede do Firestore no Windows: $e');
+      }
+    } else {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+
+      print('✅ Firestore configurado com cache persistente');
+    }
 
     print('🎂 Verificando mensagens de aniversário...');
     try {
@@ -321,10 +409,21 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
 
           // =====================================================
           // 🏠 HOME
-          // Web mantém LandingPage.
-          // APK abre SplashAuthScreen para aguardar restauração do login.
+          // Web/PWA mantém entrada inteligente:
+          // - usuário logado entra direto no AuthCheck/Home
+          // - aluno com sessão entra direto na Área do Aluno
+          // - sem sessão cai na LandingPage
+          //
+          // APK passa pelo UpdateGate:
+          // - se a versão for permitida, segue para SplashAuthScreen
+          // - se a atualização for obrigatória, bloqueia com tela de update
           // =====================================================
-          home: kIsWeb ? PwaEntradaInteligente() : SplashAuthScreen(),
+          home: kIsWeb
+              ? PwaEntradaInteligente()
+              : const UpdateGate(
+            ignorarWeb: true,
+            child: SplashAuthScreen(),
+          ),
         );
       },
     );
@@ -659,10 +758,10 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.notifications_outlined),
               color: Colors.white,
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('🔔 Tela de notificações - Em breve!'),
-                    duration: Duration(seconds: 2),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificacoesScreen(),
                   ),
                 );
               },

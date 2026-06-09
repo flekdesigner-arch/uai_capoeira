@@ -98,6 +98,273 @@ class EventoFinanceiroPdfService {
     return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0;
   }
 
+  static String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return 'BABY_LOOK';
+    }
+
+    return 'NORMAL';
+  }
+
+  static String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return 'MANGA_LONGA';
+    }
+
+    if (clean == 'REGATA') {
+      return 'REGATA';
+    }
+
+    return 'MANGA';
+  }
+
+  static String _modelagemLabel(dynamic value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case 'BABY_LOOK':
+        return 'Baby Look';
+      case 'NORMAL':
+      default:
+        return 'Normal';
+    }
+  }
+
+  static String _tipoCamisaLabel(dynamic value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case 'MANGA_LONGA':
+        return 'Manga Longa';
+      case 'REGATA':
+        return 'Regata';
+      case 'MANGA':
+      default:
+        return 'Manga';
+    }
+  }
+
+  static int _ordemTamanhoCamisa(String value) {
+    final clean = value.trim().toUpperCase().replaceAll(' ', '');
+
+    const ordem = {
+      '1A': 1,
+      '2A': 2,
+      '4A': 4,
+      '6A': 6,
+      '8A': 8,
+      '10A': 10,
+      '12A': 12,
+      '14A': 14,
+      'PP': 100,
+      'P': 101,
+      'M': 102,
+      'G': 103,
+      'GG': 104,
+      'EGG': 105,
+      'XG': 106,
+      'XXG': 107,
+      'XGG': 108,
+      'EXG': 109,
+      'EXGG': 110,
+    };
+
+    return ordem[clean] ?? 999;
+  }
+
+  static int _ordemModelagemCamisa(String value) {
+    final clean = _normalizarModelagemCamisa(value);
+
+    switch (clean) {
+      case 'NORMAL':
+        return 0;
+      case 'BABY_LOOK':
+        return 1;
+      default:
+        return 99;
+    }
+  }
+
+  static int _ordemTipoCamisa(String value) {
+    final clean = _normalizarTipoCamisa(value);
+
+    switch (clean) {
+      case 'MANGA':
+        return 0;
+      case 'MANGA_LONGA':
+        return 1;
+      case 'REGATA':
+        return 2;
+      default:
+        return 99;
+    }
+  }
+
+  static List<List<String>> _linhasCamisasDetalhadas(
+      Map<String, dynamic> bloco,
+      ) {
+    final porDetalheRaw = bloco['por_detalhe'] ??
+        bloco['por_modelagem_tipo_tamanho'] ??
+        bloco['por_grade_detalhada'];
+
+    final unitariosRaw = bloco['por_detalhe_valor_unitario'] ??
+        bloco['por_valor_unitario'] ??
+        bloco['valores_unitarios'];
+
+    final totaisRaw = bloco['por_detalhe_total'] ??
+        bloco['por_total'] ??
+        bloco['totais_por_detalhe'];
+
+    double valorUnitarioDaChave(String chave, int quantidade) {
+      if (unitariosRaw is Map && unitariosRaw.containsKey(chave)) {
+        return _asDouble(unitariosRaw[chave]);
+      }
+
+      if (totaisRaw is Map && totaisRaw.containsKey(chave) && quantidade > 0) {
+        return _asDouble(totaisRaw[chave]) / quantidade;
+      }
+
+      return 0;
+    }
+
+    double valorTotalDaChave(String chave, int quantidade, double unitario) {
+      if (totaisRaw is Map && totaisRaw.containsKey(chave)) {
+        return _asDouble(totaisRaw[chave]);
+      }
+
+      return quantidade * unitario;
+    }
+
+    final rows = <List<String>>[];
+
+    if (porDetalheRaw is Map && porDetalheRaw.isNotEmpty) {
+      final entries = porDetalheRaw.entries.map((entry) {
+        final key = entry.key.toString();
+        final quantidade = _asInt(entry.value);
+
+        final parts = key.split('|');
+        final modelagem = parts.isNotEmpty ? parts[0] : 'NORMAL';
+        final tipo = parts.length > 1 ? parts[1] : 'MANGA';
+        final tamanho = parts.length > 2 ? parts[2] : key;
+
+        final unitario = valorUnitarioDaChave(key, quantidade);
+        final total = valorTotalDaChave(key, quantidade, unitario);
+
+        return _CamisaGradeRow(
+          modelagem: _normalizarModelagemCamisa(modelagem),
+          tipo: _normalizarTipoCamisa(tipo),
+          tamanho: tamanho.trim().isEmpty
+              ? 'OUTRO'
+              : tamanho.trim().toUpperCase().replaceAll(' ', ''),
+          quantidade: quantidade,
+          valorUnitario: unitario,
+          valorTotal: total,
+        );
+      }).where((row) => row.quantidade > 0).toList();
+
+      entries.sort(_compararCamisaGradeRow);
+
+      for (final row in entries) {
+        rows.add([
+          _modelagemLabel(row.modelagem),
+          _tipoCamisaLabel(row.tipo),
+          row.tamanho,
+          row.quantidade.toString(),
+          row.valorUnitario > 0 ? _fmt(row.valorUnitario) : '---',
+          row.valorTotal > 0 ? _fmt(row.valorTotal) : '---',
+        ]);
+      }
+
+      return rows;
+    }
+
+    final porTamanho = Map<String, int>.from(bloco['por_tamanho'] ?? {});
+
+    final antigas = _ordenarTamanhos(porTamanho)
+        .map(
+          (entry) => _CamisaGradeRow(
+        modelagem: 'NORMAL',
+        tipo: 'MANGA',
+        tamanho: entry.key,
+        quantidade: entry.value,
+        valorUnitario: 0,
+        valorTotal: 0,
+      ),
+    )
+        .toList();
+
+    antigas.sort(_compararCamisaGradeRow);
+
+    for (final row in antigas) {
+      rows.add([
+        _modelagemLabel(row.modelagem),
+        _tipoCamisaLabel(row.tipo),
+        row.tamanho,
+        row.quantidade.toString(),
+        row.valorUnitario > 0 ? _fmt(row.valorUnitario) : '---',
+        row.valorTotal > 0 ? _fmt(row.valorTotal) : '---',
+      ]);
+    }
+
+    return rows;
+  }
+
+  static double _valorTotalPedidoCamisas(Map<String, dynamic> bloco) {
+    final direto = _asDouble(
+      bloco['valor_total_pedido'] ??
+          bloco['valor_total_confeccao'] ??
+          bloco['total_pedido'],
+    );
+
+    if (direto > 0) return direto;
+
+    final totaisRaw = bloco['por_detalhe_total'] ??
+        bloco['por_total'] ??
+        bloco['totais_por_detalhe'];
+
+    if (totaisRaw is Map) {
+      double total = 0;
+      totaisRaw.forEach((_, value) => total += _asDouble(value));
+      if (total > 0) return total;
+    }
+
+    return _asDouble(bloco['valor_total_camisas'] ?? bloco['valor'] ?? 0);
+  }
+
+  static int _compararCamisaGradeRow(
+      _CamisaGradeRow a,
+      _CamisaGradeRow b,
+      ) {
+    final modelagem = _ordemModelagemCamisa(a.modelagem)
+        .compareTo(_ordemModelagemCamisa(b.modelagem));
+    if (modelagem != 0) return modelagem;
+
+    final tipo = _ordemTipoCamisa(a.tipo).compareTo(_ordemTipoCamisa(b.tipo));
+    if (tipo != 0) return tipo;
+
+    final tamanho = _ordemTamanhoCamisa(a.tamanho)
+        .compareTo(_ordemTamanhoCamisa(b.tamanho));
+    if (tamanho != 0) return tamanho;
+
+    return a.tamanho.compareTo(b.tamanho);
+  }
+
+
   // ───────────────────── PDF DE CONFECÇÃO DE CAMISAS (TOTAL) ─────────────────────
   static Future<void> gerarPdfConfeccaoCamisas({
     required Map<String, dynamic> detalhesCamisas,
@@ -106,25 +373,24 @@ class EventoFinanceiroPdfService {
     final logo = await _carregarLogo();
     final pdf = pw.Document();
 
-    final porTamanho =
-    Map<String, int>.from(detalhesCamisas['por_tamanho'] ?? {});
     final totalCamisas = _asInt(detalhesCamisas['total_camisas']);
-
-    final dataRows = _ordenarTamanhos(porTamanho)
-        .map((e) => [e.key, e.value.toString()])
-        .toList();
+    final totalPedido = _valorTotalPedidoCamisas(detalhesCamisas);
+    final dataRows = _linhasCamisasDetalhadas(detalhesCamisas);
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(),
-        header: (ctx) => ctx.pageNumber == 1 ? pw.SizedBox() : _miniHeader(logo, eventoNome ?? 'Evento'),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
         footer: (ctx) => _rodapePaginado(ctx),
         build: (ctx) => [
           _heroRelatorio(
             logo: logo,
             titulo: 'PEDIDO DE CONFECÇÃO',
             subtitulo: eventoNome ?? 'Evento',
-            descricao: 'Resumo total de camisas para confecção.',
+            descricao:
+            'Resumo total de camisas separado por modelagem, tipo, tamanho e valor.',
             cor: verdeEscuro,
             icone: '👕',
           ),
@@ -137,25 +403,39 @@ class EventoFinanceiroPdfService {
               cor: verdeEscuro,
             ),
             _MetricData(
-              titulo: 'Tamanhos',
-              valor: porTamanho.length.toString(),
-              subtitulo: 'Variações encontradas',
+              titulo: 'Variações',
+              valor: dataRows.length.toString(),
+              subtitulo: 'Modelagem + tipo + tamanho',
               cor: azulEscuro,
+            ),
+            _MetricData(
+              titulo: 'Valor do pedido',
+              valor: _fmt(totalPedido),
+              subtitulo: 'Custo total das peças',
+              cor: roxoEscuro,
             ),
           ]),
           pw.SizedBox(height: 14),
-          _sectionTitle('Quantidade por tamanho', 'Grade consolidada'),
+          _quebraInteligente(espacoMinimo: 190),
+          _sectionTitle(
+            'Grade de confecção',
+            'Modelagem, tipo de camisa, tamanho e quantidade',
+          ),
           pw.SizedBox(height: 8),
           if (dataRows.isEmpty)
             _emptyBox('Nenhuma camisa encontrada.')
           else
             _modernTable(
-              headers: ['Tamanho', 'Quantidade'],
+              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
               data: dataRows,
               headerColor: verdeEscuro,
               widths: {
-                0: const pw.FlexColumnWidth(2),
-                1: const pw.FlexColumnWidth(1),
+                0: const pw.FlexColumnWidth(1.25),
+                1: const pw.FlexColumnWidth(1.25),
+                2: const pw.FlexColumnWidth(0.85),
+                3: const pw.FlexColumnWidth(0.70),
+                4: const pw.FlexColumnWidth(1.05),
+                5: const pw.FlexColumnWidth(1.10),
               },
             ),
         ],
@@ -178,35 +458,30 @@ class EventoFinanceiroPdfService {
     final logo = await _carregarLogo();
     final pdf = pw.Document();
 
-    final porTamanhoAlunos =
-    Map<String, int>.from(camisasAlunos['por_tamanho'] ?? {});
     final totalAlunos = _asInt(camisasAlunos['total']);
-
-    final porTamanhoAvulsas =
-    Map<String, int>.from(camisasAvulsas['por_tamanho'] ?? {});
     final totalAvulsas = _asInt(camisasAvulsas['total']);
-
     final totalFinal = _asInt(totalGeral['total_camisas']);
 
-    final dataAlunos = _ordenarTamanhos(porTamanhoAlunos)
-        .map((e) => [e.key, e.value.toString()])
-        .toList();
+    final valorPedidoFinal = _valorTotalPedidoCamisas(totalGeral);
 
-    final dataAvulsas = _ordenarTamanhos(porTamanhoAvulsas)
-        .map((e) => [e.key, e.value.toString()])
-        .toList();
+    final dataAlunos = _linhasCamisasDetalhadas(camisasAlunos);
+    final dataAvulsas = _linhasCamisasDetalhadas(camisasAvulsas);
+    final dataTotal = _linhasCamisasDetalhadas(totalGeral);
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(),
-        header: (ctx) => ctx.pageNumber == 1 ? pw.SizedBox() : _miniHeader(logo, eventoNome ?? 'Evento'),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
         footer: (ctx) => _rodapePaginado(ctx),
         build: (ctx) => [
           _heroRelatorio(
             logo: logo,
             titulo: 'CONFECÇÃO DETALHADA',
             subtitulo: eventoNome ?? 'Evento',
-            descricao: 'Separação de camisas dos alunos e camisas avulsas.',
+            descricao:
+            'Separação de camisas por modelagem, tipo, tamanho, valor unitário e total.',
             cor: verdeEscuro,
             icone: '👕',
           ),
@@ -230,30 +505,89 @@ class EventoFinanceiroPdfService {
               subtitulo: 'Peças no pedido',
               cor: azulEscuro,
             ),
+            _MetricData(
+              titulo: 'Valor do pedido',
+              valor: _fmt(valorPedidoFinal),
+              subtitulo: 'Custo total das peças',
+              cor: roxoEscuro,
+            ),
           ]),
           pw.SizedBox(height: 16),
-          _sectionTitle('Camisas dos alunos', 'Grade por tamanho'),
+          _quebraInteligente(espacoMinimo: 180),
+          _sectionTitle(
+            'Camisas dos alunos',
+            'Modelagem, tipo, tamanho e quantidade',
+          ),
           pw.SizedBox(height: 8),
           if (dataAlunos.isEmpty)
             _emptyBox('Nenhuma camisa de alunos.')
           else
             _modernTable(
-              headers: ['Tamanho', 'Quantidade'],
+              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
               data: dataAlunos,
               headerColor: verdeEscuro,
+              widths: {
+                0: const pw.FlexColumnWidth(1.25),
+                1: const pw.FlexColumnWidth(1.25),
+                2: const pw.FlexColumnWidth(0.85),
+                3: const pw.FlexColumnWidth(0.70),
+                4: const pw.FlexColumnWidth(1.05),
+                5: const pw.FlexColumnWidth(1.10),
+              },
             ),
           pw.SizedBox(height: 16),
-          _sectionTitle('Camisas avulsas', 'Grade por tamanho'),
+          _quebraInteligente(espacoMinimo: 180),
+          _sectionTitle(
+            'Camisas avulsas',
+            'Modelagem, tipo, tamanho e quantidade',
+          ),
           pw.SizedBox(height: 8),
           if (dataAvulsas.isEmpty)
             _emptyBox('Nenhuma camisa avulsa.')
           else
             _modernTable(
-              headers: ['Tamanho', 'Quantidade'],
+              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
               data: dataAvulsas,
               headerColor: laranjaEscuro,
               evenColor: laranjaClaro,
+              widths: {
+                0: const pw.FlexColumnWidth(1.25),
+                1: const pw.FlexColumnWidth(1.25),
+                2: const pw.FlexColumnWidth(0.85),
+                3: const pw.FlexColumnWidth(0.70),
+                4: const pw.FlexColumnWidth(1.05),
+                5: const pw.FlexColumnWidth(1.10),
+              },
             ),
+          pw.SizedBox(height: 16),
+          _quebraInteligente(
+            espacoMinimo: dataTotal.length <= 6 ? 180 : 250,
+          ),
+          _sectionTitle(
+            'Resumo geral',
+            'Pedido total consolidado para a estamparia',
+          ),
+          pw.SizedBox(height: 8),
+          if (dataTotal.isEmpty)
+            _emptyBox('Nenhuma camisa no resumo geral.')
+          else
+            _modernTable(
+              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+              data: dataTotal,
+              headerColor: azulEscuro,
+              evenColor: azulClaro,
+              widths: {
+                0: const pw.FlexColumnWidth(1.25),
+                1: const pw.FlexColumnWidth(1.25),
+                2: const pw.FlexColumnWidth(0.85),
+                3: const pw.FlexColumnWidth(0.70),
+                4: const pw.FlexColumnWidth(1.05),
+                5: const pw.FlexColumnWidth(1.10),
+              },
+            ),
+          pw.SizedBox(height: 10),
+          _totalPedidoBox(valorPedidoFinal),
+          _legendaConfeccao(),
         ],
       ),
     );
@@ -261,6 +595,164 @@ class EventoFinanceiroPdfService {
     await Printing.sharePdf(
       bytes: await pdf.save(),
       filename: 'confeccao_detalhado_${_arquivoSeguro(eventoNome)}.pdf',
+    );
+  }
+
+
+  // ───────────────────── PDF LISTA DE ENTREGA DE CAMISAS ─────────────────────
+  static Future<void> gerarPdfListaEntregaCamisasCompleta({
+    required List<Map<String, dynamic>> itens,
+    String? eventoNome,
+  }) async {
+    final logo = await _carregarLogo();
+    final pdf = pw.Document();
+
+    final itensOrdenados = List<Map<String, dynamic>>.from(itens)
+      ..sort((a, b) {
+        final nomeA = _safe(a['nome']).toUpperCase();
+        final nomeB = _safe(b['nome']).toUpperCase();
+        return nomeA.compareTo(nomeB);
+      });
+
+    final totalItens = itensOrdenados.length;
+    final totalAlunos = itensOrdenados
+        .where((item) => _safe(item['origem']).toUpperCase().contains('ALUNO'))
+        .length;
+    final totalAvulsas = totalItens - totalAlunos;
+
+    final rows = itensOrdenados.map((item) {
+      final nome = _safe(item['nome']);
+      final origem = _safe(item['origem'], fallback: '---');
+      final modelagem = _modelagemLabel(item['modelagem_camisa'] ?? item['modelagem']);
+      final tipo = _tipoCamisaLabel(item['tipo_camisa'] ?? item['tipo']);
+      final tamanho = _safe(
+        item['tamanho_camisa'] ?? item['tamanho'],
+        fallback: '---',
+      );
+
+      return [
+        '',
+        nome,
+        origem,
+        '$modelagem • $tipo',
+        tamanho,
+      ];
+    }).toList();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageTheme: _pageTheme(),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
+        footer: (ctx) => _rodapePaginado(ctx),
+        build: (ctx) => [
+          _heroRelatorio(
+            logo: logo,
+            titulo: 'LISTA DE ENTREGA DE CAMISAS',
+            subtitulo: eventoNome ?? 'Evento',
+            descricao:
+            'Lista única com alunos e camisas avulsas para conferência de entrega.',
+            cor: azulEscuro,
+            icone: '👕',
+          ),
+          pw.SizedBox(height: 14),
+          _metricGrid([
+            _MetricData(
+              titulo: 'Total',
+              valor: totalItens.toString(),
+              subtitulo: 'Camisas na lista',
+              cor: azulEscuro,
+            ),
+            _MetricData(
+              titulo: 'Alunos',
+              valor: totalAlunos.toString(),
+              subtitulo: 'Participantes do evento',
+              cor: verdeEscuro,
+            ),
+            _MetricData(
+              titulo: 'Avulsas',
+              valor: totalAvulsas.toString(),
+              subtitulo: 'Camisas extras',
+              cor: laranjaEscuro,
+            ),
+          ]),
+          pw.SizedBox(height: 14),
+          _sectionTitle(
+            'Conferência de entrega',
+            'Marque o quadradinho quando a camisa for entregue',
+          ),
+          pw.SizedBox(height: 8),
+          if (rows.isEmpty)
+            _emptyBox('Nenhuma camisa encontrada para entrega.')
+          else
+            _modernTable(
+              headers: ['Entregue', 'Nome', 'Origem', 'Camisa', 'Tam.'],
+              data: rows,
+              headerColor: azulEscuro,
+              evenColor: azulClaro,
+              widths: {
+                0: const pw.FlexColumnWidth(0.75),
+                1: const pw.FlexColumnWidth(2.35),
+                2: const pw.FlexColumnWidth(0.95),
+                3: const pw.FlexColumnWidth(1.55),
+                4: const pw.FlexColumnWidth(0.70),
+              },
+              cellBuilder: (value, rowIndex, colIndex) {
+                if (colIndex == 0) {
+                  return pw.Center(
+                    child: pw.Container(
+                      width: 11,
+                      height: 11,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: cinza700, width: 0.9),
+                        borderRadius: pw.BorderRadius.circular(2),
+                        color: PdfColors.white,
+                      ),
+                    ),
+                  );
+                }
+
+                return pw.Text(
+                  value,
+                  style: pw.TextStyle(
+                    color: cinza900,
+                    fontSize: 8,
+                    fontWeight: colIndex == 1
+                        ? pw.FontWeight.bold
+                        : pw.FontWeight.normal,
+                  ),
+                  maxLines: 2,
+                  overflow: pw.TextOverflow.clip,
+                );
+              },
+            ),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: cinza100,
+              borderRadius: pw.BorderRadius.circular(10),
+              border: pw.Border.all(color: cinza300, width: 0.6),
+            ),
+            child: pw.Text(
+              'Observação: esta lista serve apenas para controle manual da entrega. '
+                  'Após conferir no papel, atualize o status de entrega no sistema.',
+              style: pw.TextStyle(
+                color: cinza700,
+                fontSize: 8.5,
+                lineSpacing: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.sharePdf(
+      bytes: await pdf.save(),
+      filename: 'lista_entrega_camisas_${_arquivoSeguro(eventoNome)}.pdf',
     );
   }
 
@@ -297,9 +789,7 @@ class EventoFinanceiroPdfService {
         ? 0.0
         : (inadimplentes / totalParticipantes).clamp(0.0, 1.0);
 
-    final camisaRows = _ordenarTamanhos(
-      Map<String, int>.from(detalhesCamisas['por_tamanho'] ?? {}),
-    ).map((e) => [e.key, e.value.toString()]).toList();
+    final camisaRows = _linhasCamisasDetalhadas(detalhesCamisas);
 
     final receitaTipoRows = [
       ['Inscrições', _fmt(totalInscricoes)],
@@ -508,7 +998,7 @@ class EventoFinanceiroPdfService {
                 _MetricData(
                   titulo: 'Total camisas',
                   valor: '${detalhesCamisas['total_camisas'] ?? 0}',
-                  subtitulo: 'Incluindo todos os tamanhos',
+                  subtitulo: 'Modelagem, tipo e tamanho',
                   cor: azulEscuro,
                 ),
                 _MetricData(
@@ -527,13 +1017,15 @@ class EventoFinanceiroPdfService {
               if (camisaRows.isNotEmpty) ...[
                 pw.SizedBox(height: 10),
                 _modernTable(
-                  headers: ['Tamanho', 'Quantidade'],
+                  headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
                   data: camisaRows,
                   headerColor: laranjaEscuro,
                   evenColor: laranjaClaro,
                   widths: {
-                    0: const pw.FlexColumnWidth(2),
-                    1: const pw.FlexColumnWidth(1),
+                    0: const pw.FlexColumnWidth(1.35),
+                    1: const pw.FlexColumnWidth(1.35),
+                    2: const pw.FlexColumnWidth(1),
+                    3: const pw.FlexColumnWidth(1),
                   },
                 ),
               ],
@@ -951,6 +1443,99 @@ class EventoFinanceiroPdfService {
         pw.NewPage(freeSpace: minFreeSpace),
         if (keepTogether) content else content,
       ],
+    );
+  }
+
+
+  static pw.Widget _quebraInteligente({double espacoMinimo = 180}) {
+    return pw.NewPage(freeSpace: espacoMinimo);
+  }
+
+
+  static pw.Widget _totalPedidoBox(double valorTotal) {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: pw.BoxDecoration(
+        color: roxoClaro,
+        borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: roxoEscuro, width: 0.65),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            'VALOR TOTAL DO PEDIDO',
+            style: pw.TextStyle(
+              color: roxoEscuro,
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.Text(
+            _fmt(valorTotal),
+            style: pw.TextStyle(
+              color: roxoEscuro,
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _legendaConfeccao() {
+    return pw.Container(
+      width: double.infinity,
+      margin: const pw.EdgeInsets.only(top: 10),
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: azulClaro,
+        borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: azulEscuro, width: 0.65),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Legenda para a estamparia',
+            style: pw.TextStyle(
+              color: azulEscuro,
+              fontSize: 9.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.RichText(
+            text: pw.TextSpan(
+              style: pw.TextStyle(
+                color: cinza700,
+                fontSize: 8,
+                lineSpacing: 1.5,
+              ),
+              children: [
+                pw.TextSpan(
+                  text: 'Modelagem: ',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                const pw.TextSpan(
+                  text:
+                  'Normal = camisa tradicional/unissex. Baby Look = modelagem feminina mais ajustada. ',
+                ),
+                pw.TextSpan(
+                  text: 'Tipo: ',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                const pw.TextSpan(
+                  text:
+                  'Manga = manga curta normal. Manga Longa = camisa de manga longa. Regata = camisa sem mangas.',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1427,6 +2012,7 @@ class EventoFinanceiroPdfService {
     PdfColor? evenColor,
     double cellFontSize = 8.5,
     Map<int, pw.TableColumnWidth>? widths,
+    pw.Widget Function(String value, int rowIndex, int colIndex)? cellBuilder,
   }) {
     return pw.Table(
       border: pw.TableBorder.all(color: cinza200, width: 0.45),
@@ -1455,21 +2041,25 @@ class EventoFinanceiroPdfService {
             decoration: pw.BoxDecoration(
               color: index % 2 == 0 ? (evenColor ?? cinza50) : PdfColors.white,
             ),
-            children: row.map((cell) {
+            children: List.generate(row.length, (colIndex) {
+              final cell = row[colIndex];
+
               return pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(
                   horizontal: 6,
                   vertical: 6,
                 ),
-                child: pw.Text(
+                child: cellBuilder == null
+                    ? pw.Text(
                   cell,
                   style: pw.TextStyle(
                     color: cinza900,
                     fontSize: cellFontSize,
                   ),
-                ),
+                )
+                    : cellBuilder(cell, index, colIndex),
               );
-            }).toList(),
+            }),
           );
         }),
       ],
@@ -1635,41 +2225,36 @@ class EventoFinanceiroPdfService {
   }
 
   static List<MapEntry<String, int>> _ordenarTamanhos(Map<String, int> mapa) {
-    const ordem = [
-      'PP',
-      'P',
-      'M',
-      'G',
-      'GG',
-      'XG',
-      'XGG',
-      'EXG',
-      'EXGG',
-      '2',
-      '4',
-      '6',
-      '8',
-      '10',
-      '12',
-      '14',
-      '16',
-    ];
-
     final entries = mapa.entries.toList();
 
     entries.sort((a, b) {
-      final ai = ordem.indexOf(a.key.toUpperCase());
-      final bi = ordem.indexOf(b.key.toUpperCase());
+      final ai = _ordemTamanhoCamisa(a.key);
+      final bi = _ordemTamanhoCamisa(b.key);
 
-      if (ai == -1 && bi == -1) return a.key.compareTo(b.key);
-      if (ai == -1) return 1;
-      if (bi == -1) return -1;
-
-      return ai.compareTo(bi);
+      if (ai != bi) return ai.compareTo(bi);
+      return a.key.compareTo(b.key);
     });
 
     return entries;
   }
+}
+
+class _CamisaGradeRow {
+  final String modelagem;
+  final String tipo;
+  final String tamanho;
+  final int quantidade;
+  final double valorUnitario;
+  final double valorTotal;
+
+  const _CamisaGradeRow({
+    required this.modelagem,
+    required this.tipo,
+    required this.tamanho,
+    required this.quantidade,
+    this.valorUnitario = 0,
+    this.valorTotal = 0,
+  });
 }
 
 class _MetricData {

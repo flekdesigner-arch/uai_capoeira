@@ -22,6 +22,16 @@ class CriarEventoScreen extends StatefulWidget {
 
 class _CriarEventoScreenState extends State<CriarEventoScreen> {
   final _formKey = GlobalKey<FormState>();
+  final ScrollController _scrollController = ScrollController();
+
+  final GlobalKey _dadosKey = GlobalKey();
+  final GlobalKey _bannerKey = GlobalKey();
+  final GlobalKey _financeiroKey = GlobalKey();
+  final GlobalKey _camisaKey = GlobalKey();
+  final GlobalKey _certificadoKey = GlobalKey();
+  final GlobalKey _webKey = GlobalKey();
+  final GlobalKey _linksKey = GlobalKey();
+
   final EventoService _eventoService = EventoService();
   final PermissaoService _permissaoService = PermissaoService();
 
@@ -42,6 +52,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   final _linkPreviaController = TextEditingController();
   final _linkPlaylistController = TextEditingController();
 
+  final _valorCamisaMangaController = TextEditingController();
+  final _valorCamisaMangaLongaController = TextEditingController();
+  final _valorCamisaRegataController = TextEditingController();
+
   File? _bannerFile;
   String? _bannerUrl;
   bool _isUploadingBanner = false;
@@ -53,9 +67,31 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   DateTime? _dataLimitePrimeiraParcela;
 
   bool _temCamisa = false;
+
+  // Compatibilidade antiga: continua existindo como valor padrão da camisa.
+  // Na prática, ele será sincronizado com o valor de MANGA.
   double _valorCamisa = 0;
+
+  // Novo controle financeiro da confecção:
+  // cada tipo de camisa pode ter um valor unitário diferente.
+  Map<String, double> _valoresPorTipoCamisa = {
+    'MANGA': 0,
+    'MANGA_LONGA': 0,
+    'REGATA': 0,
+  };
+
   bool _camisaObrigatoria = false;
+
+  static const String _modelagemNormal = 'NORMAL';
+  static const String _modelagemBabyLook = 'BABY_LOOK';
+
+  static const String _tipoManga = 'MANGA';
+  static const String _tipoMangaLonga = 'MANGA_LONGA';
+  static const String _tipoRegata = 'REGATA';
+
   final List<String> _todosTamanhos = [
+    '1A',
+    '2A',
     '4A',
     '6A',
     '8A',
@@ -69,7 +105,28 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     'GG',
     'EGG',
   ];
+
+  final List<String> _todasModelagensCamisa = [
+    _modelagemNormal,
+    _modelagemBabyLook,
+  ];
+
+  final List<String> _todosTiposCamisa = [
+    _tipoManga,
+    _tipoMangaLonga,
+    _tipoRegata,
+  ];
+
   List<String> _tamanhosSelecionados = [];
+  List<String> _modelagensCamisaSelecionadas = [
+    _modelagemNormal,
+    _modelagemBabyLook,
+  ];
+  List<String> _tiposCamisaSelecionados = [
+    _tipoManga,
+    _tipoMangaLonga,
+    _tipoRegata,
+  ];
 
   bool _temCertificado = false;
   ConfiguracoesCertificadoEvento _configCertificado =
@@ -111,6 +168,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _linkFotosController.dispose();
     _linkPreviaController.dispose();
     _linkPlaylistController.dispose();
+    _valorCamisaMangaController.dispose();
+    _valorCamisaMangaLongaController.dispose();
+    _valorCamisaRegataController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -141,6 +202,195 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
+
+  String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return _modelagemBabyLook;
+    }
+
+    return _modelagemNormal;
+  }
+
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return _tipoMangaLonga;
+    }
+
+    if (clean == 'REGATA') {
+      return _tipoRegata;
+    }
+
+    return _tipoManga;
+  }
+
+  String _modelagemCamisaLabel(String value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case _modelagemBabyLook:
+        return 'Baby Look';
+      case _modelagemNormal:
+      default:
+        return 'Normal';
+    }
+  }
+
+  String _tipoCamisaLabel(String value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case _tipoMangaLonga:
+        return 'Manga Longa';
+      case _tipoRegata:
+        return 'Regata';
+      case _tipoManga:
+      default:
+        return 'Manga';
+    }
+  }
+
+  List<String> _normalizarListaModelagens(dynamic value) {
+    final source = value is List ? value : const [];
+    final result = <String>[];
+
+    for (final item in source) {
+      final clean = _normalizarModelagemCamisa(item);
+      if (!result.contains(clean)) result.add(clean);
+    }
+
+    if (result.isEmpty) {
+      return List<String>.from(_todasModelagensCamisa);
+    }
+
+    result.sort((a, b) {
+      final ordem = {
+        _modelagemNormal: 0,
+        _modelagemBabyLook: 1,
+      };
+
+      return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+    });
+
+    return result;
+  }
+
+  List<String> _normalizarListaTiposCamisa(dynamic value) {
+    final source = value is List ? value : const [];
+    final result = <String>[];
+
+    for (final item in source) {
+      final clean = _normalizarTipoCamisa(item);
+      if (!result.contains(clean)) result.add(clean);
+    }
+
+    if (result.isEmpty) {
+      return List<String>.from(_todosTiposCamisa);
+    }
+
+    result.sort((a, b) {
+      final ordem = {
+        _tipoManga: 0,
+        _tipoMangaLonga: 1,
+        _tipoRegata: 2,
+      };
+
+      return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+    });
+
+    return result;
+  }
+
+  double _parseValorMoeda(String value) {
+    final clean = value
+        .trim()
+        .replaceAll('R\$', '')
+        .replaceAll(' ', '')
+        .replaceAll('.', '')
+        .replaceAll(',', '.');
+
+    if (clean.isEmpty) return 0;
+
+    return double.tryParse(clean) ?? 0;
+  }
+
+  String _formatarValorCampo(double value) {
+    if (value <= 0) return '';
+    return value.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
+  Map<String, double> _normalizarValoresPorTipoCamisa(
+      dynamic raw, {
+        double fallback = 0,
+      }) {
+    final result = <String, double>{
+      _tipoManga: fallback,
+      _tipoMangaLonga: fallback,
+      _tipoRegata: fallback,
+    };
+
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final tipo = _normalizarTipoCamisa(key);
+        final valor = value is num
+            ? value.toDouble()
+            : double.tryParse(
+          value?.toString().replaceAll(',', '.').trim() ?? '',
+        ) ??
+            fallback;
+
+        result[tipo] = valor;
+      });
+    }
+
+    return result;
+  }
+
+  void _sincronizarControllersValoresCamisa() {
+    _valorCamisaMangaController.text =
+        _formatarValorCampo(_valoresPorTipoCamisa[_tipoManga] ?? _valorCamisa);
+    _valorCamisaMangaLongaController.text = _formatarValorCampo(
+      _valoresPorTipoCamisa[_tipoMangaLonga] ?? _valorCamisa,
+    );
+    _valorCamisaRegataController.text =
+        _formatarValorCampo(_valoresPorTipoCamisa[_tipoRegata] ?? _valorCamisa);
+  }
+
+  void _sincronizarMapaValoresCamisa() {
+    final manga = _parseValorMoeda(_valorCamisaMangaController.text);
+    final mangaLonga = _parseValorMoeda(_valorCamisaMangaLongaController.text);
+    final regata = _parseValorMoeda(_valorCamisaRegataController.text);
+
+    _valoresPorTipoCamisa = {
+      _tipoManga: manga,
+      _tipoMangaLonga: mangaLonga,
+      _tipoRegata: regata,
+    };
+
+    // Compatibilidade com telas antigas: o valor da Manga continua sendo
+    // salvo também no campo antigo valorCamisa.
+    _valorCamisa = manga;
+  }
+
+  double _valorPorTipoCamisa(String tipo) {
+    final clean = _normalizarTipoCamisa(tipo);
+    return _valoresPorTipoCamisa[clean] ?? _valorCamisa;
+  }
+
 
   Future<void> _verificarPermissoes() async {
     if (mounted) {
@@ -195,6 +445,32 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _showSnack(mensagem, type: _SnackType.error);
   }
 
+  Future<void> _irParaSecao(GlobalKey key) async {
+    final contextSecao = key.currentContext;
+    if (contextSecao == null) return;
+
+    await Scrollable.ensureVisible(
+      contextSecao,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
+
+  String _modeloCertificadoLabel() {
+    switch (_configCertificado.modeloPadrao) {
+      case 'CERTIFICADO':
+        return 'Certificado simples';
+      case 'CERTIFICADOCOMCPF':
+        return 'Certificado com CPF';
+      case 'DIPLOMA':
+        return 'Diploma';
+      case ConfiguracoesCertificadoEvento.modeloAutomatico:
+      default:
+        return 'Auto por graduação';
+    }
+  }
+
   void _preencherFormulario() {
     final e = widget.evento!;
 
@@ -219,7 +495,18 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
     _temCamisa = e.temCamisa;
     _valorCamisa = e.valorCamisa ?? 0;
+    _valoresPorTipoCamisa = _normalizarValoresPorTipoCamisa(
+      e.valoresPorTipoCamisa,
+      fallback: _valorCamisa,
+    );
+    _sincronizarControllersValoresCamisa();
     _tamanhosSelecionados = List.from(e.tamanhosDisponiveis);
+    _modelagensCamisaSelecionadas = _normalizarListaModelagens(
+      e.modelagensCamisaDisponiveis,
+    );
+    _tiposCamisaSelecionados = _normalizarListaTiposCamisa(
+      e.tiposCamisaDisponiveis,
+    );
     _camisaObrigatoria = e.camisaObrigatoria;
 
     _temCertificado = e.temCertificado;
@@ -660,6 +947,288 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  Widget _buildMultiSelectCard({
+    required IconData icon,
+    required String title,
+    required String emptyText,
+    required String values,
+    required VoidCallback onTap,
+  }) {
+    final t = context.uai;
+
+    return Material(
+      color: t.cardAlt,
+      borderRadius: BorderRadius.circular(t.inputRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(t.inputRadius),
+            border: Border.all(color: t.border),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: _ensureVisible(t.primary, t.cardAlt),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  values.trim().isEmpty ? emptyText : values,
+                  style: TextStyle(
+                    color: values.trim().isEmpty
+                        ? t.textSecondary
+                        : t.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: t.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selecionarModelagensCamisa() async {
+    if (!_podeSalvarEvento) {
+      _mostrarSemPermissao('Você não tem permissão para alterar modelagens.');
+      return;
+    }
+
+    final temp = List<String>.from(_modelagensCamisaSelecionadas);
+
+    await _abrirDialogMultiSelecao(
+      titulo: 'Modelagens Disponíveis',
+      opcoes: _todasModelagensCamisa,
+      selecionadosTemp: temp,
+      labelBuilder: _modelagemCamisaLabel,
+      onSalvar: (selecionados) {
+        setState(() {
+          _modelagensCamisaSelecionadas = selecionados.isEmpty
+              ? List.from(_todasModelagensCamisa)
+              : selecionados;
+        });
+      },
+    );
+  }
+
+  void _selecionarTiposCamisa() async {
+    if (!_podeSalvarEvento) {
+      _mostrarSemPermissao('Você não tem permissão para alterar tipos de camisa.');
+      return;
+    }
+
+    final temp = List<String>.from(_tiposCamisaSelecionados);
+
+    await _abrirDialogMultiSelecao(
+      titulo: 'Tipos de Camisa Disponíveis',
+      opcoes: _todosTiposCamisa,
+      selecionadosTemp: temp,
+      labelBuilder: _tipoCamisaLabel,
+      onSalvar: (selecionados) {
+        setState(() {
+          _tiposCamisaSelecionados = selecionados.isEmpty
+              ? List.from(_todosTiposCamisa)
+              : selecionados;
+        });
+      },
+    );
+  }
+
+  Future<void> _abrirDialogMultiSelecao({
+    required String titulo,
+    required List<String> opcoes,
+    required List<String> selecionadosTemp,
+    required String Function(String) labelBuilder,
+    required ValueChanged<List<String>> onSalvar,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final t = context.uai;
+        final primary = _ensureVisible(t.primary, t.surface);
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return Dialog(
+              insetPadding: const EdgeInsets.all(18),
+              backgroundColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Material(
+                  color: t.surface,
+                  borderRadius: BorderRadius.circular(t.cardRadius + 2),
+                  clipBehavior: Clip.antiAlias,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(t.cardRadius + 2),
+                      border: Border.all(color: t.border),
+                      boxShadow: t.cardShadow,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 8, 10),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: primary.withOpacity(0.12),
+                                  borderRadius:
+                                  BorderRadius.circular(t.buttonRadius),
+                                ),
+                                child: Icon(Icons.checkroom_rounded, color: primary),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  titulo,
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            itemCount: opcoes.length,
+                            itemBuilder: (context, index) {
+                              final item = opcoes[index];
+                              final isSelected = selecionadosTemp.contains(item);
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Material(
+                                  color: isSelected
+                                      ? Color.alphaBlend(
+                                    primary.withOpacity(0.10),
+                                    t.cardAlt,
+                                  )
+                                      : t.cardAlt,
+                                  borderRadius: BorderRadius.circular(t.inputRadius),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius:
+                                      BorderRadius.circular(t.inputRadius),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? primary.withOpacity(0.28)
+                                            : t.border,
+                                      ),
+                                    ),
+                                    child: CheckboxListTile(
+                                      value: isSelected,
+                                      activeColor: primary,
+                                      title: Text(
+                                        labelBuilder(item),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          color: isSelected
+                                              ? primary
+                                              : t.textPrimary,
+                                        ),
+                                      ),
+                                      onChanged: (selected) {
+                                        setStateDialog(() {
+                                          if (selected == true) {
+                                            if (!selecionadosTemp.contains(item)) {
+                                              selecionadosTemp.add(item);
+                                            }
+                                          } else {
+                                            selecionadosTemp.remove(item);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: t.card,
+                            border: Border(top: BorderSide(color: t.border)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => Navigator.pop(dialogContext),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: t.textPrimary,
+                                    side: BorderSide(color: t.border),
+                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(t.buttonRadius),
+                                    ),
+                                  ),
+                                  child: const Text('CANCELAR'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    onSalvar(List<String>.from(selecionadosTemp));
+                                    Navigator.pop(dialogContext);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: t.primary,
+                                    foregroundColor: _readableOn(t.primary),
+                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(t.buttonRadius),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'OK',
+                                    style: TextStyle(fontWeight: FontWeight.w900),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+
   Future<void> _showConfirmDialog({
     required String title,
     required String message,
@@ -772,6 +1341,180 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSectionNavigator() {
+    final t = context.uai;
+
+    final itens = [
+      _SectionShortcut(
+        keyRef: _dadosKey,
+        icon: Icons.event_rounded,
+        label: 'Dados',
+        subtitle: _tipoController.text.trim().isEmpty
+            ? 'Tipo pendente'
+            : _tipoController.text.trim(),
+        color: t.primary,
+        ativo: _nomeController.text.trim().isNotEmpty,
+      ),
+      _SectionShortcut(
+        keyRef: _bannerKey,
+        icon: Icons.image_rounded,
+        label: 'Banner',
+        subtitle: _bannerFile != null || _bannerUrl != null
+            ? 'Imagem definida'
+            : 'Sem imagem',
+        color: t.info,
+        ativo: _bannerFile != null || _bannerUrl != null,
+      ),
+      _SectionShortcut(
+        keyRef: _financeiroKey,
+        icon: Icons.payments_rounded,
+        label: 'Taxas',
+        subtitle: _valorInscricao > 0
+            ? 'R\$ ${_valorInscricao.toStringAsFixed(2).replaceAll('.', ',')}'
+            : 'Gratuito',
+        color: t.success,
+        ativo: _valorInscricao > 0,
+      ),
+      _SectionShortcut(
+        keyRef: _camisaKey,
+        icon: Icons.checkroom_rounded,
+        label: 'Camisa',
+        subtitle: _temCamisa
+            ? '${_tamanhosSelecionados.length} tam. • '
+            '${_modelagensCamisaSelecionadas.length} mod. • '
+            '${_tiposCamisaSelecionados.length} tipo(s)'
+            : 'Desativada',
+        color: t.warning,
+        ativo: _temCamisa,
+      ),
+      _SectionShortcut(
+        keyRef: _certificadoKey,
+        icon: Icons.workspace_premium_rounded,
+        label: 'Certificado',
+        subtitle: _temCertificado ? _modeloCertificadoLabel() : 'Desativado',
+        color: t.success,
+        ativo: _temCertificado,
+      ),
+      _SectionShortcut(
+        keyRef: _webKey,
+        icon: Icons.public_rounded,
+        label: 'Web',
+        subtitle: _mostrarNoPortfolioWeb ? 'Visível no site' : 'Oculto',
+        color: t.info,
+        ativo: _mostrarNoPortfolioWeb,
+      ),
+      _SectionShortcut(
+        keyRef: _linksKey,
+        icon: Icons.link_rounded,
+        label: 'Links',
+        subtitle: _linkFotosController.text.trim().isNotEmpty ||
+            _linkPreviaController.text.trim().isNotEmpty ||
+            _linkPlaylistController.text.trim().isNotEmpty
+            ? 'Preenchidos'
+            : 'Opcional',
+        color: t.associacao,
+        ativo: _linkFotosController.text.trim().isNotEmpty ||
+            _linkPreviaController.text.trim().isNotEmpty ||
+            _linkPlaylistController.text.trim().isNotEmpty,
+      ),
+    ];
+
+    return _sectionCard(
+      icon: Icons.dashboard_customize_rounded,
+      title: 'Painel rápido',
+      subtitle: 'Toque em uma seção para ir direto ao ponto.',
+      color: t.primary,
+      dense: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final itemWidth = constraints.maxWidth < 520
+              ? (constraints.maxWidth - 10) / 2
+              : constraints.maxWidth < 760
+              ? (constraints.maxWidth - 20) / 3
+              : (constraints.maxWidth - 30) / 4;
+
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: itens.map((item) {
+              return SizedBox(
+                width: itemWidth.clamp(150.0, 230.0),
+                child: _sectionShortcutCard(item),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _sectionShortcutCard(_SectionShortcut item) {
+    final t = context.uai;
+    final accent = _ensureVisible(item.color, t.cardAlt);
+
+    return Material(
+      color: item.ativo
+          ? Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt)
+          : t.cardAlt,
+      borderRadius: BorderRadius.circular(t.inputRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _irParaSecao(item.keyRef),
+        child: Container(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(t.inputRadius),
+            border: Border.all(
+              color: item.ativo ? accent.withOpacity(0.26) : t.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+                child: Icon(item.icon, color: accent, size: 18),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: item.ativo ? accent : t.textSecondary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1096,6 +1839,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                       : 'Data personalizada',
                   color: t.warning,
                 ),
+                _certificadoChip(
+                  icon: Icons.format_size_rounded,
+                  label: '${config.textos.length} texto(s) 2.0',
+                  color: t.primary,
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -1135,8 +1883,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               icon: const Icon(Icons.tune_rounded, size: 18),
               label: Text(
                 _temCertificado
-                    ? 'CONFIGURAR ASSINATURAS'
-                    : 'ATIVAR E CONFIGURAR',
+                    ? 'ABRIR ESTÚDIO DO CERTIFICADO'
+                    : 'ATIVAR ESTÚDIO',
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: primary,
@@ -1299,6 +2047,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         novaBannerUrl = null;
       }
 
+      _sincronizarMapaValoresCamisa();
+
       final evento = EventoModel(
         id: widget.evento?.id,
         nome: _nomeController.text.trim(),
@@ -1317,7 +2067,12 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         dataLimitePrimeiraParcela: _dataLimitePrimeiraParcela,
         temCamisa: _temCamisa,
         valorCamisa: _temCamisa ? _valorCamisa : null,
+        valoresPorTipoCamisa: _temCamisa ? _valoresPorTipoCamisa : const {},
         tamanhosDisponiveis: _temCamisa ? _tamanhosSelecionados : [],
+        modelagensCamisaDisponiveis:
+        _temCamisa ? _modelagensCamisaSelecionadas : [],
+        tiposCamisaDisponiveis:
+        _temCamisa ? _tiposCamisaSelecionados : [],
         camisaObrigatoria: _temCamisa ? _camisaObrigatoria : false,
         alteraGraduacao: alteraGraduacao,
         geraCertificado: geraCertificado,
@@ -1457,6 +2212,139 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  Widget _valoresPorTipoCamisaCard() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.warning, t.card);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: accent.withOpacity(0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.price_change_rounded, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Valores por tipo de camisa',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Defina o preço unitário usado no cadastro e no PDF de confecção.',
+            style: TextStyle(
+              color: t.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 620;
+
+              final fields = [
+                _valorTipoField(
+                  controller: _valorCamisaMangaController,
+                  label: 'Manga',
+                  tipo: _tipoManga,
+                  icon: Icons.checkroom_rounded,
+                ),
+                _valorTipoField(
+                  controller: _valorCamisaMangaLongaController,
+                  label: 'Manga Longa',
+                  tipo: _tipoMangaLonga,
+                  icon: Icons.accessibility_new_rounded,
+                ),
+                _valorTipoField(
+                  controller: _valorCamisaRegataController,
+                  label: 'Regata',
+                  tipo: _tipoRegata,
+                  icon: Icons.sports_martial_arts_rounded,
+                ),
+              ];
+
+              if (narrow) {
+                return Column(
+                  children: [
+                    fields[0],
+                    const SizedBox(height: 10),
+                    fields[1],
+                    const SizedBox(height: 10),
+                    fields[2],
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: fields[0]),
+                  const SizedBox(width: 10),
+                  Expanded(child: fields[1]),
+                  const SizedBox(width: 10),
+                  Expanded(child: fields[2]),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          _infoBox(
+            icon: Icons.info_outline_rounded,
+            color: t.info,
+            text:
+            'O valor de Manga também será salvo como valor padrão da camisa para manter compatibilidade com eventos antigos.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _valorTipoField({
+    required TextEditingController controller,
+    required String label,
+    required String tipo,
+    required IconData icon,
+  }) {
+    final t = context.uai;
+
+    return TextFormField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800),
+      decoration: _inputDecoration(
+        label: '$label (R\$)',
+        icon: icon,
+        hint: '0,00',
+      ),
+      onChanged: (_) {
+        _sincronizarMapaValoresCamisa();
+        setState(() {});
+      },
+      validator: _temCamisa
+          ? (value) {
+        final valor = _parseValorMoeda(value ?? '');
+        if (valor < 0) return 'Valor inválido';
+        return null;
+      }
+          : null,
+    );
+  }
+
   Widget _numberField({
     required String label,
     required IconData icon,
@@ -1485,39 +2373,44 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   Widget _sectionCard({
+    Key? sectionKey,
     required IconData icon,
     required String title,
     required String subtitle,
     required Color color,
     required Widget child,
+    bool dense = false,
   }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
-    return Material(
-      color: t.card,
-      borderRadius: BorderRadius.circular(t.cardRadius),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: accent.withOpacity(0.14)),
-          boxShadow: t.softShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionHeader(
-              icon: icon,
-              title: title,
-              subtitle: subtitle,
-              color: accent,
-            ),
-            const SizedBox(height: 14),
-            child,
-          ],
+    return KeyedSubtree(
+      key: sectionKey,
+      child: Material(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(dense ? 13 : 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: accent.withOpacity(0.14)),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeader(
+                icon: icon,
+                title: title,
+                subtitle: subtitle,
+                color: accent,
+              ),
+              const SizedBox(height: 14),
+              child,
+            ],
+          ),
         ),
       ),
     );
@@ -1960,7 +2853,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     const SizedBox(height: 14),
                     _buildPermissaoEventoCard(),
                     const SizedBox(height: 14),
+                    _buildSectionNavigator(),
+                    const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _dadosKey,
                       icon: Icons.event_rounded,
                       title: 'Dados Básicos',
                       subtitle:
@@ -2109,6 +3005,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _bannerKey,
                       icon: Icons.image_rounded,
                       title: 'Banner do Evento',
                       subtitle:
@@ -2136,6 +3033,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _financeiroKey,
                       icon: Icons.payments_rounded,
                       title: 'Configurações de Taxa',
                       subtitle:
@@ -2207,10 +3105,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _camisaKey,
                       icon: Icons.checkroom_rounded,
                       title: 'Configurações de Camisa',
                       subtitle:
-                      'Defina se o evento terá camisa, valor e tamanhos.',
+                      'Defina camisa, valores por tipo, tamanhos e modelagens.',
                       color: t.warning,
                       child: Column(
                         children: [
@@ -2228,23 +3127,45 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 _temCamisa = value;
                                 if (!value) {
                                   _tamanhosSelecionados = [];
+                                  _modelagensCamisaSelecionadas = [];
+                                  _tiposCamisaSelecionados = [];
                                   _camisaObrigatoria = false;
                                   _valorCamisa = 0;
+                                  _valoresPorTipoCamisa = {
+                                    _tipoManga: 0,
+                                    _tipoMangaLonga: 0,
+                                    _tipoRegata: 0,
+                                  };
+                                  _valorCamisaMangaController.clear();
+                                  _valorCamisaMangaLongaController.clear();
+                                  _valorCamisaRegataController.clear();
+                                } else {
+                                  if (_valoresPorTipoCamisa.isEmpty) {
+                                    _valoresPorTipoCamisa = {
+                                      _tipoManga: _valorCamisa,
+                                      _tipoMangaLonga: _valorCamisa,
+                                      _tipoRegata: _valorCamisa,
+                                    };
+                                    _sincronizarControllersValoresCamisa();
+                                  }
+                                  if (_tamanhosSelecionados.isEmpty) {
+                                    _tamanhosSelecionados = List.from(_todosTamanhos);
+                                  }
+                                  if (_modelagensCamisaSelecionadas.isEmpty) {
+                                    _modelagensCamisaSelecionadas =
+                                        List.from(_todasModelagensCamisa);
+                                  }
+                                  if (_tiposCamisaSelecionados.isEmpty) {
+                                    _tiposCamisaSelecionados =
+                                        List.from(_todosTiposCamisa);
+                                  }
                                 }
                               });
                             },
                           ),
                           if (_temCamisa) ...[
                             const SizedBox(height: 12),
-                            _numberField(
-                              label: 'Valor da camisa (R\$)',
-                              icon: Icons.attach_money_rounded,
-                              initialValue: _valorCamisa,
-                              onChanged: (value) {
-                                _valorCamisa =
-                                    double.tryParse(value) ?? 0;
-                              },
-                            ),
+                            _valoresPorTipoCamisaCard(),
                             const SizedBox(height: 12),
                             Material(
                               color: t.cardAlt,
@@ -2304,6 +3225,26 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            _buildMultiSelectCard(
+                              icon: Icons.style_rounded,
+                              title: 'Modelagens disponíveis',
+                              emptyText: 'Nenhuma modelagem selecionada',
+                              values: _modelagensCamisaSelecionadas
+                                  .map(_modelagemCamisaLabel)
+                                  .join(', '),
+                              onTap: _selecionarModelagensCamisa,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildMultiSelectCard(
+                              icon: Icons.design_services_rounded,
+                              title: 'Tipos de camisa disponíveis',
+                              emptyText: 'Nenhum tipo selecionado',
+                              values: _tiposCamisaSelecionados
+                                  .map(_tipoCamisaLabel)
+                                  .join(', '),
+                              onTap: _selecionarTiposCamisa,
+                            ),
+                            const SizedBox(height: 12),
                             _buildToggleCard(
                               value: _camisaObrigatoria,
                               icon: Icons.priority_high_rounded,
@@ -2325,6 +3266,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _certificadoKey,
                       icon: Icons.card_membership_rounded,
                       title: 'Certificados',
                       subtitle:
@@ -2349,6 +3291,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _webKey,
                       icon: Icons.public_rounded,
                       title: 'Portfólio Web',
                       subtitle:
@@ -2371,6 +3314,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     ),
                     const SizedBox(height: 14),
                     _sectionCard(
+                      sectionKey: _linksKey,
                       icon: Icons.link_rounded,
                       title: 'Links',
                       subtitle:
@@ -2474,6 +3418,24 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       ),
     );
   }
+}
+
+class _SectionShortcut {
+  final GlobalKey keyRef;
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final Color color;
+  final bool ativo;
+
+  const _SectionShortcut({
+    required this.keyRef,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.ativo,
+  });
 }
 
 enum _SnackType {

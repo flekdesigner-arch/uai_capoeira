@@ -91,22 +91,35 @@ class CertificadoEventoMapperService {
   }) async {
     try {
       final alunoId = _asString(participacao['aluno_id']);
+      final aluno = await _buscarAluno(alunoId);
+
+      // Busca a graduação nova preferindo a participação.
+      // Se por algum motivo a participação antiga não tiver o ID novo,
+      // usa fallbacks do aluno para não perder frase, título, corda, cores e modelo.
       final graduacaoNovaId = _firstNotEmpty([
         participacao['graduacao_nova_id'],
         participacao['nova_graduacao_id'],
+        participacao['graduacao_nova_ref_id'],
+        aluno?['graduacao_atual_id'],
+        aluno?['graduacao_id'],
       ]);
 
-      final results = await Future.wait<Map<String, dynamic>?>([
-        _buscarAluno(alunoId),
-        _buscarGraduacao(graduacaoNovaId),
-      ]);
+      final graduacao = await _buscarGraduacao(graduacaoNovaId);
 
-      return CertificadoParticipanteData.fromMaps(
+      final participante = CertificadoParticipanteData.fromMaps(
         participacaoId: participacaoId,
         participacao: participacao,
-        aluno: results[0],
-        graduacao: results[1],
+        aluno: aluno,
+        graduacao: graduacao,
       );
+
+      if (participante.sexoNormalizado.isEmpty) {
+        debugPrint(
+          '⚠️ Participante sem sexo informado para frase dinâmica: ${participante.alunoNome}',
+        );
+      }
+
+      return participante;
     } catch (e) {
       debugPrint(
         '❌ Erro ao mapear participação $participacaoId para certificado: $e',
@@ -238,6 +251,9 @@ class CertificadoEventoMapperService {
     var semCertificado = 0;
     var comGraduacao = 0;
     var comCpf = 0;
+    var femininos = 0;
+    var masculinos = 0;
+    var semSexo = 0;
 
     for (final item in participantes) {
       total++;
@@ -251,6 +267,13 @@ class CertificadoEventoMapperService {
       }
       if (item.temGraduacaoNova) comGraduacao++;
       if (item.temCpf) comCpf++;
+      if (item.sexoFeminino) {
+        femininos++;
+      } else if (item.sexoMasculino) {
+        masculinos++;
+      } else {
+        semSexo++;
+      }
     }
 
     return {
@@ -261,6 +284,9 @@ class CertificadoEventoMapperService {
       'sem_certificado': semCertificado,
       'com_graduacao': comGraduacao,
       'com_cpf': comCpf,
+      'femininos': femininos,
+      'masculinos': masculinos,
+      'sem_sexo': semSexo,
     };
   }
 

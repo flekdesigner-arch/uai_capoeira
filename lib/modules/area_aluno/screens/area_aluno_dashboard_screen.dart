@@ -6,6 +6,8 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
+import 'package:uai_capoeira/modules/area_aluno/widgets/area_aluno_meus_eventos_section.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
 import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart';
@@ -14,6 +16,7 @@ import 'package:uai_capoeira/modules/site/screens/portfolio_web_screen.dart';
 import 'package:uai_capoeira/modules/site/screens/regimento_screen.dart';
 
 import 'area_aluno_certificados_screen.dart';
+import 'area_aluno_evento_detalhe_screen.dart';
 import 'area_aluno_frequencia_screen.dart';
 import 'area_aluno_solicitar_alteracao_screen.dart';
 
@@ -332,6 +335,26 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           aluno: widget.aluno,
           authPayload: widget.authPayload,
         ),
+      ),
+    );
+  }
+
+  Future<void> _abrirDetalhesEventoAluno(AreaAlunoEventoResumo evento) async {
+    _rastreioService.registrarClique(
+      nome: 'abrir_evento_area_aluno',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_nome': _nome,
+        'evento_id': evento.eventoId ?? '',
+        'evento_nome': evento.nomeEvento,
+        'participacao_id': evento.participacaoId,
+      },
+    );
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AreaAlunoEventoDetalheScreen(evento: evento),
       ),
     );
   }
@@ -819,6 +842,12 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     const SizedBox(height: 14),
                     _buildResumoCards(isMobile),
                     const SizedBox(height: 16),
+                    AreaAlunoMeusEventosSection(
+                      aluno: widget.aluno,
+                      authPayload: widget.authPayload,
+                      onAbrirEvento: _abrirDetalhesEventoAluno,
+                    ),
+                    const SizedBox(height: 16),
                     _buildSectionTitle(
                       icon: Icons.dashboard_customize_rounded,
                       title: 'Painel do aluno',
@@ -1288,7 +1317,11 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         final maxWidth = constraints.maxWidth;
         int columns;
 
-        if (maxWidth < 390) {
+        // Regra ajustada para PWA/celular real:
+        // antes, abaixo de 390px virava lista. Em muitos celulares reais,
+        // a largura útil cai para 360/370px por causa do padding da tela.
+        // Agora mantém 2 colunas no mobile e só cai para 1 em largura extrema.
+        if (maxWidth < 300) {
           columns = 1;
         } else if (maxWidth < 760) {
           columns = 2;
@@ -1296,8 +1329,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           columns = 4;
         }
 
-        const spacing = 10.0;
+        final spacing = maxWidth < 390 ? 9.0 : 10.0;
         final cardWidth = (maxWidth - (spacing * (columns - 1))) / columns;
+        final compact = cardWidth < 180;
 
         return Wrap(
           spacing: spacing,
@@ -1305,7 +1339,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           children: cards.map((card) {
             return SizedBox(
               width: cardWidth,
-              child: _buildDashboardActionCard(card),
+              child: _buildDashboardActionCard(
+                card,
+                compact: compact,
+              ),
             );
           }).toList(),
         );
@@ -1313,7 +1350,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     );
   }
 
-  Widget _buildDashboardActionCard(_DashboardCardData card) {
+  Widget _buildDashboardActionCard(
+      _DashboardCardData card, {
+        bool compact = false,
+      }) {
     final t = context.uai;
     final accent = _ensureVisible(card.color, t.card);
 
@@ -1335,20 +1375,76 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         },
         borderRadius: BorderRadius.circular(22),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 132),
-          padding: const EdgeInsets.all(14),
+          constraints: BoxConstraints(
+            minHeight: compact ? 124 : 132,
+          ),
+          padding: EdgeInsets.all(compact ? 12 : 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
             border: Border.all(color: accent.withOpacity(0.13)),
             boxShadow: t.softShadow,
           ),
-          child: Row(
+          child: compact
+              ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        accent.withOpacity(0.10),
+                        t.cardAlt,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(card.icon, color: accent, size: 25),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: accent,
+                    size: 22,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                card.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13.2,
+                  height: 1.12,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                card.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 11.2,
+                  height: 1.20,
+                ),
+              ),
+            ],
+          )
+              : Row(
             children: [
               Container(
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                  color: Color.alphaBlend(
+                    accent.withOpacity(0.10),
+                    t.cardAlt,
+                  ),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(card.icon, color: accent, size: 28),

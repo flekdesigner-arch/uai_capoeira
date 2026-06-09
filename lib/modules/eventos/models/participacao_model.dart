@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart'; // Para Colors
-import 'package:intl/intl.dart'; // Para DateFormat
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class ParticipacaoModel {
+  // ───────────────────── DADOS BÁSICOS ─────────────────────
   final String? id;
   final String alunoId;
   final String alunoNome;
@@ -20,18 +21,46 @@ class ParticipacaoModel {
   final Timestamp? criadoEm;
   final Timestamp? atualizadoEm;
 
-  // Campos específicos para batizado
+  // ───────────────────── BATIZADO / GRADUAÇÃO ─────────────────────
   final String? graduacaoNova;
   final String? graduacaoNovaId;
 
-  // 🔥 NOVOS CAMPOS FINANCEIROS
+  // ───────────────────── CAMISA ─────────────────────
   final bool camisaEntregue;
+
+  /// Modelagem da camisa.
+  ///
+  /// Valores esperados:
+  /// - NORMAL
+  /// - BABY_LOOK
+  ///
+  /// Regra de compatibilidade:
+  /// Participações antigas sem esse campo serão tratadas como NORMAL.
+  final String modelagemCamisa;
+
+  /// Tipo da camisa.
+  ///
+  /// Valores esperados:
+  /// - MANGA
+  /// - MANGA_LONGA
+  /// - REGATA
+  ///
+  /// Regra de compatibilidade:
+  /// Participações antigas sem esse campo serão tratadas como MANGA.
+  final String tipoCamisa;
+
+  // ───────────────────── FINANCEIRO ─────────────────────
   final double valorInscricao;
   final double valorCamisa;
   final double totalPago;
 
-  // 🔥 Getter para valor total
-  double get valorTotal => valorInscricao + valorCamisa;
+  // ───────────────────── CONSTANTES ─────────────────────
+  static const String modelagemNormal = 'NORMAL';
+  static const String modelagemBabyLook = 'BABY_LOOK';
+
+  static const String tipoManga = 'MANGA';
+  static const String tipoMangaLonga = 'MANGA_LONGA';
+  static const String tipoRegata = 'REGATA';
 
   ParticipacaoModel({
     this.id,
@@ -52,41 +81,41 @@ class ParticipacaoModel {
     this.atualizadoEm,
     this.graduacaoNova,
     this.graduacaoNovaId,
-    // 🔥 NOVOS CAMPOS COM VALORES PADRÃO
     this.camisaEntregue = false,
+    this.modelagemCamisa = modelagemNormal,
+    this.tipoCamisa = tipoManga,
     this.valorInscricao = 0,
     this.valorCamisa = 0,
     this.totalPago = 0,
   });
 
-  /// Getter para data formatada
+  // ───────────────────── GETTERS FINANCEIROS ─────────────────────
+
+  double get valorTotal => valorInscricao + valorCamisa;
+
+  bool get estaQuitado => totalPago >= valorTotal;
+
+  double get saldoDevedor => valorTotal - totalPago;
+
+  int get parcelas {
+    // TODO: Implementar lógica real de parcelas baseada no evento, se necessário.
+    return 1;
+  }
+
+  // ───────────────────── GETTERS DE DATA / STATUS ─────────────────────
+
   String get dataFormatada {
     final DateFormat formatter = DateFormat('dd/MM/yyyy');
     return formatter.format(dataEvento);
   }
 
-  /// Verifica se é batizado
   bool get isBatizado => tipoEvento.toUpperCase().contains('BATIZADO');
 
-  /// Verifica se está aguardando finalização (batizado)
-  bool get aguardandoFinalizacao => isBatizado && status == 'pendente' && graduacaoNova != null;
+  bool get aguardandoFinalizacao =>
+      isBatizado && status == 'pendente' && graduacaoNova != null;
 
-  /// Verifica se já foi finalizado
   bool get estaFinalizado => status == 'finalizado';
 
-  /// 🔥 Verifica se está quitado
-  bool get estaQuitado => totalPago >= valorTotal;
-
-  /// 🔥 Saldo devedor
-  double get saldoDevedor => valorTotal - totalPago;
-
-  /// 🔥 Número de parcelas (baseado em regra de negócio - pode ser ajustado)
-  int get parcelas {
-    // TODO: Implementar lógica real de parcelas baseada no evento
-    return 1;
-  }
-
-  /// Cor baseada no status
   Color get corStatus {
     switch (status) {
       case 'finalizado':
@@ -100,7 +129,6 @@ class ParticipacaoModel {
     }
   }
 
-  /// Texto do status
   String get textoStatus {
     switch (status) {
       case 'finalizado':
@@ -114,9 +142,53 @@ class ParticipacaoModel {
     }
   }
 
-  /// Converte para Map para salvar no Firestore
+  // ───────────────────── GETTERS DE CAMISA ─────────────────────
+
+  bool get temCamisaSelecionada =>
+      tamanhoCamisa != null && tamanhoCamisa!.trim().isNotEmpty;
+
+  bool get isBabyLook => modelagemCamisa == modelagemBabyLook;
+
+  bool get isMangaLonga => tipoCamisa == tipoMangaLonga;
+
+  bool get isRegata => tipoCamisa == tipoRegata;
+
+  String get modelagemCamisaLabel {
+    switch (modelagemCamisa) {
+      case modelagemBabyLook:
+        return 'Baby Look';
+      case modelagemNormal:
+      default:
+        return 'Normal';
+    }
+  }
+
+  String get tipoCamisaLabel {
+    switch (tipoCamisa) {
+      case tipoMangaLonga:
+        return 'Manga Longa';
+      case tipoRegata:
+        return 'Regata';
+      case tipoManga:
+      default:
+        return 'Manga';
+    }
+  }
+
+  String get descricaoCamisa {
+    final tamanho = tamanhoCamisa?.trim();
+
+    if (tamanho == null || tamanho.isEmpty) {
+      return 'Sem camisa';
+    }
+
+    return '$modelagemCamisaLabel • $tipoCamisaLabel • $tamanho';
+  }
+
+  // ───────────────────── SERIALIZAÇÃO ─────────────────────
+
   Map<String, dynamic> toMap() {
-    final map = {
+    final map = <String, dynamic>{
       'aluno_id': alunoId,
       'aluno_nome': alunoNome,
       'aluno_foto': alunoFoto,
@@ -127,22 +199,23 @@ class ParticipacaoModel {
       'graduacao': graduacao,
       'graduacao_id': graduacaoId,
       'tamanho_camisa': tamanhoCamisa,
+      'modelagem_camisa': _normalizarModelagem(modelagemCamisa),
+      'tipo_camisa': _normalizarTipoCamisa(tipoCamisa),
       'link_certificado': linkCertificado,
       'presente': presente,
       'status': status,
       'criado_em': criadoEm ?? FieldValue.serverTimestamp(),
       'atualizado_em': FieldValue.serverTimestamp(),
-      // 🔥 NOVOS CAMPOS
       'camisa_entregue': camisaEntregue,
       'valor_inscricao': valorInscricao,
       'valor_camisa': valorCamisa,
       'total_pago': totalPago,
     };
 
-    // Adiciona campos de batizado se existirem
     if (graduacaoNova != null) {
       map['graduacao_nova'] = graduacaoNova;
     }
+
     if (graduacaoNovaId != null) {
       map['graduacao_nova_id'] = graduacaoNovaId;
     }
@@ -150,88 +223,66 @@ class ParticipacaoModel {
     return map;
   }
 
-  /// Cria uma instância a partir do Firestore
   factory ParticipacaoModel.fromFirestore(
       DocumentSnapshot<Map<String, dynamic>> doc,
       ) {
-    final data = doc.data()!;
+    final data = doc.data() ?? {};
 
-    // Trata a data que pode vir como Timestamp ou String
-    DateTime dataEvento;
-    if (data['data_evento'] is Timestamp) {
-      dataEvento = (data['data_evento'] as Timestamp).toDate();
-    } else if (data['data_evento'] is String) {
-      dataEvento = DateTime.parse(data['data_evento'] as String);
-    } else {
-      dataEvento = DateTime.now();
-    }
-
-    return ParticipacaoModel(
-      id: doc.id,
-      alunoId: data['aluno_id'] ?? '',
-      alunoNome: data['aluno_nome'] ?? '',
-      alunoFoto: data['aluno_foto'] as String?,
-      eventoId: data['evento_id'] ?? '',
-      eventoNome: data['evento_nome'] ?? '',
-      dataEvento: dataEvento,
-      tipoEvento: data['tipo_evento'] ?? 'EVENTO',
-      graduacao: data['graduacao'] as String?,
-      graduacaoId: data['graduacao_id'] as String?,
-      tamanhoCamisa: data['tamanho_camisa'] as String?,
-      linkCertificado: data['link_certificado'] as String?,
-      presente: data['presente'] ?? false,
-      status: data['status'] ?? 'pendente',
-      criadoEm: data['criado_em'] as Timestamp?,
-      atualizadoEm: data['atualizado_em'] as Timestamp?,
-      graduacaoNova: data['graduacao_nova'] as String?,
-      graduacaoNovaId: data['graduacao_nova_id'] as String?,
-      // 🔥 NOVOS CAMPOS
-      camisaEntregue: data['camisa_entregue'] ?? false,
-      valorInscricao: (data['valor_inscricao'] ?? 0).toDouble(),
-      valorCamisa: (data['valor_camisa'] ?? 0).toDouble(),
-      totalPago: (data['total_pago'] ?? 0).toDouble(),
-    );
+    return ParticipacaoModel.fromMap(doc.id, data);
   }
 
-  /// Cria uma instância a partir de um Map (para compatibilidade)
   factory ParticipacaoModel.fromMap(String id, Map<String, dynamic> map) {
-    // Trata a data que pode vir como Timestamp ou String
-    DateTime dataEvento;
-    if (map['data_evento'] is Timestamp) {
-      dataEvento = (map['data_evento'] as Timestamp).toDate();
-    } else if (map['data_evento'] is String) {
-      dataEvento = DateTime.parse(map['data_evento'] as String);
-    } else {
-      dataEvento = DateTime.now();
-    }
+    final dataEvento = _converterDataEvento(map['data_evento']);
 
     return ParticipacaoModel(
       id: id,
-      alunoId: map['aluno_id'] ?? '',
-      alunoNome: map['aluno_nome'] ?? '',
-      alunoFoto: map['aluno_foto'] as String?,
-      eventoId: map['evento_id'] ?? '',
-      eventoNome: map['evento_nome'] ?? '',
+      alunoId: _asString(map['aluno_id']),
+      alunoNome: _asString(map['aluno_nome']),
+      alunoFoto: _nullableString(map['aluno_foto']),
+      eventoId: _asString(map['evento_id']),
+      eventoNome: _asString(map['evento_nome']),
       dataEvento: dataEvento,
-      tipoEvento: map['tipo_evento'] ?? 'EVENTO',
-      graduacao: map['graduacao'] as String?,
-      graduacaoId: map['graduacao_id'] as String?,
-      tamanhoCamisa: map['tamanho_camisa'] as String?,
-      linkCertificado: map['link_certificado'] as String?,
-      presente: map['presente'] ?? false,
-      status: map['status'] ?? 'pendente',
-      criadoEm: map['criado_em'] as Timestamp?,
-      atualizadoEm: map['atualizado_em'] as Timestamp?,
-      graduacaoNova: map['graduacao_nova'] as String?,
-      graduacaoNovaId: map['graduacao_nova_id'] as String?,
-      camisaEntregue: map['camisa_entregue'] ?? false,
-      valorInscricao: (map['valor_inscricao'] ?? 0).toDouble(),
-      valorCamisa: (map['valor_camisa'] ?? 0).toDouble(),
-      totalPago: (map['total_pago'] ?? 0).toDouble(),
+      tipoEvento: _asString(map['tipo_evento'], fallback: 'EVENTO'),
+      graduacao: _nullableString(map['graduacao']),
+      graduacaoId: _nullableString(map['graduacao_id']),
+      tamanhoCamisa: _nullableString(
+        map['tamanho_camisa'] ?? map['tamanhoCamisa'],
+      ),
+      modelagemCamisa: _normalizarModelagem(
+        map['modelagem_camisa'] ??
+            map['modelagemCamisa'] ??
+            map['modelagem'] ??
+            modelagemNormal,
+      ),
+      tipoCamisa: _normalizarTipoCamisa(
+        map['tipo_camisa'] ??
+            map['tipoCamisa'] ??
+            map['tipo'] ??
+            tipoManga,
+      ),
+      linkCertificado: _nullableString(
+        map['link_certificado'] ??
+            map['linkCertificado'] ??
+            map['certificado_url'] ??
+            map['certificadoUrl'] ??
+            map['url_certificado'] ??
+            map['urlCertificado'],
+      ),
+      presente: map['presente'] == true,
+      status: _asString(map['status'], fallback: 'pendente'),
+      criadoEm: map['criado_em'] is Timestamp ? map['criado_em'] as Timestamp : null,
+      atualizadoEm: map['atualizado_em'] is Timestamp
+          ? map['atualizado_em'] as Timestamp
+          : null,
+      graduacaoNova: _nullableString(map['graduacao_nova']),
+      graduacaoNovaId: _nullableString(map['graduacao_nova_id']),
+      camisaEntregue: map['camisa_entregue'] == true,
+      valorInscricao: _asDouble(map['valor_inscricao']),
+      valorCamisa: _asDouble(map['valor_camisa']),
+      totalPago: _asDouble(map['total_pago']),
     );
   }
 
-  /// Cria uma cópia com campos alterados
   ParticipacaoModel copyWith({
     String? id,
     String? alunoId,
@@ -244,6 +295,8 @@ class ParticipacaoModel {
     String? graduacao,
     String? graduacaoId,
     String? tamanhoCamisa,
+    String? modelagemCamisa,
+    String? tipoCamisa,
     String? linkCertificado,
     bool? presente,
     String? status,
@@ -268,6 +321,12 @@ class ParticipacaoModel {
       graduacao: graduacao ?? this.graduacao,
       graduacaoId: graduacaoId ?? this.graduacaoId,
       tamanhoCamisa: tamanhoCamisa ?? this.tamanhoCamisa,
+      modelagemCamisa: _normalizarModelagem(
+        modelagemCamisa ?? this.modelagemCamisa,
+      ),
+      tipoCamisa: _normalizarTipoCamisa(
+        tipoCamisa ?? this.tipoCamisa,
+      ),
       linkCertificado: linkCertificado ?? this.linkCertificado,
       presente: presente ?? this.presente,
       status: status ?? this.status,
@@ -282,9 +341,110 @@ class ParticipacaoModel {
     );
   }
 
-  /// Método para debug
+  // ───────────────────── HELPERS ─────────────────────
+
+  static DateTime _converterDataEvento(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        return DateTime.parse(value);
+      } catch (_) {
+        try {
+          final partes = value.split('/');
+          if (partes.length == 3) {
+            return DateTime(
+              int.parse(partes[2]),
+              int.parse(partes[1]),
+              int.parse(partes[0]),
+            );
+          }
+        } catch (_) {
+          return DateTime.now();
+        }
+      }
+    }
+
+    return DateTime.now();
+  }
+
+  static String _asString(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
+    return text;
+  }
+
+  static String? _nullableString(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') return null;
+    return text;
+  }
+
+  static double _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return 0;
+
+    return double.tryParse(text.replaceAll(',', '.')) ?? 0;
+  }
+
+  static String _normalizarModelagem(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return modelagemBabyLook;
+    }
+
+    return modelagemNormal;
+  }
+
+  static String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return tipoMangaLonga;
+    }
+
+    if (clean == 'REGATA') {
+      return tipoRegata;
+    }
+
+    return tipoManga;
+  }
+
   @override
   String toString() {
-    return 'ParticipacaoModel(id: $id, aluno: $alunoNome, evento: $eventoNome, status: $status, valor: R\$ ${valorTotal.toStringAsFixed(2)})';
+    return 'ParticipacaoModel('
+        'id: $id, '
+        'aluno: $alunoNome, '
+        'evento: $eventoNome, '
+        'status: $status, '
+        'camisa: $descricaoCamisa, '
+        'valor: R\$ ${valorTotal.toStringAsFixed(2)}'
+        ')';
   }
 }

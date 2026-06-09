@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onCall, onRequest } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { Storage } = require('@google-cloud/storage');
 const { DateTime } = require('luxon');
@@ -75,6 +75,7 @@ async function buscarTokensUsuariosAtivos() {
 
     const tokens = [];
     const tokenOwners = new Map();
+    const usuariosMap = new Map();
 
     usuariosSnapshot.forEach(doc => {
         const data = doc.data();
@@ -98,6 +99,17 @@ async function buscarTokensUsuariosAtivos() {
             tokens_unicos_usuario: uniqueUserTokens.length,
         });
 
+        if (uniqueUserTokens.length > 0) {
+            usuariosMap.set(doc.id, {
+                ref: doc.ref,
+                uid: doc.id,
+                email: data.email || '',
+                nome: data.nome_completo || data.nome || '',
+                plataforma_token: data.plataforma_token || '',
+                token_origem: data.token_origem || '',
+            });
+        }
+
         uniqueUserTokens.forEach(token => {
             tokens.push(token);
             tokenOwners.set(token, doc.ref);
@@ -109,10 +121,181 @@ async function buscarTokensUsuariosAtivos() {
 
     return {
         usuariosAtivos: usuariosSnapshot.size,
+        usuariosNotificaveis: usuariosMap.size,
         tokens: uniqueTokens,
         tokenOwners,
+        usuariosMap,
     };
 }
+
+
+
+async function buscarTokensUsuariosAtivosPorOrigem(origensPermitidas = []) {
+    const usuariosSnapshot = await db
+        .collection('usuarios')
+        .where('status_conta', '==', 'ativa')
+        .get();
+
+    const origens = new Set(
+        origensPermitidas
+            .map(item => String(item || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+
+    console.log(`👥 Usuários ativos encontrados para filtro: ${usuariosSnapshot.size}`);
+    console.log(`🎯 Origens permitidas: ${Array.from(origens).join(', ')}`);
+
+    const tokens = [];
+    const tokenOwners = new Map();
+    const usuariosNotificaveis = new Map();
+
+    usuariosSnapshot.forEach(doc => {
+        const data = doc.data() || {};
+
+        const plataformaToken = String(data.plataforma_token || '').trim().toLowerCase();
+        const tokenOrigem = String(data.token_origem || '').trim().toLowerCase();
+
+        const origemPermitida =
+            origens.has(plataformaToken) ||
+            origens.has(tokenOrigem);
+
+        if (!origemPermitida) {
+            console.log(`🌐 Usuário ${doc.id} ignorado no filtro de APK:`, {
+                email: data.email || null,
+                plataforma_token: plataformaToken || null,
+                token_origem: tokenOrigem || null,
+            });
+            return;
+        }
+
+        const userTokens = [];
+
+        if (data.current_fcm_token && typeof data.current_fcm_token === 'string') {
+            userTokens.push(data.current_fcm_token);
+        }
+
+        if (Array.isArray(data.fcm_tokens)) {
+            userTokens.push(...data.fcm_tokens.filter(t => typeof t === 'string'));
+        }
+
+        const uniqueUserTokens = [...new Set(userTokens)].filter(Boolean);
+
+        if (uniqueUserTokens.length === 0) {
+            console.log(`⚠️ Usuário ${doc.id} passou no filtro, mas não tem tokens.`);
+            return;
+        }
+
+        usuariosNotificaveis.set(doc.id, {
+            ref: doc.ref,
+            uid: doc.id,
+            email: data.email || '',
+            nome: data.nome_completo || data.nome || '',
+            plataforma_token: plataformaToken,
+            token_origem: tokenOrigem,
+        });
+
+        uniqueUserTokens.forEach(token => {
+            tokens.push(token);
+            tokenOwners.set(token, doc.ref);
+        });
+
+        console.log(`📲 Usuário ${doc.id} incluído no filtro APK:`, {
+            email: data.email || null,
+            plataforma_token: plataformaToken || null,
+            token_origem: tokenOrigem || null,
+            tokens: uniqueUserTokens.length,
+        });
+    });
+
+    const uniqueTokens = [...new Set(tokens)].filter(Boolean);
+
+    console.log(`📱 Tokens filtrados encontrados: ${uniqueTokens.length}`);
+    console.log(`👤 Usuários notificáveis filtrados: ${usuariosNotificaveis.size}`);
+
+    return {
+        usuariosAtivos: usuariosSnapshot.size,
+        usuariosNotificaveis: usuariosNotificaveis.size,
+        tokens: uniqueTokens,
+        tokenOwners,
+        usuariosMap: usuariosNotificaveis,
+    };
+}
+
+async function registrarNotificacaoUsuarios({
+    usuariosMap,
+    tipo,
+    titulo,
+    mensagem,
+    data = {},
+}) {
+    if (!usuariosMap || usuariosMap.size === 0) {
+        console.log('⚠️ Nenhum usuário para registrar notificação no sininho.');
+        return 0;
+    }
+
+    const batch = db.batch();
+    const notificationId = `${tipo}_${Date.now()}`;
+    let total = 0;
+
+    usuariosMap.forEach((userInfo) => {
+        const ref = userInfo.ref
+            .collection('notificacoes')
+            .doc(notificationId);
+
+        batch.set(ref, {
+            tipo,
+            titulo,
+            mensagem,
+            lida: false,
+            criada_em: admin.firestore.FieldValue.serverTimestamp(),
+            payload: data,
+            origem: data.origem || 'cloud_functions',
+            versao: data.versao || '',
+            obrigatoria: data.obrigatoria === 'true' || data.obrigatoria === true,
+        }, { merge: true });
+
+        total++;
+    });
+
+    await batch.commit();
+
+    console.log(`🔔 ${total} notificação(ões) registradas no sininho dos usuários.`);
+
+    return total;
+}
+
+
+
+
+async function buscarUsuariosAtivosParaSininho() {
+    const usuariosSnapshot = await db
+        .collection('usuarios')
+        .where('status_conta', '==', 'ativa')
+        .get();
+
+    const usuariosMap = new Map();
+
+    usuariosSnapshot.forEach(doc => {
+        const data = doc.data() || {};
+
+        usuariosMap.set(doc.id, {
+            ref: doc.ref,
+            uid: doc.id,
+            email: data.email || '',
+            nome: data.nome_completo || data.nome || '',
+            plataforma_token: data.plataforma_token || '',
+            token_origem: data.token_origem || '',
+        });
+    });
+
+    console.log(`🔔 Usuários ativos para sininho: ${usuariosMap.size}`);
+
+    return {
+        usuariosAtivos: usuariosSnapshot.size,
+        usuariosMap,
+    };
+}
+
 
 async function removerTokensInvalidos(tokensInvalidos, tokenOwners) {
     if (!tokensInvalidos || tokensInvalidos.length === 0) return;
@@ -138,7 +321,7 @@ async function removerTokensInvalidos(tokensInvalidos, tokenOwners) {
     }
 }
 
-async function enviarMulticastEmLotes({ tokens, title, body, data = {}, tokenOwners = new Map() }) {
+async function enviarMulticastEmLotes({ tokens, title, body, data = {}, tokenOwners = new Map(), androidIcon = 'ic_notification' }) {
     // ✅ V3: envio individual, um token por vez.
     // Motivo: algumas versões antigas do firebase-admin usam o endpoint /batch,
     // que pode retornar 404. O método messaging.send() individual usa endpoint moderno.
@@ -161,6 +344,7 @@ async function enviarMulticastEmLotes({ tokens, title, body, data = {}, tokenOwn
                     priority: 'high',
                     notification: {
                         channelId: 'default_channel',
+                        icon: androidIcon,
                         priority: 'high',
                         defaultSound: true,
                         defaultVibrateTimings: true,
@@ -213,7 +397,10 @@ async function enviarMulticastEmLotes({ tokens, title, body, data = {}, tokenOwn
 // ============================================
 exports.sendBirthdayNotifications = onSchedule(
     {
-        schedule: '0 11 * * *',
+        // Roda todos os dias às 08:00 e às 18:00 no horário de Brasília.
+        // Formato cron: minuto hora dia-do-mês mês dia-da-semana
+        // '0 8,18 * * *' = minuto 0, nas horas 8 e 18, todos os dias.
+        schedule: '0 8,18 * * *',
         timeZone: 'America/Sao_Paulo',
     },
     async (event) => {
@@ -251,7 +438,7 @@ exports.sendBirthdayNotifications = onSchedule(
 
             console.log(`🎉 ${birthdayStudents.length} aniversariante(s) hoje:`, birthdayStudents);
 
-            const { usuariosAtivos, tokens, tokenOwners } = await buscarTokensUsuariosAtivos();
+            const { usuariosAtivos, usuariosNotificaveis, tokens, tokenOwners, usuariosMap } = await buscarTokensUsuariosAtivos();
 
             if (tokens.length === 0) {
                 console.log('😴 Nenhum token FCM encontrado');
@@ -266,21 +453,36 @@ exports.sendBirthdayNotifications = onSchedule(
                 ? `${birthdayStudents[0]} está fazendo aniversário hoje! 🎂`
                 : `Hoje fazem aniversário: ${birthdayStudents.join(', ')}`;
 
+            const payloadAniversario = {
+                tipo: 'aniversario',
+                quantidade: String(birthdayStudents.length),
+                data: hojeBrasilia.toFormat('yyyy-MM-dd'),
+                nomes: birthdayStudents.join(', '),
+                origem: 'scheduler_aniversario',
+            };
+
             const response = await enviarMulticastEmLotes({
                 tokens,
                 title,
                 body,
-                data: {
-                    tipo: 'aniversario',
-                    quantidade: String(birthdayStudents.length),
-                    data: hojeBrasilia.toFormat('yyyy-MM-dd'),
-                },
+                data: payloadAniversario,
                 tokenOwners,
+                androidIcon: 'ic_notification_birthday',
+            });
+
+            const notificacoesRegistradas = await registrarNotificacaoUsuarios({
+                usuariosMap,
+                tipo: 'aniversario',
+                titulo: title,
+                mensagem: body,
+                data: payloadAniversario,
             });
 
             console.log('📊 Resultado envio aniversário:', {
                 usuariosAtivos,
+                usuariosNotificaveis,
                 tokens: tokens.length,
+                notificacoesRegistradas,
                 successCount: response.successCount,
                 failureCount: response.failureCount,
                 tokensInvalidosRemovidos: response.tokensInvalidos,
@@ -300,7 +502,7 @@ exports.testarNotificacaoAniversario = onCall(async (request) => {
     }
 
     try {
-        const { usuariosAtivos, tokens, tokenOwners } = await buscarTokensUsuariosAtivos();
+        const { usuariosAtivos, usuariosNotificaveis, tokens, tokenOwners, usuariosMap } = await buscarTokensUsuariosAtivos();
 
         if (tokens.length === 0) {
             return {
@@ -311,20 +513,33 @@ exports.testarNotificacaoAniversario = onCall(async (request) => {
             };
         }
 
+        const payloadTeste = {
+            tipo: 'teste_aniversario',
+            origem: 'callable_function',
+        };
+
         const response = await enviarMulticastEmLotes({
             tokens,
             title: '🎉 Teste de aniversário',
             body: 'Se essa notificação chegou, o FCM está funcionando!',
-            data: {
-                tipo: 'teste_aniversario',
-                origem: 'callable_function',
-            },
+            data: payloadTeste,
             tokenOwners,
+            androidIcon: 'ic_notification_birthday',
+        });
+
+        const notificacoesRegistradas = await registrarNotificacaoUsuarios({
+            usuariosMap,
+            tipo: 'teste_aniversario',
+            titulo: '🎉 Teste de aniversário',
+            mensagem: 'Se essa notificação chegou, o FCM está funcionando!',
+            data: payloadTeste,
         });
 
         return {
             success: true,
             usuariosAtivos,
+            usuariosNotificaveis,
+            notificacoesRegistradas,
             tokens: tokens.length,
             successCount: response.successCount,
             failureCount: response.failureCount,
@@ -635,6 +850,86 @@ exports.processarChamada = onCall(async (request) => {
 
     await batch.commit();
 
+    // =====================================================
+    // 🔔 REGISTRA NO SININHO: CHAMADA REALIZADA
+    // =====================================================
+    // Não envia push para não incomodar a cada chamada.
+    // Apenas registra na central de notificações:
+    // usuarios/{uid}/notificacoes
+    // =====================================================
+    try {
+        const horaBrasilia = dataBrasilia.toFormat('HH:mm');
+        const dataBrasil = dataBrasilia.toFormat('dd/MM/yyyy');
+        const professorLabel = professorNome || 'Usuário';
+        const turmaLabel = turmaNome || 'Turma';
+        const tipoAulaLabel = tipoAula || 'Aula';
+
+        const tituloNotificacao = '📋 Chamada registrada';
+        const mensagemNotificacao =
+            `${professorLabel} registrou a chamada da turma ${turmaLabel} ` +
+            `às ${horaBrasilia} de Brasília. ` +
+            `Presentes: ${presentes} • Ausentes: ${ausentes} • Frequência: ${porcentagem}%.`;
+
+        const payloadChamada = {
+            tipo: 'chamada_registrada',
+            chamada_id: chamadaRef.id,
+            turma_id: turmaId || '',
+            turma_nome: turmaNome || '',
+            academia_id: academiaId || '',
+            academia_nome: academiaNome || '',
+            professor_id: professorId || '',
+            professor_nome: professorNome || '',
+            tipo_aula: tipoAulaLabel,
+            total_alunos: String(alunos.length),
+            presentes: String(presentes),
+            ausentes: String(ausentes),
+            porcentagem_frequencia: String(porcentagem),
+            data_formatada: dataFormatada,
+            data_brasil: dataBrasil,
+            hora_brasilia: horaBrasilia,
+            origem: 'processar_chamada',
+        };
+
+        const { usuariosMap } = await buscarUsuariosAtivosParaSininho();
+
+        await registrarNotificacaoUsuarios({
+            usuariosMap,
+            tipo: 'chamada_registrada',
+            titulo: tituloNotificacao,
+            mensagem: mensagemNotificacao,
+            data: payloadChamada,
+        });
+
+        await db.collection('logs_notificacoes_app').add({
+            tipo: 'chamada_registrada',
+            chamada_id: chamadaRef.id,
+            turma_id: turmaId || '',
+            turma_nome: turmaNome || '',
+            academia_id: academiaId || '',
+            academia_nome: academiaNome || '',
+            professor_id: professorId || '',
+            professor_nome: professorNome || '',
+            total_alunos: alunos.length,
+            presentes,
+            ausentes,
+            porcentagem_frequencia: porcentagem,
+            data_formatada: dataFormatada,
+            hora_brasilia: horaBrasilia,
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        console.log('🔔 Notificação de chamada registrada no sininho:', {
+            chamadaId: chamadaRef.id,
+            turmaNome,
+            professorNome,
+            presentes,
+            ausentes,
+            porcentagem,
+        });
+    } catch (error) {
+        console.error('⚠️ Chamada salva, mas falhou ao registrar no sininho:', error);
+    }
+
     await db.collection('locks_chamada').doc(turmaId).delete().catch(() => {});
 
     return {
@@ -820,10 +1115,10 @@ exports.restaurarFotosDoBackup = onRequest(
             console.log('🚀 Iniciando restauração de fotos...');
 
             const [files] = await bucket.getFiles({ prefix: pastaBackup });
-            
+
             if (files.length === 0) {
-                res.status(200).json({ 
-                    success: false, 
+                res.status(200).json({
+                    success: false,
                     message: 'Nenhuma foto encontrada no backup',
                     totalFotos: 0
                 });
@@ -833,7 +1128,7 @@ exports.restaurarFotosDoBackup = onRequest(
             console.log(`📸 Encontradas ${files.length} fotos no backup`);
 
             const alunosSnapshot = await db.collection('alunos').get();
-            
+
             const mapaAlunos = new Map();
             alunosSnapshot.docs.forEach(doc => {
                 const data = doc.data();
@@ -878,26 +1173,26 @@ exports.restaurarFotosDoBackup = onRequest(
                 }
 
                 const aluno = mapaAlunos.get(nomeAlunoBackup);
-                
+
                 try {
                     const extensao = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop() : 'jpg';
                     const nomeDestino = `fotos_perfil_alunos/${aluno.id}_${Date.now()}.${extensao}`;
                     const arquivoDestino = bucket.file(nomeDestino);
-                    
+
                     await file.copy(arquivoDestino);
                     await arquivoDestino.makePublic();
-                    
+
                     const publicUrl = `https://storage.googleapis.com/${bucketName}/${nomeDestino}`;
-                    
+
                     await db.collection('alunos').doc(aluno.id).update({
                         foto_perfil_aluno: publicUrl,
                         foto_restaurada_em: admin.firestore.FieldValue.serverTimestamp(),
                         foto_backup_original: file.name
                     });
-                    
+
                     resultados.atualizadas++;
                     console.log(`   ✅ Foto atualizada: ${aluno.nome}`);
-                    
+
                 } catch (erro) {
                     resultados.erros.push({
                         aluno: aluno.nome,
@@ -933,16 +1228,16 @@ exports.restaurarFotosDoBackup = onRequest(
 // ============================================
 exports.registrarLocalizacaoAcesso = onCall(async (request) => {
     const { ip } = request.data;
-    
+
     try {
         const response = await axios.get(`http://ip-api.com/json/${ip}`);
         const location = response.data;
-        
+
         if (location.status === 'success') {
             const cidade = location.city;
             const estado = location.regionName;
             const pais = location.country;
-            
+
             const docRef = await db.collection('estatisticas_acessos').add({
                 ip: ip,
                 cidade: cidade,
@@ -958,9 +1253,9 @@ exports.registrarLocalizacaoAcesso = onCall(async (request) => {
                 total_eventos: 0,
                 ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
             });
-            
+
             const statsRef = db.collection('estatisticas').doc('contadores_agregados');
-            
+
             await statsRef.set({
                 total_visitas: admin.firestore.FieldValue.increment(1),
                 [`paises.${pais}.total`]: admin.firestore.FieldValue.increment(1),
@@ -971,10 +1266,10 @@ exports.registrarLocalizacaoAcesso = onCall(async (request) => {
                 [`paises.${pais}.estados.${estado}.cidades.${cidade}.nome`]: cidade,
                 ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
-            
+
             console.log(`📍 Acesso registrado com ID: ${docRef.id} - ${cidade}/${estado}`);
-            
-            return { 
+
+            return {
                 success: true,
                 docId: docRef.id,
                 cidade: cidade,
@@ -986,9 +1281,9 @@ exports.registrarLocalizacaoAcesso = onCall(async (request) => {
                 timezone: location.timezone
             };
         }
-        
+
         return { success: false, error: 'Localização não encontrada' };
-        
+
     } catch (error) {
         console.error('❌ Erro:', error);
         return { success: false, error: error.message };
@@ -1001,24 +1296,24 @@ exports.registrarLocalizacaoAcesso = onCall(async (request) => {
 async function getRespostaHorarios() {
   try {
     const turmasSnapshot = await db.collection('turmas').get();
-    
+
     const configDoc = await db.collection('config_site_assistente').doc('config').get();
     const turmasSelecionadas = configDoc.data()?.turmas_selecionadas || {};
-    
+
     const turmas = [];
-    
+
     const ordemDias = ['SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO', 'DOMINGO'];
-    
+
     for (const doc of turmasSnapshot.docs) {
       const id = doc.id;
-      
+
       if (turmasSelecionadas[id] !== true) continue;
-      
+
       const data = doc.data();
-      
+
       const diasConfig = data.dias_configuracao || {};
       const diasComHorarios = [];
-      
+
       for (const dia of ordemDias) {
         const config = diasConfig[dia];
         if (config && config.selecionado === true) {
@@ -1030,9 +1325,9 @@ async function getRespostaHorarios() {
           });
         }
       }
-      
+
       if (diasComHorarios.length === 0) continue;
-      
+
       turmas.push({
         nome: data.nome || 'Sem nome',
         nivel: data.nivel || '',
@@ -1043,20 +1338,20 @@ async function getRespostaHorarios() {
         cor: data.cor_turma || '#EF4444'
       });
     }
-    
+
     if (turmas.length === 0) {
       return "No momento não temos turmas disponíveis para exibir. Em breve divulgaremos novos horários!";
     }
-    
+
     let resposta = "🏫 **HORÁRIOS DE TREINO** 🏫\n\n";
-    
+
     for (const turma of turmas) {
       const vagasRestantes = turma.vagasTotal - turma.alunosAtivos;
       const statusVagas = vagasRestantes > 0 ? `✅ ${vagasRestantes} vagas disponíveis` : "❌ Lotado";
-      
+
       resposta += `**${turma.nome}** ${turma.nivel ? `(${turma.nivel})` : ''}\n`;
       resposta += `📍 Local: ${turma.local}\n`;
-      
+
       for (const diaInfo of turma.diasComHorarios) {
         resposta += `📅 ${diaInfo.dia}: ${diaInfo.horarioInicio} às ${diaInfo.horarioFim}`;
         if (diaInfo.tipoAula && diaInfo.tipoAula !== 'OBJETIVA') {
@@ -1064,18 +1359,18 @@ async function getRespostaHorarios() {
         }
         resposta += `\n`;
       }
-      
+
       resposta += `🎯 ${statusVagas}\n\n`;
     }
-    
+
     if (turmas.length === 1) {
       resposta += "👉 Clique no botão abaixo para fazer sua inscrição! [ACAO:inscricao]";
     } else {
       resposta += "👉 Qual turma você tem interesse? Posso te ajudar com mais informações ou com a inscrição! [ACAO:inscricao]";
     }
-    
+
     return resposta;
-    
+
   } catch (error) {
     console.error('❌ Erro ao buscar turmas:', error);
     return "Os treinos acontecem às terças e quintas, das 19h às 21h, no Centro Cultural de Bocaiuva. Em breve teremos mais informações sobre outras turmas!";
@@ -1088,11 +1383,11 @@ async function getRespostaHorarios() {
 async function getRespostaInscricao() {
   try {
     const doc = await db.collection('configuracoes').doc('inscricoes').get();
-    
+
     if (!doc.exists) {
       return "As inscrições estão abertas! Clique no botão abaixo para se inscrever. [ACAO:inscricao]";
     }
-    
+
     const data = doc.data();
     const abertas = data?.inscricoes_abertas ?? false;
     const vagas = data?.vagas_disponiveis ?? 0;
@@ -1100,29 +1395,29 @@ async function getRespostaInscricao() {
     const idadeMin = data?.idade_minima ?? 5;
     const idadeMax = data?.idade_maxima ?? 100;
     const assinatura = data?.recolher_assinatura ?? true;
-    
+
     if (!abertas) {
       return "⚠️ As inscrições estão FECHADAS no momento. Fique de olho nas nossas redes sociais para saber quando reabriremos!";
     }
-    
+
     const vagasRestantes = vagas - totalInscricoes;
-    
+
     if (vagasRestantes <= 0) {
       return "😢 Infelizmente as vagas estão ESGOTADAS. Temos " + totalInscricoes + " inscrições para " + vagas + " vagas. Mas não desanima! Em breve abriremos novas turmas.";
     }
-    
+
     let resposta = "✅ **INSCRIÇÕES ABERTAS!** ✅\n\n";
     resposta += `📊 Temos ${vagasRestantes} vaga${vagasRestantes > 1 ? 's' : ''} disponível${vagasRestantes > 1 ? 'is' : ''}.\n\n`;
     resposta += `👧🧒 Idade permitida: ${idadeMin} a ${idadeMax} anos.\n\n`;
-    
+
     if (assinatura) {
       resposta += "✍️ Será necessário assinar digitalmente no final do formulário.\n\n";
     }
-    
+
     resposta += "👉 Clique no botão abaixo para fazer sua inscrição! [ACAO:inscricao]";
-    
+
     return resposta;
-    
+
   } catch (error) {
     console.error('❌ Erro ao buscar inscrições:', error);
     return "As inscrições estão abertas! Clique no botão abaixo para se inscrever. [ACAO:inscricao]";
@@ -1149,27 +1444,27 @@ function traduzirDia(dia) {
 // 🔥 FUNÇÃO PRINCIPAL: CHAT ASSISTENTE
 // ============================================
 exports.chatAssistente = onCall(
-  { 
+  {
     cors: true,
     invoker: 'public'
   },
   async (request) => {
     console.log('🚀 Função chatAssistente foi chamada!');
-    
+
     const data = request.data || {};
     const mensagem = data.mensagem ? String(data.mensagem) : '';
-    
+
     console.log('📩 Mensagem recebida:', mensagem);
-    
+
     if (!mensagem || mensagem.trim().length === 0) {
-      return { 
-        resposta: "Olá! Sou o assistente da UAI Capoeira. Como posso ajudar você hoje? Digite sua pergunta!" 
+      return {
+        resposta: "Olá! Sou o assistente da UAI Capoeira. Como posso ajudar você hoje? Digite sua pergunta!"
       };
     }
-    
+
     const msgLower = mensagem.toLowerCase();
-    
-    if (msgLower.includes('horário') || msgLower.includes('horario') || 
+
+    if (msgLower.includes('horário') || msgLower.includes('horario') ||
         msgLower.includes('quando') || msgLower.includes('dias') ||
         msgLower.includes('treino') || msgLower.includes('aula') ||
         msgLower.includes('funciona')) {
@@ -1177,53 +1472,53 @@ exports.chatAssistente = onCall(
       const respostaHorarios = await getRespostaHorarios();
       return { resposta: respostaHorarios };
     }
-    
-    if (msgLower.includes('inscrição') || msgLower.includes('inscricao') || 
+
+    if (msgLower.includes('inscrição') || msgLower.includes('inscricao') ||
         msgLower.includes('quero treinar') || msgLower.includes('matrícula') ||
         msgLower.includes('aula experimental')) {
       console.log('📝 Detectada pergunta sobre inscrições');
       const respostaInscricao = await getRespostaInscricao();
       return { resposta: respostaInscricao };
     }
-    
+
     if (msgLower.includes('endereço') || msgLower.includes('local') || msgLower.includes('onde fica')) {
-      return { 
-        resposta: "Estamos na Rua das Flores, 123 - Centro, Bocaiuva/MG. Clique no botão para ver no mapa! [ACAO:maps]" 
+      return {
+        resposta: "Estamos na Rua das Flores, 123 - Centro, Bocaiuva/MG. Clique no botão para ver no mapa! [ACAO:maps]"
       };
     }
-    
+
     if (msgLower.includes('campeonato') || msgLower.includes('competição') || msgLower.includes('torneio')) {
-      return { 
-        resposta: "Sim! Estamos com o 1° Campeonato UAI Capoeira. Clique abaixo para mais informações! [ACAO:campeonato]" 
+      return {
+        resposta: "Sim! Estamos com o 1° Campeonato UAI Capoeira. Clique abaixo para mais informações! [ACAO:campeonato]"
       };
     }
-    
+
     if (msgLower.includes('whatsapp') || msgLower.includes('contato') || msgLower.includes('telefone')) {
-      return { 
-        resposta: "Você pode falar conosco pelo WhatsApp! Clique no botão abaixo para conversar. [ACAO:whatsapp]" 
+      return {
+        resposta: "Você pode falar conosco pelo WhatsApp! Clique no botão abaixo para conversar. [ACAO:whatsapp]"
       };
     }
-    
+
     if (msgLower.includes('mensalidade') || msgLower.includes('valor') || msgLower.includes('quanto custa')) {
-      return { 
-        resposta: "A mensalidade é R$ 80,00. A primeira aula experimental é gratuita!" 
+      return {
+        resposta: "A mensalidade é R$ 80,00. A primeira aula experimental é gratuita!"
       };
     }
-    
+
     if (msgLower.includes('obrigado') || msgLower.includes('valeu') || msgLower.includes('gratidão')) {
-      return { 
-        resposta: "Por nada! Estamos aqui para ajudar. Qualquer dúvida é só chamar. Axé! 🙏" 
+      return {
+        resposta: "Por nada! Estamos aqui para ajudar. Qualquer dúvida é só chamar. Axé! 🙏"
       };
     }
-    
+
     if (msgLower.includes('olá') || msgLower.includes('oi') || msgLower.includes('opa') || msgLower.includes('bom dia')) {
-      return { 
-        resposta: "Olá! Seja bem-vindo(a) ao site da UAI Capoeira! 🇧🇷\n\nComo posso ajudar você hoje?" 
+      return {
+        resposta: "Olá! Seja bem-vindo(a) ao site da UAI Capoeira! 🇧🇷\n\nComo posso ajudar você hoje?"
       };
     }
-    
-    return { 
-      resposta: "Olá! Sou o assistente da UAI Capoeira. Posso ajudar com:\n\n• 📝 Inscrições\n• ⏰ Horários de treino\n• 🏆 Campeonato\n• 📍 Localização\n• 📱 Contato via WhatsApp\n• 💰 Mensalidade\n\nO que você gostaria de saber?" 
+
+    return {
+      resposta: "Olá! Sou o assistente da UAI Capoeira. Posso ajudar com:\n\n• 📝 Inscrições\n• ⏰ Horários de treino\n• 🏆 Campeonato\n• 📍 Localização\n• 📱 Contato via WhatsApp\n• 💰 Mensalidade\n\nO que você gostaria de saber?"
     };
   }
 );
@@ -1232,17 +1527,17 @@ exports.chatAssistente = onCall(
 // FUNÇÃO 7: REGISTRAR EVENTO DO ASSISTENTE
 // ============================================
 exports.registrarEventoAssistente = onCall(
-  { 
+  {
     cors: true,
     invoker: 'public'
   },
   async (request) => {
     const { docId, tipo, nome, origem, metadata } = request.data;
-    
+
     if (!docId) {
         return { success: false, error: 'docId é obrigatório' };
     }
-    
+
     try {
         const evento = {
             tipo: tipo,
@@ -1251,15 +1546,15 @@ exports.registrarEventoAssistente = onCall(
             metadata: metadata || {},
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         };
-        
+
         await admin.firestore().collection('estatisticas_acessos').doc(docId).update({
             eventos: admin.firestore.FieldValue.arrayUnion(evento),
             total_eventos: admin.firestore.FieldValue.increment(1),
             ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
         });
-        
+
         return { success: true };
-        
+
     } catch (error) {
         console.error('❌ Erro ao registrar evento:', error);
         return { success: false, error: error.message };
@@ -2063,3 +2358,194 @@ exports.criarSolicitacaoAlteracaoAreaAluno = onCall(
         }
     }
 );
+
+
+// ============================================
+// FUNÇÃO: NOTIFICAR NOVA VERSÃO DO APP
+// ============================================
+// Callable usada pelo painel Admin / Controle de Atualizações.
+// Envia push para usuários ativos quando uma nova versão é publicada.
+//
+// Ela reaproveita os helpers já existentes neste arquivo:
+// - buscarTokensUsuariosAtivos()
+// - enviarMulticastEmLotes()
+// - removerTokensInvalidos()
+//
+// Payload esperado:
+// {
+//   versao: "2.0.61",
+//   obrigatoria: false,
+//   titulo: "🚀 Nova versão 2.0.61 disponível!",
+//   mensagem: "Atualize o UAI Capoeira para receber as melhorias."
+// }
+exports.notifyNewAppVersion = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+    },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError(
+                'unauthenticated',
+                'Você precisa estar logado para enviar notificação de atualização.'
+            );
+        }
+
+        const uid = request.auth.uid;
+        const data = request.data || {};
+
+        console.log('🚀 notifyNewAppVersion chamada por:', uid, data);
+
+        const configRef = db.collection('configuracoes').doc('app');
+        const configSnap = await configRef.get();
+        const config = configSnap.exists ? configSnap.data() : {};
+
+        const versao = String(
+            data.versao ||
+            config.versao_atual ||
+            ''
+        ).trim();
+
+        if (!versao) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Informe a versão da atualização.'
+            );
+        }
+
+        const obrigatoria = data.obrigatoria === true || config.atualizacao_obrigatoria === true;
+
+        const titulo = String(
+            data.titulo ||
+            `🚀 Nova versão ${versao} disponível!`
+        ).trim();
+
+        const mensagem = String(
+            data.mensagem ||
+            config.mensagem_atualizacao ||
+            (obrigatoria
+                ? 'Atualização obrigatória disponível. Atualize para continuar usando o UAI Capoeira.'
+                : 'Atualize o UAI Capoeira para receber as melhorias e correções.')
+        ).trim();
+
+        const apkPath = String(config.apk_path || data.apk_path || '').trim();
+        const apkUrl = String(config.apk_url || data.apk_url || '').trim();
+
+        const {
+            usuariosAtivos,
+            usuariosNotificaveis,
+            tokens,
+            tokenOwners,
+            usuariosMap,
+        } = await buscarTokensUsuariosAtivosPorOrigem([
+            'app',
+            'android_app',
+            'android',
+            'apk',
+        ]);
+
+        if (!tokens || tokens.length === 0) {
+            console.log('⚠️ Nenhum token ativo encontrado para notificar.');
+
+            await configRef.set({
+                ultima_notificacao_versao: versao,
+                ultima_notificacao_versao_status: 'sem_tokens',
+                ultima_notificacao_versao_em: admin.firestore.FieldValue.serverTimestamp(),
+                ultima_notificacao_versao_por: uid,
+            }, { merge: true });
+
+            return {
+                success: false,
+                code: 'sem_tokens',
+                message: 'Nenhum token ativo encontrado.',
+                versao,
+                usuariosAtivos,
+                usuariosNotificaveis: usuariosNotificaveis || 0,
+                tokensEncontrados: 0,
+                successCount: 0,
+                failureCount: 0,
+            };
+        }
+
+        const payloadNotificacao = {
+            tipo: 'nova_versao_app',
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            versao,
+            versao_atual: versao,
+            obrigatoria: String(obrigatoria),
+            apk_path: apkPath,
+            apk_url: apkUrl,
+            origem: 'controle_atualizacoes',
+            destino: 'android_apk',
+        };
+
+        const resultado = await enviarMulticastEmLotes({
+            tokens,
+            title: titulo,
+            body: mensagem,
+            data: payloadNotificacao,
+            tokenOwners,
+            androidIcon: 'ic_notification_update',
+        });
+
+        const notificacoesRegistradas = await registrarNotificacaoUsuarios({
+            usuariosMap,
+            tipo: 'nova_versao_app',
+            titulo,
+            mensagem,
+            data: payloadNotificacao,
+        });
+
+        await db.collection('logs_notificacoes_app').add({
+            tipo: 'nova_versao_app',
+            versao,
+            obrigatoria,
+            titulo,
+            mensagem,
+            usuarios_ativos: usuariosAtivos,
+            usuarios_notificaveis: usuariosNotificaveis,
+            tokens_encontrados: tokens.length,
+            notificacoes_registradas: notificacoesRegistradas,
+            success_count: resultado.successCount,
+            failure_count: resultado.failureCount,
+            tokens_invalidos: resultado.tokensInvalidos,
+            enviado_por: uid,
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await configRef.set({
+            ultima_notificacao_versao: versao,
+            ultima_notificacao_versao_status: 'enviada',
+            ultima_notificacao_versao_success_count: resultado.successCount,
+            ultima_notificacao_versao_failure_count: resultado.failureCount,
+            ultima_notificacao_versao_tokens_invalidos: resultado.tokensInvalidos,
+            ultima_notificacao_versao_destino: 'android_apk',
+            ultima_notificacao_versao_sininho_registros: notificacoesRegistradas,
+            ultima_notificacao_versao_em: admin.firestore.FieldValue.serverTimestamp(),
+            ultima_notificacao_versao_por: uid,
+        }, { merge: true });
+
+        console.log('✅ Notificação de nova versão finalizada:', {
+            versao,
+            usuariosAtivos,
+            tokens: tokens.length,
+            resultado,
+        });
+
+        return {
+            success: true,
+            code: 'notificacao_enviada',
+            message: `Notificação da versão ${versao} enviada.`,
+            versao,
+            obrigatoria,
+            usuariosAtivos,
+            usuariosNotificaveis,
+            tokensEncontrados: tokens.length,
+            notificacoesRegistradas,
+            destino: 'android_apk',
+            ...resultado,
+        };
+    }
+);
+

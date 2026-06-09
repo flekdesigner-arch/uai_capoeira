@@ -18,6 +18,7 @@ import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certif
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certificado_lote_status_card.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certificado_participante_card.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
 
 class GeradorCertificadosEventoScreen extends StatefulWidget {
   final EventoModel evento;
@@ -36,6 +37,7 @@ class _GeradorCertificadosEventoScreenState
     extends State<GeradorCertificadosEventoScreen> {
   final CertificadoEventoMapperService _mapperService =
   CertificadoEventoMapperService();
+  final EventoService _eventoService = EventoService();
   final GeradorCertificadoEventoService _geradorService =
   GeradorCertificadoEventoService();
   final CertificadoLoteImpressaoService _loteService =
@@ -85,10 +87,17 @@ class _GeradorCertificadosEventoScreenState
 
     _hidratarCacheGlobalInicial();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint('🧾 [GeradorCertificados] primeiro frame - vai validar participantes');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      debugPrint(
+        '🧾 [GeradorCertificados] primeiro frame - sincronizando evento e participantes',
+      );
+
+      if (!mounted) return;
+
+      await _sincronizarEventoDoServidor();
+
       if (mounted) {
-        _carregarParticipantes();
+        await _carregarParticipantes(forcarServidor: true);
       }
     });
   }
@@ -254,8 +263,47 @@ class _GeradorCertificadosEventoScreenState
     return 'Atualizado há ${idade.inMinutes}min';
   }
 
-  Future<void> _atualizarDoServidor() {
-    return _carregarParticipantes(forcarServidor: true);
+  Future<void> _atualizarDoServidor() async {
+    await _sincronizarEventoDoServidor();
+
+    if (!mounted) return;
+
+    await _carregarParticipantes(forcarServidor: true);
+  }
+
+  Future<void> _sincronizarEventoDoServidor() async {
+    final eventoId = widget.evento.id?.trim();
+
+    if (eventoId == null || eventoId.isEmpty) {
+      debugPrint(
+        '🧾 [GeradorCertificados] evento sem ID. Usando dados recebidos pela tela.',
+      );
+      return;
+    }
+
+    try {
+      debugPrint(
+        '🧾 [GeradorCertificados] buscando evento atualizado no Firestore: $eventoId',
+      );
+
+      final eventoAtualizado = await _eventoService.buscarEventoPorId(eventoId);
+
+      if (!mounted || eventoAtualizado == null) return;
+
+      final atualizado = CertificadoEventoData.fromEvento(eventoAtualizado);
+
+      setState(() {
+        _eventoData = atualizado;
+      });
+
+      debugPrint(
+        '🧾 [GeradorCertificados] evento sincronizado: ${atualizado.localData}',
+      );
+    } catch (e) {
+      debugPrint(
+        '⚠️ [GeradorCertificados] não foi possível sincronizar evento atualizado: $e',
+      );
+    }
   }
 
   Future<void> _carregarParticipantes({
@@ -353,6 +401,12 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _abrirPreview(CertificadoParticipanteData participante) async {
+    // Antes de abrir a prévia, garante que local/data do certificado vem
+    // do evento mais atualizado no Firestore, e não de um objeto antigo em cache.
+    await _sincronizarEventoDoServidor();
+
+    if (!mounted) return;
+
     // IMPORTANTE:
     // Ao voltar da prévia, não recarrega mais tudo do servidor automaticamente.
     // A tela do gerador mantém os dados em memória/cache para ficar instantânea.
@@ -596,6 +650,9 @@ class _GeradorCertificadosEventoScreenState
           _addLogProcessamentoSemSetState(
             'Gerando PDF direto: ${participante.alunoNome}',
           );
+          _addLogProcessamentoSemSetState(
+            'Preparando substituição inteligente do certificado antigo...',
+          );
         });
 
         final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
@@ -607,6 +664,15 @@ class _GeradorCertificadosEventoScreenState
           pdfBytes: pdfBytes,
           evento: _eventoData,
           participante: participante,
+          onLog: (mensagem) {
+            if (!mounted) return;
+
+            setState(() {
+              _addLogProcessamentoSemSetState(
+                '${participante.alunoNome}: $mensagem',
+              );
+            });
+          },
         );
 
         gerados++;

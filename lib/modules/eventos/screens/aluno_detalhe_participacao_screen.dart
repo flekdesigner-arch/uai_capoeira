@@ -105,6 +105,67 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return text;
   }
 
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return 'MANGA_LONGA';
+    }
+
+    if (clean == 'REGATA') {
+      return 'REGATA';
+    }
+
+    return 'MANGA';
+  }
+
+  double _asDoubleSeguro(dynamic value, {double fallback = 0}) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().replaceAll(',', '.').trim() ?? '';
+    if (text.isEmpty) return fallback;
+
+    return double.tryParse(text) ?? fallback;
+  }
+
+  double _valorCamisaEventoPorTipo(String? tipoCamisa) {
+    final tipo = _normalizarTipoCamisa(tipoCamisa);
+
+    if (_dadosEvento == null) {
+      return _participacao.valorCamisa;
+    }
+
+    final rawValores = _dadosEvento!['valoresPorTipoCamisa'] ??
+        _dadosEvento!['valores_por_tipo_camisa'] ??
+        _dadosEvento!['valoresTipoCamisa'] ??
+        _dadosEvento!['valores_tipo_camisa'];
+
+    if (rawValores is Map) {
+      for (final entry in rawValores.entries) {
+        if (_normalizarTipoCamisa(entry.key) == tipo) {
+          final valor = _asDoubleSeguro(entry.value);
+          if (valor > 0) return valor;
+        }
+      }
+    }
+
+    final valorAntigo = _asDoubleSeguro(
+      _dadosEvento!['valorCamisa'] ?? _dadosEvento!['valor_camisa'],
+      fallback: _participacao.valorCamisa,
+    );
+
+    return valorAntigo;
+  }
+
   String? _extrairLinkCertificado(Map<String, dynamic>? data) {
     if (data == null) return null;
 
@@ -228,6 +289,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       graduacao: widget.participacao['graduacao'] as String?,
       graduacaoId: widget.participacao['graduacao_id'] as String?,
       tamanhoCamisa: widget.participacao['tamanho_camisa'] as String?,
+      modelagemCamisa: widget.participacao['modelagem_camisa']?.toString() ?? 'NORMAL',
+      tipoCamisa: widget.participacao['tipo_camisa']?.toString() ?? 'MANGA',
       linkCertificado: widget.participacao['link_certificado'] as String?,
       presente: widget.participacao['presente'] ?? false,
       status: widget.participacao['status'] ?? 'pendente',
@@ -242,6 +305,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     debugPrint('   - valorInscricao: ${_participacao.valorInscricao}');
     debugPrint('   - valorCamisa: ${_participacao.valorCamisa}');
     debugPrint('   - valorTotal: ${_participacao.valorTotal}');
+    debugPrint('   - camisa: ${_participacao.descricaoCamisa}');
   }
 
   // 🔥 NOVO MÉTODO: Buscar dados atualizados do aluno com cache
@@ -343,6 +407,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         debugPrint('   - valorCamisa: ${_participacao.valorCamisa}');
         debugPrint('   - valorTotal: ${_participacao.valorTotal}');
         debugPrint('   - totalPago (model): ${_participacao.totalPago}');
+        debugPrint('   - camisa: ${_participacao.descricaoCamisa}');
       }
 
       // 🔥 2º - Carrega dados do evento
@@ -1359,49 +1424,110 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       return;
     }
 
-    // 🔥 CORREÇÃO: Converter List<dynamic> para List<String>
-    List<String> tamanhosDisponiveis = [];
+    List<String> lerListaEvento({
+      required List<String> chaves,
+      required List<String> fallback,
+    }) {
+      try {
+        if (_dadosEvento == null) return List<String>.from(fallback);
 
-    try {
-      if (_dadosEvento != null && _dadosEvento!.containsKey('tamanhosDisponiveis')) {
-        final rawValue = _dadosEvento!['tamanhosDisponiveis'];
+        for (final chave in chaves) {
+          if (!_dadosEvento!.containsKey(chave)) continue;
 
-        if (rawValue != null) {
+          final rawValue = _dadosEvento![chave];
+
           if (rawValue is List) {
-            // Converte cada item para String de forma segura
-            tamanhosDisponiveis = rawValue
-                .where((item) => item != null) // Remove nulos
-                .map((item) => item.toString()) // Converte para String
+            final lista = rawValue
+                .where((item) => item != null)
+                .map((item) => item.toString().trim())
+                .where((item) => item.isNotEmpty)
                 .toList();
-          } else if (rawValue is String) {
-            // Se for uma string, pode ser um formato específico (ex: "P,M,G,GG")
-            tamanhosDisponiveis = rawValue
+
+            if (lista.isNotEmpty) return lista;
+          }
+
+          if (rawValue is String && rawValue.trim().isNotEmpty) {
+            final lista = rawValue
                 .split(',')
-                .map((s) => s.trim())
-                .where((s) => s.isNotEmpty)
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty)
                 .toList();
+
+            if (lista.isNotEmpty) return lista;
           }
         }
+
+        return List<String>.from(fallback);
+      } catch (e) {
+        debugPrint('❌ Erro ao processar lista do evento: $e');
+        return List<String>.from(fallback);
       }
-    } catch (e) {
-      debugPrint('❌ Erro ao processar tamanhos disponíveis: $e');
-      // Em caso de erro, usa uma lista padrão de tamanhos
-      tamanhosDisponiveis = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
     }
 
-    // Se ainda estiver vazia, usa uma lista padrão
-    if (tamanhosDisponiveis.isEmpty) {
-      tamanhosDisponiveis = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
-    }
+    final tamanhosDisponiveis = lerListaEvento(
+      chaves: const [
+        'tamanhosDisponiveis',
+        'tamanhos_disponiveis',
+      ],
+      fallback: const [
+        '1A',
+        '2A',
+        '4A',
+        '6A',
+        '8A',
+        '10A',
+        '12A',
+        '14A',
+        'PP',
+        'P',
+        'M',
+        'G',
+        'GG',
+        'EGG',
+      ],
+    );
+
+    final modelagensDisponiveis = lerListaEvento(
+      chaves: const [
+        'modelagensCamisaDisponiveis',
+        'modelagens_camisa_disponiveis',
+        'modelagensDisponiveis',
+        'modelagens_disponiveis',
+      ],
+      fallback: const [
+        'NORMAL',
+        'BABY_LOOK',
+      ],
+    );
+
+    final tiposDisponiveis = lerListaEvento(
+      chaves: const [
+        'tiposCamisaDisponiveis',
+        'tipos_camisa_disponiveis',
+        'tiposDisponiveis',
+        'tipos_disponiveis',
+      ],
+      fallback: const [
+        'MANGA',
+        'MANGA_LONGA',
+        'REGATA',
+      ],
+    );
 
     debugPrint('📏 Tamanhos disponíveis processados: $tamanhosDisponiveis');
+    debugPrint('👕 Modelagens disponíveis processadas: $modelagensDisponiveis');
+    debugPrint('🧵 Tipos disponíveis processados: $tiposDisponiveis');
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => EditarCamisaModal(
         tamanhoAtual: _participacao.tamanhoCamisa,
+        modelagemAtual: _participacao.modelagemCamisa,
+        tipoAtual: _participacao.tipoCamisa,
         entregue: _participacao.camisaEntregue,
-        tamanhosDisponiveis: tamanhosDisponiveis, // 👈 Agora é List<String>
+        tamanhosDisponiveis: tamanhosDisponiveis,
+        modelagensDisponiveis: modelagensDisponiveis,
+        tiposDisponiveis: tiposDisponiveis,
       ),
     );
 
@@ -1409,17 +1535,36 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       setState(() => _isLoading = true);
 
       try {
+        final novoTamanho = result['tamanho']?.toString();
+        final novaModelagem = (result['modelagem_camisa'] ??
+            result['modelagemCamisa'] ??
+            'NORMAL')
+            .toString();
+        final novoTipo = (result['tipo_camisa'] ??
+            result['tipoCamisa'] ??
+            'MANGA')
+            .toString();
+        final entregue = result['entregue'] == true;
+        final novoValorCamisa = _valorCamisaEventoPorTipo(novoTipo);
+
         await _participacaoService.atualizarCamisa(
           participacaoId: widget.participacaoId,
-          tamanho: result['tamanho'],
-          entregue: result['entregue'],
+          tamanho: novoTamanho,
+          entregue: entregue,
+          modelagemCamisa: novaModelagem,
+          tipoCamisa: novoTipo,
+          valorCamisa: novoValorCamisa,
         );
 
         setState(() {
           _participacao = _participacao.copyWith(
-            tamanhoCamisa: result['tamanho'],
-            camisaEntregue: result['entregue'],
+            tamanhoCamisa: novoTamanho,
+            modelagemCamisa: novaModelagem,
+            tipoCamisa: novoTipo,
+            camisaEntregue: entregue,
+            valorCamisa: novoValorCamisa,
           );
+          _calcularTotais();
         });
 
         if (mounted) {
@@ -2360,7 +2505,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return _sectionCardTema(
       icon: Icons.shopping_bag_rounded,
       title: 'Camisa',
-      subtitle: 'Tamanho e status de entrega',
+      subtitle: 'Modelagem, tipo, tamanho e entrega',
       color: t.info,
       trailing: _podeEditarCamisa
           ? IconButton(
@@ -2371,13 +2516,29 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           : null,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final narrow = constraints.maxWidth < 480;
+          final narrow = constraints.maxWidth < 560;
+
+          final modelagem = _infoTileTema(
+            'Modelagem',
+            _participacao.modelagemCamisaLabel,
+            Icons.style_rounded,
+            t.associacao,
+          );
+
+          final tipo = _infoTileTema(
+            'Tipo',
+            _participacao.tipoCamisaLabel,
+            Icons.design_services_rounded,
+            t.info,
+          );
+
           final tamanho = _infoTileTema(
             'Tamanho',
             _participacao.tamanhoCamisa ?? 'Não definido',
             Icons.straighten_rounded,
             t.info,
           );
+
           final status = _infoTileTema(
             'Status',
             _participacao.camisaEntregue ? 'Entregue' : 'Pendente',
@@ -2390,6 +2551,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           if (narrow) {
             return Column(
               children: [
+                modelagem,
+                const SizedBox(height: 10),
+                tipo,
+                const SizedBox(height: 10),
                 tamanho,
                 const SizedBox(height: 10),
                 status,
@@ -2397,11 +2562,23 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             );
           }
 
-          return Row(
+          return Column(
             children: [
-              Expanded(child: tamanho),
-              const SizedBox(width: 12),
-              Expanded(child: status),
+              Row(
+                children: [
+                  Expanded(child: modelagem),
+                  const SizedBox(width: 12),
+                  Expanded(child: tipo),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: tamanho),
+                  const SizedBox(width: 12),
+                  Expanded(child: status),
+                ],
+              ),
             ],
           );
         },

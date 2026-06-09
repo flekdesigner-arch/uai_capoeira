@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.59+1
+version: 2.0.66+1
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -58,6 +58,7 @@ dependencies:
   csv: ^6.0.0
   xml: ^6.3.0
   archive: ^3.4.10
+  file_selector: ^1.0.3
 
   # =============================================
   # 🖼️ IMAGENS E ARQUIVOS

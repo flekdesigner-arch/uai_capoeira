@@ -83,6 +83,8 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
   final GraduacaoService _graduacaoService = GraduacaoService();
 
   String? _tamanhoCamisaSelecionado;
+  String _modelagemCamisaSelecionada = 'NORMAL';
+  String _tipoCamisaSelecionado = 'MANGA';
   String? _graduacaoSelecionadaId;
   Map<String, dynamic>? _graduacaoSelecionada;
 
@@ -105,6 +107,159 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     debugPrint('🎯 É batizado: ${widget.isBatizado}');
     debugPrint('🎯 Nível atual: ${widget.aluno['nivel_graduacao']}');
     debugPrint('🎯 Graduação atual: ${widget.aluno['graduacao']}');
+
+    final modelagens = _modelagensEvento();
+    final tipos = _tiposEvento();
+
+    if (modelagens.isNotEmpty) {
+      _modelagemCamisaSelecionada = modelagens.first;
+    }
+
+    if (tipos.isNotEmpty) {
+      _tipoCamisaSelecionado = tipos.first;
+    }
+
+    valorCamisa = _valorCamisaPorTipo(_tipoCamisaSelecionado);
+    valorTotal = valorInscricao + valorCamisa;
+  }
+
+  String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return 'BABY_LOOK';
+    }
+
+    return 'NORMAL';
+  }
+
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return 'MANGA_LONGA';
+    }
+
+    if (clean == 'REGATA') {
+      return 'REGATA';
+    }
+
+    return 'MANGA';
+  }
+
+  String _modelagemCamisaLabel(String value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case 'BABY_LOOK':
+        return 'Baby Look';
+      case 'NORMAL':
+      default:
+        return 'Normal';
+    }
+  }
+
+  String _tipoCamisaLabel(String value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case 'MANGA_LONGA':
+        return 'Manga Longa';
+      case 'REGATA':
+        return 'Regata';
+      case 'MANGA':
+      default:
+        return 'Manga';
+    }
+  }
+
+  List<String> _tamanhosEvento() {
+    final lista = widget.evento.tamanhosDisponiveis;
+
+    if (lista.isNotEmpty) {
+      return lista.map((e) => e.toString().trim().toUpperCase()).where((e) => e.isNotEmpty).toList();
+    }
+
+    return const [
+      '1A',
+      '2A',
+      '4A',
+      '6A',
+      '8A',
+      '10A',
+      '12A',
+      '14A',
+      'PP',
+      'P',
+      'M',
+      'G',
+      'GG',
+      'EGG',
+    ];
+  }
+
+  List<String> _modelagensEvento() {
+    final lista = widget.evento.modelagensCamisaDisponiveis;
+
+    if (lista.isNotEmpty) {
+      final normalized = lista.map(_normalizarModelagemCamisa).toSet().toList();
+      normalized.sort((a, b) {
+        const ordem = {'NORMAL': 0, 'BABY_LOOK': 1};
+        return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+      });
+      return normalized;
+    }
+
+    return const ['NORMAL', 'BABY_LOOK'];
+  }
+
+  List<String> _tiposEvento() {
+    final lista = widget.evento.tiposCamisaDisponiveis;
+
+    if (lista.isNotEmpty) {
+      final normalized = lista.map(_normalizarTipoCamisa).toSet().toList();
+      normalized.sort((a, b) {
+        const ordem = {'MANGA': 0, 'MANGA_LONGA': 1, 'REGATA': 2};
+        return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
+      });
+      return normalized;
+    }
+
+    return const ['MANGA', 'MANGA_LONGA', 'REGATA'];
+  }
+
+  double _valorCamisaPorTipo(String tipo) {
+    if (!widget.evento.temCamisa) return 0;
+
+    final tipoNormalizado = _normalizarTipoCamisa(tipo);
+
+    final valor = widget.evento.valorCamisaPorTipo(tipoNormalizado);
+
+    // Compatibilidade extra: se por algum motivo o mapa vier zerado,
+    // usa o valorCamisa antigo.
+    if (valor > 0) return valor;
+
+    return widget.evento.valorCamisa ?? 0;
+  }
+
+  void _atualizarValorCamisaPorTipo() {
+    final novoValorCamisa = _valorCamisaPorTipo(_tipoCamisaSelecionado);
+
+    setState(() {
+      valorCamisa = novoValorCamisa;
+      valorTotal = valorInscricao + valorCamisa;
+    });
   }
 
   // 🔥 CONVERSÃO DE DATA
@@ -483,6 +638,18 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
   }
 
   Widget _buildCamisaSection() {
+    final tamanhos = _tamanhosEvento();
+    final modelagens = _modelagensEvento();
+    final tipos = _tiposEvento();
+
+    if (!modelagens.contains(_modelagemCamisaSelecionada)) {
+      _modelagemCamisaSelecionada = modelagens.isNotEmpty ? modelagens.first : 'NORMAL';
+    }
+
+    if (!tipos.contains(_tipoCamisaSelecionado)) {
+      _tipoCamisaSelecionado = tipos.isNotEmpty ? tipos.first : 'MANGA';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -491,6 +658,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            color: context.uai.textPrimary,
           ),
         ),
         SizedBox(height: 8),
@@ -498,29 +666,95 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
           padding: EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: context.uai.surface,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: context.uai.border),
           ),
-          child: DropdownButtonFormField<String>(
-            value: _tamanhoCamisaSelecionado,
-            decoration: const InputDecoration(
-              labelText: 'Selecione o tamanho',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: (widget.evento.tamanhosDisponiveis ?? []).map((tamanho) {
-              return DropdownMenuItem(
-                value: tamanho,
-                child: Text(tamanho),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _tamanhoCamisaSelecionado = value;
-              });
-            },
-            validator: widget.evento.camisaObrigatoria
-                ? (value) => value == null ? 'Selecione o tamanho' : null
-                : null,
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                value: _modelagemCamisaSelecionada,
+                decoration: _uaiInputDecoration(
+                  label: 'Modelagem',
+                  icon: Icons.style_rounded,
+                ),
+                dropdownColor: context.uai.surface,
+                items: modelagens.map((modelagem) {
+                  return DropdownMenuItem(
+                    value: modelagem,
+                    child: Text(_modelagemCamisaLabel(modelagem)),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _modelagemCamisaSelecionada =
+                        _normalizarModelagemCamisa(value);
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _tipoCamisaSelecionado,
+                decoration: _uaiInputDecoration(
+                  label: 'Tipo de camisa',
+                  icon: Icons.design_services_rounded,
+                ),
+                dropdownColor: context.uai.surface,
+                items: tipos.map((tipo) {
+                  return DropdownMenuItem(
+                    value: tipo,
+                    child: Text(_tipoCamisaLabel(tipo)),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  _tipoCamisaSelecionado = _normalizarTipoCamisa(value);
+                  _atualizarValorCamisaPorTipo();
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _tamanhoCamisaSelecionado,
+                decoration: _uaiInputDecoration(
+                  label: 'Tamanho',
+                  icon: Icons.straighten_rounded,
+                ),
+                dropdownColor: context.uai.surface,
+                items: tamanhos.map((tamanho) {
+                  return DropdownMenuItem(
+                    value: tamanho,
+                    child: Text(tamanho),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _tamanhoCamisaSelecionado = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: context.uai.info.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: context.uai.info.withOpacity(0.18)),
+                ),
+                child: Text(
+                  'Selecionado: '
+                      '${_modelagemCamisaLabel(_modelagemCamisaSelecionada)} • '
+                      '${_tipoCamisaLabel(_tipoCamisaSelecionado)} • '
+                      '${_tamanhoCamisaSelecionado ?? 'sem tamanho'}'
+                      ' • R\$ ${valorCamisa.toStringAsFixed(2).replaceAll('.', ',')}',
+                  style: TextStyle(
+                    color: _ensureVisible(context.uai.info, context.uai.surface),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -835,6 +1069,12 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
 
     Navigator.pop(context, {
       'tamanhoCamisa': _tamanhoCamisaSelecionado,
+      'modelagemCamisa': _normalizarModelagemCamisa(_modelagemCamisaSelecionada),
+      'tipoCamisa': _normalizarTipoCamisa(_tipoCamisaSelecionado),
+      'modelagem_camisa': _normalizarModelagemCamisa(_modelagemCamisaSelecionada),
+      'tipo_camisa': _normalizarTipoCamisa(_tipoCamisaSelecionado),
+      'valorCamisa': valorCamisa,
+      'valor_camisa': valorCamisa,
       'graduacaoId': _graduacaoSelecionadaId,
       'graduacao': _graduacaoSelecionada,
     });

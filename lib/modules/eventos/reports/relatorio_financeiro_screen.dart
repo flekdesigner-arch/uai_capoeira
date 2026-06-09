@@ -43,6 +43,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   bool _podeExportarRelatorio = false;
   bool _podeGerarCertificados = false;
 
+  // Valores oficiais configurados no evento para confecção.
+  // O relatório usa estes valores como prioridade para não cair em valores antigos
+  // que já estavam salvos nas participações/camisas antes da refatoração.
+  Map<String, double> _valoresPorTipoCamisaEvento = {
+    'MANGA': 0,
+    'MANGA_LONGA': 0,
+    'REGATA': 0,
+  };
+
   // Dados consolidados
   double _totalReceitas = 0;
   double _totalGastos = 0;
@@ -70,7 +79,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'total_camisas': 0,
     'camisas_pagas': 0,
     'valor_total_camisas': 0,
+    'valor_total_pedido': 0.0,
     'por_tamanho': <String, int>{},
+    'por_detalhe': <String, int>{},
+    'por_detalhe_valor_unitario': <String, double>{},
+    'por_detalhe_total': <String, double>{},
   };
 
   // CAMISAS DOS ALUNOS (participações)
@@ -78,7 +91,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'total': 0,
     'pagas': 0,
     'valor': 0,
+    'valor_total_pedido': 0.0,
     'por_tamanho': <String, int>{},
+    'por_detalhe': <String, int>{},
+    'por_detalhe_valor_unitario': <String, double>{},
+    'por_detalhe_total': <String, double>{},
   };
 
   // CAMISAS AVULSAS
@@ -86,7 +103,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     'total': 0,
     'pagas': 0,
     'valor': 0,
+    'valor_total_pedido': 0.0,
     'por_tamanho': <String, int>{},
+    'por_detalhe': <String, int>{},
+    'por_detalhe_valor_unitario': <String, double>{},
+    'por_detalhe_total': <String, double>{},
   };
 
   // DETALHAMENTO DE PATROCÍNIOS
@@ -165,6 +186,287 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Color _statusColor(Color color) => _ensureVisible(color, context.uai.card);
+
+
+  // ==================== CAMISAS: MODELAGEM / TIPO / TAMANHO ====================
+  String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return 'BABY_LOOK';
+    }
+
+    return 'NORMAL';
+  }
+
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return 'MANGA_LONGA';
+    }
+
+    if (clean == 'REGATA') return 'REGATA';
+
+    return 'MANGA';
+  }
+
+  String _modelagemCamisaLabel(dynamic value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case 'BABY_LOOK':
+        return 'Baby Look';
+      case 'NORMAL':
+      default:
+        return 'Normal';
+    }
+  }
+
+  String _tipoCamisaLabel(dynamic value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case 'MANGA_LONGA':
+        return 'Manga Longa';
+      case 'REGATA':
+        return 'Regata';
+      case 'MANGA':
+      default:
+        return 'Manga';
+    }
+  }
+
+  String _normalizarTamanhoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+    if (raw.isEmpty || raw.toLowerCase() == 'null') return 'OUTRO';
+
+    return raw
+        .replaceAll(' ', '')
+        .replaceAll('ANOS', 'A')
+        .replaceAll('ANO', 'A');
+  }
+
+  String _chaveGradeCamisa(Map<String, dynamic> data) {
+    final modelagem = _normalizarModelagemCamisa(
+      data['modelagem_camisa'] ??
+          data['modelagemCamisa'] ??
+          data['modelagem'] ??
+          'NORMAL',
+    );
+
+    final tipo = _normalizarTipoCamisa(
+      data['tipo_camisa'] ??
+          data['tipoCamisa'] ??
+          data['tipo'] ??
+          'MANGA',
+    );
+
+    final tamanho = _normalizarTamanhoCamisa(
+      data['tamanho_camisa'] ?? data['tamanho'] ?? data['tamanhoCamisa'],
+    );
+
+    return '$modelagem|$tipo|$tamanho';
+  }
+
+  double _asDoubleSeguro(dynamic value, {double fallback = 0}) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().replaceAll(',', '.').trim() ?? '';
+    if (text.isEmpty) return fallback;
+
+    return double.tryParse(text) ?? fallback;
+  }
+
+  Map<String, double> _normalizarValoresPorTipoCamisaEvento(
+      dynamic raw, {
+        double fallback = 0,
+      }) {
+    final result = <String, double>{
+      'MANGA': fallback,
+      'MANGA_LONGA': fallback,
+      'REGATA': fallback,
+    };
+
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final tipo = _normalizarTipoCamisa(key);
+        result[tipo] = _asDoubleSeguro(value, fallback: fallback);
+      });
+    }
+
+    return result;
+  }
+
+  Future<void> _carregarValoresCamisaDoEvento() async {
+    try {
+      final eventoDoc = await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(widget.eventoId)
+          .get();
+
+      final data = eventoDoc.data();
+
+      if (data == null) return;
+
+      final fallback = _asDoubleSeguro(
+        data['valorCamisa'] ?? data['valor_camisa'],
+      );
+
+      final valores = _normalizarValoresPorTipoCamisaEvento(
+        data['valoresPorTipoCamisa'] ??
+            data['valores_por_tipo_camisa'] ??
+            data['valoresTipoCamisa'] ??
+            data['valores_tipo_camisa'],
+        fallback: fallback,
+      );
+
+      _valoresPorTipoCamisaEvento = valores;
+
+      debugPrint('👕 Valores oficiais de camisa do evento: $_valoresPorTipoCamisaEvento');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar valores oficiais das camisas: $e');
+    }
+  }
+
+  double _valorOficialPorTipoCamisa(dynamic tipoCamisa) {
+    final tipo = _normalizarTipoCamisa(tipoCamisa);
+    return _valoresPorTipoCamisaEvento[tipo] ?? 0;
+  }
+
+  double _valorUnitarioCamisa(Map<String, dynamic> data) {
+    final tipo = _normalizarTipoCamisa(
+      data['tipo_camisa'] ??
+          data['tipoCamisa'] ??
+          data['tipo'] ??
+          'MANGA',
+    );
+
+    // Prioridade 1: valor oficial configurado no evento.
+    // Isso corrige camisas antigas que ficaram com R$ 30,00, R$ 3,00,
+    // ou sem valor salvo antes da refatoração.
+    final valorOficial = _valorOficialPorTipoCamisa(tipo);
+    if (valorOficial > 0) return valorOficial;
+
+    // Prioridade 2: valor salvo no próprio documento, para compatibilidade
+    // com eventos antigos que ainda não têm valoresPorTipoCamisa.
+    final candidatos = [
+      data['valor_unitario'],
+      data['valorUnitario'],
+      data['valor_camisa'],
+      data['valorCamisa'],
+      data['valor'],
+    ];
+
+    for (final item in candidatos) {
+      final valor = _asDoubleSeguro(item);
+      if (valor > 0) return valor;
+    }
+
+    return 0;
+  }
+
+  void _somarValorGrade({
+    required Map<String, double> unitarios,
+    required Map<String, double> totais,
+    required String chave,
+    required double valorUnitario,
+  }) {
+    if (chave.trim().isEmpty || valorUnitario <= 0) return;
+
+    unitarios[chave] = valorUnitario;
+    totais[chave] = (totais[chave] ?? 0) + valorUnitario;
+  }
+
+  String _labelGradeCamisa(String chave) {
+    final partes = chave.split('|');
+    final modelagem = partes.isNotEmpty ? partes[0] : 'NORMAL';
+    final tipo = partes.length > 1 ? partes[1] : 'MANGA';
+    final tamanho = partes.length > 2 ? partes[2] : 'OUTRO';
+
+    return '${_modelagemCamisaLabel(modelagem)} • ${_tipoCamisaLabel(tipo)} • $tamanho';
+  }
+
+  int _ordemTamanhoCamisa(String value) {
+    final clean = _normalizarTamanhoCamisa(value);
+
+    const ordem = {
+      '1A': 1,
+      '2A': 2,
+      '4A': 4,
+      '6A': 6,
+      '8A': 8,
+      '10A': 10,
+      '12A': 12,
+      '14A': 14,
+      'PP': 100,
+      'P': 101,
+      'M': 102,
+      'G': 103,
+      'GG': 104,
+      'EGG': 105,
+      'XG': 106,
+      'XXG': 107,
+    };
+
+    return ordem[clean] ?? 999;
+  }
+
+  int _ordemGradeCamisa(String chave) {
+    final partes = chave.split('|');
+    final modelagem = _normalizarModelagemCamisa(
+      partes.isNotEmpty ? partes[0] : 'NORMAL',
+    );
+    final tipo = _normalizarTipoCamisa(
+      partes.length > 1 ? partes[1] : 'MANGA',
+    );
+    final tamanho = partes.length > 2 ? partes[2] : 'OUTRO';
+
+    final ordemModelagem = modelagem == 'NORMAL' ? 0 : 1;
+    final ordemTipo = switch (tipo) {
+      'MANGA' => 0,
+      'MANGA_LONGA' => 1,
+      'REGATA' => 2,
+      _ => 99,
+    };
+
+    return (ordemModelagem * 100000) +
+        (ordemTipo * 10000) +
+        _ordemTamanhoCamisa(tamanho);
+  }
+
+  Map<String, int> _ordenarGradeCamisas(Map<dynamic, dynamic> origem) {
+    final result = <String, int>{};
+
+    origem.forEach((key, value) {
+      final chave = key.toString();
+      final quantidade = (value as num?)?.toInt() ?? 0;
+      if (quantidade <= 0) return;
+      result[chave] = quantidade;
+    });
+
+    final entries = result.entries.toList()
+      ..sort((a, b) {
+        final ordem = _ordemGradeCamisa(a.key).compareTo(_ordemGradeCamisa(b.key));
+        if (ordem != 0) return ordem;
+        return a.key.compareTo(b.key);
+      });
+
+    return Map<String, int>.fromEntries(entries);
+  }
 
 
   @override
@@ -256,6 +558,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       _logCarregamento('🧹 Limpando contadores antigos...');
       _resetarVariaveis();
 
+      _logCarregamento('👕 Carregando valores oficiais das camisas...');
+      await _carregarValoresCamisaDoEvento();
+
       _logCarregamento('📌 Buscando participações do evento...');
       final participacoesValidas = await _buscarParticipacoesValidas();
       _logCarregamento('✅ Participações válidas: ${participacoesValidas.length}');
@@ -337,25 +642,43 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     _receitasPorForma = {};
     _gastosPorCategoria = {};
 
+    _valoresPorTipoCamisaEvento = {
+      'MANGA': 0,
+      'MANGA_LONGA': 0,
+      'REGATA': 0,
+    };
+
     _detalhesCamisas = {
       'total_camisas': 0,
       'camisas_pagas': 0,
       'valor_total_camisas': 0.0,
+      'valor_total_pedido': 0.0,
       'por_tamanho': <String, int>{},
+      'por_detalhe': <String, int>{},
+      'por_detalhe_valor_unitario': <String, double>{},
+      'por_detalhe_total': <String, double>{},
     };
 
     _camisasParticipacoes = {
       'total': 0,
       'pagas': 0,
       'valor': 0.0,
+      'valor_total_pedido': 0.0,
       'por_tamanho': <String, int>{},
+      'por_detalhe': <String, int>{},
+      'por_detalhe_valor_unitario': <String, double>{},
+      'por_detalhe_total': <String, double>{},
     };
 
     _camisasAvulsas = {
       'total': 0,
       'pagas': 0,
       'valor': 0.0,
+      'valor_total_pedido': 0.0,
       'por_tamanho': <String, int>{},
+      'por_detalhe': <String, int>{},
+      'por_detalhe_valor_unitario': <String, double>{},
+      'por_detalhe_total': <String, double>{},
     };
 
     _detalhesPatrocinios = {
@@ -744,6 +1067,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       double totalCamisasParticipacoes = 0;
       final porForma = <String, double>{};
       final camisasPorTamanho = <String, int>{};
+      final camisasPorDetalhe = <String, int>{};
+      final camisasValorUnitarioPorDetalhe = <String, double>{};
+      final camisasTotalPorDetalhe = <String, double>{};
+      double valorTotalPedidoCamisasParticipacoes = 0;
 
       int totalCamisasParticipacoesCount = 0;
       int camisasPagasParticipacoesCount = 0;
@@ -759,7 +1086,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
         final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
         final totalDevido = valorInscricao + valorCamisa;
-        final tamanhoCamisa = data['tamanho_camisa'] as String?;
+        final tamanhoCamisaRaw = data['tamanho_camisa'];
+        final tamanhoCamisa = tamanhoCamisaRaw?.toString();
         final alunoNome = data['aluno_nome'] as String? ?? '';
         final chaveParticipante = _chaveParticipante(data);
 
@@ -811,10 +1139,21 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         }
 
         if (tamanhoCamisa != null && tamanhoCamisa.trim().isNotEmpty) {
-          final tamanho = tamanhoCamisa.trim();
+          final tamanho = _normalizarTamanhoCamisa(tamanhoCamisa);
+          final chaveGrade = _chaveGradeCamisa(data);
 
           totalCamisasParticipacoesCount++;
           camisasPorTamanho[tamanho] = (camisasPorTamanho[tamanho] ?? 0) + 1;
+          camisasPorDetalhe[chaveGrade] = (camisasPorDetalhe[chaveGrade] ?? 0) + 1;
+
+          final valorUnitario = _valorUnitarioCamisa(data);
+          valorTotalPedidoCamisasParticipacoes += valorUnitario;
+          _somarValorGrade(
+            unitarios: camisasValorUnitarioPorDetalhe,
+            totais: camisasTotalPorDetalhe,
+            chave: chaveGrade,
+            valorUnitario: valorUnitario,
+          );
 
           if (totalPago >= valorCamisa - 1 || temPatrocinio) {
             camisasPagasParticipacoesCount++;
@@ -839,7 +1178,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             'total': totalCamisasParticipacoesCount,
             'pagas': camisasPagasParticipacoesCount,
             'valor': totalCamisasParticipacoes,
+            'valor_total_pedido': valorTotalPedidoCamisasParticipacoes,
             'por_tamanho': camisasPorTamanho,
+            'por_detalhe': _ordenarGradeCamisas(camisasPorDetalhe),
+            'por_detalhe_valor_unitario': camisasValorUnitarioPorDetalhe,
+            'por_detalhe_total': camisasTotalPorDetalhe,
           };
 
           porForma.forEach((key, value) {
@@ -873,15 +1216,31 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       double totalValor = 0;
       int pagas = 0;
-      Map<String, int> porTamanho = {};
+      final porTamanho = <String, int>{};
+      final porDetalhe = <String, int>{};
+      final valorUnitarioPorDetalhe = <String, double>{};
+      final valorTotalPorDetalhe = <String, double>{};
+      double valorTotalPedidoAvulsas = 0;
 
       for (var camisa in camisasSnapshot.docs) {
         final data = camisa.data();
-        final valor = (data['valor'] as num?)?.toDouble() ?? 0;
+        final valor = _valorUnitarioCamisa(data);
         final pago = data['pago'] as bool? ?? false;
-        final tamanho = data['tamanho']?.toString() ?? 'OUTRO';
+        final tamanho = _normalizarTamanhoCamisa(
+          data['tamanho'] ?? data['tamanho_camisa'],
+        );
+        final chaveGrade = _chaveGradeCamisa(data);
 
         porTamanho[tamanho] = (porTamanho[tamanho] ?? 0) + 1;
+        porDetalhe[chaveGrade] = (porDetalhe[chaveGrade] ?? 0) + 1;
+
+        valorTotalPedidoAvulsas += valor;
+        _somarValorGrade(
+          unitarios: valorUnitarioPorDetalhe,
+          totais: valorTotalPorDetalhe,
+          chave: chaveGrade,
+          valorUnitario: valor,
+        );
 
         if (pago && valor > 0) {
           totalValor += valor;
@@ -891,29 +1250,46 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       setState(() {
         // 🔥 CORREÇÃO: USAR SOMA ACUMULADA, NÃO ATRIBUIÇÃO!
-        _totalReceitas += totalValor;  // ✅ Soma ao que já existe (R$ 450 + R$ 0 = R$ 450)
-        _totalCamisas += totalValor;   // ✅ Soma ao que já existe
+        _totalReceitas += totalValor;
+        _totalCamisas += totalValor;
 
         _camisasAvulsas = {
           'total': camisasSnapshot.docs.length,
           'pagas': pagas,
           'valor': totalValor,
+          'valor_total_pedido': valorTotalPedidoAvulsas,
           'por_tamanho': porTamanho,
+          'por_detalhe': _ordenarGradeCamisas(porDetalhe),
+          'por_detalhe_valor_unitario': valorUnitarioPorDetalhe,
+          'por_detalhe_total': valorTotalPorDetalhe,
         };
 
         _detalhesCamisas = {
           'total_camisas': _camisasParticipacoes['total'] + _camisasAvulsas['total'],
           'camisas_pagas': _camisasParticipacoes['pagas'] + _camisasAvulsas['pagas'],
           'valor_total_camisas': _camisasParticipacoes['valor'] + _camisasAvulsas['valor'],
+          'valor_total_pedido': (_camisasParticipacoes['valor_total_pedido'] ?? 0.0) +
+              (_camisasAvulsas['valor_total_pedido'] ?? 0.0),
           'por_tamanho': _combinarMapas(
             _camisasParticipacoes['por_tamanho'],
             _camisasAvulsas['por_tamanho'],
+          ),
+          'por_detalhe': _combinarMapasDetalhados(
+            _camisasParticipacoes['por_detalhe'],
+            _camisasAvulsas['por_detalhe'],
+          ),
+          'por_detalhe_valor_unitario': _combinarValoresUnitariosDetalhados(
+            _camisasParticipacoes['por_detalhe_valor_unitario'],
+            _camisasAvulsas['por_detalhe_valor_unitario'],
+          ),
+          'por_detalhe_total': _combinarTotaisDetalhados(
+            _camisasParticipacoes['por_detalhe_total'],
+            _camisasAvulsas['por_detalhe_total'],
           ),
         };
       });
 
       debugPrint('✅ Total arrecadado: R\$ ${totalValor.toStringAsFixed(2)}');
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar camisas avulsas: $e');
     }
@@ -956,12 +1332,114 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   // 🔥 Combina dois mapas de contagem
-  Map<String, int> _combinarMapas(Map<String, int> a, Map<String, int> b) {
-    final result = Map<String, int>.from(a);
-    b.forEach((key, value) {
-      result[key] = (result[key] ?? 0) + value;
-    });
-    return result;
+  Map<String, int> _combinarMapas(dynamic a, dynamic b) {
+    final result = <String, int>{};
+
+    if (a is Map) {
+      a.forEach((key, value) {
+        final chave = _normalizarTamanhoCamisa(key);
+        final quantidade = (value as num?)?.toInt() ?? 0;
+        result[chave] = (result[chave] ?? 0) + quantidade;
+      });
+    }
+
+    if (b is Map) {
+      b.forEach((key, value) {
+        final chave = _normalizarTamanhoCamisa(key);
+        final quantidade = (value as num?)?.toInt() ?? 0;
+        result[chave] = (result[chave] ?? 0) + quantidade;
+      });
+    }
+
+    final entries = result.entries.toList()
+      ..sort((x, y) {
+        final ordem = _ordemTamanhoCamisa(x.key).compareTo(_ordemTamanhoCamisa(y.key));
+        if (ordem != 0) return ordem;
+        return x.key.compareTo(y.key);
+      });
+
+    return Map<String, int>.fromEntries(entries);
+  }
+
+  Map<String, int> _combinarMapasDetalhados(dynamic a, dynamic b) {
+    final result = <String, int>{};
+
+    if (a is Map) {
+      a.forEach((key, value) {
+        final chave = key.toString();
+        final quantidade = (value as num?)?.toInt() ?? 0;
+        result[chave] = (result[chave] ?? 0) + quantidade;
+      });
+    }
+
+    if (b is Map) {
+      b.forEach((key, value) {
+        final chave = key.toString();
+        final quantidade = (value as num?)?.toInt() ?? 0;
+        result[chave] = (result[chave] ?? 0) + quantidade;
+      });
+    }
+
+    return _ordenarGradeCamisas(result);
+  }
+
+  Map<String, double> _combinarValoresUnitariosDetalhados(dynamic a, dynamic b) {
+    final result = <String, double>{};
+
+    void add(dynamic origem) {
+      if (origem is! Map) return;
+
+      origem.forEach((key, value) {
+        final chave = key.toString();
+        final valor = _asDoubleSeguro(value);
+        if (valor <= 0) return;
+
+        // Se alunos e avulsas tiverem o mesmo tipo/tamanho, o valor unitário
+        // deve ser o mesmo. Caso tenha divergência, mantém o maior para evitar
+        // subvalorizar o pedido de confecção.
+        final atual = result[chave] ?? 0;
+        result[chave] = valor > atual ? valor : atual;
+      });
+    }
+
+    add(a);
+    add(b);
+
+    return Map<String, double>.fromEntries(
+      result.entries.toList()
+        ..sort((x, y) {
+          final ordem = _ordemGradeCamisa(x.key).compareTo(_ordemGradeCamisa(y.key));
+          if (ordem != 0) return ordem;
+          return x.key.compareTo(y.key);
+        }),
+    );
+  }
+
+  Map<String, double> _combinarTotaisDetalhados(dynamic a, dynamic b) {
+    final result = <String, double>{};
+
+    void add(dynamic origem) {
+      if (origem is! Map) return;
+
+      origem.forEach((key, value) {
+        final chave = key.toString();
+        final valor = _asDoubleSeguro(value);
+        if (valor <= 0) return;
+        result[chave] = (result[chave] ?? 0) + valor;
+      });
+    }
+
+    add(a);
+    add(b);
+
+    return Map<String, double>.fromEntries(
+      result.entries.toList()
+        ..sort((x, y) {
+          final ordem = _ordemGradeCamisa(x.key).compareTo(_ordemGradeCamisa(y.key));
+          if (ordem != 0) return ordem;
+          return x.key.compareTo(y.key);
+        }),
+    );
   }
 
   // ==================== NOVO: MÉTODO AUXILIAR PARA LISTA COMPLETA DE PARTICIPANTES ====================
@@ -1007,6 +1485,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         'nome': nome,
         'status': status,
         'tamanho_camisa': tamanhoCamisa,
+        'modelagem_camisa': _normalizarModelagemCamisa(d['modelagem_camisa']),
+        'tipo_camisa': _normalizarTipoCamisa(d['tipo_camisa']),
         'valor_pago': totalPago,
         'graduacao_nova': graduacaoNova,
         'graduacao_nova_id': graduacaoNovaId,
@@ -1040,6 +1520,149 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
 
     return lista;
+  }
+
+
+  // ==================== PDF LISTA DE ENTREGA DE CAMISAS ====================
+  String _safeTexto(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
+    return text;
+  }
+
+  String _nomeCamisaAvulsa(Map<String, dynamic> data, int index) {
+    final candidatos = [
+      data['nome_participante'],
+      data['nomeParticipante'],
+      data['aluno_nome'],
+      data['nome_aluno'],
+      data['nome'],
+      data['responsavel'],
+    ];
+
+    for (final item in candidatos) {
+      final nome = _safeTexto(item);
+      if (nome.isNotEmpty) return nome;
+    }
+
+    return 'Camisa avulsa ${index.toString().padLeft(2, '0')}';
+  }
+
+  Map<String, dynamic> _itemEntregaCamisa({
+    required String nome,
+    required String origem,
+    required dynamic tamanho,
+    required dynamic modelagem,
+    required dynamic tipo,
+    required bool entregue,
+  }) {
+    return {
+      'nome': nome,
+      'origem': origem,
+      'tamanho_camisa': _normalizarTamanhoCamisa(tamanho),
+      'modelagem_camisa': _normalizarModelagemCamisa(modelagem),
+      'tipo_camisa': _normalizarTipoCamisa(tipo),
+      'entregue': entregue,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> _obterListaEntregaCamisasCompleta() async {
+    final itens = <Map<String, dynamic>>[];
+
+    // 1) Alunos participantes válidos do evento
+    final participacoesValidas = await _buscarParticipacoesValidas();
+
+    for (final doc in participacoesValidas) {
+      final data = doc.data();
+
+      final tamanhoRaw = data['tamanho_camisa'] ?? data['tamanhoCamisa'];
+      final tamanho = _safeTexto(tamanhoRaw);
+
+      if (tamanho.isEmpty) {
+        continue;
+      }
+
+      itens.add(
+        _itemEntregaCamisa(
+          nome: _safeTexto(
+            data['aluno_nome'] ?? data['nome_aluno'] ?? data['nome'],
+            fallback: 'Aluno sem nome',
+          ),
+          origem: 'Aluno',
+          tamanho: tamanho,
+          modelagem: data['modelagem_camisa'] ??
+              data['modelagemCamisa'] ??
+              data['modelagem'] ??
+              'NORMAL',
+          tipo: data['tipo_camisa'] ??
+              data['tipoCamisa'] ??
+              data['tipo'] ??
+              'MANGA',
+          entregue: data['camisa_entregue'] == true ||
+              data['entregue'] == true ||
+              data['camisaEntregue'] == true,
+        ),
+      );
+    }
+
+    // 2) Camisas avulsas do evento
+    final camisasSnapshot = await FirebaseFirestore.instance
+        .collection('camisas_eventos')
+        .where('evento_id', isEqualTo: widget.eventoId)
+        .get();
+
+    var avulsaIndex = 1;
+
+    for (final doc in camisasSnapshot.docs) {
+      final data = doc.data();
+
+      final tamanhoRaw = data['tamanho'] ??
+          data['tamanho_camisa'] ??
+          data['tamanhoCamisa'];
+      final tamanho = _safeTexto(tamanhoRaw);
+
+      if (tamanho.isEmpty) {
+        continue;
+      }
+
+      itens.add(
+        _itemEntregaCamisa(
+          nome: _nomeCamisaAvulsa(data, avulsaIndex),
+          origem: 'Avulsa',
+          tamanho: tamanho,
+          modelagem: data['modelagem_camisa'] ??
+              data['modelagemCamisa'] ??
+              data['modelagem'] ??
+              'NORMAL',
+          tipo: data['tipo_camisa'] ??
+              data['tipoCamisa'] ??
+              data['tipo'] ??
+              'MANGA',
+          entregue: data['entregue'] == true ||
+              data['camisa_entregue'] == true ||
+              data['camisaEntregue'] == true,
+        ),
+      );
+
+      avulsaIndex++;
+    }
+
+    itens.sort((a, b) {
+      final origemA = _safeTexto(a['origem']).toUpperCase();
+      final origemB = _safeTexto(b['origem']).toUpperCase();
+
+      // Alunos primeiro, avulsas depois.
+      final ordemA = origemA.contains('ALUNO') ? 0 : 1;
+      final ordemB = origemB.contains('ALUNO') ? 0 : 1;
+
+      if (ordemA != ordemB) return ordemA.compareTo(ordemB);
+
+      final nomeA = _normalizarTexto(a['nome']);
+      final nomeB = _normalizarTexto(b['nome']);
+      return nomeA.compareTo(nomeB);
+    });
+
+    return itens;
   }
 
   // ==================== DIÁLOGO DE ORDENAÇÃO ====================
@@ -1218,10 +1841,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['Pagas:', '${_camisasParticipacoes['pagas']}']);
       sheet.appendRow(['Valor:', 'R\$ ${_camisasParticipacoes['valor'].toStringAsFixed(2)}']);
 
-      if ((_camisasParticipacoes['por_tamanho'] as Map).isNotEmpty) {
-        sheet.appendRow(['Distribuição:']);
-        (_camisasParticipacoes['por_tamanho'] as Map<String, int>).forEach((tamanho, qtd) {
-          sheet.appendRow(['  $tamanho:', '$qtd']);
+      final distAlunos = Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {});
+      if (distAlunos.isNotEmpty) {
+        sheet.appendRow(['Distribuição detalhada:']);
+        sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
+        distAlunos.forEach((chave, qtd) {
+          final partes = chave.split('|');
+          sheet.appendRow([
+            _modelagemCamisaLabel(partes.isNotEmpty ? partes[0] : 'NORMAL'),
+            _tipoCamisaLabel(partes.length > 1 ? partes[1] : 'MANGA'),
+            partes.length > 2 ? partes[2] : 'OUTRO',
+            '$qtd',
+          ]);
         });
       }
       sheet.appendRow([]);
@@ -1231,10 +1862,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['Pagas:', '${_camisasAvulsas['pagas']}']);
       sheet.appendRow(['Valor:', 'R\$ ${_camisasAvulsas['valor'].toStringAsFixed(2)}']);
 
-      if ((_camisasAvulsas['por_tamanho'] as Map).isNotEmpty) {
-        sheet.appendRow(['Distribuição:']);
-        (_camisasAvulsas['por_tamanho'] as Map<String, int>).forEach((tamanho, qtd) {
-          sheet.appendRow(['  $tamanho:', '$qtd']);
+      final distAvulsas = Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {});
+      if (distAvulsas.isNotEmpty) {
+        sheet.appendRow(['Distribuição detalhada:']);
+        sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
+        distAvulsas.forEach((chave, qtd) {
+          final partes = chave.split('|');
+          sheet.appendRow([
+            _modelagemCamisaLabel(partes.isNotEmpty ? partes[0] : 'NORMAL'),
+            _tipoCamisaLabel(partes.length > 1 ? partes[1] : 'MANGA'),
+            partes.length > 2 ? partes[2] : 'OUTRO',
+            '$qtd',
+          ]);
         });
       }
       sheet.appendRow([]);
@@ -1244,10 +1883,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['Pagas:', '${_detalhesCamisas['camisas_pagas']}']);
       sheet.appendRow(['Valor total:', 'R\$ ${_detalhesCamisas['valor_total_camisas'].toStringAsFixed(2)}']);
 
-      if ((_detalhesCamisas['por_tamanho'] as Map).isNotEmpty) {
-        sheet.appendRow(['Distribuição total:']);
-        (_detalhesCamisas['por_tamanho'] as Map<String, int>).forEach((tamanho, qtd) {
-          sheet.appendRow(['  $tamanho:', '$qtd']);
+      final distTotal = Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {});
+      if (distTotal.isNotEmpty) {
+        sheet.appendRow(['Distribuição total detalhada:']);
+        sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
+        distTotal.forEach((chave, qtd) {
+          final partes = chave.split('|');
+          sheet.appendRow([
+            _modelagemCamisaLabel(partes.isNotEmpty ? partes[0] : 'NORMAL'),
+            _tipoCamisaLabel(partes.length > 1 ? partes[1] : 'MANGA'),
+            partes.length > 2 ? partes[2] : 'OUTRO',
+            '$qtd',
+          ]);
         });
       }
       sheet.appendRow([]);
@@ -1347,6 +1994,25 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       );
     } catch (e) {
       _mostrarErro('Erro ao gerar PDF: $e');
+    }
+  }
+
+
+  Future<void> _gerarPdfListaEntregaCamisas() async {
+    if (!_podeExportarRelatorio) {
+      _mostrarSemPermissao('Você não tem permissão para gerar lista de entrega de camisas.');
+      return;
+    }
+
+    try {
+      final itens = await _obterListaEntregaCamisasCompleta();
+
+      await EventoFinanceiroPdfService.gerarPdfListaEntregaCamisasCompleta(
+        itens: itens,
+        eventoNome: widget.eventoNome,
+      );
+    } catch (e) {
+      _mostrarErro('Erro ao gerar lista de entrega de camisas: $e');
     }
   }
 
@@ -1838,6 +2504,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 if (value == 'excel') _exportarExcel();
                 if (value == 'confeccao') _gerarPdfConfeccao();
                 if (value == 'confeccao_completo') _gerarPdfConfeccaoCompleto();
+                if (value == 'lista_entrega_camisas') _gerarPdfListaEntregaCamisas();
                 if (value == 'geral') _gerarPdfGeral();
                 if (value == 'participantes') _gerarPdfParticipantes();
                 // 🔥 NOVOS PDFs
@@ -1849,6 +2516,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'confeccao', child: Text('👕 PDF Confecção Camisas (Total)')),
                 PopupMenuItem(value: 'confeccao_completo', child: Text('👕 PDF Confecção Completo (Alunos + Avulsos)')),
+                PopupMenuItem(value: 'lista_entrega_camisas', child: Text('✅ PDF Lista de Entrega de Camisas')),
                 PopupMenuItem(value: 'geral', child: Text('📄 PDF Relatório Geral')),
                 PopupMenuItem(value: 'participantes', child: Text('👥 PDF Lista Participantes')),
                 PopupMenuDivider(),
@@ -2381,7 +3049,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         ),
                       ],
                     ),
-                    if ((_camisasParticipacoes['por_tamanho'] as Map).isNotEmpty) ...[
+                    if (Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).isNotEmpty) ...[
                       SizedBox(height: 12),
                       Text(
                         'Distribuição:',
@@ -2394,7 +3062,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: (_camisasParticipacoes['por_tamanho'] as Map<String, int>).entries.map((entry) {
+                        children: Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).entries.map((entry) {
                           return Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 12,
@@ -2408,7 +3076,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  entry.key,
+                                  _labelGradeCamisa(entry.key),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: _ensureVisible(context.uai.info, context.uai.card),
@@ -2480,7 +3148,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         ),
                       ],
                     ),
-                    if ((_camisasAvulsas['por_tamanho'] as Map).isNotEmpty) ...[
+                    if (Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).isNotEmpty) ...[
                       SizedBox(height: 12),
                       Text(
                         'Distribuição:',
@@ -2493,7 +3161,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: (_camisasAvulsas['por_tamanho'] as Map<String, int>).entries.map((entry) {
+                        children: Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).entries.map((entry) {
                           return Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 12,
@@ -2507,7 +3175,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  entry.key,
+                                  _labelGradeCamisa(entry.key),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: _ensureVisible(context.uai.warning, context.uai.card),
@@ -2580,7 +3248,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         ),
                       ],
                     ),
-                    if ((_detalhesCamisas['por_tamanho'] as Map).isNotEmpty) ...[
+                    if (Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).isNotEmpty) ...[
                       SizedBox(height: 12),
                       Text(
                         'Distribuição total:',
@@ -2593,7 +3261,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: (_detalhesCamisas['por_tamanho'] as Map<String, int>).entries.map((entry) {
+                        children: Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).entries.map((entry) {
                           return Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 12,
@@ -2607,7 +3275,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  entry.key,
+                                  _labelGradeCamisa(entry.key),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: _ensureVisible(context.uai.associacao, context.uai.card),

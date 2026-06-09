@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart'; // Para debugPrint
+import 'package:flutter/foundation.dart';
 
 class ParticipacaoService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -7,6 +7,64 @@ class ParticipacaoService {
   // 🔥 DUAS COLEÇÕES DIFERENTES!
   final String _emAndamentoCollection = 'participacoes_eventos_em_andamento';
   final String _finalizadasCollection = 'participacoes_eventos';
+
+  // ───────────────────── PADRÕES DE CAMISA ─────────────────────
+  static const String modelagemNormal = 'NORMAL';
+  static const String modelagemBabyLook = 'BABY_LOOK';
+
+  static const String tipoManga = 'MANGA';
+  static const String tipoMangaLonga = 'MANGA_LONGA';
+  static const String tipoRegata = 'REGATA';
+
+  String _normalizarModelagem(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return modelagemBabyLook;
+    }
+
+    return modelagemNormal;
+  }
+
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return tipoMangaLonga;
+    }
+
+    if (clean == 'REGATA') {
+      return tipoRegata;
+    }
+
+    return tipoManga;
+  }
+
+  double _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return 0;
+
+    return double.tryParse(text.replaceAll(',', '.')) ?? 0;
+  }
 
   /// Adiciona um participante ao evento (SEMPRE na coleção EM ANDAMENTO)
   Future<Map<String, dynamic>> adicionarParticipante({
@@ -22,24 +80,42 @@ class ParticipacaoService {
     String? tamanhoCamisa,
     bool presente = false,
     String status = 'pendente',
-    // 🔥 NOVOS CAMPOS PARA GRADUAÇÃO
+
+    // 🔥 CAMPOS PARA GRADUAÇÃO
     String? graduacaoNova,
     String? graduacaoNovaId,
-    // 🔥 NOVOS CAMPOS PARA FINANCEIRO
+
+    // 🔥 CAMPOS PARA FINANCEIRO / CAMISA
     double valorInscricao = 0,
     double valorCamisa = 0,
     bool camisaEntregue = false,
+
+    // 🔥 NOVOS CAMPOS PARA CONFECÇÃO
+    String? modelagemCamisa,
+    String? tipoCamisa,
   }) async {
     try {
       // Verifica se já está participando (busca nas duas coleções)
-      final existeEmAndamento = await _buscarParticipacao(alunoId, eventoId, _emAndamentoCollection);
-      final existeFinalizada = await _buscarParticipacao(alunoId, eventoId, _finalizadasCollection);
+      final existeEmAndamento = await _buscarParticipacao(
+        alunoId,
+        eventoId,
+        _emAndamentoCollection,
+      );
+
+      final existeFinalizada = await _buscarParticipacao(
+        alunoId,
+        eventoId,
+        _finalizadasCollection,
+      );
 
       if (existeEmAndamento != null || existeFinalizada != null) {
         throw Exception('Aluno já está participando deste evento');
       }
 
-      final participacao = {
+      final modelagemFinal = _normalizarModelagem(modelagemCamisa);
+      final tipoFinal = _normalizarTipoCamisa(tipoCamisa);
+
+      final participacao = <String, dynamic>{
         'aluno_id': alunoId,
         'aluno_nome': alunoNome,
         'aluno_foto': alunoFoto,
@@ -50,6 +126,8 @@ class ParticipacaoService {
         'graduacao': graduacao,
         'graduacao_id': graduacaoId,
         'tamanho_camisa': tamanhoCamisa,
+        'modelagem_camisa': modelagemFinal,
+        'tipo_camisa': tipoFinal,
         'presente': presente,
         'status': status,
         'valor_inscricao': valorInscricao,
@@ -64,9 +142,11 @@ class ParticipacaoService {
       if (graduacaoNova != null) {
         participacao['graduacao_nova'] = graduacaoNova;
       }
+
       if (graduacaoNovaId != null) {
         participacao['graduacao_nova_id'] = graduacaoNovaId;
       }
+
       // Indica que está aguardando finalização (para batizados)
       if (graduacaoNova != null) {
         participacao['aguardando_finalizacao'] = true;
@@ -76,11 +156,16 @@ class ParticipacaoService {
       debugPrint('   - valorInscricao: $valorInscricao');
       debugPrint('   - valorCamisa: $valorCamisa');
       debugPrint('   - total: ${valorInscricao + valorCamisa}');
+      debugPrint('   - tamanhoCamisa: $tamanhoCamisa');
+      debugPrint('   - modelagemCamisa: $modelagemFinal');
+      debugPrint('   - tipoCamisa: $tipoFinal');
 
       // 🔥 SALVA NA COLEÇÃO EM ANDAMENTO
-      final docRef = await _firestore.collection(_emAndamentoCollection).add(participacao);
+      final docRef = await _firestore
+          .collection(_emAndamentoCollection)
+          .add(participacao);
 
-      // 🔥 TAMBÉM SALVA UMA REFERÊNCIA NA COLEÇÃO DO EVENTO (para facilitar consultas)
+      // 🔥 TAMBÉM SALVA UMA REFERÊNCIA NA COLEÇÃO DO EVENTO
       await _firestore
           .collection('eventos')
           .doc(eventoId)
@@ -93,8 +178,11 @@ class ParticipacaoService {
         'status': status,
         'total_pago': 0,
         'valor_total': valorInscricao + valorCamisa,
+        'tamanho_camisa': tamanhoCamisa,
+        'modelagem_camisa': modelagemFinal,
+        'tipo_camisa': tipoFinal,
         'criado_em': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
 
       return {
         'id': docRef.id,
@@ -170,7 +258,9 @@ class ParticipacaoService {
   }
 
   /// Lista todos os participantes EM ANDAMENTO de um evento
-  Future<List<Map<String, dynamic>>> listarParticipantesEmAndamento(String eventoId) async {
+  Future<List<Map<String, dynamic>>> listarParticipantesEmAndamento(
+      String eventoId,
+      ) async {
     try {
       final snapshot = await _firestore
           .collection(_emAndamentoCollection)
@@ -191,7 +281,9 @@ class ParticipacaoService {
   }
 
   /// Lista todos os participantes FINALIZADOS de um evento
-  Future<List<Map<String, dynamic>>> listarParticipantesFinalizados(String eventoId) async {
+  Future<List<Map<String, dynamic>>> listarParticipantesFinalizados(
+      String eventoId,
+      ) async {
     try {
       final snapshot = await _firestore
           .collection(_finalizadasCollection)
@@ -212,7 +304,9 @@ class ParticipacaoService {
   }
 
   /// 🔥 Lista TODOS os participantes (em andamento + finalizados)
-  Future<List<Map<String, dynamic>>> listarTodosParticipantes(String eventoId) async {
+  Future<List<Map<String, dynamic>>> listarTodosParticipantes(
+      String eventoId,
+      ) async {
     try {
       final emAndamento = await listarParticipantesEmAndamento(eventoId);
       final finalizados = await listarParticipantesFinalizados(eventoId);
@@ -225,7 +319,9 @@ class ParticipacaoService {
   }
 
   /// Lista todos os eventos que um aluno participou (busca nas duas coleções)
-  Future<List<Map<String, dynamic>>> listarParticipantesPorAluno(String alunoId) async {
+  Future<List<Map<String, dynamic>>> listarParticipantesPorAluno(
+      String alunoId,
+      ) async {
     try {
       final emAndamento = await _firestore
           .collection(_emAndamentoCollection)
@@ -252,14 +348,27 @@ class ParticipacaoService {
   }
 
   /// Busca uma participação específica (nas duas coleções)
-  Future<Map<String, dynamic>?> buscarParticipacao(String alunoId, String eventoId) async {
+  Future<Map<String, dynamic>?> buscarParticipacao(
+      String alunoId,
+      String eventoId,
+      ) async {
     try {
       // Tenta na coleção em andamento
-      final emAndamento = await _buscarParticipacao(alunoId, eventoId, _emAndamentoCollection);
+      final emAndamento = await _buscarParticipacao(
+        alunoId,
+        eventoId,
+        _emAndamentoCollection,
+      );
+
       if (emAndamento != null) return emAndamento;
 
       // Tenta na coleção finalizada
-      final finalizada = await _buscarParticipacao(alunoId, eventoId, _finalizadasCollection);
+      final finalizada = await _buscarParticipacao(
+        alunoId,
+        eventoId,
+        _finalizadasCollection,
+      );
+
       return finalizada;
     } catch (e) {
       debugPrint('Erro ao buscar participação: $e');
@@ -270,7 +379,10 @@ class ParticipacaoService {
   /// Marca presença do participante (apenas em andamento)
   Future<void> marcarPresenca(String participacaoId, bool presente) async {
     try {
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).update({
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .update({
         'presente': presente,
         'atualizado_em': FieldValue.serverTimestamp(),
       });
@@ -280,10 +392,13 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 NOVO: Atualiza status da participação
+  /// Atualiza status da participação
   Future<void> atualizarStatus(String participacaoId, String novoStatus) async {
     try {
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).update({
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .update({
         'status': novoStatus,
         'atualizado_em': FieldValue.serverTimestamp(),
       });
@@ -293,11 +408,23 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 NOVO: Atualiza dados da camisa
+  /// Atualiza dados da camisa.
+  ///
+  /// Compatibilidade:
+  /// - Se modelagem não for informada, NÃO altera o campo.
+  /// - Se tipo não for informado, NÃO altera o campo.
+  /// - Nas leituras/relatórios, ausência deve ser tratada como NORMAL/MANGA.
+  /// - Se valorCamisa for informado, atualiza também o financeiro da camisa.
   Future<void> atualizarCamisa({
     required String participacaoId,
     String? tamanho,
     bool? entregue,
+    String? modelagemCamisa,
+    String? tipoCamisa,
+
+    // Quando o tipo muda, a tela pode enviar o novo valor calculado
+    // pelo evento: Manga, Manga Longa ou Regata.
+    double? valorCamisa,
   }) async {
     try {
       final Map<String, dynamic> updates = {
@@ -307,18 +434,81 @@ class ParticipacaoService {
       if (tamanho != null) {
         updates['tamanho_camisa'] = tamanho;
       }
+
       if (entregue != null) {
         updates['camisa_entregue'] = entregue;
       }
 
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).update(updates);
+      if (modelagemCamisa != null) {
+        updates['modelagem_camisa'] = _normalizarModelagem(modelagemCamisa);
+      }
+
+      if (tipoCamisa != null) {
+        updates['tipo_camisa'] = _normalizarTipoCamisa(tipoCamisa);
+      }
+
+      if (valorCamisa != null) {
+        updates['valor_camisa'] = valorCamisa;
+      }
+
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .update(updates);
+
+      // 🔥 Mantém a referência da subcoleção do evento sincronizada quando possível.
+      // Não é crítico para certificado/graduação, mas ajuda relatórios e buscas leves.
+      try {
+        final doc = await _firestore
+            .collection(_emAndamentoCollection)
+            .doc(participacaoId)
+            .get();
+
+        final data = doc.data();
+        final eventoId = data?['evento_id']?.toString();
+
+        if (eventoId != null && eventoId.trim().isNotEmpty) {
+          final refUpdates = <String, dynamic>{
+            'atualizado_em': FieldValue.serverTimestamp(),
+          };
+
+          if (updates.containsKey('tamanho_camisa')) {
+            refUpdates['tamanho_camisa'] = updates['tamanho_camisa'];
+          }
+          if (updates.containsKey('modelagem_camisa')) {
+            refUpdates['modelagem_camisa'] = updates['modelagem_camisa'];
+          }
+          if (updates.containsKey('tipo_camisa')) {
+            refUpdates['tipo_camisa'] = updates['tipo_camisa'];
+          }
+          if (updates.containsKey('valor_camisa')) {
+            refUpdates['valor_camisa'] = updates['valor_camisa'];
+
+            final valorInscricao = _asDouble(data?['valor_inscricao']);
+            final valorCamisaAtualizado = _asDouble(
+              data?['valor_camisa'] ?? updates['valor_camisa'],
+            );
+
+            refUpdates['valor_total'] = valorInscricao + valorCamisaAtualizado;
+          }
+
+          await _firestore
+              .collection('eventos')
+              .doc(eventoId)
+              .collection('participacoes')
+              .doc(participacaoId)
+              .set(refUpdates, SetOptions(merge: true));
+        }
+      } catch (e) {
+        debugPrint('⚠️ Camisa atualizada, mas erro ao sincronizar referência do evento: $e');
+      }
     } catch (e) {
       debugPrint('Erro ao atualizar camisa: $e');
       rethrow;
     }
   }
 
-  /// 🔥 NOVO: Atualiza graduação nova
+  /// Atualiza graduação nova
   Future<void> atualizarGraduacaoNova({
     required String participacaoId,
     String? graduacaoNovaId,
@@ -332,12 +522,17 @@ class ParticipacaoService {
       if (graduacaoNovaId != null) {
         updates['graduacao_nova_id'] = graduacaoNovaId;
       }
+
       if (graduacaoNovaNome != null) {
         updates['graduacao_nova'] = graduacaoNovaNome;
       }
+
       updates['aguardando_finalizacao'] = true;
 
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).update(updates);
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .update(updates);
     } catch (e) {
       debugPrint('Erro ao atualizar graduação nova: $e');
       rethrow;
@@ -451,8 +646,12 @@ class ParticipacaoService {
               'status': 'finalizado',
               'total_pago': dadosFinalizados['total_pago'] ?? 0,
               'valor_total':
-              ((dadosFinalizados['valor_inscricao'] ?? 0) as num).toDouble() +
-                  ((dadosFinalizados['valor_camisa'] ?? 0) as num).toDouble(),
+              _asDouble(dadosFinalizados['valor_inscricao']) +
+                  _asDouble(dadosFinalizados['valor_camisa']),
+              'tamanho_camisa': dadosFinalizados['tamanho_camisa'],
+              'modelagem_camisa': dadosFinalizados['modelagem_camisa'] ??
+                  modelagemNormal,
+              'tipo_camisa': dadosFinalizados['tipo_camisa'] ?? tipoManga,
               'link_certificado': dadosFinalizados['link_certificado'],
               'finalizado_em': FieldValue.serverTimestamp(),
               'atualizado_em': FieldValue.serverTimestamp(),
@@ -460,7 +659,9 @@ class ParticipacaoService {
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Participação finalizada, mas erro ao atualizar referência do evento: $e');
+        debugPrint(
+          '⚠️ Participação finalizada, mas erro ao atualizar referência do evento: $e',
+        );
       }
 
       debugPrint('✅ Participação finalizada preservando certificado real');
@@ -477,17 +678,25 @@ class ParticipacaoService {
 
       int total = participantes.length;
       int presentes = participantes.where((p) => p['presente'] == true).length;
-      int pendentes = participantes.where((p) => p['status'] == 'pendente').length;
-      int finalizados = participantes.where((p) => p['status'] == 'finalizado').length;
-      int quitados = participantes.where((p) => p['status'] == 'quitado').length;
+      int pendentes =
+          participantes.where((p) => p['status'] == 'pendente').length;
+      int finalizados =
+          participantes.where((p) => p['status'] == 'finalizado').length;
+      int quitados =
+          participantes.where((p) => p['status'] == 'quitado').length;
 
       // Contagem de aguardando graduação
-      int aguardandoGraduacao = participantes.where((p) => p['aguardando_finalizacao'] == true).length;
+      int aguardandoGraduacao = participantes
+          .where((p) => p['aguardando_finalizacao'] == true)
+          .length;
 
       // Contagem por tamanho de camisa
       Map<String, int> camisas = {};
       int camisasEntregues = 0;
       int camisasPendentes = 0;
+
+      // 🔥 Nova contagem detalhada para relatórios futuros
+      Map<String, int> camisasDetalhadas = {};
 
       // Cálculo de valores financeiros
       double totalPrevisto = 0;
@@ -496,8 +705,18 @@ class ParticipacaoService {
       for (var p in participantes) {
         // Contagem de camisas
         if (p['tamanho_camisa'] != null) {
-          String tamanho = p['tamanho_camisa'] as String;
-          camisas[tamanho] = (camisas[tamanho] ?? 0) + 1;
+          final tamanho = p['tamanho_camisa'].toString().trim();
+
+          if (tamanho.isNotEmpty) {
+            camisas[tamanho] = (camisas[tamanho] ?? 0) + 1;
+
+            final modelagem = _normalizarModelagem(p['modelagem_camisa']);
+            final tipo = _normalizarTipoCamisa(p['tipo_camisa']);
+            final chaveDetalhada = '$modelagem|$tipo|$tamanho';
+
+            camisasDetalhadas[chaveDetalhada] =
+                (camisasDetalhadas[chaveDetalhada] ?? 0) + 1;
+          }
         }
 
         if (p['camisa_entregue'] == true) {
@@ -507,9 +726,9 @@ class ParticipacaoService {
         }
 
         // Cálculo financeiro
-        final valorInscricao = (p['valor_inscricao'] ?? 0).toDouble();
-        final valorCamisa = (p['valor_camisa'] ?? 0).toDouble();
-        final totalPago = (p['total_pago'] ?? 0).toDouble();
+        final valorInscricao = _asDouble(p['valor_inscricao']);
+        final valorCamisa = _asDouble(p['valor_camisa']);
+        final totalPago = _asDouble(p['total_pago']);
 
         totalPrevisto += valorInscricao + valorCamisa;
         totalArrecadado += totalPago;
@@ -523,6 +742,7 @@ class ParticipacaoService {
         'quitados': quitados,
         'aguardando_graduacao': aguardandoGraduacao,
         'camisas': camisas,
+        'camisas_detalhadas': camisasDetalhadas,
         'camisas_entregues': camisasEntregues,
         'camisas_pendentes': camisasPendentes,
         'total_previsto': totalPrevisto,
@@ -539,6 +759,7 @@ class ParticipacaoService {
         'quitados': 0,
         'aguardando_graduacao': 0,
         'camisas': {},
+        'camisas_detalhadas': {},
         'camisas_entregues': 0,
         'camisas_pendentes': 0,
         'total_previsto': 0,
@@ -551,7 +772,12 @@ class ParticipacaoService {
   /// Verifica se aluno pode participar (não está em outro evento no mesmo dia)
   Future<bool> podeParticipar(String alunoId, DateTime dataEvento) async {
     try {
-      final inicioDia = DateTime(dataEvento.year, dataEvento.month, dataEvento.day);
+      final inicioDia = DateTime(
+        dataEvento.year,
+        dataEvento.month,
+        dataEvento.day,
+      );
+
       final fimDia = inicioDia.add(const Duration(days: 1));
 
       // Verifica nas duas coleções
@@ -569,7 +795,8 @@ class ParticipacaoService {
           .where('data_evento', isLessThan: Timestamp.fromDate(fimDia))
           .get();
 
-      return snapshotEmAndamento.docs.isEmpty && snapshotFinalizadas.docs.isEmpty;
+      return snapshotEmAndamento.docs.isEmpty &&
+          snapshotFinalizadas.docs.isEmpty;
     } catch (e) {
       debugPrint('Erro ao verificar disponibilidade: $e');
       return false;
@@ -577,10 +804,27 @@ class ParticipacaoService {
   }
 
   /// Atualiza dados de uma participação (apenas em andamento)
-  Future<void> atualizarParticipacao(String participacaoId, Map<String, dynamic> dados) async {
+  Future<void> atualizarParticipacao(
+      String participacaoId,
+      Map<String, dynamic> dados,
+      ) async {
     try {
       dados['atualizado_em'] = FieldValue.serverTimestamp();
-      await _firestore.collection(_emAndamentoCollection).doc(participacaoId).update(dados);
+
+      if (dados.containsKey('modelagem_camisa')) {
+        dados['modelagem_camisa'] = _normalizarModelagem(
+          dados['modelagem_camisa'],
+        );
+      }
+
+      if (dados.containsKey('tipo_camisa')) {
+        dados['tipo_camisa'] = _normalizarTipoCamisa(dados['tipo_camisa']);
+      }
+
+      await _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId)
+          .update(dados);
     } catch (e) {
       debugPrint('Erro ao atualizar participação: $e');
       rethrow;
@@ -588,7 +832,9 @@ class ParticipacaoService {
   }
 
   /// Busca participantes que aguardam graduação (apenas em andamento)
-  Future<List<Map<String, dynamic>>> listarAguardandoGraduacao(String eventoId) async {
+  Future<List<Map<String, dynamic>>> listarAguardandoGraduacao(
+      String eventoId,
+      ) async {
     try {
       final snapshot = await _firestore
           .collection(_emAndamentoCollection)
@@ -609,15 +855,17 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 Busca participantes com saldo pendente (apenas em andamento)
-  Future<List<Map<String, dynamic>>> listarInadimplentes(String eventoId) async {
+  /// Busca participantes com saldo pendente (apenas em andamento)
+  Future<List<Map<String, dynamic>>> listarInadimplentes(
+      String eventoId,
+      ) async {
     try {
       final participantes = await listarParticipantesEmAndamento(eventoId);
 
       return participantes.where((p) {
-        final valorInscricao = (p['valor_inscricao'] ?? 0).toDouble();
-        final valorCamisa = (p['valor_camisa'] ?? 0).toDouble();
-        final totalPago = (p['total_pago'] ?? 0).toDouble();
+        final valorInscricao = _asDouble(p['valor_inscricao']);
+        final valorCamisa = _asDouble(p['valor_camisa']);
+        final totalPago = _asDouble(p['total_pago']);
         final valorTotal = valorInscricao + valorCamisa;
 
         return valorTotal > totalPago && p['status'] != 'finalizado';
@@ -628,8 +876,11 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 Atualiza o total pago de uma participação
-  Future<void> atualizarTotalPago(String participacaoId, double novoTotalPago) async {
+  /// Atualiza o total pago de uma participação
+  Future<void> atualizarTotalPago(
+      String participacaoId,
+      double novoTotalPago,
+      ) async {
     try {
       // Atualiza na coleção EM ANDAMENTO
       await _firestore
@@ -647,7 +898,7 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 Busca participação por ID (em qualquer coleção)
+  /// Busca participação por ID (em qualquer coleção)
   Future<Map<String, dynamic>?> buscarPorId(String participacaoId) async {
     try {
       // Tenta na coleção em andamento
@@ -662,6 +913,8 @@ class ParticipacaoService {
         debugPrint('   - valorInscricao: ${data['valor_inscricao']}');
         debugPrint('   - valorCamisa: ${data['valor_camisa']}');
         debugPrint('   - total_pago: ${data['total_pago']}');
+        debugPrint('   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}');
+        debugPrint('   - tipo_camisa: ${data['tipo_camisa'] ?? tipoManga}');
         return {'id': docEmAndamento.id, ...data};
       }
 
@@ -677,6 +930,8 @@ class ParticipacaoService {
         debugPrint('   - valorInscricao: ${data['valor_inscricao']}');
         debugPrint('   - valorCamisa: ${data['valor_camisa']}');
         debugPrint('   - total_pago: ${data['total_pago']}');
+        debugPrint('   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}');
+        debugPrint('   - tipo_camisa: ${data['tipo_camisa'] ?? tipoManga}');
         return {'id': docFinalizada.id, ...data};
       }
 
@@ -687,14 +942,14 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 NOVO: Busca o valor total de uma participação
+  /// Busca o valor total de uma participação
   Future<double> buscarValorTotal(String participacaoId) async {
     try {
       final participacao = await buscarPorId(participacaoId);
       if (participacao == null) return 0;
 
-      final valorInscricao = (participacao['valor_inscricao'] ?? 0).toDouble();
-      final valorCamisa = (participacao['valor_camisa'] ?? 0).toDouble();
+      final valorInscricao = _asDouble(participacao['valor_inscricao']);
+      final valorCamisa = _asDouble(participacao['valor_camisa']);
 
       return valorInscricao + valorCamisa;
     } catch (e) {
@@ -703,27 +958,29 @@ class ParticipacaoService {
     }
   }
 
-  /// 🔥 NOVO: Busca o total pago de uma participação
+  /// Busca o total pago de uma participação
   Future<double> buscarTotalPago(String participacaoId) async {
     try {
       final participacao = await buscarPorId(participacaoId);
       if (participacao == null) return 0;
 
-      return (participacao['total_pago'] ?? 0).toDouble();
+      return _asDouble(participacao['total_pago']);
     } catch (e) {
       debugPrint('Erro ao buscar total pago: $e');
       return 0;
     }
   }
 
-  /// 🔥 NOVO: Calcula o saldo devedor de uma participação
+  /// Calcula o saldo devedor de uma participação
   Future<double> calcularSaldoDevedor(String participacaoId) async {
     try {
       final valorTotal = await buscarValorTotal(participacaoId);
       final totalPago = await buscarTotalPago(participacaoId);
 
       final saldo = valorTotal - totalPago;
-      debugPrint('💰 Saldo devedor calculado: $saldo (Total: $valorTotal - Pago: $totalPago)');
+      debugPrint(
+        '💰 Saldo devedor calculado: $saldo (Total: $valorTotal - Pago: $totalPago)',
+      );
 
       return saldo;
     } catch (e) {

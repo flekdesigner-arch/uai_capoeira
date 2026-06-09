@@ -165,6 +165,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   int _totalParticipantes = 0;
   int _participantesPagos = 0;
   Map<String, int> _camisasPorTamanho = {};
+  Map<String, int> _camisasPorDetalhe = {};
 
   int _ultimoTotalParticipantes = -1;
   String _assinaturaEstatisticas = '';
@@ -218,6 +219,136 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   Color _onCardMuted() => _onCard().withOpacity(0.68);
   Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  String _normalizarModelagemCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'BABYLOOK' ||
+        clean == 'BABY_LOOK' ||
+        clean == 'BABY_LOOK_FEMININA' ||
+        clean == 'FEMININA') {
+      return 'BABY_LOOK';
+    }
+
+    return 'NORMAL';
+  }
+
+  String _normalizarTipoCamisa(dynamic value) {
+    final raw = value?.toString().trim().toUpperCase() ?? '';
+
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
+
+    if (clean == 'MANGA_LONGA' ||
+        clean == 'LONGA' ||
+        clean == 'MANGA_COMPRIDA') {
+      return 'MANGA_LONGA';
+    }
+
+    if (clean == 'REGATA') {
+      return 'REGATA';
+    }
+
+    return 'MANGA';
+  }
+
+  String _modelagemCamisaLabel(dynamic value) {
+    switch (_normalizarModelagemCamisa(value)) {
+      case 'BABY_LOOK':
+        return 'Baby Look';
+      case 'NORMAL':
+      default:
+        return 'Normal';
+    }
+  }
+
+  String _tipoCamisaLabel(dynamic value) {
+    switch (_normalizarTipoCamisa(value)) {
+      case 'MANGA_LONGA':
+        return 'Manga Longa';
+      case 'REGATA':
+        return 'Regata';
+      case 'MANGA':
+      default:
+        return 'Manga';
+    }
+  }
+
+  String _descricaoCamisaParticipacao(ParticipacaoModel p) {
+    final tamanho = p.tamanhoCamisa?.trim();
+
+    if (tamanho == null || tamanho.isEmpty) {
+      return '---';
+    }
+
+    return '${p.modelagemCamisaLabel} • ${p.tipoCamisaLabel} • $tamanho';
+  }
+
+  String _chaveCamisaParticipacao(ParticipacaoModel p) {
+    final tamanho = p.tamanhoCamisa?.trim().toUpperCase();
+
+    if (tamanho == null || tamanho.isEmpty) {
+      return '';
+    }
+
+    return '${_normalizarModelagemCamisa(p.modelagemCamisa)}|'
+        '${_normalizarTipoCamisa(p.tipoCamisa)}|'
+        '$tamanho';
+  }
+
+  double _valorCamisaEventoPorTipo(String? tipoCamisa) {
+    final evento = widget.evento ?? _eventoCarregado;
+
+    if (evento == null || !evento.temCamisa) return 0;
+
+    final tipo = _normalizarTipoCamisa(tipoCamisa);
+
+    final valor = evento.valorCamisaPorTipo(tipo);
+
+    if (valor > 0) return valor;
+
+    return evento.valorCamisa ?? 0;
+  }
+
+  double _asDoubleSeguro(dynamic value, {double fallback = 0}) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final text = value?.toString().replaceAll(',', '.').trim() ?? '';
+    if (text.isEmpty) return fallback;
+
+    return double.tryParse(text) ?? fallback;
+  }
+
+  String _textoSeguro(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
+    return text;
+  }
+
+  String _nomeAlunoSeguro(dynamic nomeAluno, ParticipacaoModel p) {
+    final nome = _textoSeguro(nomeAluno, fallback: p.alunoNome);
+    return nome.trim().isEmpty ? 'Aluno' : nome.trim();
+  }
+
+  String _graduacaoSegura(dynamic graduacaoAluno, ParticipacaoModel p) {
+    final grad = _textoSeguro(
+      graduacaoAluno,
+      fallback: p.graduacao ?? '',
+    );
+
+    if (grad.trim().isEmpty) return 'SEM GRADUAÇÃO';
+    return grad.trim();
+  }
+
 
   void _onSearchAlunosChanged(String value) {
     _debounceTimer?.cancel();
@@ -492,7 +623,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   void _calcularEstatisticas(List<ParticipacaoModel> participantes) {
     final assinatura = participantes
-        .map((p) => '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.estaQuitado}')
+        .map((p) => '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.modelagemCamisa}|${p.tipoCamisa}|${p.estaQuitado}')
         .join(';');
 
     if (_assinaturaEstatisticas == assinatura) return;
@@ -500,13 +631,21 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     double arrecadado = 0, inscricoes = 0;
     int pagos = 0;
     Map<String, int> camisasPorTamanho = {};
+    Map<String, int> camisasPorDetalhe = {};
 
     for (var p in participantes) {
       arrecadado += p.totalPago;
       inscricoes += p.valorTotal;
       if (p.estaQuitado) pagos++;
       if (p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty) {
-        camisasPorTamanho[p.tamanhoCamisa!] = (camisasPorTamanho[p.tamanhoCamisa!] ?? 0) + 1;
+        final tamanho = p.tamanhoCamisa!.trim().toUpperCase();
+        camisasPorTamanho[tamanho] = (camisasPorTamanho[tamanho] ?? 0) + 1;
+
+        final chaveDetalhada = _chaveCamisaParticipacao(p);
+        if (chaveDetalhada.isNotEmpty) {
+          camisasPorDetalhe[chaveDetalhada] =
+              (camisasPorDetalhe[chaveDetalhada] ?? 0) + 1;
+        }
       }
     }
 
@@ -517,6 +656,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       _totalParticipantes = participantes.length;
       _participantesPagos = pagos;
       _camisasPorTamanho = Map.from(camisasPorTamanho);
+      _camisasPorDetalhe = Map.from(camisasPorDetalhe);
       _ultimoTotalParticipantes = participantes.length;
       _assinaturaEstatisticas = assinatura;
     });
@@ -706,8 +846,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: _camisasPorTamanho.entries.map((e) {
+                      children: (_camisasPorDetalhe.isNotEmpty
+                          ? _camisasPorDetalhe.entries
+                          : _camisasPorTamanho.entries)
+                          .map((e) {
                         final accent = _ensureVisible(context.uai.warning, context.uai.card);
+                        final label = e.key.contains('|')
+                            ? e.key.split('|').asMap().entries.map((part) {
+                          if (part.key == 0) return _modelagemCamisaLabel(part.value);
+                          if (part.key == 1) return _tipoCamisaLabel(part.value);
+                          return part.value;
+                        }).join(' • ')
+                            : e.key;
 
                         return Container(
                           margin: EdgeInsets.only(right: 8),
@@ -718,7 +868,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                             border: Border.all(color: accent.withOpacity(0.18)),
                           ),
                           child: Text(
-                            '${e.key}: ${e.value}',
+                            '$label: ${e.value}',
                             style: TextStyle(
                               color: accent,
                               fontWeight: FontWeight.w900,
@@ -917,15 +1067,38 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       builder: (_) => AdicionarParticipanteModal(aluno: aluno, evento: evento, isBatizado: _isBatizado),
     );
     if (result != null) {
-      await _adicionarParticipante(aluno,
-          tamanhoCamisa: result['tamanhoCamisa'],
-          novaGraduacao: result['graduacao']?['nome_graduacao'],
-          novaGraduacaoId: result['graduacaoId']);
+      final tipoCamisa = result['tipoCamisa'] ??
+          result['tipo_camisa'] ??
+          'MANGA';
+
+      final valorCamisa = _asDoubleSeguro(
+        result['valorCamisa'] ?? result['valor_camisa'],
+        fallback: _valorCamisaEventoPorTipo(tipoCamisa?.toString()),
+      );
+
+      await _adicionarParticipante(
+        aluno,
+        tamanhoCamisa: result['tamanhoCamisa'],
+        modelagemCamisa: result['modelagemCamisa'] ??
+            result['modelagem_camisa'] ??
+            'NORMAL',
+        tipoCamisa: tipoCamisa,
+        valorCamisa: valorCamisa,
+        novaGraduacao: result['graduacao']?['nome_graduacao'],
+        novaGraduacaoId: result['graduacaoId'],
+      );
     }
   }
 
-  Future<void> _adicionarParticipante(Map<String, dynamic> aluno,
-      {String? tamanhoCamisa, String? novaGraduacao, String? novaGraduacaoId}) async {
+  Future<void> _adicionarParticipante(
+      Map<String, dynamic> aluno, {
+        String? tamanhoCamisa,
+        String? modelagemCamisa,
+        String? tipoCamisa,
+        double? valorCamisa,
+        String? novaGraduacao,
+        String? novaGraduacaoId,
+      }) async {
     if (!_podeAdicionar) { _mostrarSemPermissao('Você não tem permissão para adicionar participantes.'); return; }
     try {
       final evento = widget.evento ?? _eventoCarregado;
@@ -934,10 +1107,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         eventoId: widget.eventoId, eventoNome: widget.eventoNome,
         dataEvento: evento?.data ?? DateTime.now(), tipoEvento: evento?.tipo ?? 'EVENTO',
         graduacao: aluno['graduacao'], graduacaoId: aluno['nivel_graduacao'].toString(),
-        tamanhoCamisa: tamanhoCamisa, status: 'pendente',
-        graduacaoNova: novaGraduacao, graduacaoNovaId: novaGraduacaoId,
+        tamanhoCamisa: tamanhoCamisa,
+        modelagemCamisa: modelagemCamisa ?? 'NORMAL',
+        tipoCamisa: tipoCamisa ?? 'MANGA',
+        status: 'pendente',
+        graduacaoNova: novaGraduacao,
+        graduacaoNovaId: novaGraduacaoId,
         valorInscricao: evento?.valorInscricao ?? 0,
-        valorCamisa: evento?.temCamisa == true ? (evento?.valorCamisa ?? 0) : 0,
+        valorCamisa: evento?.temCamisa == true
+            ? (valorCamisa ?? _valorCamisaEventoPorTipo(tipoCamisa))
+            : 0,
       );
       setState(() {
         _alunosParticipantesIds.add(aluno['id']);
@@ -1200,8 +1379,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       builder: (_, snap) {
         final dados = snap.data;
         final fotoUrl = dados?['foto'];
-        final nome = dados?['nome'] ?? p.alunoNome;
-        final grad = dados?['graduacao'] ?? p.graduacao;
+        final nome = _nomeAlunoSeguro(dados?['nome'], p);
+        final grad = _graduacaoSegura(dados?['graduacao'], p);
         final borderColor = _statusBorderColor(p);
 
         return Card(
@@ -1239,7 +1418,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       ],
                     ),
                     SizedBox(height: 6),
-                    Text(nome.split(' ').first, style: TextStyle(color: _onCard(), fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(
+                      nome.split(RegExp(r'\s+')).first,
+                      style: TextStyle(
+                        color: _onCard(),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
                     const SizedBox(height: 2),
                     _gradChip(grad, p.graduacaoNova),
                     const SizedBox(height: 4),
@@ -1254,10 +1440,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  Widget _graduacaoFluxoLista(String gradAtualAluno, ParticipacaoModel p) {
-    final antiga = gradAtualAluno.trim().isNotEmpty
-        ? gradAtualAluno.trim()
-        : (p.graduacao ?? '').trim();
+  Widget _graduacaoFluxoLista(String? gradAtualAluno, ParticipacaoModel p) {
+    final antigaBase = _textoSeguro(
+      gradAtualAluno,
+      fallback: p.graduacao ?? '',
+    );
+    final antiga = antigaBase.trim().isNotEmpty
+        ? antigaBase.trim()
+        : 'SEM GRADUAÇÃO';
     final nova = (p.graduacaoNova ?? '').trim();
 
     if (nova.isEmpty || nova == antiga) {
@@ -1300,9 +1490,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       builder: (_, snap) {
         final dados = snap.data;
         final fotoUrl = dados?['foto'];
-        final nome = dados?['nome'] ?? p.alunoNome;
-        final grad = dados?['graduacao'] ?? p.graduacao;
-        final turma = dados?['turma'];
+        final nome = _nomeAlunoSeguro(dados?['nome'], p);
+        final grad = _graduacaoSegura(dados?['graduacao'], p);
+        final turma = _textoSeguro(dados?['turma']);
         final idade = _calcularIdade(dados?['data_nascimento']);
         final borderColor = _statusBorderColor(p);
 
@@ -1420,10 +1610,15 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  Widget _gradChip(String gradAtual, String? gradNova) {
-    final texto = gradNova != null
-        ? gradNova.split(' ').take(2).join(' ')
-        : gradAtual.split(' ').take(2).join(' ');
+  Widget _gradChip(String? gradAtual, String? gradNova) {
+    final nova = _textoSeguro(gradNova);
+    final atual = _textoSeguro(gradAtual, fallback: 'SEM GRADUAÇÃO');
+
+    final base = nova.isNotEmpty ? nova : atual;
+    final texto = base.trim().isEmpty
+        ? 'SEM GRADUAÇÃO'
+        : base.split(RegExp(r'\s+')).take(2).join(' ');
+
     final accent = _ensureVisible(context.uai.primary, context.uai.card);
 
     return Container(
@@ -1474,9 +1669,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           SizedBox(width: 8),
           _chip(Icons.class_, context.uai.associacao, turma),
         ],
-        if (p.tamanhoCamisa != null) ...[
+        if (p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty) ...[
           SizedBox(width: 8),
-          _chip(Icons.shopping_bag, context.uai.info, p.tamanhoCamisa!),
+          _chip(Icons.shopping_bag, context.uai.info, _descricaoCamisaParticipacao(p)),
         ],
       ]),
     );
@@ -1563,7 +1758,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                   Text(p.alunoNome),
                                 ])),
                                 DataCell(_statusChip(p)),
-                                DataCell(Text(p.tamanhoCamisa ?? '---')),
+                                DataCell(Text(_descricaoCamisaParticipacao(p))),
                                 DataCell(Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(p.totalPago))),
                                 DataCell(Text(p.graduacaoNova ?? p.graduacao ?? '---')),
                                 const DataCell(Icon(Icons.chevron_right)),
@@ -2208,8 +2403,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           valB = _statusParaTexto(b);
           break;
         case 'camisa':
-          valA = a.tamanhoCamisa ?? '';
-          valB = b.tamanhoCamisa ?? '';
+          valA = _descricaoCamisaParticipacao(a);
+          valB = _descricaoCamisaParticipacao(b);
           break;
         case 'valor':
           valA = a.totalPago;
@@ -2246,7 +2441,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       final Map<String, dynamic> map = {
         'nome': p.alunoNome,
         'status': _statusParaTexto(p),
-        'tamanho_camisa': p.tamanhoCamisa ?? '---',
+        'tamanho_camisa': _descricaoCamisaParticipacao(p),
+        'tamanho_camisa_original': p.tamanhoCamisa ?? '---',
+        'modelagem_camisa': p.modelagemCamisa,
+        'tipo_camisa': p.tipoCamisa,
         'valor_pago': p.totalPago,
         'graduacao_nova': p.graduacaoNova ?? p.graduacao ?? '---',
         'graduacao_nova_id': p.graduacaoNovaId ?? '',

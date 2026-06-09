@@ -9,6 +9,8 @@ import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certifi
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certificado_participante_data.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_evento_mapper_service.dart';
 
+typedef CertificadoVinculoLog = void Function(String mensagem);
+
 class GeradorCertificadoEventoService {
   final CertificadoExportService _exportService;
   final CertificadoEventoMapperService _mapperService;
@@ -157,16 +159,28 @@ class GeradorCertificadoEventoService {
     required Uint8List pdfBytes,
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
+    CertificadoVinculoLog? onLog,
   }) async {
     if (participante.participacaoId.trim().isEmpty) {
       throw Exception('Participação sem ID. Não é possível vincular certificado.');
     }
 
+    onLog?.call('🔎 Verificando certificado antigo de ${participante.alunoNome}...');
+
     final dadosAntigos = await _buscarDadosCertificadoAntigo(
       participacaoId: participante.participacaoId,
     );
 
-    await _tentarApagarCertificadoAntigoDoStorage(dadosAntigos);
+    final resultadoLimpeza = await _tentarApagarCertificadoAntigoDoStorage(
+      dadosAntigos,
+      onLog: onLog,
+    );
+
+    if (resultadoLimpeza.trim().isNotEmpty) {
+      onLog?.call(resultadoLimpeza);
+    }
+
+    onLog?.call('☁️ Enviando novo PDF para o Firebase Storage...');
 
     final link = await uploadPdfDoParticipante(
       pdfBytes: pdfBytes,
@@ -177,12 +191,16 @@ class GeradorCertificadoEventoService {
     final storagePath =
         'eventos/${evento.eventoId}/certificados/${participante.participacaoId}/${nomeArquivoBase(evento: evento, participante: participante, extensao: 'pdf')}';
 
+    onLog?.call('🔗 Atualizando link do certificado na participação...');
+
     await _mapperService.marcarCertificadoGerado(
       participacaoId: participante.participacaoId,
       linkCertificado: link,
       storagePath: storagePath,
       tipoArquivo: 'pdf',
     );
+
+    onLog?.call('✅ Novo certificado vinculado com sucesso.');
 
     return link;
   }
@@ -191,6 +209,7 @@ class GeradorCertificadoEventoService {
     required GlobalKey repaintKey,
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
+    CertificadoVinculoLog? onLog,
   }) async {
     final pdfBytes = await gerarPdfDaPreview(repaintKey);
 
@@ -198,6 +217,7 @@ class GeradorCertificadoEventoService {
       pdfBytes: pdfBytes,
       evento: evento,
       participante: participante,
+      onLog: onLog,
     );
   }
 
@@ -216,9 +236,10 @@ class GeradorCertificadoEventoService {
     }
   }
 
-  Future<void> _tentarApagarCertificadoAntigoDoStorage(
-      Map<String, dynamic> dados,
-      ) async {
+  Future<String> _tentarApagarCertificadoAntigoDoStorage(
+      Map<String, dynamic> dados, {
+        CertificadoVinculoLog? onLog,
+      }) async {
     final storagePath = _primeiroTextoNaoVazio([
       dados['certificado_storage_path'],
       dados['storage_path_certificado'],
@@ -227,34 +248,59 @@ class GeradorCertificadoEventoService {
     ]);
 
     if (storagePath != null) {
+      onLog?.call('🧹 Certificado antigo encontrado no Storage Path. Tentando apagar...');
+
       try {
         await _storage.ref().child(storagePath).delete();
-        return;
+        return '🗑️ Certificado antigo apagado do Firebase Storage.';
       } on FirebaseException catch (e) {
-        if (e.code != 'object-not-found') {
-          // Continua tentando pelo link, se houver.
+        if (e.code == 'object-not-found') {
+          return 'ℹ️ Storage Path antigo já não existia. Vou apenas vincular o novo PDF.';
         }
-      } catch (_) {
-        // Continua tentando pelo link, se houver.
+
+        onLog?.call(
+          '⚠️ Não consegui apagar pelo Storage Path (${e.code}). Tentando pelo link antigo...',
+        );
+      } catch (e) {
+        onLog?.call(
+          '⚠️ Não consegui apagar pelo Storage Path. Tentando pelo link antigo...',
+        );
       }
     }
 
     final link = _primeiroTextoNaoVazio([
       dados['link_certificado'],
+      dados['linkCertificado'],
       dados['certificado_url'],
+      dados['certificadoUrl'],
       dados['url_certificado'],
+      dados['urlCertificado'],
+      dados['certificado'],
+      dados['certificado_link'],
+      dados['certificadoLink'],
     ]);
 
-    if (link == null || !_pareceUrlFirebaseStorage(link)) {
-      return;
+    if (link == null) {
+      return 'ℹ️ Nenhum certificado antigo vinculado. Vou criar o primeiro link.';
     }
+
+    if (!_pareceUrlFirebaseStorage(link)) {
+      return '🔗 Link antigo é externo/Drive. Não apaguei arquivo externo; vou apenas substituir o link.';
+    }
+
+    onLog?.call('🧹 Link antigo é do Firebase Storage. Tentando apagar arquivo antigo...');
 
     try {
       await _storage.refFromURL(link).delete();
+      return '🗑️ Certificado antigo apagado do Firebase Storage pelo link.';
     } on FirebaseException catch (e) {
-      if (e.code == 'object-not-found') return;
+      if (e.code == 'object-not-found') {
+        return 'ℹ️ Arquivo antigo do Firebase já não existia. Vou apenas vincular o novo PDF.';
+      }
+
+      return '⚠️ Não consegui apagar o certificado antigo do Firebase (${e.code}). Vou vincular o novo mesmo assim.';
     } catch (_) {
-      // Link externo, link antigo inválido ou sem permissão: não bloqueia o novo upload.
+      return '⚠️ Link antigo parece Firebase, mas não consegui apagar. Vou vincular o novo mesmo assim.';
     }
   }
 
