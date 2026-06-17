@@ -86,6 +86,19 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation(((hsl.saturation + 0.10).clamp(0.0, 1.0)).toDouble())
+        .toColor();
+  }
+
   Color _capacidadeColor(double porcentagem) {
     if (porcentagem >= 0.90) return context.uai.error;
     if (porcentagem >= 0.70) return context.uai.warning;
@@ -113,15 +126,20 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   Timer? _searchDebounce; // 🔥 Debounce para busca avançada
   int _viewMode = 0;
   final List<IconData> _viewModeIcons = [
-    Icons.view_list,
-    Icons.grid_view,
-    Icons.format_list_bulleted
+    Icons.view_list_rounded,
+    Icons.warning_amber_rounded,
+    Icons.workspace_premium_rounded,
+    Icons.format_list_bulleted_rounded,
   ];
   final List<String> _viewModeTooltips = [
-    'Visualizar em Lista',
-    'Visualizar em Grade',
-    'Visualização Compacta'
+    'Visual principal',
+    'Filtrar por Indicadores',
+    'Filtrar por Graduação',
+    'Lista compacta',
   ];
+
+  String? _indicadorExpandidoKey;
+  String? _graduacaoExpandidaKey;
 
   Map<String, bool> _permissoes = {};
   bool _carregandoPermissoes = true;
@@ -132,6 +150,17 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _alunosCache = [];
   int _capacidadeMaximaTurma = 0;
+
+  bool _indicadoresAusenciaAtivos = true;
+  bool _mostrarTextoUltimaPresenca = true;
+  List<Map<String, dynamic>> _faixasIndicadoresAusencia = const [
+    {'ate_dias': 3, 'cor': '#2196F3', 'label': 'Frequente'},
+    {'ate_dias': 6, 'cor': '#4CAF50', 'label': 'Regular'},
+    {'ate_dias': 12, 'cor': '#FFC107', 'label': 'Atenção'},
+    {'ate_dias': 24, 'cor': '#FF9800', 'label': 'Ausente'},
+    {'ate_dias': 35, 'cor': '#FF5722', 'label': 'Muito ausente'},
+    {'ate_dias': 9999, 'cor': '#F44336', 'label': 'Risco de inatividade'},
+  ];
 
   bool _isLoading = true;
   bool _hasError = false;
@@ -145,6 +174,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     _loadSvg();
     _preloadGraduacoes();
     _carregarInfoTurma();
+    _carregarConfiguracoesIndicadoresAusencia();
     _carregarAlunos();
     _monitorarConectividade();
 
@@ -460,6 +490,79 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     }
   }
 
+
+  Future<void> _carregarConfiguracoesIndicadoresAusencia() async {
+    try {
+      DocumentSnapshot<Map<String, dynamic>> doc;
+
+      try {
+        doc = await _firestore
+            .collection('configuracoes_sistema')
+            .doc('indicadores_ausencia')
+            .get(const GetOptions(source: Source.cache));
+
+        if (!doc.exists && _isOnline) {
+          doc = await _firestore
+              .collection('configuracoes_sistema')
+              .doc('indicadores_ausencia')
+              .get(const GetOptions(source: Source.server));
+        }
+      } catch (_) {
+        doc = await _firestore
+            .collection('configuracoes_sistema')
+            .doc('indicadores_ausencia')
+            .get(const GetOptions(source: Source.server));
+      }
+
+      if (!mounted || !doc.exists) return;
+
+      final data = doc.data() ?? {};
+      final faixasRaw = data['faixas'];
+
+      final faixas = <Map<String, dynamic>>[];
+      if (faixasRaw is List) {
+        for (final item in faixasRaw) {
+          if (item is Map) {
+            final ateDias = _parseInt(item['ate_dias'], -1);
+            final cor = item['cor']?.toString().trim() ?? '';
+            final label = item['label']?.toString().trim() ?? '';
+
+            if (ateDias >= 0 && cor.isNotEmpty) {
+              faixas.add({
+                'ate_dias': ateDias,
+                'cor': cor,
+                'label': label.isEmpty ? 'Indicador' : label,
+              });
+            }
+          }
+        }
+      }
+
+      faixas.sort((a, b) {
+        final aDias = _parseInt(a['ate_dias'], 0);
+        final bDias = _parseInt(b['ate_dias'], 0);
+        return aDias.compareTo(bDias);
+      });
+
+      setState(() {
+        _indicadoresAusenciaAtivos = data['ativo'] != false;
+        _mostrarTextoUltimaPresenca =
+            data['mostrar_texto_ultima_presenca'] != false;
+
+        if (faixas.isNotEmpty) {
+          _faixasIndicadoresAusencia = faixas;
+        }
+      });
+
+      debugPrint(
+        '✅ Configuração de indicadores carregada na tela de alunos: '
+            '${_faixasIndicadoresAusencia.length} faixas',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar indicadores de ausência: $e');
+    }
+  }
+
   Future<void> _carregarAlunos() async {
     if (mounted) setState(() {
       _isLoading = true;
@@ -511,6 +614,209 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return age;
   }
 
+
+  DateTime? _normalizarDataUltimaPresenca(dynamic value) {
+    if (value == null) return null;
+
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+
+    if (value is String) {
+      final texto = value.trim();
+      if (texto.isEmpty) return null;
+
+      final iso = DateTime.tryParse(texto);
+      if (iso != null) return iso;
+
+      final partes = texto.split('/');
+      if (partes.length == 3) {
+        final dia = int.tryParse(partes[0]);
+        final mes = int.tryParse(partes[1]);
+        final ano = int.tryParse(partes[2]);
+        if (dia != null && mes != null && ano != null) {
+          return DateTime(ano, mes, dia);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  DateTime? _extrairUltimaPresenca(Map<String, dynamic> data) {
+    const camposPossiveis = [
+      'ultimo_dia_presente',
+      'ultimoDiaPresente',
+      'ultima_presenca',
+      'ultimaPresenca',
+      'data_ultima_presenca',
+      'dataUltimaPresenca',
+      'ultima_presenca_data',
+      'ultimaPresencaData',
+      'last_presence',
+      'lastPresence',
+    ];
+
+    for (final campo in camposPossiveis) {
+      final dataPresenca = _normalizarDataUltimaPresenca(data[campo]);
+      if (dataPresenca != null) return dataPresenca;
+    }
+
+    return null;
+  }
+
+  int? _diasSemPresenca(Map<String, dynamic> data) {
+    final dataUltimaPresenca = _extrairUltimaPresenca(data);
+    if (dataUltimaPresenca == null) return null;
+
+    final hoje = DateTime.now();
+    final hojeLimpo = DateTime(hoje.year, hoje.month, hoje.day);
+    final ultimaLimpa = DateTime(
+      dataUltimaPresenca.year,
+      dataUltimaPresenca.month,
+      dataUltimaPresenca.day,
+    );
+
+    final dias = hojeLimpo.difference(ultimaLimpa).inDays;
+    return dias < 0 ? 0 : dias;
+  }
+
+  Color _colorFromHexSeguro(String? hexColor, Color fallback) {
+    if (hexColor == null || hexColor.trim().isEmpty) return fallback;
+
+    try {
+      final cleaned = hexColor.replaceAll('#', '').trim();
+
+      if (cleaned.length == 6) {
+        return Color(int.parse('FF$cleaned', radix: 16));
+      }
+
+      if (cleaned.length == 8) {
+        return Color(int.parse(cleaned, radix: 16));
+      }
+    } catch (_) {}
+
+    return fallback;
+  }
+
+  Map<String, dynamic>? _faixaAusenciaPorDias(int? dias) {
+    if (dias == null || _faixasIndicadoresAusencia.isEmpty) return null;
+
+    final ordenadas = [..._faixasIndicadoresAusencia];
+    ordenadas.sort((a, b) {
+      final aDias = _parseInt(a['ate_dias'], 0);
+      final bDias = _parseInt(b['ate_dias'], 0);
+      return aDias.compareTo(bDias);
+    });
+
+    for (final faixa in ordenadas) {
+      final ateDias = _parseInt(faixa['ate_dias'], 9999);
+      if (dias <= ateDias) return faixa;
+    }
+
+    return ordenadas.last;
+  }
+
+  Color _corAusenciaPorDias(int? dias) {
+    if (dias == null) return context.uai.textMuted;
+
+    final faixa = _faixaAusenciaPorDias(dias);
+    return _colorFromHexSeguro(
+      faixa?['cor']?.toString(),
+      dias <= 3
+          ? Colors.blue
+          : dias <= 6
+          ? Colors.green
+          : dias <= 12
+          ? Colors.amber
+          : dias <= 24
+          ? Colors.orange
+          : dias <= 35
+          ? Colors.deepOrange
+          : Colors.red,
+    );
+  }
+
+  String _labelAusenciaPorDias(int? dias) {
+    final faixa = _faixaAusenciaPorDias(dias);
+    final label = faixa?['label']?.toString().trim() ?? '';
+    return label.isEmpty ? 'Indicador' : label;
+  }
+
+  String _textoAusenciaPorDias(int? dias) {
+    if (dias == null) return '?';
+    if (dias <= 0) return 'HOJ';
+    return '${dias}d';
+  }
+
+  String _descricaoAusenciaPorDias(int? dias) {
+    if (dias == null) return 'Sem registro de última presença';
+    if (dias <= 0) return 'Última presença hoje';
+    if (dias == 1) return 'Última presença há 1 dia';
+    return 'Última presença há $dias dias';
+  }
+
+  Widget _buildIndicadorAusencia(
+      Map<String, dynamic> data, {
+        bool cantoCard = false,
+      }) {
+    if (!_indicadoresAusenciaAtivos) return const SizedBox.shrink();
+
+    final dias = _diasSemPresenca(data);
+    final cor = _corAusenciaPorDias(dias);
+    const tamanho = 46.0;
+
+    final badge = Container(
+      width: tamanho,
+      height: tamanho,
+      decoration: BoxDecoration(
+        color: cor.withOpacity(0.92),
+        borderRadius: cantoCard
+            ? const BorderRadius.only(bottomLeft: Radius.circular(999))
+            : BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: cor.withOpacity(0.28),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+    );
+
+    return Tooltip(
+      message: _descricaoAusenciaPorDias(dias),
+      child: badge,
+    );
+  }
+
+  Widget _buildLinhaUltimaPresenca(Map<String, dynamic> data) {
+    if (!_indicadoresAusenciaAtivos || !_mostrarTextoUltimaPresenca) {
+      return const SizedBox.shrink();
+    }
+
+    final dias = _diasSemPresenca(data);
+    final cor = _corAusenciaPorDias(dias);
+
+    return Row(
+      children: [
+        Icon(Icons.event_available_rounded, size: 13, color: cor),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            _descricaoAusenciaPorDias(dias),
+            style: TextStyle(
+              color: cor,
+              fontSize: 10.8,
+              fontWeight: FontWeight.w800,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
   String _graduacaoKey(String value) {
     return _normalizeString(value).replaceAll(RegExp(r'\s+'), ' ').trim();
   }
@@ -535,6 +841,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       'hex_ponta1': data['hex_ponta1'],
       'hex_ponta2': data['hex_ponta2'],
       'nome_graduacao': nomeGraduacao,
+      'nivel_graduacao': data['nivel_graduacao'] ?? data['nivel'] ?? data['ordem'] ?? 9999,
     };
 
     _graduacoesCache[nomeGraduacao] = item;
@@ -950,7 +1257,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         backgroundColor: appBarBg,
         foregroundColor: appBarFg,
         actions: [
-          IconButton(icon: Icon(_viewModeIcons[_viewMode], color: appBarFg), tooltip: _viewModeTooltips[_viewMode], onPressed: () => setState(() => _viewMode = (_viewMode + 1) % 3)),
+          IconButton(icon: Icon(_viewModeIcons[_viewMode], color: appBarFg), tooltip: _viewModeTooltips[_viewMode], onPressed: () => setState(() => _viewMode = (_viewMode + 1) % 4)),
           IconButton(
             icon: Icon(Icons.person_add, color: podeAdicionar ? appBarFg : appBarFg.withOpacity(0.35)),
             tooltip: podeAdicionar ? 'Cadastrar Novo Aluno' : (_isOnline ? 'Sem permissão' : 'Offline - Conecte-se para cadastrar'),
@@ -964,43 +1271,68 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60.0),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: TextField(
-              style: TextStyle(color: appBarFg, fontWeight: FontWeight.w700),
-              decoration: InputDecoration(
-                hintText: 'Buscar aluno por nome...',
-                hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
-                prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                  icon: Icon(Icons.clear_rounded, color: appBarFg),
-                  onPressed: () => setState(() => _searchQuery = ''),
-                )
-                    : null,
-                filled: true,
-                fillColor: searchBg,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                  borderSide: BorderSide(color: searchBorder),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxSearchWidth =
+              constraints.maxWidth >= 1200 ? 1180.0 : double.infinity;
+
+              return Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxSearchWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: TextField(
+                      style: TextStyle(
+                        color: appBarFg,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar aluno por nome...',
+                        hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
+                        prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                          icon: Icon(Icons.clear_rounded, color: appBarFg),
+                          onPressed: () =>
+                              setState(() => _searchQuery = ''),
+                        )
+                            : null,
+                        filled: true,
+                        fillColor: searchBg,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(t.buttonRadius),
+                          borderSide: BorderSide(color: searchBorder),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(t.buttonRadius),
+                          borderSide: BorderSide(color: searchBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(t.buttonRadius),
+                          borderSide: BorderSide(
+                            color: appBarFg.withOpacity(0.75),
+                            width: 1.2,
+                          ),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        if (_searchDebounce?.isActive ?? false) {
+                          _searchDebounce!.cancel();
+                        }
+                        _searchDebounce =
+                            Timer(const Duration(milliseconds: 300), () {
+                              setState(() => _searchQuery = value);
+                            });
+                      },
+                    ),
+                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                  borderSide: BorderSide(color: searchBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                  borderSide: BorderSide(color: appBarFg.withOpacity(0.75), width: 1.2),
-                ),
-              ),
-              onChanged: (value) {
-                if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
-                _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                  setState(() => _searchQuery = value);
-                });
-              },
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -1185,14 +1517,48 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   Widget _getCurrentView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     switch (_viewMode) {
       case 0:
-        return _buildListView(docs);
+        return _buildVisualPrincipalResponsivo(docs);
       case 1:
-        return _buildGridView(docs);
+        return _buildIndicadoresView(docs);
       case 2:
+        return _buildGraduacoesView(docs);
+      case 3:
         return _buildCompactView(docs);
       default:
-        return _buildListView(docs);
+        return _buildVisualPrincipalResponsivo(docs);
     }
+  }
+
+  int _calcularColunasAlunos(double width) {
+    if (width >= 1640) return 5;
+    if (width >= 1280) return 4;
+    if (width >= 960) return 3;
+    if (width >= 720) return 2;
+    return 1;
+  }
+
+  double _larguraMaximaConteudo(double width) {
+    if (width >= 1640) return 1560;
+    if (width >= 1280) return 1240;
+    if (width >= 960) return 1120;
+    return double.infinity;
+  }
+
+  Widget _buildVisualPrincipalResponsivo(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final colunas = _calcularColunasAlunos(width);
+
+        if (colunas <= 1) {
+          return _buildListView(docs);
+        }
+
+        return _buildGridView(docs, crossAxisCount: colunas);
+      },
+    );
   }
 
   Widget _buildListView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
@@ -1210,7 +1576,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildGridView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildGridView(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+        required int crossAxisCount,
+      }) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -1218,26 +1587,37 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
-          final crossAxisCount = width >= 1100
-              ? 5
-              : width >= 850
-              ? 4
-              : width >= 620
-              ? 3
-              : 2;
+          final maxWidth = _larguraMaximaConteudo(width);
+          final horizontalPadding = width >= 960 ? 18.0 : 12.0;
+          final spacing = width >= 1280 ? 14.0 : 12.0;
+          final usableWidth = (maxWidth.isFinite ? maxWidth : width) -
+              (horizontalPadding * 2) -
+              (spacing * (crossAxisCount - 1));
+          final tileWidth = usableWidth / crossAxisCount;
+          final tileHeight = width >= 1280 ? 104.0 : 100.0;
 
-          return GridView.builder(
-            key: const ValueKey('gridView'),
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: width < 390 ? 0.72 : 0.78,
+          return Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: GridView.builder(
+                key: ValueKey('gridView_$crossAxisCount'),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  8,
+                  horizontalPadding,
+                  18,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  childAspectRatio: tileWidth / tileHeight,
+                ),
+                itemCount: docs.length,
+                itemBuilder: (context, index) => _buildAlunoGridCard(docs[index]),
+              ),
             ),
-            itemCount: docs.length,
-            itemBuilder: (context, index) => _buildAlunoGridCard(docs[index]),
           );
         },
       ),
@@ -1259,10 +1639,437 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
+  int _nivelGraduacaoAluno(String nomeGraduacao) {
+    if (nomeGraduacao.trim().isEmpty || nomeGraduacao == 'SEM GRADUAÇÃO') {
+      return 999999;
+    }
+
+    final direto = _graduacoesCache[nomeGraduacao];
+    final normalizado = _graduacoesCache[_graduacaoKey(nomeGraduacao)];
+    final data = direto ?? normalizado;
+
+    return _parseInt(data?['nivel_graduacao'], 9999);
+  }
+
+  List<_GrupoGraduacaoAlunos> _agruparAlunosPorGraduacao(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
+    final grupos = <String, _GrupoGraduacaoAlunos>{};
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final nome = _getGraduacaoNome(data).trim().isEmpty
+          ? 'SEM GRADUAÇÃO'
+          : _getGraduacaoNome(data).trim();
+      final key = _graduacaoKey(nome);
+      final ordem = _nivelGraduacaoAluno(nome);
+
+      grupos.putIfAbsent(
+        key,
+            () => _GrupoGraduacaoAlunos(
+          titulo: nome,
+          ordem: ordem,
+          alunos: [],
+        ),
+      );
+
+      grupos[key]!.alunos.add(doc);
+    }
+
+    final lista = grupos.values.toList();
+    lista.sort((a, b) {
+      final ordem = a.ordem.compareTo(b.ordem);
+      if (ordem != 0) return ordem;
+      return a.titulo.compareTo(b.titulo);
+    });
+
+    for (final grupo in lista) {
+      grupo.alunos.sort((a, b) {
+        final nomeA = (a.data()['nome'] ?? '').toString().toLowerCase();
+        final nomeB = (b.data()['nome'] ?? '').toString().toLowerCase();
+        return nomeA.compareTo(nomeB);
+      });
+    }
+
+    return lista;
+  }
+
+  Widget _buildGraduacoesView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final grupos = _agruparAlunosPorGraduacao(docs);
+
+    return RefreshIndicator(
+      color: context.uai.primary,
+      backgroundColor: context.uai.surface,
+      onRefresh: _forcarRecarregamento,
+      child: ListView.builder(
+        key: const ValueKey('graduacoesView'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
+        itemCount: grupos.length,
+        itemBuilder: (context, index) => _buildGraduacaoGrupoCard(grupos[index]),
+      ),
+    );
+  }
+
+  Widget _buildGraduacaoGrupoCard(_GrupoGraduacaoAlunos grupo) {
+    final t = context.uai;
+    final isSemGraduacao = grupo.titulo == 'SEM GRADUAÇÃO';
+    final key = _graduacaoKey(grupo.titulo);
+    final expandido = _graduacaoExpandidaKey == key;
+    final primeiroAluno = grupo.alunos.isNotEmpty ? grupo.alunos.first.data() : <String, dynamic>{};
+
+    Color corBase = t.associacao;
+    final cache = _graduacoesCache[grupo.titulo] ?? _graduacoesCache[key];
+    if (cache != null && !isSemGraduacao) {
+      corBase = _colorFromHexSeguro(cache['hex_cor1']?.toString(), t.associacao);
+    }
+    final cor = _ensureVisible(corBase, t.card);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius - 4),
+        border: Border.all(color: cor.withOpacity(0.20)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(t.cardRadius - 4),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _graduacaoExpandidaKey = expandido ? null : key;
+                  if (!expandido) _indicadorExpandidoKey = null;
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 58,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: isSemGraduacao ? t.cardAlt : cor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: cor.withOpacity(0.22)),
+                      ),
+                      child: isSemGraduacao
+                          ? Icon(Icons.workspace_premium_outlined, color: t.textMuted)
+                          : FutureBuilder<String?>(
+                        future: _getModifiedSvg(primeiroAluno),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: cor,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final svg = snapshot.data;
+                          if (svg == null || svg.isEmpty) {
+                            return Icon(Icons.workspace_premium_rounded, color: cor);
+                          }
+
+                          return SvgPicture.string(svg, fit: BoxFit.contain);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            grupo.titulo,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.08,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 7),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(99),
+                            child: LinearProgressIndicator(
+                              value: _alunosCache.isEmpty
+                                  ? 0
+                                  : ((grupo.alunos.length / _alunosCache.length).clamp(0.0, 1.0)).toDouble(),
+                              minHeight: 6,
+                              backgroundColor: t.border,
+                              valueColor: AlwaysStoppedAnimation<Color>(cor),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${grupo.alunos.length} aluno${grupo.alunos.length == 1 ? '' : 's'} nesta graduação',
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontSize: 11.2,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: expandido ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(Icons.keyboard_arrow_down_rounded, color: cor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Column(
+                children: grupo.alunos.map(_buildAlunoCompactCard).toList(),
+              ),
+            ),
+            crossFadeState:
+            expandido ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<_GrupoIndicadorAlunos> _agruparAlunosPorIndicador(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
+    final grupos = <String, _GrupoIndicadorAlunos>{};
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final dias = _diasSemPresenca(data);
+      final faixa = _faixaAusenciaPorDias(dias);
+
+      final titulo = dias == null
+          ? 'Sem presença registrada'
+          : (faixa?['label']?.toString().trim().isNotEmpty == true
+          ? faixa!['label'].toString().trim()
+          : 'Indicador');
+
+      final ateDias = faixa == null
+          ? 999999
+          : _parseInt(faixa['ate_dias'], 9999);
+
+      final subtitulo = dias == null
+          ? 'Alunos sem data de última presença'
+          : ateDias >= 9999
+          ? 'Acima das faixas anteriores'
+          : 'Até $ateDias dias sem presença';
+
+      final cor = _corAusenciaPorDias(dias);
+      final ordem = dias == null ? 999999 : ateDias;
+      final key = '$ordem::$titulo';
+
+      grupos.putIfAbsent(
+        key,
+            () => _GrupoIndicadorAlunos(
+          titulo: titulo,
+          subtitulo: subtitulo,
+          cor: cor,
+          ordem: ordem,
+          alunos: [],
+        ),
+      );
+
+      grupos[key]!.alunos.add(doc);
+    }
+
+    final lista = grupos.values.toList();
+    lista.sort((a, b) {
+      final ordem = a.ordem.compareTo(b.ordem);
+      if (ordem != 0) return ordem;
+      return a.titulo.compareTo(b.titulo);
+    });
+
+    for (final grupo in lista) {
+      grupo.alunos.sort((a, b) {
+        final nomeA = (a.data()['nome'] ?? '').toString().toLowerCase();
+        final nomeB = (b.data()['nome'] ?? '').toString().toLowerCase();
+        return nomeA.compareTo(nomeB);
+      });
+    }
+
+    return lista;
+  }
+
+  Widget _buildIndicadoresView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final grupos = _agruparAlunosPorIndicador(docs);
+
+    return RefreshIndicator(
+      color: context.uai.primary,
+      backgroundColor: context.uai.surface,
+      onRefresh: _forcarRecarregamento,
+      child: ListView.builder(
+        key: const ValueKey('indicadoresView'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
+        itemCount: grupos.length,
+        itemBuilder: (context, index) => _buildIndicadorGrupoCard(grupos[index]),
+      ),
+    );
+  }
+
+  Widget _buildIndicadorGrupoCard(_GrupoIndicadorAlunos grupo) {
+    final t = context.uai;
+    final cor = _ensureVisible(grupo.cor, t.card);
+    final key = '${grupo.ordem}::${grupo.titulo}';
+    final expandido = _indicadorExpandidoKey == key;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(cor.withOpacity(0.05), t.card),
+        borderRadius: BorderRadius.circular(t.cardRadius - 4),
+        border: Border.all(color: cor.withOpacity(0.22)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        children: [
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(t.cardRadius - 4),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _indicadorExpandidoKey = expandido ? null : key;
+                  if (!expandido) _graduacaoExpandidaKey = null;
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: cor.withOpacity(0.14),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: cor.withOpacity(0.32)),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 15,
+                          height: 15,
+                          decoration: BoxDecoration(
+                            color: grupo.cor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: grupo.cor.withOpacity(0.24),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            grupo.titulo,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.08,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            grupo.subtitulo,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: cor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: cor.withOpacity(0.22)),
+                      ),
+                      child: Text(
+                        '${grupo.alunos.length}',
+                        style: TextStyle(
+                          color: cor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: expandido ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(Icons.keyboard_arrow_down_rounded, color: cor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Column(
+                children: grupo.alunos.map(_buildAlunoCompactCard).toList(),
+              ),
+            ),
+            crossFadeState:
+            expandido ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAlunoListCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
     final t = context.uai;
     final data = aluno.data();
-    final nomeAluno = data['nome'] ?? 'Nome não informado';
+    final nomeAluno = (data['nome'] ?? 'Nome não informado').toString();
     final fotoUrl = data['foto_perfil_aluno'] as String?;
     final idade = _calculateAge(data['data_nascimento']);
     final graduacaoNome = _getGraduacaoNome(data);
@@ -1276,108 +2083,148 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Material(
-            color: t.card,
-            borderRadius: BorderRadius.circular(t.cardRadius - 5),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _abrirDetalhesAluno(aluno.id),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(t.cardRadius - 5),
-                  border: Border.all(color: t.border),
-                  boxShadow: t.softShadow,
-                ),
-                child: Row(
-                  children: [
-                    Stack(
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          height: 92,
-                          child: fotoUrl != null && fotoUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                            imageUrl: fotoUrl,
-                            fit: BoxFit.cover,
-                            errorWidget: (c, u, e) => _placeholderIcon(),
-                          )
-                              : _placeholderIcon(),
+          child: SizedBox(
+            height: 92,
+            child: Material(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius - 5),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _abrirDetalhesAluno(aluno.id),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(t.cardRadius - 5),
+                    border: Border.all(color: t.border),
+                    boxShadow: t.softShadow,
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: _buildIndicadorAusencia(
+                          data,
+                          cantoCard: true,
                         ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            height: 23,
-                            color: t.primary.withOpacity(0.92),
-                            child: Center(
-                              child: Text(
-                                '$idade ANOS',
-                                style: TextStyle(
-                                  color: _readableOn(t.primary),
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: 92,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                fotoUrl != null && fotoUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                  imageUrl: fotoUrl,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.center,
+                                  errorWidget: (c, u, e) => _placeholderIcon(),
+                                )
+                                    : _placeholderIcon(),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    height: 23,
+                                    color: t.primary.withOpacity(0.92),
+                                    child: Center(
+                                      child: Text(
+                                        '$idade ANOS',
+                                        style: TextStyle(
+                                          color: _readableOn(t.primary),
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                12,
+                                graduacaoNome.isNotEmpty &&
+                                    graduacaoNome != 'SEM GRADUAÇÃO'
+                                    ? 7
+                                    : 10,
+                                8,
+                                7,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    nomeAluno.toUpperCase(),
+                                    style: TextStyle(
+                                      color: t.textPrimary,
+                                      fontSize: 14.2,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.08,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (graduacaoNome.isNotEmpty &&
+                                      graduacaoNome != 'SEM GRADUAÇÃO') ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      graduacaoNome,
+                                      style: TextStyle(
+                                        color: t.textSecondary,
+                                        fontSize: 11.2,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.05,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  _buildLinhaUltimaPresenca(data),
+                                  const SizedBox(height: 3),
+                                  SyncIndicator(
+                                    isPending: _syncService.isDocumentPending(aluno),
+                                    isCompact: true,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              nomeAluno,
-                              style: TextStyle(
-                                color: t.textPrimary,
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w900,
-                                height: 1.15,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (graduacaoNome.isNotEmpty && graduacaoNome != 'SEM GRADUAÇÃO') ...[
-                              const SizedBox(height: 5),
-                              Text(
-                                graduacaoNome,
-                                style: TextStyle(
-                                  color: t.textSecondary,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
+                          if (mostrarCorda)
+                            SizedBox(
+                              width: 58,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Center(
+                                  child: isLoadingSvg
+                                      ? SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: t.primary,
+                                    ),
+                                  )
+                                      : SvgPicture.string(
+                                    modifiedSvg!,
+                                    height: 58,
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
-                            const SizedBox(height: 7),
-                            SyncIndicator(
-                              isPending: _syncService.isDocumentPending(aluno),
-                              isCompact: true,
                             ),
-                          ],
-                        ),
+                          const SizedBox(width: 4),
+                        ],
                       ),
-                    ),
-                    if (mostrarCorda)
-                      Container(
-                        width: 66,
-                        padding: const EdgeInsets.only(right: 8),
-                        child: isLoadingSvg
-                            ? Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: t.primary,
-                          ),
-                        )
-                            : SvgPicture.string(modifiedSvg!, height: 62),
-                      ),
-                    SizedBox(width: 6),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1390,7 +2237,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   Widget _buildAlunoGridCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
     final t = context.uai;
     final data = aluno.data();
-    final nomeAluno = data['nome'] ?? 'Nome não informado';
+    final nomeAluno = (data['nome'] ?? 'Nome não informado').toString();
     final fotoUrl = data['foto_perfil_aluno'] as String?;
     final idade = _calculateAge(data['data_nascimento']);
     final graduacaoNome = _getGraduacaoNome(data);
@@ -1404,113 +2251,150 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
         return Material(
           color: t.card,
-          borderRadius: BorderRadius.circular(t.cardRadius - 5),
+          borderRadius: BorderRadius.circular(t.cardRadius - 6),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () => _abrirDetalhesAluno(aluno.id),
             child: Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(t.cardRadius - 5),
+                borderRadius: BorderRadius.circular(t.cardRadius - 6),
                 border: Border.all(color: t.border),
                 boxShadow: t.softShadow,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Stack(
                 children: [
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: fotoUrl != null && fotoUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                            imageUrl: fotoUrl,
-                            fit: BoxFit.cover,
-                            errorWidget: (c, u, e) => _placeholderIcon(size: 74),
-                          )
-                              : _placeholderIcon(size: 74),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            height: 27,
-                            color: t.primary.withOpacity(0.92),
-                            child: Center(
-                              child: Text(
-                                '$idade ANOS',
-                                style: TextStyle(
-                                  color: _readableOn(t.primary),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: _buildIndicadorAusencia(
+                      data,
+                      cantoCard: true,
+                    ),
+                  ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cardWidth = constraints.maxWidth;
+                      final fotoWidth = cardWidth < 340 ? 78.0 : 88.0;
+                      final cordaWidth = mostrarCorda
+                          ? (cardWidth < 340 ? 42.0 : 50.0)
+                          : 0.0;
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: fotoWidth,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                fotoUrl != null && fotoUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                  imageUrl: fotoUrl,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.center,
+                                  errorWidget: (c, u, e) =>
+                                      _placeholderIcon(size: 42),
+                                )
+                                    : _placeholderIcon(size: 42),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    height: 22,
+                                    color: t.primary.withOpacity(0.92),
+                                    child: Center(
+                                      child: Text(
+                                        '$idade ANOS',
+                                        style: TextStyle(
+                                          color: _readableOn(t.primary),
+                                          fontSize: 9.8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                cardWidth < 340 ? 9 : 12,
+                                8,
+                                6,
+                                7,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    nomeAluno.toUpperCase(),
+                                    style: TextStyle(
+                                      color: t.textPrimary,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: cardWidth < 340 ? 12.4 : 13.2,
+                                      height: 1.08,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (graduacaoNome.isNotEmpty &&
+                                      graduacaoNome != 'SEM GRADUAÇÃO') ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      graduacaoNome,
+                                      style: TextStyle(
+                                        fontSize: cardWidth < 340 ? 10.2 : 10.8,
+                                        color: t.textSecondary,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.05,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  _buildLinhaUltimaPresenca(data),
+                                  const SizedBox(height: 3),
+                                  SyncIndicator(
+                                    isPending:
+                                    _syncService.isDocumentPending(aluno),
+                                    isCompact: true,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(11),
-                    color: t.card,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                nomeAluno.toUpperCase(),
-                                style: TextStyle(
-                                  color: t.textPrimary,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 13,
-                                  height: 1.15,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (graduacaoNome.isNotEmpty && graduacaoNome != 'SEM GRADUAÇÃO') ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  graduacaoNome,
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: t.textSecondary,
-                                    fontWeight: FontWeight.w600,
+                          if (mostrarCorda)
+                            SizedBox(
+                              width: cordaWidth,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 5),
+                                child: Center(
+                                  child: isLoadingSvg
+                                      ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: t.primary,
+                                    ),
+                                  )
+                                      : SvgPicture.string(
+                                    modifiedSvg!,
+                                    height: cardWidth < 340 ? 42 : 50,
+                                    fit: BoxFit.contain,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ],
-                              const SizedBox(height: 6),
-                              SyncIndicator(
-                                isPending: _syncService.isDocumentPending(aluno),
-                                isCompact: true,
                               ),
-                            ],
-                          ),
-                        ),
-                        if (mostrarCorda) ...[
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 38,
-                            height: 46,
-                            child: isLoadingSvg
-                                ? Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: t.primary,
-                              ),
-                            )
-                                : SvgPicture.string(modifiedSvg!, height: 44),
-                          ),
+                            ),
+                          const SizedBox(width: 4),
                         ],
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1598,7 +2482,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                             : SvgPicture.string(modifiedSvg!, height: 36),
                       ),
                     ],
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Icon(Icons.chevron_right_rounded, color: t.textMuted),
                   ],
                 ),
@@ -1611,4 +2495,34 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Widget _placeholderIcon({double size = 50}) => Center(child: Icon(Icons.person_rounded, size: size, color: context.uai.textMuted));
+}
+
+
+
+class _GrupoGraduacaoAlunos {
+  final String titulo;
+  final int ordem;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos;
+
+  _GrupoGraduacaoAlunos({
+    required this.titulo,
+    required this.ordem,
+    required this.alunos,
+  });
+}
+
+class _GrupoIndicadorAlunos {
+  final String titulo;
+  final String subtitulo;
+  final Color cor;
+  final int ordem;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos;
+
+  _GrupoIndicadorAlunos({
+    required this.titulo,
+    required this.subtitulo,
+    required this.cor,
+    required this.ordem,
+    required this.alunos,
+  });
 }

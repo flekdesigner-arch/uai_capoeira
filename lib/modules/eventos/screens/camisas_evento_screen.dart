@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 
 class CamisasEventoScreen extends StatefulWidget {
   final String eventoId;
@@ -19,6 +20,53 @@ class CamisasEventoScreen extends StatefulWidget {
 
   @override
   State<CamisasEventoScreen> createState() => _CamisasEventoScreenState();
+}
+
+
+class _CamisasStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  const _CamisasStickyHeaderDelegate({
+    required this.child,
+    required this.height,
+    required this.backgroundColor,
+    required this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: backgroundColor,
+      elevation: overlapsContent ? 2 : 0,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: Border(
+            bottom: BorderSide(color: borderColor),
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  bool shouldRebuild(covariant _CamisasStickyHeaderDelegate oldDelegate) {
+    return oldDelegate.child != child ||
+        oldDelegate.height != height ||
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.borderColor != borderColor;
+  }
 }
 
 class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
@@ -1541,55 +1589,111 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
 
   Widget _buildFiltros() {
     final t = context.uai;
+    final r = context.uaiResponsive;
+
     final List<Map<String, dynamic>> opcoes = [
-      {'label': 'TODOS', 'icon': Icons.list, 'color': t.textMuted},
-      {'label': 'PAGO', 'icon': Icons.paid, 'color': t.success},
-      {'label': 'PENDENTE', 'icon': Icons.pending, 'color': t.warning},
-      {'label': 'ENTREGUE', 'icon': Icons.check_circle, 'color': t.info},
-      {'label': 'NÃO ENTREGUE', 'icon': Icons.access_time, 'color': t.error},
+      {'label': 'TODOS', 'icon': Icons.list_rounded, 'color': t.textMuted},
+      {'label': 'PAGO', 'icon': Icons.paid_rounded, 'color': t.success},
+      {'label': 'PENDENTE', 'icon': Icons.pending_rounded, 'color': t.warning},
+      {'label': 'ENTREGUE', 'icon': Icons.check_circle_rounded, 'color': t.info},
+      {'label': 'NÃO ENTREGUE', 'icon': Icons.access_time_rounded, 'color': t.error},
     ];
 
     return Container(
       color: t.background,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: opcoes.map((opcao) {
-            final isSelected = _filtroStatus == opcao['label'];
-            final rawColor = opcao['color'] as Color;
-            final color = _ensureVisible(rawColor, t.card);
-            final bg = isSelected ? color : t.card;
-            final fg = isSelected ? _readableOn(color) : t.textSecondary;
+      padding: EdgeInsets.fromLTRB(
+        r.pagePadding,
+        8,
+        r.pagePadding,
+        8,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: r.isPhone ? double.infinity : 1120,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.manual,
+                  child: Row(
+                    children: opcoes.map((opcao) {
+                      final isSelected = _filtroStatus == opcao['label'];
+                      final rawColor = opcao['color'] as Color;
+                      final color = _ensureVisible(rawColor, t.card);
+                      final bg = isSelected ? color : t.card;
+                      final fg = isSelected ? _readableOn(color) : t.textSecondary;
 
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                selected: isSelected,
-                showCheckmark: true,
-                checkmarkColor: fg,
-                selectedColor: bg,
-                backgroundColor: bg,
-                side: BorderSide(color: isSelected ? color : t.border),
-                label: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(opcao['icon'] as IconData, size: 16, color: fg),
-                    const SizedBox(width: 4),
-                    Text(opcao['label'].toString()),
-                  ],
-                ),
-                onSelected: (_) {
-                  setState(() => _filtroStatus = opcao['label'].toString());
-                },
-                labelStyle: TextStyle(
-                  color: fg,
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          selected: isSelected,
+                          showCheckmark: true,
+                          checkmarkColor: fg,
+                          selectedColor: bg,
+                          backgroundColor: bg,
+                          side: BorderSide(
+                            color: isSelected ? color : t.border,
+                          ),
+                          visualDensity: r.isPhone
+                              ? VisualDensity.compact
+                              : VisualDensity.standard,
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                opcao['icon'] as IconData,
+                                size: 16,
+                                color: fg,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(opcao['label'].toString()),
+                            ],
+                          ),
+                          onSelected: (_) {
+                            setState(
+                                  () => _filtroStatus = opcao['label'].toString(),
+                            );
+                          },
+                          labelStyle: TextStyle(
+                            color: fg,
+                            fontSize: r.isPhone ? 11.5 : 12,
+                            fontWeight:
+                            isSelected ? FontWeight.w900 : FontWeight.w700,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
-            );
-          }).toList(),
+              if (!r.isPhone) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.card,
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: t.border),
+                  ),
+                  child: Text(
+                    _filtroStatus,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1625,8 +1729,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
 
     if (_carregandoPermissoes) {
       return Container(
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        padding: const EdgeInsets.all(12),
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.all(context.uaiResponsive.isPhone ? 12 : 11),
         decoration: BoxDecoration(
           color: t.card,
           borderRadius: BorderRadius.circular(t.cardRadius),
@@ -1659,7 +1763,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     final visible = _ensureVisible(color, t.card);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Color.alphaBlend(visible.withOpacity(0.10), t.card),
@@ -1720,8 +1824,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       ..sort((a, b) => a.key.compareTo(b.key));
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      padding: const EdgeInsets.all(15),
+      margin: EdgeInsets.zero,
+      padding: EdgeInsets.all(context.uaiResponsive.cardPadding),
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -1935,7 +2039,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     final visibleCardColor = _ensureVisible(corCard, t.card);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.zero,
       elevation: 0,
       color: t.card,
       surfaceTintColor: Colors.transparent,
@@ -2154,6 +2258,103 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     );
   }
 
+  Widget _buildContentBox({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+  }) {
+    final r = context.uaiResponsive;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: r.isPhone ? double.infinity : 1120,
+        ),
+        child: Padding(
+          padding: padding ??
+              EdgeInsets.fromLTRB(
+                r.pagePadding,
+                0,
+                r.pagePadding,
+                0,
+              ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  SliverToBoxAdapter _buildContentSliver({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return SliverToBoxAdapter(
+      child: _buildContentBox(
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildCamisasGridOuLista({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  }) {
+    final r = context.uaiResponsive;
+
+    if (r.isPhone) {
+      return Column(
+        children: docs
+            .map(
+              (doc) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _buildCamisaCard(doc),
+          ),
+        )
+            .toList(),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 980
+            ? 3
+            : constraints.maxWidth >= 680
+            ? 2
+            : 1;
+        const spacing = 12.0;
+
+        if (columns <= 1) {
+          return Column(
+            children: docs
+                .map(
+                  (doc) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildCamisaCard(doc),
+              ),
+            )
+                .toList(),
+          );
+        }
+
+        final itemWidth =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: docs
+              .map(
+                (doc) => SizedBox(
+              width: itemWidth,
+              child: _buildCamisaCard(doc),
+            ),
+          )
+              .toList(),
+        );
+      },
+    );
+  }
+
+
   // ───────────────────── BUILD ─────────────────────
 
   @override
@@ -2173,7 +2374,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
         backgroundColor: _appBarBg(),
         actions: [
           IconButton(
-            onPressed: _carregarConfiguracoesDoEvento,
+            onPressed: () async {
+              await _carregarConfiguracoesDoEvento();
+              await _verificarPermissoes();
+            },
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Recarregar configurações',
           ),
@@ -2195,14 +2399,17 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
         stream: _buildQuery().snapshots(),
         builder: (context, snapshot) {
           final loading = snapshot.connectionState == ConnectionState.waiting;
+          final r = context.uaiResponsive;
 
           if (snapshot.hasError) {
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: r.listInsets,
               children: [
-                _buildPermissaoBanner(),
-                const SizedBox(height: 14),
-                _errorBox('Erro ao carregar camisas: ${snapshot.error}'),
+                _buildContentBox(child: _buildPermissaoBanner()),
+                SizedBox(height: r.sectionSpacing),
+                _buildContentBox(
+                  child: _errorBox('Erro ao carregar camisas: ${snapshot.error}'),
+                ),
               ],
             );
           }
@@ -2215,30 +2422,72 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
               await _carregarConfiguracoesDoEvento();
               await _verificarPermissoes();
             },
-            child: ListView(
+            child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 92),
-              children: [
-                _buildPermissaoBanner(),
-                _buildResumoCard(docs),
-                _buildFiltros(),
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.only(
+                    top: r.pagePadding,
+                    bottom: r.sectionSpacing,
+                  ),
+                  sliver: _buildContentSliver(
+                    child: _buildPermissaoBanner(),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.only(bottom: r.sectionSpacing),
+                  sliver: _buildContentSliver(
+                    child: _buildResumoCard(docs),
+                  ),
+                ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _CamisasStickyHeaderDelegate(
+                    height: r.stickyFilterHeight,
+                    backgroundColor: t.background,
+                    borderColor: t.border,
+                    child: _buildFiltros(),
+                  ),
+                ),
                 if (loading)
-                  Padding(
-                    padding: const EdgeInsets.all(28),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
                     child: Center(
                       child: CircularProgressIndicator(color: t.primary),
                     ),
                   )
                 else if (docs.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                    child: _emptyBox(),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      r.pagePadding,
+                      r.sectionSpacing,
+                      r.pagePadding,
+                      92,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: _buildContentBox(
+                        padding: EdgeInsets.zero,
+                        child: _emptyBox(),
+                      ),
+                    ),
                   )
                 else
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                    child: Column(
-                      children: docs.map(_buildCamisaCard).toList(),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      r.pagePadding,
+                      r.sectionSpacing,
+                      r.pagePadding,
+                      92,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: r.isPhone ? double.infinity : 1120,
+                          ),
+                          child: _buildCamisasGridOuLista(docs: docs),
+                        ),
+                      ),
                     ),
                   ),
               ],

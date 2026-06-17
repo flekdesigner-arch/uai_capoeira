@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -7,9 +7,10 @@ import 'package:flutter/services.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart'
-as area_aluno_dashboard;
+    as area_aluno_dashboard;
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
+import 'package:uai_capoeira/modules/rastreio/services/dispositivo_rastreio_service.dart';
 import 'package:uai_capoeira/shared/services/pwa_install_service.dart';
 
 class AreaAlunoLoginScreen extends StatefulWidget {
@@ -23,15 +24,17 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _dataNascimentoController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _iniciaisController = TextEditingController();
   final TextEditingController _telefoneFinalController =
-  TextEditingController();
+      TextEditingController();
 
   bool _carregando = false;
   bool _restaurandoSessao = true;
 
   final RastreioSiteService _rastreioService = RastreioSiteService();
+  final DispositivoRastreioService _dispositivoRastreioService =
+      const DispositivoRastreioService();
   final AreaAlunoSessionService _sessionService = AreaAlunoSessionService();
   final PwaInstallService _pwaInstallService = PwaInstallService.instance;
 
@@ -42,17 +45,24 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
   void initState() {
     super.initState();
 
-    _rastreioService.iniciarTela(
-      'area_aluno_login',
-      origem: 'site',
-      metadata: {
-        'descricao': 'Tela de login público da Área do Aluno',
-      },
-    );
     _rastreioService.marcarTempo('area_aluno_login_tempo');
 
     _configurarInstalacaoPwa();
-    _tentarRestaurarSessaoAluno();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _rastreioService.iniciarTela(
+        'area_aluno_login',
+        origem: 'site',
+        metadata: {
+          'descricao': 'Tela de login público da Área do Aluno',
+          'dispositivo': _coletarDispositivo(origem: 'primeiro_frame'),
+        },
+      );
+
+      _tentarRestaurarSessaoAluno();
+    });
   }
 
   @override
@@ -75,16 +85,29 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
     super.dispose();
   }
 
+  Map<String, dynamic> _coletarDispositivo({
+    required String origem,
+    Map<String, dynamic>? extra,
+  }) {
+    return _dispositivoRastreioService.coletar(
+      context,
+      tela: 'area_aluno_login',
+      origem: origem,
+      extra: {'modulo': 'area_aluno', ...?extra},
+    );
+  }
+
   void _configurarInstalacaoPwa() {
     if (!kIsWeb) return;
 
     _pwaPodeInstalar = _pwaInstallService.isInstallPromptAvailable;
 
-    _pwaInstallSub =
-        _pwaInstallService.installAvailableStream.listen((available) {
-          if (!mounted) return;
-          setState(() => _pwaPodeInstalar = available);
-        });
+    _pwaInstallSub = _pwaInstallService.installAvailableStream.listen((
+      available,
+    ) {
+      if (!mounted) return;
+      setState(() => _pwaPodeInstalar = available);
+    });
   }
 
   Future<void> _tentarRestaurarSessaoAluno() async {
@@ -94,12 +117,39 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       if (!mounted) return;
 
       if (sessao != null) {
+        if (sessao['sessionValidationFailed'] == true) {
+          _rastreioService.registrarErroFormulario(
+            formulario: 'area_aluno_login',
+            local: 'revalidacao_sessao',
+            erros: [
+              sessao['message']?.toString() ?? 'Falha ao revalidar sessão',
+            ],
+            metadata: {
+              'tipo_acesso': 'sessao_local',
+              'motivo': 'backend_indisponivel',
+            },
+          );
+
+          _mostrarErro(
+            sessao['message']?.toString() ??
+                'Não foi possível validar sua sessão. Verifique sua internet e entre novamente.',
+          );
+          return;
+        }
+
         _rastreioService.registrarConversao(
           nome: 'area_aluno_sessao_restaurada',
           origem: 'area_aluno_login',
           metadata: {
             'offline': sessao['offline'] == true,
-            'aluno_id': (sessao['aluno'] as Map?)?['id']?.toString(),
+            'aluno_id':
+                (sessao['aluno'] as Map?)?['id']?.toString() ??
+                (sessao['aluno'] as Map?)?['aluno_id']?.toString(),
+            'aluno_nome': (sessao['aluno'] as Map?)?['nome']?.toString(),
+            'dispositivo': _coletarDispositivo(
+              origem: 'sessao_restaurada',
+              extra: {'tipo_acesso': 'sessao_local'},
+            ),
           },
         );
 
@@ -133,8 +183,8 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -148,10 +198,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
   }
 
   String _normalizarIniciais(String value) {
-    return value
-        .trim()
-        .toUpperCase()
-        .replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
+    return value.trim().toUpperCase().replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
   }
 
   void _registrarSnapshotLogin(String momento) {
@@ -169,10 +216,17 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
   }
 
   Future<void> _acessarAreaAluno() async {
+    final dispositivoTentativa = _coletarDispositivo(
+      origem: 'tentativa_login',
+      extra: {'pwa_prompt_disponivel': _pwaPodeInstalar},
+    );
+
     _rastreioService.registrarClique(
       nome: 'tentar_acessar_area_aluno',
       origem: 'area_aluno_login',
+      metadata: {'dispositivo': dispositivoTentativa},
     );
+
     _registrarSnapshotLogin('tentativa_login');
 
     if (!_formKey.currentState!.validate()) {
@@ -180,11 +234,16 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         formulario: 'area_aluno_login',
         local: 'validacao_campos',
         erros: const ['Campos inválidos ou incompletos'],
+        metadata: {'dispositivo': dispositivoTentativa},
       );
       return;
     }
 
     FocusScope.of(context).unfocus();
+
+    final dataNascimento = _dataNascimentoController.text.trim();
+    final iniciais = _normalizarIniciais(_iniciaisController.text);
+    final telefoneFinal = _telefoneFinalController.text.trim();
 
     setState(() => _carregando = true);
 
@@ -194,23 +253,30 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       );
 
       final result = await callable.call({
-        'dataNascimento': _dataNascimentoController.text.trim(),
-        'iniciais': _normalizarIniciais(_iniciaisController.text),
-        'telefoneFinal': _telefoneFinalController.text.trim(),
+        'dataNascimento': dataNascimento,
+        'iniciais': iniciais,
+        'telefoneFinal': telefoneFinal,
+        'dispositivo': dispositivoTentativa,
+        'origem': 'area_aluno_login',
       });
 
       final data = Map<String, dynamic>.from(result.data as Map);
       final success = data['success'] == true;
 
       if (!success) {
-        final msg = data['message']?.toString() ??
+        final msg =
+            data['message']?.toString() ??
             'Não foi possível validar o acesso. Confira os dados e tente novamente.';
 
         _rastreioService.registrarErroFormulario(
           formulario: 'area_aluno_login',
           local: 'validacao_cloud_function',
           erros: [msg],
-          metadata: {'success': false},
+          metadata: {
+            'success': false,
+            'code': data['code']?.toString(),
+            'dispositivo': dispositivoTentativa,
+          },
         );
 
         _mostrarErro(msg);
@@ -220,19 +286,71 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
       final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
 
+      final alunoId =
+          aluno['aluno_id']?.toString() ??
+          aluno['id']?.toString() ??
+          aluno['docId']?.toString() ??
+          '';
+      final alunoNome = aluno['nome']?.toString() ?? '';
+      final turmaId = aluno['turma_id']?.toString() ?? '';
+      final turma = aluno['turma']?.toString() ?? '';
+      final academiaId = aluno['academia_id']?.toString() ?? '';
+      final academia = aluno['academia']?.toString() ?? '';
+      final auditoria = Map<String, dynamic>.from(
+        data['auditoria'] as Map? ?? {},
+      );
+
+      final dispositivoSucesso = _coletarDispositivo(
+        origem: 'login_sucesso',
+        extra: {
+          'aluno_id': alunoId,
+          'aluno_nome': alunoNome,
+          'turma_id': turmaId,
+          'turma': turma,
+          'academia_id': academiaId,
+          'academia': academia,
+        },
+      );
+
       _rastreioService.registrarConversao(
         nome: 'area_aluno_login_sucesso',
         origem: 'area_aluno_login',
         metadata: {
-          'aluno_id': aluno['id']?.toString() ?? aluno['docId']?.toString(),
+          'aluno_id': alunoId,
+          'aluno_nome': alunoNome,
+          'turma_id': turmaId,
+          'turma': turma,
+          'academia_id': academiaId,
+          'academia': academia,
           'tem_config': config.isNotEmpty,
+          'dispositivo': dispositivoSucesso,
+          'origem_login': 'area_aluno_login',
+          ...auditoria,
         },
       );
 
+      await _rastreioService.registrarLoginAreaAluno(
+        alunoId: alunoId,
+        alunoNome: alunoNome,
+        turmaId: turmaId,
+        turma: turma,
+        academiaId: academiaId,
+        academia: academia,
+        dispositivo: dispositivoSucesso,
+        metadata: auditoria,
+      );
+
       final authPayload = {
-        'dataNascimento': _dataNascimentoController.text.trim(),
-        'iniciais': _normalizarIniciais(_iniciaisController.text),
-        'telefoneFinal': _telefoneFinalController.text.trim(),
+        'modo_acesso': data['modo_acesso']?.toString() ?? 'basico',
+        'dataNascimento': dataNascimento,
+        'iniciais': iniciais,
+        'telefoneFinal': telefoneFinal,
+        'aluno_id_login': alunoId,
+        'aluno_nome_login': alunoNome,
+        'turma_login': turma,
+        'academia_login': academia,
+        'login_em': DateTime.now().toIso8601String(),
+        'dispositivo_login': dispositivoSucesso,
       };
 
       await _sessionService.salvarSessao(
@@ -258,7 +376,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         formulario: 'area_aluno_login',
         local: 'firebase_functions',
         erros: [e.message ?? e.code],
-        metadata: {'code': e.code},
+        metadata: {'code': e.code, 'dispositivo': dispositivoTentativa},
       );
 
       _mostrarErro(
@@ -269,6 +387,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         formulario: 'area_aluno_login',
         local: 'erro_inesperado',
         erros: ['Erro ao acessar a Área do Aluno: $e'],
+        metadata: {'dispositivo': dispositivoTentativa},
       );
       _mostrarErro('Erro ao acessar a Área do Aluno: $e');
     } finally {
@@ -299,6 +418,10 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       origem: 'area_aluno_login',
       metadata: {
         'prompt_disponivel': _pwaPodeInstalar,
+        'dispositivo': _coletarDispositivo(
+          origem: 'instalar_pwa',
+          extra: {'prompt_disponivel': _pwaPodeInstalar},
+        ),
       },
     );
 
@@ -356,9 +479,9 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
           ),
           content: Text(
             'No Android/Chrome: toque nos três pontinhos do navegador e escolha '
-                '“Adicionar à tela inicial” ou “Instalar app”.\n\n'
-                'No iPhone/Safari: toque no botão de compartilhar e escolha '
-                '“Adicionar à Tela de Início”.',
+            '“Adicionar à tela inicial” ou “Instalar app”.\n\n'
+            'No iPhone/Safari: toque no botão de compartilhar e escolha '
+            '“Adicionar à Tela de Início”.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -370,10 +493,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'ENTENDI',
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: TextStyle(color: primary, fontWeight: FontWeight.w900),
               ),
             ),
           ],
@@ -474,16 +594,13 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.school_rounded,
-              color: onPrimary,
-              size: 36,
-            ),
+            child: Icon(Icons.school_rounded, color: onPrimary, size: 36),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Área do Aluno',
@@ -510,13 +627,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -543,11 +654,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
         key: _formKey,
         child: Column(
           children: [
-            Icon(
-              Icons.verified_user_rounded,
-              color: primary,
-              size: 48,
-            ),
+            Icon(Icons.verified_user_rounded, color: primary, size: 48),
             const SizedBox(height: 10),
             Text(
               'Identificação do aluno',
@@ -582,13 +689,13 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
                 onPressed: _carregando ? null : _acessarAreaAluno,
                 icon: _carregando
                     ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    color: _readableOn(t.primary),
-                    strokeWidth: 2,
-                  ),
-                )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          color: _readableOn(t.primary),
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.login_rounded),
                 label: Text(
                   _carregando ? 'Validando...' : 'ACESSAR MINHA ÁREA',
@@ -782,8 +889,8 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       color: t.warning,
       child: Text(
         'As iniciais são formadas pelo primeiro caractere de cada nome. '
-            'Exemplo: ARTHUR EDUARDO SILVA LIMA = AESL. '
-            'Preposições como DE, DA, DO, DOS e DAS são ignoradas.',
+        'Exemplo: ARTHUR EDUARDO SILVA LIMA = AESL. '
+        'Preposições como DE, DA, DO, DOS e DAS são ignoradas.',
         style: TextStyle(
           color: _ensureVisible(t.warning, t.cardAlt),
           fontSize: 12,
@@ -821,11 +928,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
               color: accent,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              icon,
-              color: _readableOn(accent),
-              size: 23,
-            ),
+            child: Icon(icon, color: _readableOn(accent), size: 23),
           ),
           const SizedBox(width: 12),
           Expanded(child: child),
@@ -849,9 +952,9 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
 class _DataNascimentoInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
 
     final buffer = StringBuffer();
@@ -873,9 +976,9 @@ class _DataNascimentoInputFormatter extends TextInputFormatter {
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     return TextEditingValue(
       text: newValue.text.toUpperCase(),
       selection: newValue.selection,

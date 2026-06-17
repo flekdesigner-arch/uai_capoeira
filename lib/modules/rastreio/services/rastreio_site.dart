@@ -18,6 +18,7 @@ class RastreioSiteService {
   bool _sessaoFinalizada = false;
 
   final Map<String, DateTime> _marcadoresTempo = {};
+  final List<Map<String, dynamic>> _eventosPendentes = [];
 
   String? get documentoAcessoId => _documentoAcessoId;
 
@@ -31,6 +32,10 @@ class RastreioSiteService {
     _marcadoresTempo.clear();
 
     print('✅ Sessão iniciada para documento: $documentoId');
+
+    if (_eventosPendentes.isNotEmpty) {
+      _enviarEventosPendentes();
+    }
   }
 
   Map<String, dynamic> _metadadosBase(Map<String, dynamic>? metadata) {
@@ -54,11 +59,6 @@ class RastreioSiteService {
     String? paginaOrigem,
     Map<String, dynamic>? metadata,
   }) async {
-    if (_documentoAcessoId == null) {
-      print('⚠️ Nenhum documento de acesso ativo. Ignorando evento: $tipo | $nome');
-      return;
-    }
-
     if (_sessaoFinalizada) {
       print('⚠️ Sessão já finalizada. Ignorando evento: $tipo | $nome');
       return;
@@ -66,31 +66,48 @@ class RastreioSiteService {
 
     _contadorEventos++;
 
-    try {
-      final agora = DateTime.now();
-      final evento = {
-        'tipo': tipo,
-        'nome': nome,
-        'origem': origem,
-        'pagina_origem': paginaOrigem,
-        'timestamp': agora.millisecondsSinceEpoch,
-        'data_hora': agora.toIso8601String(),
-        'metadata': _metadadosBase(metadata),
-      };
+    final agora = DateTime.now();
+    final evento = {
+      'tipo': tipo,
+      'nome': nome,
+      'origem': origem,
+      'pagina_origem': paginaOrigem,
+      'timestamp': agora.millisecondsSinceEpoch,
+      'data_hora': agora.toIso8601String(),
+      'metadata': _metadadosBase(metadata),
+    };
 
+    if (_documentoAcessoId == null) {
+      _eventosPendentes.add(evento);
+      print(
+        '⏳ Documento de acesso ainda não ativo. Evento colocado na fila: $tipo | $nome',
+      );
+      return;
+    }
+
+    await _registrarEventoNoFirestore(evento);
+  }
+
+  Future<void> _registrarEventoNoFirestore(Map<String, dynamic> evento) async {
+    if (_documentoAcessoId == null || _sessaoFinalizada) return;
+
+    try {
       await _firestore
           .collection('estatisticas_acessos')
           .doc(_documentoAcessoId!)
           .update({
-        'eventos': FieldValue.arrayUnion([evento]),
-        'ultima_atividade': FieldValue.serverTimestamp(),
-        'total_eventos': FieldValue.increment(1),
-        'ultimo_evento_tipo': tipo,
-        'ultimo_evento_nome': nome,
-        'ultimo_evento_origem': origem,
-      });
+            'eventos': FieldValue.arrayUnion([evento]),
+            'ultima_atividade': FieldValue.serverTimestamp(),
+            'total_eventos': FieldValue.increment(1),
+            'ultimo_evento_tipo': evento['tipo'],
+            'ultimo_evento_nome': evento['nome'],
+            'ultimo_evento_origem': evento['origem'],
+          });
 
-      print('✅ Evento registrado: $tipo | $nome | $origem');
+      print(
+        '✅ Evento registrado: '
+        '${evento['tipo']} | ${evento['nome']} | ${evento['origem']}',
+      );
     } catch (e) {
       print('❌ Erro ao registrar evento: $e');
       if (e is FirebaseException) {
@@ -100,26 +117,53 @@ class RastreioSiteService {
     }
   }
 
+  Future<void> _enviarEventosPendentes() async {
+    if (_documentoAcessoId == null || _eventosPendentes.isEmpty) return;
+
+    final eventos = List<Map<String, dynamic>>.from(_eventosPendentes);
+    _eventosPendentes.clear();
+
+    for (final evento in eventos) {
+      await _registrarEventoNoFirestore(evento);
+    }
+
+    print('✅ Eventos pendentes enviados: ${eventos.length}');
+  }
+
+  Future<void> registrarDispositivo({
+    required Map<String, dynamic> dispositivo,
+    String origem = 'site',
+    String nome = 'dados_dispositivo',
+    Map<String, dynamic>? metadata,
+  }) async {
+    await registrarEvento(
+      tipo: 'dispositivo',
+      nome: nome,
+      origem: origem,
+      metadata: {'dispositivo': dispositivo, ...?metadata},
+    );
+  }
+
   Future<void> registrarPaginaVista(String pagina, String? origem) async {
     await registrarEvento(
       tipo: 'pagina',
       nome: pagina,
       origem: origem,
-      metadata: {
-        'tempo_carregamento': DateTime.now().millisecondsSinceEpoch,
-      },
+      metadata: {'tempo_carregamento': DateTime.now().millisecondsSinceEpoch},
     );
   }
 
   Future<void> iniciarTela(
-      String tela, {
-        String? origem,
-        Map<String, dynamic>? metadata,
-      }) async {
+    String tela, {
+    String? origem,
+    Map<String, dynamic>? metadata,
+  }) async {
     final nomeTela = tela.trim();
     if (nomeTela.isEmpty) return;
 
-    if (_telaAtual != null && _inicioTelaAtual != null && _telaAtual != nomeTela) {
+    if (_telaAtual != null &&
+        _inicioTelaAtual != null &&
+        _telaAtual != nomeTela) {
       await finalizarTela(destino: nomeTela);
     }
 
@@ -132,10 +176,7 @@ class RastreioSiteService {
       nome: nomeTela,
       origem: origem ?? 'entrada',
       paginaOrigem: origem,
-      metadata: {
-        'acao': 'entrou',
-        ...?metadata,
-      },
+      metadata: {'acao': 'entrou', ...?metadata},
     );
   }
 
@@ -146,7 +187,9 @@ class RastreioSiteService {
     Map<String, dynamic>? metadata,
   }) async {
     final nomeTela = tela ?? _telaAtual;
-    if (nomeTela == null || nomeTela.trim().isEmpty || _inicioTelaAtual == null) {
+    if (nomeTela == null ||
+        nomeTela.trim().isEmpty ||
+        _inicioTelaAtual == null) {
       return;
     }
 
@@ -311,8 +354,32 @@ class RastreioSiteService {
       tipo: 'conversao',
       nome: nome,
       origem: origem,
+      metadata: {if (valor != null) 'valor': valor, ...?metadata},
+    );
+  }
+
+  Future<void> registrarLoginAreaAluno({
+    required String alunoId,
+    required String alunoNome,
+    String? turmaId,
+    String? turma,
+    String? academiaId,
+    String? academia,
+    Map<String, dynamic>? dispositivo,
+    Map<String, dynamic>? metadata,
+  }) async {
+    await registrarEvento(
+      tipo: 'area_aluno',
+      nome: 'login_aluno_sucesso',
+      origem: 'area_aluno_login',
       metadata: {
-        if (valor != null) 'valor': valor,
+        'aluno_id': alunoId,
+        'aluno_nome': alunoNome,
+        'turma_id': turmaId ?? '',
+        'turma': turma ?? '',
+        'academia_id': academiaId ?? '',
+        'academia': academia ?? '',
+        'dispositivo': dispositivo,
         ...?metadata,
       },
     );
@@ -329,7 +396,9 @@ class RastreioSiteService {
     Map<String, dynamic>? metadata,
   }) async {
     final valorTexto = valor?.toString() ?? '';
-    final valorSeguro = sensivel ? _mascararValorSensivel(valorTexto) : valorTexto;
+    final valorSeguro = sensivel
+        ? _mascararValorSensivel(valorTexto)
+        : valorTexto;
 
     await registrarEvento(
       tipo: 'campo_formulario',
@@ -435,12 +504,7 @@ class RastreioSiteService {
       nome: filtro,
       origem: origem ?? tela,
       paginaOrigem: tela,
-      metadata: {
-        'tela': tela,
-        'filtro': filtro,
-        'valor': valor,
-        ...?metadata,
-      },
+      metadata: {'tela': tela, 'filtro': filtro, 'valor': valor, ...?metadata},
     );
   }
 
@@ -456,11 +520,7 @@ class RastreioSiteService {
       nome: nome,
       origem: origem ?? tela,
       paginaOrigem: tela,
-      metadata: {
-        'tela': tela,
-        'total': total,
-        ...?metadata,
-      },
+      metadata: {'tela': tela, 'total': total, ...?metadata},
     );
   }
 
@@ -475,15 +535,13 @@ class RastreioSiteService {
       nome: '$percentual%',
       origem: origem ?? tela,
       paginaOrigem: tela,
-      metadata: {
-        'tela': tela,
-        'percentual': percentual,
-        ...?metadata,
-      },
+      metadata: {'tela': tela, 'percentual': percentual, ...?metadata},
     );
   }
 
   Future<void> finalizarSessao() async {
+    await _enviarEventosPendentes();
+
     if (_documentoAcessoId != null && _inicioSessao != null) {
       final duracao = DateTime.now().difference(_inicioSessao!).inSeconds;
       try {
@@ -491,9 +549,9 @@ class RastreioSiteService {
             .collection('estatisticas_acessos')
             .doc(_documentoAcessoId)
             .update({
-          'fim_sessao': FieldValue.serverTimestamp(),
-          'duracao_segundos': duracao,
-        });
+              'fim_sessao': FieldValue.serverTimestamp(),
+              'duracao_segundos': duracao,
+            });
         _sessaoFinalizada = true;
         print('✅ Sessão finalizada. Duração: ${duracao}s');
       } catch (e) {
@@ -544,7 +602,8 @@ class RastreioSiteService {
   }
 
   Map<String, dynamic> _gerarResumoEventos(List<Map<String, dynamic>> eventos) {
-    int countTipo(String tipo) => eventos.where((e) => e['tipo'] == tipo).length;
+    int countTipo(String tipo) =>
+        eventos.where((e) => e['tipo'] == tipo).length;
 
     final eventosSuspeitos = eventos.where((e) {
       final metadata = Map<String, dynamic>.from(e['metadata'] as Map? ?? {});

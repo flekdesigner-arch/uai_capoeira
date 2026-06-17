@@ -11,13 +11,14 @@ import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certifi
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/screens/preview_certificado_participante_screen.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_evento_mapper_service.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_lote_impressao_service.dart';
+import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_pdf_direto_service.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_zip_share_service.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/gerador_certificado_evento_service.dart';
-import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_pdf_direto_service.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certificado_evento_toolbar.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certificado_lote_status_card.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/widgets/certificado_participante_card.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/screens/selecionar_participantes_csv_screen.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
 
 class GeradorCertificadosEventoScreen extends StatefulWidget {
@@ -47,7 +48,6 @@ class _GeradorCertificadosEventoScreenState
   final CertificadoSvgService _svgService = const CertificadoSvgService();
   final CertificadoZipShareService _zipShareService =
   const CertificadoZipShareService();
-
 
   final GlobalKey _batchExportKey = GlobalKey();
 
@@ -82,7 +82,9 @@ class _GeradorCertificadosEventoScreenState
   @override
   void initState() {
     super.initState();
-    debugPrint('🧾 [GeradorCertificados] initState - evento: ${widget.evento.nome}');
+    debugPrint(
+      '🧾 [GeradorCertificados] initState - evento: ${widget.evento.nome}',
+    );
     _eventoData = CertificadoEventoData.fromEvento(widget.evento);
 
     _hidratarCacheGlobalInicial();
@@ -237,9 +239,10 @@ class _GeradorCertificadosEventoScreenState
     final filtrados = _filtrados;
     if (filtrados.isEmpty) return false;
 
-    return filtrados.every((item) => _selecionados.contains(item.participacaoId));
+    return filtrados.every(
+          (item) => _selecionados.contains(item.participacaoId),
+    );
   }
-
 
   bool get _cacheParticipantesValido {
     final ultimo = _ultimoCarregamentoParticipantes;
@@ -268,6 +271,29 @@ class _GeradorCertificadosEventoScreenState
 
     if (!mounted) return;
 
+    await _carregarParticipantes(forcarServidor: true);
+  }
+
+  Future<void> _abrirTelaVinculoCsv() async {
+    final eventoId = _eventoData.eventoId.trim().isNotEmpty
+        ? _eventoData.eventoId.trim()
+        : (widget.evento.id ?? '').trim();
+
+    if (eventoId.isEmpty) {
+      _mostrarInfo('Evento sem ID para abrir a tela de vínculo CSV.');
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SelecionarParticipantesCsvScreen(
+          eventoId: eventoId,
+          eventoNome: _eventoData.eventoNome,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
     await _carregarParticipantes(forcarServidor: true);
   }
 
@@ -401,16 +427,10 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _abrirPreview(CertificadoParticipanteData participante) async {
-    // Antes de abrir a prévia, garante que local/data do certificado vem
-    // do evento mais atualizado no Firestore, e não de um objeto antigo em cache.
     await _sincronizarEventoDoServidor();
 
     if (!mounted) return;
 
-    // IMPORTANTE:
-    // Ao voltar da prévia, não recarrega mais tudo do servidor automaticamente.
-    // A tela do gerador mantém os dados em memória/cache para ficar instantânea.
-    // Para atualizar de verdade, use o botão atualizar ou puxe a lista para baixo.
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) {
@@ -535,7 +555,6 @@ class _GeradorCertificadosEventoScreenState
       pdfBytes: pdfBytes,
     );
   }
-
 
   Future<List<CertificadoArquivoGerado>> _renderizarSelecionados({
     required bool incluirPdf,
@@ -699,7 +718,9 @@ class _GeradorCertificadosEventoScreenState
         );
       });
 
-      _mostrarInfo('Certificados gerados e vinculados: $gerados. Ignorados: $pulados.');
+      _mostrarInfo(
+        'Certificados gerados e vinculados: $gerados. Ignorados: $pulados.',
+      );
       _limparSelecao();
       await _carregarParticipantes(forcarServidor: true);
     } catch (e) {
@@ -728,7 +749,6 @@ class _GeradorCertificadosEventoScreenState
       }
     }
   }
-
 
   Future<void> _criarLotesImpressao() async {
     if (_processandoLote) return;
@@ -803,7 +823,6 @@ class _GeradorCertificadosEventoScreenState
       }
     }
   }
-
 
   String _nomeArquivoRelatorioGrafica() {
     final evento = _eventoData.eventoNome
@@ -1074,7 +1093,6 @@ class _GeradorCertificadosEventoScreenState
     );
   }
 
-
   Future<void> _criarPacoteGrafica() async {
     if (_processandoLote) return;
 
@@ -1110,7 +1128,6 @@ class _GeradorCertificadosEventoScreenState
     });
 
     try {
-      // Deixa o overlay pintar antes de começar o processamento pesado.
       await Future<void>.delayed(const Duration(milliseconds: 180));
       await WidgetsBinding.instance.endOfFrame;
 
@@ -1177,8 +1194,7 @@ class _GeradorCertificadosEventoScreenState
       final zipMb = pacote.zipBytes.length / (1024 * 1024);
 
       setState(() {
-        _statusProcessamento =
-        'ZIP pronto: ${zipMb.toStringAsFixed(1)} MB';
+        _statusProcessamento = 'ZIP pronto: ${zipMb.toStringAsFixed(1)} MB';
         _addLogProcessamentoSemSetState(
           'Pacote registrado. Tamanho: ${zipMb.toStringAsFixed(1)} MB.',
         );
@@ -1239,8 +1255,6 @@ class _GeradorCertificadosEventoScreenState
       }
     }
   }
-
-
 
   void _addLogProcessamento(String mensagem) {
     final horario = DateTime.now();
@@ -1480,10 +1494,17 @@ class _GeradorCertificadosEventoScreenState
         ),
         actions: [
           IconButton(
+            onPressed: (_carregando || _processandoLote)
+                ? null
+                : _abrirTelaVinculoCsv,
+            icon: const Icon(Icons.table_chart_rounded),
+            tooltip: 'Vincular certificados CSV',
+          ),
+          IconButton(
             onPressed:
             (_carregando || _processandoLote) ? null : _atualizarDoServidor,
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Atualizar',
+            tooltip: 'Forçar carregamento',
           ),
         ],
       ),
@@ -1496,7 +1517,12 @@ class _GeradorCertificadosEventoScreenState
           _buildProcessamentoOverlay(),
         ],
       )
-          : _buildMainBody(),
+          : Stack(
+        children: [
+          _buildMainBody(),
+          _buildRenderOculto(),
+        ],
+      ),
     );
   }
 
@@ -1504,236 +1530,17 @@ class _GeradorCertificadosEventoScreenState
     final t = context.uai;
 
     if (_carregando) {
-      final primary = _ensureVisible(t.primary, t.card);
-      final onPrimary = _readableOn(primary);
-
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: t.background,
-        alignment: Alignment.center,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: t.card,
-                  borderRadius: BorderRadius.circular(t.cardRadius + 4),
-                  border: Border.all(color: t.border),
-                  boxShadow: t.cardShadow,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: primary.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: primary.withOpacity(0.18)),
-                      ),
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          color: primary,
-                          strokeWidth: 3,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Carregando participantes',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Buscando dados do evento, participantes e certificados.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: t.cardAlt,
-                        borderRadius: BorderRadius.circular(t.inputRadius),
-                        border: Border.all(color: t.border),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _eventoData.eventoNome,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: t.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              height: 1.25,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            'ID: ${_eventoData.eventoId}',
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: t.textMuted,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _atualizarDoServidor,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text(
-                          'FORÇAR SERVIDOR',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: primary,
-                          side: BorderSide(color: primary.withOpacity(0.35)),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(t.buttonRadius),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: primary.withOpacity(0.14)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.offline_bolt_rounded,
-                            color: primary,
-                            size: 15,
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              'Cache inteligente ativo por 3 minutos',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: primary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildLoadingState();
     }
 
     if (_erro != null) {
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: const Color(0xFFFFE4E6),
-        alignment: Alignment.center,
-        child: Container(
-          margin: const EdgeInsets.all(18),
-          padding: const EdgeInsets.all(22),
-          constraints: const BoxConstraints(maxWidth: 560),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFDC2626), width: 3),
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 18,
-                offset: Offset(0, 8),
-                color: Color(0x33000000),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                color: Color(0xFFDC2626),
-                size: 46,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'ERRO AO CARREGAR PARTICIPANTES',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                _erro!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF374151),
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 14),
-              ElevatedButton.icon(
-                onPressed: _carregarParticipantes,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('TENTAR NOVAMENTE'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildErroState();
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final horizontal = constraints.maxWidth < 620 ? 12.0 : 18.0;
+        final r = _CertificadoResponsive.fromWidth(constraints.maxWidth);
+        final horizontal = r.pagePadding;
 
         return RefreshIndicator(
           onRefresh: _processandoLote ? () async {} : _atualizarDoServidor,
@@ -1744,65 +1551,335 @@ class _GeradorCertificadosEventoScreenState
             children: [
               Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildEventoHeader(),
-                      const SizedBox(height: 14),
-                      CertificadoLoteStatusCard(
-                        totalParticipantes: _participantes.length,
-                        selecionados: _selecionados.length,
-                        gerados: _totalGerados,
-                        impressos: _totalImpressos,
-                        pendentes: _totalPendentes,
-                        comErro: _participantes
-                            .where(
-                              (item) =>
-                          item.certificadoStatus.toLowerCase() ==
-                              'erro',
-                        )
-                            .length,
-                        incluidosZip: _totalIncluidosZip,
-                        carregando: _processandoLote,
-                        mensagem: _processandoLote
-                            ? (_statusProcessamento ??
-                            'Processando certificados...')
-                            : _eventoData.statusResumo,
-                      ),
-                      _buildCacheInfoCard(),
-                      const SizedBox(height: 14),
-                      CertificadoEventoToolbar(
-                        filtro: _filtro,
-                        onFiltroChanged: (value) {
-                          setState(() => _filtro = value);
-                        },
-                        busca: _busca,
-                        onBuscaChanged: (value) {
-                          setState(() => _busca = value);
-                        },
-                        total: _filtrados.length,
-                        selecionados: _selecionados.length,
-                        todosSelecionados: _todosFiltradosSelecionados,
-                        carregando: _processandoLote,
-                        onRecarregar: _atualizarDoServidor,
-                        onSelecionarTodos: _selecionarTodosFiltrados,
-                        onLimparSelecao: _limparSelecao,
-                        onGerarSelecionados: _gerarSelecionadosEVincular,
-                        onCriarLotesImpressao: _criarLotesImpressao,
-                        onGerarRelatorioGrafica: _gerarRelatorioGraficaSelecionados,
-                        onCriarPacoteGrafica: _criarPacoteGrafica,
-                      ),
-                      const SizedBox(height: 14),
-                      _buildContent(),
-                    ],
-                  ),
+                  constraints: BoxConstraints(maxWidth: r.maxContentWidth),
+                  child: r.isDesktop
+                      ? _buildDesktopMainLayout(r)
+                      : _buildMobileTabletMainLayout(r),
                 ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMobileTabletMainLayout(_CertificadoResponsive r) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildEventoHeader(),
+        const SizedBox(height: 14),
+        _buildStatusCard(),
+        _buildCacheInfoCard(),
+        const SizedBox(height: 14),
+        _buildToolbarCard(),
+        const SizedBox(height: 14),
+        _buildContent(),
+      ],
+    );
+  }
+
+  Widget _buildDesktopMainLayout(_CertificadoResponsive r) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: r.sidebarWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildEventoHeader(),
+              const SizedBox(height: 14),
+              _buildStatusCard(),
+              _buildCacheInfoCard(),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildToolbarCard(),
+              const SizedBox(height: 14),
+              _buildContent(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingState() {
+    final t = context.uai;
+    final primary = _ensureVisible(t.primary, t.card);
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: t.background,
+      alignment: Alignment.center,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: t.card,
+                borderRadius: BorderRadius.circular(t.cardRadius + 4),
+                border: Border.all(color: t.border),
+                boxShadow: t.cardShadow,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: primary.withOpacity(0.18)),
+                    ),
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        color: primary,
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Carregando participantes',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Buscando dados do evento, participantes e certificados.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: t.cardAlt,
+                      borderRadius: BorderRadius.circular(t.inputRadius),
+                      border: Border.all(color: t.border),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _eventoData.eventoNome,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            height: 1.25,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'ID: ${_eventoData.eventoId}',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _atualizarDoServidor,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text(
+                        'FORÇAR SERVIDOR',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: primary,
+                        side: BorderSide(color: primary.withOpacity(0.35)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(t.buttonRadius),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: primary.withOpacity(0.14)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.offline_bolt_rounded,
+                          color: primary,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            'Cache inteligente ativo por 3 minutos',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErroState() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: const Color(0xFFFFE4E6),
+      alignment: Alignment.center,
+      child: Container(
+        margin: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(22),
+        constraints: const BoxConstraints(maxWidth: 560),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFDC2626), width: 3),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 18,
+              offset: Offset(0, 8),
+              color: Color(0x33000000),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFDC2626),
+              size: 46,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'ERRO AO CARREGAR PARTICIPANTES',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF111827),
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              _erro!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF374151),
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              onPressed: _carregarParticipantes,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('TENTAR NOVAMENTE'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusCard() {
+    return CertificadoLoteStatusCard(
+      totalParticipantes: _participantes.length,
+      selecionados: _selecionados.length,
+      gerados: _totalGerados,
+      impressos: _totalImpressos,
+      pendentes: _totalPendentes,
+      comErro: _participantes
+          .where(
+            (item) => item.certificadoStatus.toLowerCase() == 'erro',
+      )
+          .length,
+      incluidosZip: _totalIncluidosZip,
+      carregando: _processandoLote,
+      mensagem: _processandoLote
+          ? (_statusProcessamento ?? 'Processando certificados...')
+          : _eventoData.statusResumo,
+    );
+  }
+
+  Widget _buildToolbarCard() {
+    return CertificadoEventoToolbar(
+      filtro: _filtro,
+      onFiltroChanged: (value) {
+        setState(() => _filtro = value);
+      },
+      busca: _busca,
+      onBuscaChanged: (value) {
+        setState(() => _busca = value);
+      },
+      total: _filtrados.length,
+      selecionados: _selecionados.length,
+      todosSelecionados: _todosFiltradosSelecionados,
+      carregando: _processandoLote,
+      onRecarregar: _atualizarDoServidor,
+      onSelecionarTodos: _selecionarTodosFiltrados,
+      onLimparSelecao: _limparSelecao,
+      onGerarSelecionados: _gerarSelecionadosEVincular,
+      onCriarLotesImpressao: _criarLotesImpressao,
+      onGerarRelatorioGrafica: _gerarRelatorioGraficaSelecionados,
+      onCriarPacoteGrafica: _criarPacoteGrafica,
     );
   }
 
@@ -1945,185 +2022,187 @@ class _GeradorCertificadosEventoScreenState
         child: Container(
           color: Colors.black.withOpacity(0.58),
           child: Center(
-            child: Container(
-              width: 460,
-              margin: const EdgeInsets.all(18),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: t.card,
-                borderRadius: BorderRadius.circular(t.cardRadius + 2),
-                border: Border.all(color: t.border),
-                boxShadow: t.cardShadow,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(
-                          value: progress,
-                          color: primary,
-                          strokeWidth: 4,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _tituloProcessamentoOverlay,
-                              style: TextStyle(
-                                color: t.textPrimary,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 17,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _statusProcessamento ?? 'Aguarde...',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: t.textSecondary,
-                                fontWeight: FontWeight.w700,
-                                height: 1.25,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (percent != null) ...[
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: primary.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(99),
-                            border: Border.all(
-                              color: primary.withOpacity(0.18),
-                            ),
-                          ),
-                          child: Text(
-                            '$percent%',
-                            style: TextStyle(
-                              color: primary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (_progressoTotal > 0) ...[
-                    const SizedBox(height: 13),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 9,
-                        color: primary,
-                        backgroundColor: t.border.withOpacity(0.40),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                margin: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: t.card,
+                  borderRadius: BorderRadius.circular(t.cardRadius + 2),
+                  border: Border.all(color: t.border),
+                  boxShadow: t.cardShadow,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.picture_as_pdf_rounded,
-                          color: primary,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '$_progressoAtual de $_progressoTotal PDFs processados',
-                            style: TextStyle(
-                              color: t.textMuted,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12,
-                            ),
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: CircularProgressIndicator(
+                            value: progress,
+                            color: primary,
+                            strokeWidth: 4,
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    height: 176,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: t.cardAlt,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: t.border),
-                    ),
-                    child: ultimosLogs.isEmpty
-                        ? Text(
-                      'Aguardando logs do processamento...',
-                      style: TextStyle(
-                        color: t.textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    )
-                        : ListView.builder(
-                      padding: EdgeInsets.zero,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: ultimosLogs.length,
-                      itemBuilder: (context, index) {
-                        final log = ultimosLogs[index];
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
-                          child: Row(
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                Icons.terminal_rounded,
-                                color: primary,
-                                size: 13,
+                              Text(
+                                _tituloProcessamentoOverlay,
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
                               ),
-                              const SizedBox(width: 5),
-                              Expanded(
-                                child: Text(
-                                  log,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: t.textSecondary,
-                                    fontSize: 10.2,
-                                    height: 1.12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _statusProcessamento ?? 'Aguarde...',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: t.textSecondary,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.25,
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      },
+                        ),
+                        if (percent != null) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: primary.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(99),
+                              border: Border.all(
+                                color: primary.withOpacity(0.18),
+                              ),
+                            ),
+                            child: Text(
+                              '$percent%',
+                              style: TextStyle(
+                                color: primary,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _tituloProcessamentoOverlay == 'Gerando pacote ZIP'
-                        ? 'Não feche a tela até aparecer “ZIP pronto”.'
-                        : 'Não feche a tela até o processamento terminar.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: t.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                    if (_progressoTotal > 0) ...[
+                      const SizedBox(height: 13),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 9,
+                          color: primary,
+                          backgroundColor: t.border.withOpacity(0.40),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.picture_as_pdf_rounded,
+                            color: primary,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '$_progressoAtual de $_progressoTotal PDFs processados',
+                              style: TextStyle(
+                                color: t.textMuted,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      height: 176,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: t.cardAlt,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: t.border),
+                      ),
+                      child: ultimosLogs.isEmpty
+                          ? Text(
+                        'Aguardando logs do processamento...',
+                        style: TextStyle(
+                          color: t.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                          : ListView.builder(
+                        padding: EdgeInsets.zero,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: ultimosLogs.length,
+                        itemBuilder: (context, index) {
+                          final log = ultimosLogs[index];
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.terminal_rounded,
+                                  color: primary,
+                                  size: 13,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    log,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: t.textSecondary,
+                                      fontSize: 10.2,
+                                      height: 1.12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    Text(
+                      _tituloProcessamentoOverlay == 'Gerando pacote ZIP'
+                          ? 'Não feche a tela até aparecer “ZIP pronto”.'
+                          : 'Não feche a tela até o processamento terminar.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: t.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2131,7 +2210,6 @@ class _GeradorCertificadosEventoScreenState
       ),
     );
   }
-
 
   Widget _buildEventoHeader() {
     final t = context.uai;
@@ -2196,12 +2274,31 @@ class _GeradorCertificadosEventoScreenState
             ],
           );
 
+          final csvButton = OutlinedButton.icon(
+            onPressed: _processandoLote ? null : _abrirTelaVinculoCsv,
+            icon: const Icon(Icons.table_chart_rounded, size: 18),
+            label: const Text(
+              'CSV',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: onPrimary,
+              side: BorderSide(color: onPrimary.withOpacity(0.28)),
+              backgroundColor: onPrimary.withOpacity(0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.buttonRadius),
+              ),
+            ),
+          );
+
           if (narrow) {
             return Column(
               children: [
                 icon,
                 const SizedBox(height: 12),
                 text,
+                const SizedBox(height: 12),
+                SizedBox(width: double.infinity, child: csvButton),
               ],
             );
           }
@@ -2211,6 +2308,8 @@ class _GeradorCertificadosEventoScreenState
               icon,
               const SizedBox(width: 14),
               Expanded(child: text),
+              const SizedBox(width: 12),
+              csvButton,
             ],
           );
         },
@@ -2263,28 +2362,50 @@ class _GeradorCertificadosEventoScreenState
       );
     }
 
-    return Column(
-      children: filtrados.map((participante) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: CertificadoParticipanteCard(
-            evento: _eventoData,
-            participante: participante,
-            selecionado: _selecionados.contains(participante.participacaoId),
-            processando: _processando.contains(participante.participacaoId) ||
-                (_processandoLote &&
-                    _renderParticipante?.participacaoId ==
-                        participante.participacaoId),
-            onSelecionar: (value) => _alternarSelecao(participante, value),
-            onPreview: () => _abrirPreview(participante),
-            onGerarPdf: () => _abrirPreview(participante),
-            onGerarPng: () => _abrirPreview(participante),
-            onImprimir: () => _abrirPreview(participante),
-            onCompartilhar: () => _abrirPreview(participante),
-            onMarcarImpresso: () => _marcarImpresso(participante),
-          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final r = _CertificadoResponsive.fromWidth(constraints.maxWidth);
+
+        if (r.isMobile) {
+          return Column(
+            children: filtrados.map((participante) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildParticipanteCard(participante),
+              );
+            }).toList(),
+          );
+        }
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: filtrados.map((participante) {
+            return SizedBox(
+              width: r.cardWidthFor(constraints.maxWidth),
+              child: _buildParticipanteCard(participante),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
+    );
+  }
+
+  Widget _buildParticipanteCard(CertificadoParticipanteData participante) {
+    return CertificadoParticipanteCard(
+      evento: _eventoData,
+      participante: participante,
+      selecionado: _selecionados.contains(participante.participacaoId),
+      processando: _processando.contains(participante.participacaoId) ||
+          (_processandoLote &&
+              _renderParticipante?.participacaoId == participante.participacaoId),
+      onSelecionar: (value) => _alternarSelecao(participante, value),
+      onPreview: () => _abrirPreview(participante),
+      onGerarPdf: () => _abrirPreview(participante),
+      onGerarPng: () => _abrirPreview(participante),
+      onImprimir: () => _abrirPreview(participante),
+      onCompartilhar: () => _abrirPreview(participante),
+      onMarcarImpresso: () => _marcarImpresso(participante),
     );
   }
 
@@ -2446,8 +2567,7 @@ class _SelecaoAcaoSheet extends StatelessWidget {
                           onTap: () => onAbrir(item),
                           leading: CircleAvatar(
                             backgroundColor: t.primary,
-                            foregroundColor:
-                            t.primary.computeLuminance() > 0.48
+                            foregroundColor: t.primary.computeLuminance() > 0.48
                                 ? const Color(0xFF111827)
                                 : Colors.white,
                             child: Text('${index + 1}'),
@@ -2482,5 +2602,54 @@ class _SelecaoAcaoSheet extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _CertificadoResponsive {
+  final double width;
+
+  const _CertificadoResponsive(this.width);
+
+  factory _CertificadoResponsive.fromWidth(double width) {
+    return _CertificadoResponsive(width);
+  }
+
+  bool get isMobile => width < 600;
+  bool get isTablet => width >= 600 && width < 900;
+  bool get isDesktop => width >= 900;
+  bool get isWide => width >= 1200;
+  bool get isUltraWide => width >= 1600;
+
+  double get pagePadding {
+    if (isMobile) return 12;
+    if (isTablet) return 16;
+    return 20;
+  }
+
+  double get maxContentWidth {
+    if (isUltraWide) return 1560;
+    if (isWide) return 1440;
+    if (isDesktop) return 1320;
+    return 1180;
+  }
+
+  double get sidebarWidth {
+    if (isUltraWide) return 440;
+    if (isWide) return 410;
+    return 380;
+  }
+
+  double cardWidthFor(double availableWidth) {
+    if (availableWidth < 600) return availableWidth;
+
+    const spacing = 12.0;
+    final target = availableWidth >= 1300
+        ? 430.0
+        : availableWidth >= 980
+        ? 390.0
+        : 360.0;
+
+    final columns = (availableWidth / target).floor().clamp(1, 4);
+    return (availableWidth - (spacing * (columns - 1))) / columns;
   }
 }

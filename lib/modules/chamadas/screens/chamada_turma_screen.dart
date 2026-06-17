@@ -9,7 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/modules/chamadas/services/lock_chamada_service.dart';
-import 'chamada_especial_screen.dart';
+import 'package:uai_capoeira/modules/chamadas/screens/chamada_especial_screen.dart';
 
 // ============================================
 // TELA PRINCIPAL - CHAMADA TURMA (COM CLOUD FUNCTION)
@@ -158,6 +158,32 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   bool _mostrarProgresso = false;
   String _statusMensagem = '';
 
+  // 🧠 MODO BRINCADEIRA DA CHAMADA
+  bool _modoBrincadeiraAtivo = false;
+  bool _telepatiaAtiva = false;
+  bool _telepatiaRodando = false;
+  bool _telepatiaConcluida = false;
+  bool _telepatiaJaIniciou = false;
+  bool _telepatiaUsandoChamadaReal = false;
+  bool _telepatiaRegistradaNoUsuario = false;
+  Timer? _telepatiaTimer;
+  String _telepatiaMensagem = '';
+  final ScrollController _telepatiaScrollController = ScrollController();
+
+  bool _chamadaInversaAtiva = false;
+  bool _chamadaInversaRodando = false;
+  bool _chamadaInversaJaIniciou = false;
+  int _chamadaInversaToques = 0;
+  Timer? _chamadaInversaTimer;
+
+  // 🔥 PISCAR CARD QUANDO O INDICADOR EXIGE ALERTA
+  Timer? _alertaPiscaTimer;
+  bool _alertaPiscaLigado = false;
+
+  bool _indicadoresAusenciaAtivo = true;
+  bool _mostrarTextoUltimaPresencaIndicador = true;
+  List<Map<String, dynamic>> _faixasIndicadoresAusencia = [];
+
   final Map<String, String> _diasAbreviados = {
     'SEGUNDA': 'seg',
     'TERÇA': 'ter',
@@ -186,6 +212,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
     );
 
+    _alertaPiscaTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
+      if (!mounted) return;
+      if (!_indicadoresAusenciaAtivo) return;
+      setState(() => _alertaPiscaLigado = !_alertaPiscaLigado);
+    });
+
     debugPrint('🚀 ChamadaTurmaScreen initState');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verificarEAcessarChamada();
@@ -194,11 +226,15 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
   @override
   void dispose() {
-    if (_podeAcessarChamada) {
+    if (_podeAcessarChamada && !_telepatiaUsandoChamadaReal) {
       debugPrint('🔓 Liberando lock no dispose');
       LockChamadaService.liberarChamada(widget.turmaId);
     }
     _buscaDebounce?.cancel();
+    _alertaPiscaTimer?.cancel();
+    _telepatiaTimer?.cancel();
+    _chamadaInversaTimer?.cancel();
+    _telepatiaScrollController.dispose();
     _ocupacaoSubscription?.cancel();
     _animationController.dispose();
     _observacaoController.dispose();
@@ -220,8 +256,27 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     try {
       // Verificar se já tem chamada hoje
       await _verificarChamadaExistenteAlternativa();
+      await _carregarConfiguracaoIndicadoresAusencia();
+      await _carregarConfiguracaoModoBrincadeira();
 
       if (_chamadaJaFeitaHoje) {
+        final jaRecebeuTelepatia = await _usuarioJaRecebeuTelepatiaNestaChamada();
+
+        if (_telepatiaAtiva && !jaRecebeuTelepatia) {
+          await _prepararTelepatiaComChamadaReal();
+
+          if (!mounted) return;
+          setState(() {
+            _podeAcessarChamada = true;
+            _podeFazerChamada = true;
+            _verificandoLock = false;
+            _isLoading = false;
+          });
+
+          _agendarTelepatiaSeAtiva();
+          return;
+        }
+
         setState(() {
           _verificandoLock = false;
           _isLoading = false;
@@ -407,6 +462,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       }
 
       await _verificarChamadaExistenteAlternativa();
+      await _carregarConfiguracaoIndicadoresAusencia();
+      await _carregarConfiguracaoModoBrincadeira();
 
       if (_chamadaJaFeitaHoje) {
         setState(() {
@@ -498,7 +555,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       if (querySnapshot.docs.isNotEmpty) {
         setState(() {
           _chamadaJaFeitaHoje = true;
-          _chamadaExistente = querySnapshot.docs.first.data();
+          _chamadaExistente = {
+            ...querySnapshot.docs.first.data(),
+            'id': querySnapshot.docs.first.id,
+          };
         });
       } else {
         setState(() {
@@ -596,6 +656,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               : '🔴 MODO ADMIN: CHAMADA EXTRA (fora do dia)';
         });
         await _carregarAlunos();
+        _agendarChamadaInversaSeAtiva();
       } else {
         final diasTreinoTexto = _diasTreinoTurma.isNotEmpty
             ? _diasTreinoTurma.join(', ')
@@ -642,6 +703,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           'foto': data['foto_perfil_aluno'] as String?,
           'graduacao_id': data['graduacao_id'] as String?,
           'graduacao_nome': data['graduacao_nome']?.toString() ?? data['graduacao_atual']?.toString() ?? '',
+          'ultimo_dia_presente': data['ultimo_dia_presente'] ??
+              data['ultimoDiaPresente'] ??
+              data['ultima_presenca'] ??
+              data['ultimaPresenca'] ??
+              data['data_ultima_presenca'] ??
+              data['dataUltimaPresenca'] ??
+              data['ultimo_presente_em'] ??
+              data['ultimoPresenteEm'] ??
+              data['last_presence'] ??
+              data['lastPresence'],
         };
       }).toList();
 
@@ -867,6 +938,511 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     }
   }
 
+
+  // ============================================
+  // 🧠 CONFIGURAÇÕES SECRETAS DA CHAMADA
+  // ============================================
+  Future<void> _carregarConfiguracaoModoBrincadeira() async {
+    try {
+      final doc = await _firestore
+          .collection('configuracoes_sistema')
+          .doc('modo_troll')
+          .get();
+
+      final data = doc.data();
+      if (data == null) {
+        if (!mounted) return;
+        setState(() {
+          _modoBrincadeiraAtivo = false;
+          _telepatiaAtiva = false;
+          _chamadaInversaAtiva = false;
+        });
+        return;
+      }
+
+      final ativoGeral = data['ativo'] == true;
+      bool telepatiaAtiva = false;
+      bool chamadaInversaAtiva = false;
+
+      final trolagens = data['trolagens'];
+      if (trolagens is Map) {
+        final telepatia = trolagens['chamada_telepatia'];
+        final inversa = trolagens['chamada_inversa'];
+
+        telepatiaAtiva = telepatia == true ||
+            (telepatia is Map && (telepatia['ativo'] == true || telepatia['enabled'] == true));
+        chamadaInversaAtiva = inversa == true ||
+            (inversa is Map && (inversa['ativo'] == true || inversa['enabled'] == true));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _modoBrincadeiraAtivo = ativoGeral;
+        _telepatiaAtiva = ativoGeral && telepatiaAtiva;
+        _chamadaInversaAtiva = ativoGeral && chamadaInversaAtiva;
+      });
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar configurações secretas da chamada: $e');
+      if (!mounted) return;
+      setState(() {
+        _modoBrincadeiraAtivo = false;
+        _telepatiaAtiva = false;
+        _chamadaInversaAtiva = false;
+      });
+    }
+  }
+
+  String _chaveChamadaTelepatiaUsuario() {
+    final dataFmt = _chamadaExistente?['data_formatada']?.toString();
+    final dataFinal = (dataFmt != null && dataFmt.isNotEmpty)
+        ? dataFmt
+        : DateFormat('yyyy-MM-dd').format(_dataChamada);
+    return '${widget.turmaId}_$dataFinal';
+  }
+
+  Future<bool> _usuarioJaRecebeuTelepatiaNestaChamada() async {
+    try {
+      if (widget.usuarioId.isEmpty) return true;
+      if (_chamadaExistente == null) return true;
+
+      final userDoc = await _firestore.collection('usuarios').doc(widget.usuarioId).get();
+      final data = userDoc.data();
+      final trollData = data?['trolldata'];
+      if (trollData is! Map) return false;
+
+      final telepatia = trollData['chamada_telepatia'];
+      if (telepatia is! Map) return false;
+
+      return telepatia.containsKey(_chaveChamadaTelepatiaUsuario());
+    } catch (e) {
+      debugPrint('⚠️ Erro ao verificar histórico de brincadeira do usuário: $e');
+      return true;
+    }
+  }
+
+  Future<void> _registrarTelepatiaNoUsuario() async {
+    if (_telepatiaRegistradaNoUsuario) return;
+    if (widget.usuarioId.isEmpty) return;
+    if (_chamadaExistente == null) return;
+
+    _telepatiaRegistradaNoUsuario = true;
+
+    try {
+      final chave = _chaveChamadaTelepatiaUsuario();
+      final chamadaId = _chamadaExistente?['id']?.toString() ?? '';
+
+      await _firestore.collection('usuarios').doc(widget.usuarioId).set({
+        'trolldata': {
+          'chamada_telepatia': {
+            chave: {
+              'turma_id': widget.turmaId,
+              'turma_nome': widget.turmaNome,
+              'academia_id': widget.academiaId,
+              'academia_nome': widget.academiaNome,
+              'chamada_id': chamadaId,
+              'data_chamada': Timestamp.fromDate(_dataChamada),
+              'data_formatada': DateFormat('yyyy-MM-dd').format(_dataChamada),
+              'registrado_em': FieldValue.serverTimestamp(),
+            },
+          },
+        },
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('⚠️ Erro ao registrar brincadeira no usuário: $e');
+    }
+  }
+
+  DateTime _dataChamadaRealFromData(Map<String, dynamic> data) {
+    final value = data['data_chamada'] ?? data['dataChamada'];
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    final dataFormatada = data['data_formatada']?.toString();
+    if (dataFormatada != null && dataFormatada.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(dataFormatada.trim());
+      if (parsed != null) return parsed;
+    }
+    return DateTime.now();
+  }
+
+  Future<void> _prepararTelepatiaComChamadaReal() async {
+    final chamada = _chamadaExistente;
+    if (chamada == null) return;
+
+    final alunosRaw = chamada['alunos'];
+    final alunos = <Map<String, dynamic>>[];
+    final presencasIniciais = <String, bool>{};
+
+    if (alunosRaw is List) {
+      for (var i = 0; i < alunosRaw.length; i++) {
+        final raw = alunosRaw[i];
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final id = (item['aluno_id'] ?? item['id'] ?? 'replay_$i').toString();
+        final nome = (item['aluno_nome'] ?? item['nome'] ?? 'Aluno').toString();
+        final presenteReal = item['presente'] == true;
+
+        alunos.add({
+          'id': id,
+          'nome': nome,
+          'apelido': item['apelido']?.toString() ?? '',
+          'foto': item['foto'] ?? item['foto_perfil_aluno'],
+          'graduacao_id': item['graduacao_id'],
+          'graduacao_nome': item['graduacao_nome']?.toString() ??
+              item['graduacao']?.toString() ??
+              item['corda']?.toString() ??
+              '',
+          'ultimo_dia_presente': item['ultimo_dia_presente'] ??
+              item['ultima_presenca'] ??
+              item['data_ultima_presenca'],
+          'observacao': item['observacao']?.toString() ?? '',
+          '_presente_real_replay': presenteReal,
+        });
+        presencasIniciais[id] = false;
+      }
+    }
+
+    alunos.sort((a, b) {
+      final nomeA = a['nome']?.toString().toLowerCase() ?? '';
+      final nomeB = b['nome']?.toString().toLowerCase() ?? '';
+      return nomeA.compareTo(nomeB);
+    });
+
+    final dataReal = _dataChamadaRealFromData(chamada);
+    final tipoReal = chamada['tipo_aula']?.toString() ?? _tipoAulaHoje;
+    final professorReal = chamada['professor_nome']?.toString() ?? _professorNome;
+    final professorIdReal = chamada['professor_id']?.toString() ?? _professorId;
+
+    if (!mounted) return;
+    setState(() {
+      _alunos = alunos;
+      _presencas = presencasIniciais;
+      _observacoes.clear();
+      _dataChamada = dataReal;
+      _tipoAulaHoje = tipoReal;
+      _professorNome = professorReal.isEmpty ? 'Professor' : professorReal;
+      _professorId = professorIdReal;
+      _telepatiaUsandoChamadaReal = true;
+      _telepatiaRodando = false;
+      _telepatiaConcluida = false;
+      _telepatiaJaIniciou = false;
+      _telepatiaRegistradaNoUsuario = false;
+      _telepatiaMensagem = 'Preparando chamada...';
+      _filtroPresenca = 'Todos';
+      _buscaAluno = '';
+      _buscaController.clear();
+      _invalidarCacheFiltro();
+    });
+
+    _preloadGraduacoes();
+    _loadSvg();
+  }
+
+  void _agendarTelepatiaSeAtiva() {
+    if (!_telepatiaAtiva) return;
+    if (!_telepatiaUsandoChamadaReal) return;
+    if (_telepatiaJaIniciou) return;
+    if (_alunos.isEmpty) return;
+    if (!mounted) return;
+
+    _telepatiaJaIniciou = true;
+
+    Future.delayed(const Duration(milliseconds: 850), () {
+      if (!mounted) return;
+      if (!_telepatiaAtiva || !_telepatiaUsandoChamadaReal) return;
+      if (_alunos.isEmpty) return;
+      _iniciarTelepatiaReplay();
+    });
+  }
+
+  void _iniciarTelepatiaReplay() {
+    _telepatiaTimer?.cancel();
+
+    final roteiro = List<Map<String, dynamic>>.from(_alunos);
+    if (roteiro.isEmpty) return;
+
+    final frases = <String>[
+      'Lendo a energia da turma...',
+      'Consultando o berimbau...',
+      'Detectando presença por vibração...',
+      'Calculando nível de axé...',
+      'Sincronizando presença espiritual...',
+      'Conferindo a roda...',
+    ];
+
+    setState(() {
+      _telepatiaRodando = true;
+      _telepatiaConcluida = false;
+      _telepatiaMensagem = frases.first;
+      _filtroPresenca = 'Todos';
+      _buscaAluno = '';
+      _buscaController.clear();
+      for (final aluno in _alunos) {
+        _presencas[aluno['id'] as String] = false;
+      }
+      _invalidarCacheFiltro();
+    });
+
+    HapticFeedback.mediumImpact();
+
+    int index = 0;
+    _telepatiaTimer = Timer.periodic(const Duration(milliseconds: 430), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (index >= roteiro.length) {
+        timer.cancel();
+        final presentes = _presencas.values.where((v) => v).length;
+        final ausentes = _alunos.length - presentes;
+
+        setState(() {
+          _telepatiaRodando = false;
+          _telepatiaConcluida = true;
+          _telepatiaMensagem =
+          'Chamada concluída por presença espiritual: $presentes presentes e $ausentes ausentes.';
+          _invalidarCacheFiltro();
+        });
+
+        HapticFeedback.heavyImpact();
+        _registrarTelepatiaNoUsuario();
+
+        Future.delayed(const Duration(milliseconds: 650), () {
+          if (!mounted) return;
+          _mostrarDialogoTelepatiaFinal();
+        });
+        return;
+      }
+
+      final aluno = roteiro[index];
+      final alunoId = aluno['id'] as String?;
+      final presente = aluno['_presente_real_replay'] == true;
+      final nome = aluno['nome']?.toString() ?? 'Aluno';
+      final frase = frases[index % frases.length];
+
+      setState(() {
+        if (alunoId != null && alunoId.isNotEmpty) {
+          _presencas[alunoId] = presente;
+        }
+        _telepatiaMensagem = presente
+            ? '$frase\n✅ ${_nomeAlunoCurto(nome)} detectado pelo axé.'
+            : '$frase\n❌ ${_nomeAlunoCurto(nome)} sem sinal de presença.';
+        _invalidarCacheFiltro();
+      });
+
+      if (_telepatiaScrollController.hasClients) {
+        final maxScroll = _telepatiaScrollController.position.maxScrollExtent;
+        final progress = roteiro.length <= 1
+            ? 1.0
+            : (index / (roteiro.length - 1)).clamp(0.0, 1.0).toDouble();
+        final target = maxScroll * progress;
+        _telepatiaScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+        );
+      }
+
+      index++;
+    });
+  }
+
+  void _mostrarDialogoTelepatiaFinal() {
+    final presentes = _presencas.values.where((v) => v).length;
+    final total = _alunos.length;
+    final ausentes = total - presentes;
+    final porcentagem = total > 0 ? ((presentes / total) * 100).round() : 0;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: context.uai.primaryGradient,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                duration: const Duration(seconds: 1),
+                tween: Tween(begin: 0.0, end: 1.0),
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Icon(
+                      Icons.celebration,
+                      size: 80,
+                      color: _onPrimary(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '🎉 CHAMADA CONCLUÍDA!',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: _onPrimary(),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                DateFormat("EEEE, dd/MM/yyyy", 'pt_BR').format(_dataChamada),
+                style: TextStyle(fontSize: 16, color: _onPrimary().withOpacity(0.74)),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: context.uai.card.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: _onPrimary().withOpacity(0.14)),
+                ),
+                child: Text(
+                  'Chamada feita por telepatia capoeirística e presença espiritual.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _onPrimary(),
+                    fontSize: 14,
+                    height: 1.25,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: context.uai.card.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildResumoItem('$presentes', 'Presentes', Icons.check_circle),
+                    _buildResumoItem('$ausentes', 'Ausentes', Icons.cancel),
+                    _buildResumoItem('$porcentagem%', 'Frequência', Icons.trending_up),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Professor: $_professorNome',
+                style: TextStyle(fontSize: 14, color: _onPrimary()),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tipo de aula: $_tipoAulaHoje',
+                style: TextStyle(fontSize: 12, color: _onPrimary().withOpacity(0.74)),
+              ),
+              const SizedBox(height: 24),
+              TweenAnimationBuilder<Duration>(
+                duration: const Duration(seconds: 8),
+                tween: Tween(begin: const Duration(seconds: 8), end: Duration.zero),
+                onEnd: () {
+                  Navigator.pop(context);
+                  if (mounted) Navigator.pop(context);
+                },
+                builder: (context, value, child) {
+                  return Column(
+                    children: [
+                      LinearProgressIndicator(
+                        value: value.inSeconds / 8,
+                        backgroundColor: _onPrimary().withOpacity(0.25),
+                        valueColor: AlwaysStoppedAnimation<Color>(_onPrimary()),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Fechando em ${value.inSeconds} segundos...',
+                        style: TextStyle(color: _onPrimary().withOpacity(0.74), fontSize: 12),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  if (mounted) Navigator.pop(context);
+                },
+                child: Text(
+                  'FECHAR AGORA',
+                  style: TextStyle(color: _onPrimary(), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _agendarChamadaInversaSeAtiva() {
+    if (!_modoBrincadeiraAtivo || !_chamadaInversaAtiva) return;
+    if (_chamadaInversaJaIniciou) return;
+    if (_telepatiaUsandoChamadaReal) return;
+    if (_chamadaJaFeitaHoje) return;
+    if (_alunos.isEmpty) return;
+
+    _chamadaInversaJaIniciou = true;
+
+    Future.delayed(const Duration(milliseconds: 650), () {
+      if (!mounted) return;
+      if (!_podeFazerChamada || _chamadaJaFeitaHoje) return;
+
+      setState(() {
+        _chamadaInversaRodando = true;
+        _chamadaInversaToques = 0;
+        _statusMensagem = 'Sincronizando presença automática...';
+      });
+
+      _chamadaInversaTimer?.cancel();
+      _chamadaInversaTimer = Timer(const Duration(seconds: 20), () {
+        if (!mounted) return;
+        setState(() {
+          _chamadaInversaRodando = false;
+          _statusMensagem = '';
+        });
+      });
+    });
+  }
+
+  void _togglePresencaInversa(String alunoId) {
+    final alunosVisiveis = _alunosFiltrados;
+    if (alunosVisiveis.isEmpty) return;
+
+    final index = alunosVisiveis.indexWhere((a) => a['id'] == alunoId);
+    if (index < 0) return;
+
+    final offsets = _modoListaCompacta ? <int>[1, -1] : <int>[1, 2, -1, -2];
+    final offset = offsets[_chamadaInversaToques % offsets.length];
+    final targetIndex = (index + offset) % alunosVisiveis.length;
+    final normalizedIndex = targetIndex < 0 ? targetIndex + alunosVisiveis.length : targetIndex;
+    final alvo = alunosVisiveis[normalizedIndex];
+    final alvoId = alvo['id'] as String;
+
+    setState(() {
+      _chamadaInversaToques++;
+      _presencas[alvoId] = !(_presencas[alvoId] ?? false);
+      _invalidarCacheFiltro();
+    });
+
+    HapticFeedback.mediumImpact();
+  }
+
   // ============================================
   // FUNÇÕES AUXILIARES
   // ============================================
@@ -899,6 +1475,244 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     return diaUpper.length >= 3 ? diaUpper.substring(0, 3).toLowerCase() : diaUpper.toLowerCase();
   }
 
+
+
+  int _parseIntIndicador(dynamic value, {required int fallback}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '') ?? fallback;
+  }
+
+  List<Map<String, dynamic>> _faixasIndicadoresPadrao() {
+    return [
+      {'ate_dias': 3, 'cor': '#2196F3', 'label': 'Frequente', 'gera_alerta': false},
+      {'ate_dias': 6, 'cor': '#4CAF50', 'label': 'Regular', 'gera_alerta': false},
+      {'ate_dias': 12, 'cor': '#FFC107', 'label': 'Atenção', 'gera_alerta': true},
+      {'ate_dias': 24, 'cor': '#FF9800', 'label': 'Ausente', 'gera_alerta': true},
+      {'ate_dias': 35, 'cor': '#FF5722', 'label': 'Muito ausente', 'gera_alerta': true},
+      {'ate_dias': 9999, 'cor': '#F44336', 'label': 'Risco de inatividade', 'gera_alerta': true},
+    ];
+  }
+
+  Color _colorFromHexIndicador(String value, {Color? fallback}) {
+    try {
+      var cleaned = value.trim().replaceAll('#', '').toUpperCase();
+      if (cleaned.length == 6) cleaned = 'FF$cleaned';
+      if (cleaned.length != 8) return fallback ?? context.uai.textMuted;
+      return Color(int.parse(cleaned, radix: 16));
+    } catch (_) {
+      return fallback ?? context.uai.textMuted;
+    }
+  }
+
+  Future<void> _carregarConfiguracaoIndicadoresAusencia() async {
+    try {
+      final doc = await _firestore
+          .collection('configuracoes_sistema')
+          .doc('indicadores_ausencia')
+          .get();
+
+      final data = doc.data();
+      final faixasRaw = data?['faixas'];
+      final faixas = faixasRaw is List
+          ? faixasRaw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList()
+          : _faixasIndicadoresPadrao();
+
+      faixas.sort((a, b) {
+        final aDias = _parseIntIndicador(a['ate_dias'], fallback: 9999);
+        final bDias = _parseIntIndicador(b['ate_dias'], fallback: 9999);
+        return aDias.compareTo(bDias);
+      });
+
+      _indicadoresAusenciaAtivo = data?['ativo'] != false;
+      _mostrarTextoUltimaPresencaIndicador =
+          data?['mostrar_texto_ultima_presenca'] != false;
+      _faixasIndicadoresAusencia = faixas;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar configuração dos indicadores: $e');
+      _indicadoresAusenciaAtivo = true;
+      _mostrarTextoUltimaPresencaIndicador = true;
+      _faixasIndicadoresAusencia = _faixasIndicadoresPadrao();
+    }
+  }
+
+  DateTime? _dateTimeSeguro(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+
+    if (value is String) {
+      final texto = value.trim();
+      if (texto.isEmpty) return null;
+      final parsedIso = DateTime.tryParse(texto);
+      if (parsedIso != null) return parsedIso;
+      try {
+        return DateFormat('dd/MM/yyyy').parseStrict(texto);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (value is Map) {
+      final seconds = value['_seconds'] ?? value['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+      if (seconds is num) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds.toInt() * 1000);
+      }
+    }
+
+    return null;
+  }
+
+  DateTime? _ultimaPresencaDoAluno(Map<String, dynamic> aluno) {
+    final campos = [
+      aluno['ultimo_dia_presente'],
+      aluno['ultimoDiaPresente'],
+      aluno['ultima_presenca'],
+      aluno['ultimaPresenca'],
+      aluno['data_ultima_presenca'],
+      aluno['dataUltimaPresenca'],
+      aluno['ultimo_presente_em'],
+      aluno['ultimoPresenteEm'],
+      aluno['last_presence'],
+      aluno['lastPresence'],
+    ];
+
+    for (final campo in campos) {
+      final data = _dateTimeSeguro(campo);
+      if (data != null) return data;
+    }
+
+    return null;
+  }
+
+  int? _diasDesdeUltimaPresenca(Map<String, dynamic> aluno) {
+    final ultima = _ultimaPresencaDoAluno(aluno);
+    if (ultima == null) return null;
+
+    final hoje = DateTime.now();
+    final hojeLimpo = DateTime(hoje.year, hoje.month, hoje.day);
+    final ultimaLimpa = DateTime(ultima.year, ultima.month, ultima.day);
+    final dias = hojeLimpo.difference(ultimaLimpa).inDays;
+
+    return dias < 0 ? 0 : dias;
+  }
+
+  Map<String, dynamic>? _faixaIndicadorAusencia(Map<String, dynamic> aluno) {
+    if (!_indicadoresAusenciaAtivo) return null;
+
+    final dias = _diasDesdeUltimaPresenca(aluno);
+    if (dias == null) return null;
+
+    final faixas = _faixasIndicadoresAusencia.isEmpty
+        ? _faixasIndicadoresPadrao()
+        : _faixasIndicadoresAusencia;
+
+    for (final faixa in faixas) {
+      final ateDias = _parseIntIndicador(faixa['ate_dias'], fallback: 9999);
+      if (dias <= ateDias) return faixa;
+    }
+
+    return faixas.isNotEmpty ? faixas.last : null;
+  }
+
+  Color _corIndicadorAusencia(Map<String, dynamic> aluno) {
+    if (!_indicadoresAusenciaAtivo) return context.uai.textMuted;
+
+    final faixa = _faixaIndicadorAusencia(aluno);
+    if (faixa == null) return context.uai.textMuted;
+
+    return _colorFromHexIndicador(
+      faixa['cor']?.toString() ?? '#9E9E9E',
+      fallback: context.uai.textMuted,
+    );
+  }
+
+  bool _indicadorGeraAlerta(Map<String, dynamic> aluno) {
+    final faixa = _faixaIndicadorAusencia(aluno);
+    if (faixa == null) return false;
+    return faixa['gera_alerta'] == true;
+  }
+
+  String _labelIndicadorAusencia(Map<String, dynamic> aluno) {
+    final faixa = _faixaIndicadorAusencia(aluno);
+    final label = faixa?['label']?.toString().trim() ?? '';
+    return label.isEmpty ? 'Alerta' : label;
+  }
+
+  Map<String, List<Map<String, dynamic>>> _alunosAgrupadosPorAlerta() {
+    final grupos = <String, List<Map<String, dynamic>>>{};
+
+    for (final aluno in _alunos) {
+      final alunoId = aluno['id'] as String? ?? '';
+      final estaPresente = _presencas[alunoId] == true;
+
+      // Se marcou presença, não entra no alerta final da chamada.
+      if (estaPresente) continue;
+      if (!_indicadorGeraAlerta(aluno)) continue;
+
+      final label = _labelIndicadorAusencia(aluno);
+      grupos.putIfAbsent(label, () => []).add(aluno);
+    }
+
+    return grupos;
+  }
+
+  String _textoUltimaPresenca(Map<String, dynamic> aluno) {
+    final dias = _diasDesdeUltimaPresenca(aluno);
+
+    if (dias == null) return 'Sem presença registrada';
+    if (dias == 0) return 'Última presença hoje';
+    if (dias == 1) return 'Última presença ontem';
+    return 'Última presença há $dias dias';
+  }
+
+  String _nomeAlunoCurto(String nomeCompleto) {
+    final partes = nomeCompleto
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((parte) => parte.trim().isNotEmpty)
+        .toList();
+
+    if (partes.length <= 2) return nomeCompleto.trim();
+
+    const conectores = {'de', 'da', 'do', 'das', 'dos', 'd'};
+    final segundaParte = partes[1].toLowerCase();
+
+    if (conectores.contains(segundaParte) && partes.length >= 3) {
+      return '${partes[0]} ${partes[1]} ${partes[2]}';
+    }
+
+    return '${partes[0]} ${partes[1]}';
+  }
+
+  Widget _buildIndicadorBolinha(Map<String, dynamic> aluno, {double size = 13}) {
+    if (!_indicadoresAusenciaAtivo) return const SizedBox.shrink();
+
+    final color = _corIndicadorAusencia(aluno);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: context.uai.card, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatarDiaParaComparacao(String dia) {
     final lower = dia.toLowerCase();
     return lower
@@ -918,6 +1732,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   void _togglePresenca(String alunoId) {
+    if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) {
+      HapticFeedback.selectionClick();
+      return;
+    }
+
+    if (_chamadaInversaRodando) {
+      _togglePresencaInversa(alunoId);
+      return;
+    }
+
     setState(() {
       _presencas[alunoId] = !(_presencas[alunoId] ?? false);
       _invalidarCacheFiltro();
@@ -1005,6 +1829,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   void _marcarTodosFiltrados(bool presente) {
+    if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) return;
+
     final filtrados = _alunosFiltrados;
     if (filtrados.isEmpty) return;
 
@@ -1019,6 +1845,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   void _inverterFiltrados() {
+    if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) return;
+
     final filtrados = _alunosFiltrados;
     if (filtrados.isEmpty) return;
 
@@ -1034,6 +1862,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   }
 
   Future<void> _confirmarLimparChamada() async {
+    if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1247,6 +2077,11 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   // FUNÇÃO PRINCIPAL DE SALVAR CHAMADA (COM CLOUD FUNCTION)
   // ============================================
   Future<void> _salvarChamada() async {
+    if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) {
+      _mostrarDialogoTelepatiaFinal();
+      return;
+    }
+
     final aindaTemLock = await _verificarLockAindaAtivo();
     if (!aindaTemLock) {
       _mostrarAvisoLockExpirado();
@@ -1393,6 +2228,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   // TELA DE CONCLUSÃO DA CHAMADA
   // ============================================
   void _mostrarTelaConclusao(Map<String, dynamic> dados) {
+    final gruposAlerta = _alunosAgrupadosPorAlerta();
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1455,10 +2292,14 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                 'Tipo de aula: $_tipoAulaHoje',
                 style: TextStyle(fontSize: 12, color: _onPrimary().withOpacity(0.74)),
               ),
+              if (gruposAlerta.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _buildAlunosAtencaoConclusao(gruposAlerta),
+              ],
               SizedBox(height: 25),
               TweenAnimationBuilder<Duration>(
-                duration: const Duration(seconds: 5),
-                tween: Tween(begin: const Duration(seconds: 5), end: Duration.zero),
+                duration: const Duration(seconds: 10),
+                tween: Tween(begin: const Duration(seconds: 10), end: Duration.zero),
                 onEnd: () {
                   Navigator.pop(context);
                   if (mounted) Navigator.pop(context);
@@ -1498,6 +2339,78 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     );
   }
 
+  Widget _buildAlunosAtencaoConclusao(
+      Map<String, List<Map<String, dynamic>>> grupos,
+      ) {
+    final onGradient = _onPrimary();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: onGradient.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: onGradient, size: 18),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Esses alunos merecem atenção',
+                  style: TextStyle(
+                    color: onGradient,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...grupos.entries.map((entry) {
+            final nomes = entry.value
+                .map((aluno) => _nomeAlunoCurto(aluno['nome']?.toString() ?? 'Aluno'))
+                .toList();
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${entry.key} (${nomes.length})',
+                    style: TextStyle(
+                      color: onGradient,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    nomes.join(', '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: onGradient.withOpacity(0.82),
+                      fontSize: 11,
+                      height: 1.22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResumoItem(String value, String label, IconData icon) {
     final onGradient = _onPrimary();
 
@@ -1530,10 +2443,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
   Widget _buildAlunoGridItem(Map<String, dynamic> aluno) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
-    final apelido = aluno['apelido']?.toString() ?? '';
+    final nomeAlunoExibicao = _nomeAlunoCurto(nomeAluno);
     final estaPresente = _presencas[alunoId] ?? false;
     final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
     final fotoUrl = aluno['foto'] as String?;
+    final indicadorColor = _corIndicadorAusencia(aluno);
+    final alertaAtivo = _indicadorGeraAlerta(aluno) && !estaPresente;
+    final alertaPiscando = alertaAtivo && _alertaPiscaLigado;
 
     return RepaintBoundary(
       child: AnimatedContainer(
@@ -1543,10 +2459,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: estaPresente
+              color: alertaAtivo
+                  ? indicadorColor.withOpacity(alertaPiscando ? 0.52 : 0.18)
+                  : estaPresente
                   ? context.uai.success.withOpacity(0.18)
                   : context.uai.error.withOpacity(0.14),
-              blurRadius: estaPresente ? 13 : 10,
+              blurRadius: alertaAtivo
+                  ? (alertaPiscando ? 18 : 9)
+                  : estaPresente
+                  ? 13
+                  : 10,
               offset: const Offset(0, 4),
             ),
           ],
@@ -1563,8 +2485,16 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                 color: context.uai.card,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: estaPresente ? context.uai.success : context.uai.error.withOpacity(0.70),
-                  width: estaPresente ? 2.2 : 1.8,
+                  color: alertaAtivo
+                      ? indicadorColor.withOpacity(alertaPiscando ? 0.98 : 0.46)
+                      : estaPresente
+                      ? context.uai.success
+                      : context.uai.error.withOpacity(0.70),
+                  width: alertaAtivo
+                      ? (alertaPiscando ? 2.8 : 1.8)
+                      : estaPresente
+                      ? 2.2
+                      : 1.8,
                 ),
               ),
               child: ClipRRect(
@@ -1602,34 +2532,45 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                                 Positioned(
                                   left: 10,
                                   right: 10,
-                                  bottom: 9,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        nomeAluno,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.08,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                  bottom: 10,
+                                  child: Center(
+                                    child: Container(
+                                      constraints: const BoxConstraints(maxWidth: 132),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
                                       ),
-                                      if (apelido.isNotEmpty)
-                                        Text(
-                                          '"$apelido"',
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.34),
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.10),
+                                        ),
+                                      ),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          nomeAlunoExibicao,
+                                          textAlign: TextAlign.center,
+                                          softWrap: false,
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.74),
-                                            fontSize: 10,
-                                            fontStyle: FontStyle.italic,
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1.08,
+                                            shadows: [
+                                              Shadow(
+                                                color: Colors.black.withOpacity(0.55),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 1),
+                                              ),
+                                            ],
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                    ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1637,46 +2578,74 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                           ),
                           Container(
                             width: double.infinity,
-                            padding: EdgeInsets.fromLTRB(9, 9, 9, 10),
+                            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                             decoration: BoxDecoration(
                               color: estaPresente
                                   ? context.uai.success.withOpacity(0.10)
                                   : context.uai.error.withOpacity(0.10),
                             ),
-                            child: Center(
-                              child: SizedBox(
-                                width: 128,
-                                height: 38,
-                                child: ElevatedButton.icon(
-                                  onPressed: () => _togglePresenca(alunoId),
-                                  style: ElevatedButton.styleFrom(
-                                    elevation: 0,
-                                    backgroundColor: estaPresente
-                                        ? context.uai.success
-                                        : context.uai.primary,
-                                    foregroundColor: _readableOn(
-                                      estaPresente ? context.uai.success : context.uai.primary,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(19),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_indicadoresAusenciaAtivo && _mostrarTextoUltimaPresencaIndicador)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      _textoUltimaPresenca(aluno),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: indicadorColor,
+                                        fontSize: 9.8,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                        shadows: [
+                                          Shadow(
+                                            color: Colors.black.withOpacity(0.10),
+                                            blurRadius: 2,
+                                            offset: const Offset(0, 1),
+                                          ),
+                                        ],
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  icon: Icon(
-                                    estaPresente
-                                        ? Icons.check_circle_rounded
-                                        : Icons.radio_button_unchecked_rounded,
-                                    size: 17,
-                                  ),
-                                  label: Text(
-                                    estaPresente ? 'Presente' : 'Marcar',
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.bold,
+                                Center(
+                                  child: SizedBox(
+                                    width: 108,
+                                    height: 31,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => _togglePresenca(alunoId),
+                                      style: ElevatedButton.styleFrom(
+                                        elevation: 0,
+                                        backgroundColor: estaPresente
+                                            ? context.uai.success
+                                            : context.uai.primary,
+                                        foregroundColor: _readableOn(
+                                          estaPresente ? context.uai.success : context.uai.primary,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(17),
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        estaPresente
+                                            ? Icons.check_circle_rounded
+                                            : Icons.radio_button_unchecked_rounded,
+                                        size: 15,
+                                      ),
+                                      label: Text(
+                                        estaPresente ? 'Presente' : 'Marcar',
+                                        style: const TextStyle(
+                                          fontSize: 10.8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ],
@@ -1735,6 +2704,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
                         ),
                       ),
                     ),
+                    if (_indicadoresAusenciaAtivo)
+                      Positioned(
+                        top: 8,
+                        left: 27,
+                        child: _buildIndicadorBolinha(aluno, size: 12),
+                      ),
                   ],
                 ),
               ),
@@ -1745,17 +2720,19 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     );
   }
 
-  Widget _buildAlunoCompactTile(Map<String, dynamic> aluno) {
+  Widget _buildAlunoCompactTile(
+      Map<String, dynamic> aluno, {
+        EdgeInsetsGeometry? margin,
+      }) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
-    final apelido = aluno['apelido']?.toString() ?? '';
+    final nomeAlunoExibicao = _nomeAlunoCurto(nomeAluno);
     final graduacao = aluno['graduacao_nome']?.toString() ?? '';
     final fotoUrl = aluno['foto'] as String?;
     final estaPresente = _presencas[alunoId] ?? false;
     final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
-
     return Container(
-      margin: EdgeInsets.fromLTRB(16, 0, 16, 10),
+      margin: margin ?? EdgeInsets.fromLTRB(16, 0, 16, 10),
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(18),
@@ -1774,9 +2751,20 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
       child: ListTile(
         onTap: () => _togglePresenca(alunoId),
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: _buildAlunoAvatarMini(fotoUrl, nomeAluno, estaPresente),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _buildAlunoAvatarMini(fotoUrl, nomeAluno, estaPresente),
+            if (_indicadoresAusenciaAtivo)
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: _buildIndicadorBolinha(aluno, size: 12),
+              ),
+          ],
+        ),
         title: Text(
-          nomeAluno,
+          nomeAlunoExibicao,
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: estaPresente ? context.uai.success : context.uai.textPrimary,
@@ -1785,15 +2773,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
-          [
-            if (apelido.isNotEmpty) '"$apelido"',
-            if (graduacao.isNotEmpty) graduacao,
-          ].join(' • ').isEmpty
-              ? (estaPresente ? 'Presente na chamada' : 'Ausente na chamada')
-              : [
-            if (apelido.isNotEmpty) '"$apelido"',
-            if (graduacao.isNotEmpty) graduacao,
-          ].join(' • '),
+          graduacao.isNotEmpty
+              ? graduacao
+              : (estaPresente ? 'Presente na chamada' : 'Ausente na chamada'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
@@ -2023,6 +3005,56 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
               ),
             ],
           ),
+          if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) ...[
+            const SizedBox(height: 8),
+            _buildChamadaMensagemSecreta(
+              icon: Icons.psychology_alt_rounded,
+              text: _telepatiaRodando
+                  ? _telepatiaMensagem
+                  : _telepatiaConcluida
+                  ? 'Chamada concluída por presença espiritual.'
+                  : 'Preparando chamada...',
+            ),
+          ] else if (_chamadaInversaRodando) ...[
+            const SizedBox(height: 8),
+            _buildChamadaMensagemSecreta(
+              icon: Icons.sync_rounded,
+              text: 'Sincronizando presença automática...',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChamadaMensagemSecreta({
+    required IconData icon,
+    required String text,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: _onPrimary().withOpacity(0.13),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: _onPrimary().withOpacity(0.16)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: _onPrimary()),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text.replaceAll('\n', ' '),
+              style: TextStyle(
+                color: _onPrimary(),
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -2210,6 +3242,48 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     }
   }
 
+  bool _isChamadaDesktop(double width) => width >= 700;
+
+  double _maxChamadaContentWidth(double width) {
+    if (width >= 1600) return 1640;
+    if (width >= 1200) return 1480;
+    if (width >= 900) return 1180;
+    return width;
+  }
+
+  EdgeInsets _gridPaddingForWidth(double width) {
+    if (width >= 1200) return const EdgeInsets.fromLTRB(18, 10, 18, 18);
+    if (width >= 700) return const EdgeInsets.fromLTRB(14, 8, 14, 16);
+    return const EdgeInsets.fromLTRB(14, 8, 14, 14);
+  }
+
+  SliverGridDelegate _gridDelegateForChamada(double width) {
+    if (!_isChamadaDesktop(width)) {
+      return const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.76,
+      );
+    }
+
+    return const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 245,
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 14,
+      childAspectRatio: 0.76,
+    );
+  }
+
+  SliverGridDelegate _compactDelegateForChamada(double width) {
+    return const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 560,
+      mainAxisExtent: 82,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+    );
+  }
+
   Widget _buildAlunosList() {
     if (_alunos.isEmpty) {
       return _buildListaVazia(
@@ -2221,40 +3295,74 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
 
     final alunos = _alunosFiltrados;
 
-    return Column(
-      children: [
-        _buildPainelControleChamada(),
-        Expanded(
-          child: alunos.isEmpty
-              ? _buildListaVazia(
-            icon: Icons.search_off_rounded,
-            title: 'Nenhum aluno neste filtro',
-            subtitle: 'Toque em "Todos" para voltar para a chamada completa.',
-          )
-              : _modoListaCompacta
-              ? ListView.builder(
-            cacheExtent: 500,
-            padding: const EdgeInsets.only(top: 6, bottom: 14),
-            itemCount: alunos.length,
-            itemBuilder: (context, index) =>
-                _buildAlunoCompactTile(alunos[index]),
-          )
-              : GridView.builder(
-            cacheExtent: 600,
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-            gridDelegate:
-            const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.76,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final larguraTela = constraints.maxWidth;
+        final maxWidth = _maxChamadaContentWidth(larguraTela);
+        final isDesktop = _isChamadaDesktop(larguraTela);
+
+        return Column(
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: _buildPainelControleChamada(),
+              ),
             ),
-            itemCount: alunos.length,
-            itemBuilder: (context, index) =>
-                _buildAlunoGridItem(alunos[index]),
-          ),
-        ),
-      ],
+            Expanded(
+              child: alunos.isEmpty
+                  ? _buildListaVazia(
+                icon: Icons.search_off_rounded,
+                title: 'Nenhum aluno neste filtro',
+                subtitle: 'Toque em "Todos" para voltar para a chamada completa.',
+              )
+                  : Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxWidth),
+                  child: _modoListaCompacta
+                      ? isDesktop
+                      ? GridView.builder(
+                    controller: (_telepatiaAtiva && _telepatiaUsandoChamadaReal)
+                        ? _telepatiaScrollController
+                        : null,
+                    cacheExtent: 700,
+                    padding: _gridPaddingForWidth(larguraTela),
+                    gridDelegate: _compactDelegateForChamada(larguraTela),
+                    itemCount: alunos.length,
+                    itemBuilder: (context, index) => _buildAlunoCompactTile(
+                      alunos[index],
+                      margin: EdgeInsets.zero,
+                    ),
+                  )
+                      : ListView.builder(
+                    controller: (_telepatiaAtiva && _telepatiaUsandoChamadaReal)
+                        ? _telepatiaScrollController
+                        : null,
+                    cacheExtent: 500,
+                    padding: const EdgeInsets.only(top: 6, bottom: 14),
+                    itemCount: alunos.length,
+                    itemBuilder: (context, index) =>
+                        _buildAlunoCompactTile(alunos[index]),
+                  )
+                      : GridView.builder(
+                    controller: (_telepatiaAtiva && _telepatiaUsandoChamadaReal)
+                        ? _telepatiaScrollController
+                        : null,
+                    cacheExtent: 800,
+                    padding: _gridPaddingForWidth(larguraTela),
+                    gridDelegate: _gridDelegateForChamada(larguraTela),
+                    itemCount: alunos.length,
+                    itemBuilder: (context, index) =>
+                        _buildAlunoGridItem(alunos[index]),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2656,7 +3764,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
           children: [CircularProgressIndicator(color: context.uai.primary), SizedBox(height: 16), Text('Carregando dados...', style: TextStyle(color: context.uai.textSecondary))],
         ),
       )
-          : _chamadaJaFeitaHoje
+          : _chamadaJaFeitaHoje && !(_telepatiaAtiva && _telepatiaUsandoChamadaReal)
           ? SingleChildScrollView(child: Column(children: [SizedBox(height: 20), _buildDetalhesChamadaExistente()]))
           : _podeFazerChamada
           ? _salvandoChamada
@@ -2764,106 +3872,138 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen> with SingleTick
     final total = _alunos.length;
     final ausentes = total - presentes;
 
-    return Column(
-      children: [
-        _buildChamadaHeader(),
-        Expanded(child: _buildAlunosList()),
-        SafeArea(
-          top: false,
-          child: Container(
-            padding: EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: BoxDecoration(
-              color: context.uai.cardAlt,
-              border: Border(top: BorderSide(color: context.uai.border)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 14,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final larguraTela = constraints.maxWidth;
+        final maxWidth = _maxChamadaContentWidth(larguraTela);
+
+        return Column(
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: _buildChamadaHeader(),
+              ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _salvandoChamada ? null : _confirmarLimparChamada,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _ensureVisible(context.uai.primary, context.uai.cardAlt),
-                      side: BorderSide(
-                        color: _ensureVisible(context.uai.error, context.uai.cardAlt).withOpacity(0.24),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: Icon(Icons.cleaning_services_rounded, size: 18),
-                    label: Text(
-                      'LIMPAR',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+            Expanded(child: _buildAlunosList()),
+            SafeArea(
+              top: false,
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.fromLTRB(
+                  larguraTela >= 700 ? 18 : 14,
+                  10,
+                  larguraTela >= 700 ? 18 : 14,
+                  12,
                 ),
-                SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: _salvandoChamada ? null : _salvarChamada,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _saveButtonBg(),
-                      foregroundColor: _saveButtonFg(),
-                      disabledBackgroundColor: context.uai.border,
-                      disabledForegroundColor: context.uai.textSecondary,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 4,
+                decoration: BoxDecoration(
+                  color: context.uai.cardAlt,
+                  border: Border(top: BorderSide(color: context.uai.border)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, -4),
                     ),
-                    child: _salvandoChamada
-                        ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                  ],
+                ),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: Row(
                       children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: _saveButtonFg(),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _salvandoChamada ? null : _confirmarLimparChamada,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _ensureVisible(context.uai.primary, context.uai.cardAlt),
+                              side: BorderSide(
+                                color: _ensureVisible(context.uai.error, context.uai.cardAlt).withOpacity(0.24),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon: Icon(Icons.cleaning_services_rounded, size: 18),
+                            label: Text(
+                              'LIMPAR',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                         SizedBox(width: 10),
-                        Text(
-                          'SALVANDO...',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    )
-                        : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.cloud_done_rounded, size: 22),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'SALVAR • $presentes P / $ausentes A',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                        Expanded(
+                          flex: larguraTela >= 700 ? 3 : 2,
+                          child: ElevatedButton(
+                            onPressed: _salvandoChamada ? null : _salvarChamada,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _saveButtonBg(),
+                              foregroundColor: _saveButtonFg(),
+                              disabledBackgroundColor: context.uai.border,
+                              disabledForegroundColor: context.uai.textSecondary,
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 4,
                             ),
-                            overflow: TextOverflow.ellipsis,
+                            child: _salvandoChamada
+                                ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: _saveButtonFg(),
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                                Text(
+                                  'SALVANDO...',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            )
+                                : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  (_telepatiaAtiva && _telepatiaUsandoChamadaReal)
+                                      ? Icons.psychology_alt_rounded
+                                      : Icons.cloud_done_rounded,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    (_telepatiaAtiva && _telepatiaUsandoChamadaReal)
+                                        ? 'FINALIZAR • $presentes P / $ausentes A'
+                                        : 'SALVAR • $presentes P / $ausentes A',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 

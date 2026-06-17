@@ -1,4 +1,4 @@
-﻿// lib/screens/auth/auth_check.dart
+// lib/screens/auth/auth_check.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +6,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/modules/auth/screens/login_screen.dart';
 import 'package:uai_capoeira/app/portal_screen.dart';
 import 'package:uai_capoeira/main.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
@@ -14,14 +17,18 @@ class AuthCheck extends StatelessWidget {
   // CRIA DOCUMENTO DO USUÁRIO SE ELE AINDA NÃO EXISTIR
   // ═══════════════════════════════════════════════════════════
   Future<void> _criarDocumentoUsuarioSeNecessario(User user) async {
-    final userRef = FirebaseFirestore.instance.collection('usuarios').doc(user.uid);
+    final userRef = FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid);
     final userDoc = await userRef.get();
 
     if (userDoc.exists) {
       return;
     }
 
-    debugPrint('📝 Documento do usuário não existe. Criando para: ${user.email}');
+    debugPrint(
+      '📝 Documento do usuário não existe. Criando para: ${user.email}',
+    );
 
     await userRef.set({
       'uid': user.uid,
@@ -101,11 +108,7 @@ class AuthCheck extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 70,
-                color: Colors.red.shade900,
-              ),
+              Icon(Icons.error_outline, size: 70, color: Colors.red.shade900),
               const SizedBox(height: 18),
               Text(
                 title,
@@ -119,10 +122,7 @@ class AuthCheck extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade700,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
               ),
               const SizedBox(height: 26),
               Wrap(
@@ -221,7 +221,9 @@ class AuthCheck extends StatelessWidget {
             }
 
             if (createSnapshot.hasError) {
-              debugPrint('❌ Erro ao preparar documento do usuário: ${createSnapshot.error}');
+              debugPrint(
+                '❌ Erro ao preparar documento do usuário: ${createSnapshot.error}',
+              );
               return _buildErrorScreen(
                 title: 'Erro ao preparar conta',
                 message: 'Não foi possível preparar seus dados de acesso.',
@@ -245,7 +247,9 @@ class AuthCheck extends StatelessWidget {
                 }
 
                 if (userSnapshot.hasError) {
-                  debugPrint('❌ Erro ao carregar usuário no Firestore: ${userSnapshot.error}');
+                  debugPrint(
+                    '❌ Erro ao carregar usuário no Firestore: ${userSnapshot.error}',
+                  );
                   return _buildErrorScreen(
                     title: 'Erro ao carregar dados',
                     message: _mensagemErroFirestore(userSnapshot.error),
@@ -264,7 +268,8 @@ class AuthCheck extends StatelessWidget {
                 }
 
                 final userData = userSnapshot.data!.data() ?? {};
-                final statusConta = (userData['status_conta'] ?? 'pendente').toString();
+                final statusConta = (userData['status_conta'] ?? 'pendente')
+                    .toString();
 
                 debugPrint('✅ Usuário: ${user.email} - Status: $statusConta');
 
@@ -272,10 +277,64 @@ class AuthCheck extends StatelessWidget {
                   return const MainScreen();
                 }
 
-                return PortalScreen(
-                  userId: user.uid,
-                  userData: userData,
-                  status: statusConta,
+                return FutureBuilder<List<AlunoVinculadoGoogle>>(
+                  future: AreaAlunoGoogleService().buscarAlunosVinculados(),
+                  builder: (context, alunoSnapshot) {
+                    if (alunoSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return _buildLoadingScreen(
+                        'Verificando Área do Aluno...',
+                      );
+                    }
+
+                    final alunos = alunoSnapshot.data ?? const [];
+
+                    if (alunos.length == 1) {
+                      return FutureBuilder<Map<String, dynamic>?>(
+                        future: AreaAlunoGoogleService()
+                            .prepararAcessoAreaAluno(alunos.first),
+                        builder: (context, acessoSnapshot) {
+                          if (acessoSnapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return _buildLoadingScreen(
+                              'Abrindo Área do Aluno...',
+                            );
+                          }
+
+                          final acesso = acessoSnapshot.data;
+                          if (acesso != null) {
+                            return AreaAlunoDashboardScreen(
+                              aluno: Map<String, dynamic>.from(
+                                acesso['aluno'] as Map,
+                              ),
+                              config: Map<String, dynamic>.from(
+                                acesso['config'] as Map,
+                              ),
+                              authPayload: Map<String, dynamic>.from(
+                                acesso['authPayload'] as Map,
+                              ),
+                            );
+                          }
+
+                          return PortalScreen(
+                            userId: user.uid,
+                            userData: userData,
+                            status: statusConta,
+                          );
+                        },
+                      );
+                    }
+
+                    if (alunos.length > 1) {
+                      return EscolherAlunoVinculadoScreen(alunos: alunos);
+                    }
+
+                    return PortalScreen(
+                      userId: user.uid,
+                      userData: userData,
+                      status: statusConta,
+                    );
+                  },
                 );
               },
             );
@@ -285,4 +344,3 @@ class AuthCheck extends StatelessWidget {
     );
   }
 }
-

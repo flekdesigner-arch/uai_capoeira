@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -750,26 +751,41 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           ]);
         },
         color: context.uai.primary,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(evento),
-                    const SizedBox(height: 14),
-                    _buildEstatisticasCard(),
-                    const SizedBox(height: 14),
-                    _buildMenuBotoes(evento),
-                  ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final r = UaiResponsive.fromConstraints(
+              context,
+              constraints,
+            );
+
+            final maxWidth = r.isPhone
+                ? double.infinity
+                : r.isTablet
+                ? 920.0
+                : 1120.0;
+
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: r.listInsets,
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(evento),
+                        SizedBox(height: r.sectionSpacing),
+                        _buildEstatisticasCard(),
+                        SizedBox(height: r.sectionSpacing),
+                        _buildMenuBotoes(evento),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -846,8 +862,13 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         borderRadius: BorderRadius.circular(28),
         child: Stack(
           children: [
-            AspectRatio(
-              aspectRatio: 1.65,
+            SizedBox(
+              width: double.infinity,
+              height: context.uaiResponsive.isPhone
+                  ? context.uaiResponsive.eventBannerHeight()
+                  : context.uaiResponsive.isTablet
+                  ? 320
+                  : 335,
               child: hasBanner
                   ? Image.network(
                 evento.linkBanner!,
@@ -902,7 +923,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 25,
+                      fontSize: context.uaiResponsive.isPhone ? 23 : 27,
                       height: 1.03,
                       fontWeight: FontWeight.w900,
                       shadows: [
@@ -1023,8 +1044,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   }
 
   Widget _buildEstatisticasCard() {
+    final r = context.uaiResponsive;
+
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(r.cardPadding),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1038,9 +1061,27 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = constraints.maxWidth < 620 ? 2 : 4;
+              final responsive = UaiResponsive.fromConstraints(
+                context,
+                constraints,
+              );
+
+              // Correção 2.0.68:
+              // No APK real, a área útil dentro do card fica menor por causa
+              // de padding, SafeArea e largura em dp. Antes o resumo caía para
+              // 1 coluna, deixando os cards enormes na vertical.
+              //
+              // Agora esta tela força 2 colunas no celular sempre que houver
+              // pelo menos 280px úteis, mantendo 4 colunas em tablet/desktop.
+              final columns = constraints.maxWidth < 280
+                  ? 1
+                  : constraints.maxWidth < 760
+                  ? 2
+                  : 4;
+
               const spacing = 10.0;
-              final itemWidth = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+              final itemWidth =
+                  (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
               final items = [
                 _StatData(Icons.people_rounded, '$_totalParticipantes', 'Participantes', context.uai.info, null),
@@ -1170,7 +1211,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     }
 
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(context.uaiResponsive.cardPadding),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1184,13 +1225,29 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 720;
-              if (!wide) {
+              final responsive = UaiResponsive.fromConstraints(
+                context,
+                constraints,
+              );
+
+              if (responsive.actionColumns <= 1) {
                 return Column(children: buttons);
               }
 
               const spacing = 12.0;
-              final itemWidth = (constraints.maxWidth - spacing) / 2;
+              final columns = constraints.maxWidth >= 980
+                  ? 3
+                  : constraints.maxWidth >= 680
+                  ? 2
+                  : 1;
+
+              if (columns <= 1) {
+                return Column(children: buttons);
+              }
+
+              final itemWidth =
+                  (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
               return Wrap(
                 spacing: spacing,
                 runSpacing: spacing,
@@ -1247,8 +1304,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 112),
-          padding: const EdgeInsets.all(13),
+          constraints: BoxConstraints(
+            minHeight: context.uaiResponsive.isPhone ? 104 : 104,
+          ),
+          padding: EdgeInsets.all(context.uaiResponsive.isPhone ? 11 : 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: color.withOpacity(0.14)),
@@ -1265,7 +1324,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                   maxLines: 1,
                   style: TextStyle(
                     color: color,
-                    fontSize: 21,
+                    fontSize: context.uaiResponsive.isPhone ? 19 : 21,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1284,7 +1343,11 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                 const SizedBox(height: 4),
                 Text(
                   'Toque para ver',
-                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: context.uaiResponsive.isPhone ? 9.5 : 10,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ],

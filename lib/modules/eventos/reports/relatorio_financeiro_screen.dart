@@ -16,6 +16,7 @@ import 'package:flutter/material.dart' as material;
 import 'evento_financeiro_pdf_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 
 class RelatorioFinanceiroScreen extends StatefulWidget {
   final String eventoId;
@@ -2359,8 +2360,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Widget _buildHeroRelatorioTela() {
+    final r = context.uaiResponsive;
+
     return Container(
-      padding: EdgeInsets.all(18),
+      padding: EdgeInsets.all(r.isPhone ? 16 : 20),
       decoration: BoxDecoration(
         gradient: context.uai.primaryGradient,
         borderRadius: BorderRadius.circular(26),
@@ -2402,7 +2405,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: _onPrimary(),
-                  fontSize: narrow ? 21 : 27,
+                  fontSize: narrow ? 21 : 26,
                   fontWeight: FontWeight.w900,
                   height: 1.05,
                 ),
@@ -2482,6 +2485,23 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
   }
 
+  double _relatorioMaxWidth(UaiResponsive r) {
+    if (r.isPhone) return double.infinity;
+    if (r.isTablet) return 920;
+    if (r.isDesktop) return 1120;
+    return 1180;
+  }
+
+  EdgeInsets _relatorioPadding(UaiResponsive r) {
+    if (r.isPhone) return r.listInsets;
+    return EdgeInsets.fromLTRB(
+      r.pagePadding,
+      r.pagePadding,
+      r.pagePadding,
+      34,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2539,1053 +2559,1066 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           : RefreshIndicator(
         onRefresh: _carregarDados,
         color: _ensureVisible(context.uai.success, context.uai.card),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeroRelatorioTela(),
-              SizedBox(height: 16),
-              // ===== CARDS DE RESUMO =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildResumoCard(
-                            'Receitas',
-                            _totalReceitas,
-                            Icons.trending_up,
-                            context.uai.success,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: _buildResumoCard(
-                            'Gastos',
-                            _totalGastos,
-                            Icons.trending_down,
-                            context.uai.error,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 12),
-                    Container(
-                      padding: EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            _saldoLiquido >= 0
-                                ? context.uai.success.withOpacity(0.16)
-                                : context.uai.error.withOpacity(0.16),
-                            _saldoLiquido >= 0
-                                ? context.uai.success.withOpacity(0.08)
-                                : context.uai.error.withOpacity(0.08),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        border: material.Border.all(
-                          color: _saldoLiquido >= 0
-                              ? context.uai.success.withOpacity(0.25)
-                              : context.uai.error.withOpacity(0.28),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                _saldoLiquido >= 0
-                                    ? Icons.check_circle
-                                    : Icons.warning,
-                                color: _saldoLiquido >= 0
-                                    ? context.uai.success
-                                    : context.uai.error,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'SALDO LÍQUIDO:',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            _formatarMoeda(_saldoLiquido),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: _saldoLiquido >= 0
-                                  ? _ensureVisible(context.uai.success, context.uai.card)
-                                  : _ensureVisible(context.uai.error, context.uai.card),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final r = UaiResponsive.fromConstraints(context, constraints);
 
-              SizedBox(height: 16),
-
-              // ===== RECEITAS POR TIPO =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '💰 RECEITAS POR TIPO',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.success,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    _buildReceitaTipoRow(
-                      'Inscrições',
-                      _totalInscricoes,
-                      Icons.receipt,
-                      context.uai.info,
-                    ),
-                    SizedBox(height: 8),
-                    _buildReceitaTipoRow(
-                      'Camisas',
-                      _totalCamisas,
-                      Icons.shopping_bag,
-                      context.uai.warning,
-                    ),
-                    SizedBox(height: 8),
-                    _buildReceitaTipoRow(
-                      'Patrocínios',
-                      _totalPatrocinios,
-                      Icons.volunteer_activism,
-                      context.uai.associacao,
-                    ),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== GRÁFICO DE PIZZA =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '🥧 RECEITAS VS GASTOS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.success,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    SizedBox(
-                      height: 220,
-                      child: PieChart(
-                        PieChartData(
-                          sections: [
-                            PieChartSectionData(
-                              value: _totalReceitas,
-                              title: 'Receitas\n${_formatarMoeda(_totalReceitas)}',
-                              color: context.uai.success,
-                              radius: 80,
-                              titleStyle: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _onSuccess(),
-                              ),
-                            ),
-                            PieChartSectionData(
-                              value: _totalGastos,
-                              title: 'Gastos\n${_formatarMoeda(_totalGastos)}',
-                              color: context.uai.error,
-                              radius: 80,
-                              titleStyle: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _onError(),
-                              ),
-                            ),
-                          ],
-                          sectionsSpace: 2,
-                          centerSpaceRadius: 40,
-                          startDegreeOffset: 180,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildLegendaItem('Receitas', context.uai.success),
-                        SizedBox(width: 24),
-                        _buildLegendaItem('Gastos', context.uai.error),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== PARTICIPAÇÕES =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '👥 PARTICIPAÇÕES',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: context.uai.info,
-                          ),
-                        ),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.uai.info.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'Total: $_totalParticipantes',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _ensureVisible(context.uai.info, context.uai.card),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatusCard(
-                            'Quitados',
-                            _quitados,
-                            Icons.check_circle,
-                            context.uai.success,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: _buildStatusCard(
-                            'Patrocínio',
-                            _cobertosPorPatrocinio,
-                            Icons.volunteer_activism,
-                            context.uai.associacao,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: _buildStatusCard(
-                            'Inadimplentes',
-                            _inadimplentes,
-                            Icons.warning,
-                            context.uai.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-
-                    if (_totalParticipantes > 0)
-                      Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: _quitados > 0 ? _quitados : 1,
-                                child: Container(
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: context.uai.success,
-                                    borderRadius: BorderRadius.horizontal(
-                                      left: Radius.circular(4),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (_cobertosPorPatrocinio > 0)
-                                Expanded(
-                                  flex: _cobertosPorPatrocinio,
-                                  child: Container(
-                                    height: 8,
-                                    color: context.uai.associacao,
-                                  ),
-                                ),
-                              Expanded(
-                                flex: _inadimplentes > 0 ? _inadimplentes : 1,
-                                child: Container(
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: context.uai.warning,
-                                    borderRadius: BorderRadius.horizontal(
-                                      right: Radius.circular(4),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${_quitados} quitados',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: _ensureVisible(context.uai.success, context.uai.card),
-                                ),
-                              ),
-                              Text(
-                                '${_cobertosPorPatrocinio} patrocínio',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                ),
-                              ),
-                              Text(
-                                '${_inadimplentes} inadimplentes',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: _ensureVisible(context.uai.warning, context.uai.card),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== RECEITAS POR FORMA DE PAGAMENTO =====
-              if (_receitasPorForma.isNotEmpty)
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: context.uai.card,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: context.uai.border,
-                        blurRadius: 8,
-                      ),
-                    ],
+            return SingleChildScrollView(
+              padding: _relatorioPadding(r),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: _relatorioMaxWidth(r),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '💳 RECEITAS POR FORMA',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: context.uai.success,
-                        ),
-                      ),
+                      _buildHeroRelatorioTela(),
                       SizedBox(height: 16),
-                      ..._receitasPorForma.entries.map((entry) {
-                        final percentual = (_totalReceitas > 0)
-                            ? (entry.value / _totalReceitas * 100)
-                            : 0;
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _getCorFormaPagamento(entry.key),
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  entry.key,
-                                  style: TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  _formatarMoeda(entry.value),
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  '${percentual.toStringAsFixed(1)}%',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    color: context.uai.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-
-              SizedBox(height: 16),
-
-              // ===== DETALHES DAS CAMISAS =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '👕 CAMISAS DOS ALUNOS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.info,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildDetalheItem(
-                          'Total',
-                          '${_camisasParticipacoes['total']}',
-                          Icons.shopping_bag,
-                          context.uai.info,
-                        ),
-                        _buildDetalheItem(
-                          'Pagas',
-                          '${_camisasParticipacoes['pagas']}',
-                          Icons.paid,
-                          context.uai.success,
-                        ),
-                        _buildDetalheItem(
-                          'Valor',
-                          _formatarMoeda(_camisasParticipacoes['valor']),
-                          Icons.attach_money,
-                          context.uai.warning,
-                        ),
-                      ],
-                    ),
-                    if (Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Text(
-                        'Distribuição:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).entries.map((entry) {
-                          return Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.uai.info.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _labelGradeCamisa(entry.key),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: _ensureVisible(context.uai.info, context.uai.card),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  '${entry.value}',
-                                  style: TextStyle(
-                                    color: _ensureVisible(context.uai.info, context.uai.card),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '👕 CAMISAS AVULSAS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.warning,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildDetalheItem(
-                          'Total',
-                          '${_camisasAvulsas['total']}',
-                          Icons.shopping_bag,
-                          context.uai.warning,
-                        ),
-                        _buildDetalheItem(
-                          'Pagas',
-                          '${_camisasAvulsas['pagas']}',
-                          Icons.paid,
-                          context.uai.success,
-                        ),
-                        _buildDetalheItem(
-                          'Valor',
-                          _formatarMoeda(_camisasAvulsas['valor']),
-                          Icons.attach_money,
-                          context.uai.warning,
-                        ),
-                      ],
-                    ),
-                    if (Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Text(
-                        'Distribuição:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).entries.map((entry) {
-                          return Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.uai.warning.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _labelGradeCamisa(entry.key),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: _ensureVisible(context.uai.warning, context.uai.card),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  '${entry.value}',
-                                  style: TextStyle(
-                                    color: _ensureVisible(context.uai.warning, context.uai.card),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== RESUMO TOTAL DE CAMISAS =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '👕 RESUMO TOTAL DE CAMISAS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.associacao,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildDetalheItem(
-                          'Total',
-                          '${_detalhesCamisas['total_camisas']}',
-                          Icons.shopping_bag,
-                          context.uai.associacao,
-                        ),
-                        _buildDetalheItem(
-                          'Pagas',
-                          '${_detalhesCamisas['camisas_pagas']}',
-                          Icons.paid,
-                          context.uai.success,
-                        ),
-                        _buildDetalheItem(
-                          'Valor',
-                          _formatarMoeda(_detalhesCamisas['valor_total_camisas']),
-                          Icons.attach_money,
-                          context.uai.warning,
-                        ),
-                      ],
-                    ),
-                    if (Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Text(
-                        'Distribuição total:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).entries.map((entry) {
-                          return Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.uai.associacao.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _labelGradeCamisa(entry.key),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  '${entry.value}',
-                                  style: TextStyle(
-                                    color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== DETALHES DOS PATROCÍNIOS =====
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.uai.card,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.uai.border,
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '🤝 PATROCÍNIOS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.associacao,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildDetalheItem(
-                          'Total',
-                          '${_detalhesPatrocinios['total_patrocinadores']}',
-                          Icons.people,
-                          context.uai.associacao,
-                        ),
-                        _buildDetalheItem(
-                          'Pagos',
-                          '${_detalhesPatrocinios['patrocinios_pagos']}',
-                          Icons.check_circle,
-                          context.uai.success,
-                        ),
-                        _buildDetalheItem(
-                          'Pendentes',
-                          '${_detalhesPatrocinios['patrocinios_pendentes']}',
-                          Icons.pending,
-                          context.uai.warning,
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 12),
-                    Container(
-                      padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: context.uai.associacao.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Total recebido:',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            _formatarMoeda(_detalhesPatrocinios['valor_total_patrocinios']),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: _ensureVisible(context.uai.associacao, context.uai.card),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    if (_usosPatrocinio.isNotEmpty) ...[
-                      SizedBox(height: 16),
-                      Divider(),
-                      SizedBox(height: 8),
-                      Text(
-                        '📋 Alunos beneficiados:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      ..._usosPatrocinio.map((uso) => Container(
-                        margin: EdgeInsets.only(bottom: 8),
-                        padding: EdgeInsets.all(12),
+                      // ===== CARDS DE RESUMO =====
+                      Container(
+                        padding: EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: context.uai.background,
-                          borderRadius: BorderRadius.circular(12),
-                          border: material.Border.all(color: context.uai.associacao.withOpacity(0.25)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: context.uai.associacao.withOpacity(0.16),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.volunteer_activism,
-                                color: context.uai.associacao,
-                                size: 20,
-                              ),
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
                             ),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildResumoCard(
+                                    'Receitas',
+                                    _totalReceitas,
+                                    Icons.trending_up,
+                                    context.uai.success,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildResumoCard(
+                                    'Gastos',
+                                    _totalGastos,
+                                    Icons.trending_down,
+                                    context.uai.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 12),
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    _saldoLiquido >= 0
+                                        ? context.uai.success.withOpacity(0.16)
+                                        : context.uai.error.withOpacity(0.16),
+                                    _saldoLiquido >= 0
+                                        ? context.uai.success.withOpacity(0.08)
+                                        : context.uai.error.withOpacity(0.08),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: material.Border.all(
+                                  color: _saldoLiquido >= 0
+                                      ? context.uai.success.withOpacity(0.25)
+                                      : context.uai.error.withOpacity(0.28),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    uso['aluno_nome'],
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Patrocinador: ${uso['patrocinador']}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.uai.textSecondary,
-                                    ),
-                                  ),
-                                  if (uso['observacao'].isNotEmpty)
-                                    Text(
-                                      uso['observacao'],
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: context.uai.textMuted,
-                                        fontStyle: FontStyle.italic,
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        _saldoLiquido >= 0
+                                            ? Icons.check_circle
+                                            : Icons.warning,
+                                        color: _saldoLiquido >= 0
+                                            ? context.uai.success
+                                            : context.uai.error,
                                       ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'SALDO LÍQUIDO:',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    _formatarMoeda(_saldoLiquido),
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: _saldoLiquido >= 0
+                                          ? _ensureVisible(context.uai.success, context.uai.card)
+                                          : _ensureVisible(context.uai.error, context.uai.card),
                                     ),
+                                  ),
                                 ],
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== RECEITAS POR TIPO =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '💰 RECEITAS POR TIPO',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.success,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            _buildReceitaTipoRow(
+                              'Inscrições',
+                              _totalInscricoes,
+                              Icons.receipt,
+                              context.uai.info,
+                            ),
+                            SizedBox(height: 8),
+                            _buildReceitaTipoRow(
+                              'Camisas',
+                              _totalCamisas,
+                              Icons.shopping_bag,
+                              context.uai.warning,
+                            ),
+                            SizedBox(height: 8),
+                            _buildReceitaTipoRow(
+                              'Patrocínios',
+                              _totalPatrocinios,
+                              Icons.volunteer_activism,
+                              context.uai.associacao,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== GRÁFICO DE PIZZA =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🥧 RECEITAS VS GASTOS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.success,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            SizedBox(
+                              height: context.uaiResponsive.isPhone ? 220 : 260,
+                              child: PieChart(
+                                PieChartData(
+                                  sections: [
+                                    PieChartSectionData(
+                                      value: _totalReceitas,
+                                      title: 'Receitas\n${_formatarMoeda(_totalReceitas)}',
+                                      color: context.uai.success,
+                                      radius: context.uaiResponsive.isPhone ? 80 : 92,
+                                      titleStyle: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: _onSuccess(),
+                                      ),
+                                    ),
+                                    PieChartSectionData(
+                                      value: _totalGastos,
+                                      title: 'Gastos\n${_formatarMoeda(_totalGastos)}',
+                                      color: context.uai.error,
+                                      radius: context.uaiResponsive.isPhone ? 80 : 92,
+                                      titleStyle: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: _onError(),
+                                      ),
+                                    ),
+                                  ],
+                                  sectionsSpace: 2,
+                                  centerSpaceRadius: context.uaiResponsive.isPhone ? 40 : 46,
+                                  startDegreeOffset: 180,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  _formatarMoeda(uso['valor']),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                  ),
-                                ),
-                                Text(
-                                  _formatter.format(uso['data']),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: context.uai.textSecondary,
-                                  ),
-                                ),
+                                _buildLegendaItem('Receitas', context.uai.success),
+                                SizedBox(width: 24),
+                                _buildLegendaItem('Gastos', context.uai.error),
                               ],
                             ),
                           ],
                         ),
-                      )),
-                    ],
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // ===== GASTOS POR CATEGORIA =====
-              if (_gastosPorCategoria.isNotEmpty)
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: context.uai.card,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: context.uai.border,
-                        blurRadius: 8,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '💸 GASTOS POR CATEGORIA',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: context.uai.error,
-                        ),
-                      ),
+
                       SizedBox(height: 16),
-                      ..._gastosPorCategoria.entries.map((entry) {
-                        final percentual = (_totalGastos > 0)
-                            ? (entry.value / _totalGastos * 100)
-                            : 0;
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: context.uai.error,
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  entry.key,
-                                  style: TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  _formatarMoeda(entry.value),
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  '${percentual.toStringAsFixed(1)}%',
-                                  textAlign: TextAlign.right,
+
+                      // ===== PARTICIPAÇÕES =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '👥 PARTICIPAÇÕES',
                                   style: TextStyle(
-                                    color: context.uai.textSecondary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: context.uai.info,
                                   ),
                                 ),
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: context.uai.info.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    'Total: $_totalParticipantes',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: _ensureVisible(context.uai.info, context.uai.card),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Quitados',
+                                    _quitados,
+                                    Icons.check_circle,
+                                    context.uai.success,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Patrocínio',
+                                    _cobertosPorPatrocinio,
+                                    Icons.volunteer_activism,
+                                    context.uai.associacao,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Inadimplentes',
+                                    _inadimplentes,
+                                    Icons.warning,
+                                    context.uai.warning,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16),
+
+                            if (_totalParticipantes > 0)
+                              Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        flex: _quitados > 0 ? _quitados : 1,
+                                        child: Container(
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: context.uai.success,
+                                            borderRadius: BorderRadius.horizontal(
+                                              left: Radius.circular(4),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (_cobertosPorPatrocinio > 0)
+                                        Expanded(
+                                          flex: _cobertosPorPatrocinio,
+                                          child: Container(
+                                            height: 8,
+                                            color: context.uai.associacao,
+                                          ),
+                                        ),
+                                      Expanded(
+                                        flex: _inadimplentes > 0 ? _inadimplentes : 1,
+                                        child: Container(
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: context.uai.warning,
+                                            borderRadius: BorderRadius.horizontal(
+                                              right: Radius.circular(4),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '${_quitados} quitados',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _ensureVisible(context.uai.success, context.uai.card),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_cobertosPorPatrocinio} patrocínio',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _ensureVisible(context.uai.associacao, context.uai.card),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_inadimplentes} inadimplentes',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _ensureVisible(context.uai.warning, context.uai.card),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== RECEITAS POR FORMA DE PAGAMENTO =====
+                      if (_receitasPorForma.isNotEmpty)
+                        Container(
+                          padding: EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: context.uai.card,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: context.uai.border,
+                                blurRadius: 8,
                               ),
                             ],
                           ),
-                        );
-                      }),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '💳 RECEITAS POR FORMA',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: context.uai.success,
+                                ),
+                              ),
+                              SizedBox(height: 16),
+                              ..._receitasPorForma.entries.map((entry) {
+                                final percentual = (_totalReceitas > 0)
+                                    ? (entry.value / _totalReceitas * 100)
+                                    : 0;
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: _getCorFormaPagamento(entry.key),
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          entry.key,
+                                          style: TextStyle(fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: Text(
+                                          _formatarMoeda(entry.value),
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: Text(
+                                          '${percentual.toStringAsFixed(1)}%',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            color: context.uai.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+
+                      SizedBox(height: 16),
+
+                      // ===== DETALHES DAS CAMISAS =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '👕 CAMISAS DOS ALUNOS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.info,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildDetalheItem(
+                                  'Total',
+                                  '${_camisasParticipacoes['total']}',
+                                  Icons.shopping_bag,
+                                  context.uai.info,
+                                ),
+                                _buildDetalheItem(
+                                  'Pagas',
+                                  '${_camisasParticipacoes['pagas']}',
+                                  Icons.paid,
+                                  context.uai.success,
+                                ),
+                                _buildDetalheItem(
+                                  'Valor',
+                                  _formatarMoeda(_camisasParticipacoes['valor']),
+                                  Icons.attach_money,
+                                  context.uai.warning,
+                                ),
+                              ],
+                            ),
+                            if (Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).isNotEmpty) ...[
+                              SizedBox(height: 12),
+                              Text(
+                                'Distribuição:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).entries.map((entry) {
+                                  return Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: context.uai.info.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _labelGradeCamisa(entry.key),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(context.uai.info, context.uai.card),
+                                          ),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          '${entry.value}',
+                                          style: TextStyle(
+                                            color: _ensureVisible(context.uai.info, context.uai.card),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '👕 CAMISAS AVULSAS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.warning,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildDetalheItem(
+                                  'Total',
+                                  '${_camisasAvulsas['total']}',
+                                  Icons.shopping_bag,
+                                  context.uai.warning,
+                                ),
+                                _buildDetalheItem(
+                                  'Pagas',
+                                  '${_camisasAvulsas['pagas']}',
+                                  Icons.paid,
+                                  context.uai.success,
+                                ),
+                                _buildDetalheItem(
+                                  'Valor',
+                                  _formatarMoeda(_camisasAvulsas['valor']),
+                                  Icons.attach_money,
+                                  context.uai.warning,
+                                ),
+                              ],
+                            ),
+                            if (Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).isNotEmpty) ...[
+                              SizedBox(height: 12),
+                              Text(
+                                'Distribuição:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).entries.map((entry) {
+                                  return Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: context.uai.warning.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _labelGradeCamisa(entry.key),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(context.uai.warning, context.uai.card),
+                                          ),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          '${entry.value}',
+                                          style: TextStyle(
+                                            color: _ensureVisible(context.uai.warning, context.uai.card),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== RESUMO TOTAL DE CAMISAS =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '👕 RESUMO TOTAL DE CAMISAS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.associacao,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildDetalheItem(
+                                  'Total',
+                                  '${_detalhesCamisas['total_camisas']}',
+                                  Icons.shopping_bag,
+                                  context.uai.associacao,
+                                ),
+                                _buildDetalheItem(
+                                  'Pagas',
+                                  '${_detalhesCamisas['camisas_pagas']}',
+                                  Icons.paid,
+                                  context.uai.success,
+                                ),
+                                _buildDetalheItem(
+                                  'Valor',
+                                  _formatarMoeda(_detalhesCamisas['valor_total_camisas']),
+                                  Icons.attach_money,
+                                  context.uai.warning,
+                                ),
+                              ],
+                            ),
+                            if (Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).isNotEmpty) ...[
+                              SizedBox(height: 12),
+                              Text(
+                                'Distribuição total:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).entries.map((entry) {
+                                  return Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: context.uai.associacao.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _labelGradeCamisa(entry.key),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
+                                          ),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          '${entry.value}',
+                                          style: TextStyle(
+                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== DETALHES DOS PATROCÍNIOS =====
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: context.uai.border,
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🤝 PATROCÍNIOS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: context.uai.associacao,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildDetalheItem(
+                                  'Total',
+                                  '${_detalhesPatrocinios['total_patrocinadores']}',
+                                  Icons.people,
+                                  context.uai.associacao,
+                                ),
+                                _buildDetalheItem(
+                                  'Pagos',
+                                  '${_detalhesPatrocinios['patrocinios_pagos']}',
+                                  Icons.check_circle,
+                                  context.uai.success,
+                                ),
+                                _buildDetalheItem(
+                                  'Pendentes',
+                                  '${_detalhesPatrocinios['patrocinios_pendentes']}',
+                                  Icons.pending,
+                                  context.uai.warning,
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 12),
+                            Container(
+                              padding: EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: context.uai.associacao.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Total recebido:',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatarMoeda(_detalhesPatrocinios['valor_total_patrocinios']),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: _ensureVisible(context.uai.associacao, context.uai.card),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            if (_usosPatrocinio.isNotEmpty) ...[
+                              SizedBox(height: 16),
+                              Divider(),
+                              SizedBox(height: 8),
+                              Text(
+                                '📋 Alunos beneficiados:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 12),
+                              ..._usosPatrocinio.map((uso) => Container(
+                                margin: EdgeInsets.only(bottom: 8),
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: context.uai.background,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: material.Border.all(color: context.uai.associacao.withOpacity(0.25)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: context.uai.associacao.withOpacity(0.16),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.volunteer_activism,
+                                        color: context.uai.associacao,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            uso['aluno_nome'],
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            'Patrocinador: ${uso['patrocinador']}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: context.uai.textSecondary,
+                                            ),
+                                          ),
+                                          if (uso['observacao'].isNotEmpty)
+                                            Text(
+                                              uso['observacao'],
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: context.uai.textMuted,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          _formatarMoeda(uso['valor']),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
+                                          ),
+                                        ),
+                                        Text(
+                                          _formatter.format(uso['data']),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: context.uai.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              )),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // ===== GASTOS POR CATEGORIA =====
+                      if (_gastosPorCategoria.isNotEmpty)
+                        Container(
+                          padding: EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: context.uai.card,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: context.uai.border,
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '💸 GASTOS POR CATEGORIA',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: context.uai.error,
+                                ),
+                              ),
+                              SizedBox(height: 16),
+                              ..._gastosPorCategoria.entries.map((entry) {
+                                final percentual = (_totalGastos > 0)
+                                    ? (entry.value / _totalGastos * 100)
+                                    : 0;
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: context.uai.error,
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          entry.key,
+                                          style: TextStyle(fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: Text(
+                                          _formatarMoeda(entry.value),
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: Text(
+                                          '${percentual.toStringAsFixed(1)}%',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            color: context.uai.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+
+                      SizedBox(height: 16),
+
+
+                      // ===== CONSISTÊNCIA DOS DADOS =====
+                      if (_participacoesDuplicadasIgnoradas > 0 ||
+                          _participacoesRemovidasIgnoradas > 0 ||
+                          _usosPatrocinioOrfaosIgnorados > 0 ||
+                          _usosPatrocinioDuplicadosIgnorados > 0) ...[
+                        _buildConsistenciaDadosCard(),
+                        SizedBox(height: 16),
+                      ],
+
+                      // ===== AVISO DE ATUALIZAÇÃO =====
+                      Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: context.uai.info.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: material.Border.all(color: context.uai.info.withOpacity(0.25)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info, color: _ensureVisible(context.uai.info, context.uai.card)),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Os dados são atualizados em tempo real. Puxe para baixo para recarregar.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _ensureVisible(context.uai.info, context.uai.card),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-
-              SizedBox(height: 16),
-
-
-              // ===== CONSISTÊNCIA DOS DADOS =====
-              if (_participacoesDuplicadasIgnoradas > 0 ||
-                  _participacoesRemovidasIgnoradas > 0 ||
-                  _usosPatrocinioOrfaosIgnorados > 0 ||
-                  _usosPatrocinioDuplicadosIgnorados > 0) ...[
-                _buildConsistenciaDadosCard(),
-                SizedBox(height: 16),
-              ],
-
-              // ===== AVISO DE ATUALIZAÇÃO =====
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: context.uai.info.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: material.Border.all(color: context.uai.info.withOpacity(0.25)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info, color: _ensureVisible(context.uai.info, context.uai.card)),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Os dados são atualizados em tempo real. Puxe para baixo para recarregar.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _ensureVisible(context.uai.info, context.uai.card),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -3729,7 +3762,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           Text(
             _formatarMoeda(valor),
             style: TextStyle(
-              fontSize: 16,
+              fontSize: context.uaiResponsive.isPhone ? 16 : 18,
               fontWeight: FontWeight.bold,
               color: cor,
             ),
@@ -3740,8 +3773,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Widget _buildResumoCard(String titulo, double valor, IconData icon, Color cor) {
+    final r = context.uaiResponsive;
+
     return Container(
-      padding: EdgeInsets.all(12),
+      padding: EdgeInsets.all(r.isPhone ? 12 : 16),
       decoration: BoxDecoration(
         color: cor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),

@@ -1,19 +1,21 @@
-﻿import 'package:flutter/material.dart';
-import 'package:uai_capoeira/core/theme/app_theme.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
-import 'dart:async';
-import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
-import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
-import 'package:uai_capoeira/core/permissions/permissao_service.dart';
-import 'package:uai_capoeira/modules/graduacoes/services/graduacao_service.dart';
-import 'package:uai_capoeira/modules/eventos/services/certificado_service.dart';
-import 'package:uai_capoeira/modules/eventos/models/participacao_model.dart';
-import 'aluno_detalhe_participacao_screen.dart';
-import 'package:uai_capoeira/modules/eventos/widgets/adicionar_participante_modal.dart';
-import 'selecionar_participantes_csv_screen.dart';
-import 'package:uai_capoeira/modules/eventos/reports/evento_financeiro_pdf_service.dart';
+﻿import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/models/participacao_model.dart';
+import 'package:uai_capoeira/modules/eventos/reports/evento_financeiro_pdf_service.dart';
+import 'package:uai_capoeira/modules/eventos/services/certificado_service.dart';
+import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
+import 'package:uai_capoeira/modules/eventos/widgets/adicionar_participante_modal.dart';
+import 'package:uai_capoeira/modules/graduacoes/services/graduacao_service.dart';
+
+import 'aluno_detalhe_participacao_screen.dart';
+import 'finalizacao_massa_evento_screen.dart';
 
 class _DashboardMiniData {
   final IconData icon;
@@ -24,18 +26,12 @@ class _DashboardMiniData {
   const _DashboardMiniData(this.icon, this.value, this.label, this.color);
 }
 
-class _PermissaoChipData {
-  final String label;
-  final bool liberado;
-  final IconData icon;
-
-  const _PermissaoChipData(this.label, this.liberado, this.icon);
-}
-
 class CachedAlunoData {
   final Map<String, dynamic> data;
   final DateTime timestamp;
+
   CachedAlunoData(this.data) : timestamp = DateTime.now();
+
   bool get isExpired =>
       DateTime.now().difference(timestamp) > const Duration(days: 1);
 }
@@ -71,11 +67,19 @@ class RobustAvatar extends StatelessWidget {
           return const SizedBox.shrink();
         },
         errorBuilder: (context, error, stackTrace) {
-          return Icon(Icons.person, size: radius * 0.8, color: context.uai.textMuted);
+          return Icon(
+            Icons.person,
+            size: radius * 0.8,
+            color: context.uai.textMuted,
+          );
         },
       ),
     )
-        : Icon(Icons.person, size: radius * 0.8, color: context.uai.textMuted);
+        : Icon(
+      Icons.person,
+      size: radius * 0.8,
+      color: context.uai.textMuted,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -110,8 +114,10 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   double get maxExtent => height;
+
   @override
   double get minExtent => height;
+
   @override
   bool shouldRebuild(covariant _StickyHeaderDelegate oldDelegate) {
     return oldDelegate.height != height || oldDelegate.child.key != child.key;
@@ -131,7 +137,8 @@ class ParticipantesEventoScreen extends StatefulWidget {
   });
 
   @override
-  State<ParticipantesEventoScreen> createState() => _ParticipantesEventoScreenState();
+  State<ParticipantesEventoScreen> createState() =>
+      _ParticipantesEventoScreenState();
 }
 
 class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
@@ -144,7 +151,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   late final TabController _tabController;
 
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _searchParticipantesController = TextEditingController();
+  final TextEditingController _searchParticipantesController =
+  TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final FocusNode _searchParticipantesFocusNode = FocusNode();
+
   String _searchQuery = '';
   String _searchParticipantesQuery = '';
   List<Map<String, dynamic>> _alunosDisponiveis = [];
@@ -153,6 +164,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   EventoModel? _eventoCarregado;
 
   int _viewMode = 0; // 0: grade, 1: lista, 2: planilha
+  bool _viewModeAutoApplied = false;
   String _filtroStatus = 'todos';
   bool _isRefreshing = false;
 
@@ -167,7 +179,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   Map<String, int> _camisasPorTamanho = {};
   Map<String, int> _camisasPorDetalhe = {};
 
-  int _ultimoTotalParticipantes = -1;
   String _assinaturaEstatisticas = '';
   final Map<String, CachedAlunoData> _cacheAlunos = {};
   List<Map<String, dynamic>> _graduacoes = [];
@@ -175,12 +186,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   List<Map<String, dynamic>> _usosPatrocinio = [];
   Set<String> _participantesPatrocinados = {};
-
   List<ParticipacaoModel> _allParticipants = [];
 
   Timer? _debounceTimer;
-  final FocusNode _searchFocusNode = FocusNode();
-  final FocusNode _searchParticipantesFocusNode = FocusNode();
 
   bool _podeGerenciarParticipantes = false;
   bool _podeAdicionar = false;
@@ -203,7 +211,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff =
+    (color.computeLuminance() - background.computeLuminance()).abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -217,16 +226,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
-  Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   String _normalizarModelagemCamisa(dynamic value) {
     final raw = value?.toString().trim().toUpperCase() ?? '';
-
-    final clean = raw
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_')
-        .replaceAll('__', '_');
+    final clean = raw.replaceAll('-', '_').replaceAll(' ', '_').replaceAll('__', '_');
 
     if (clean == 'BABYLOOK' ||
         clean == 'BABY_LOOK' ||
@@ -240,11 +247,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   String _normalizarTipoCamisa(dynamic value) {
     final raw = value?.toString().trim().toUpperCase() ?? '';
-
-    final clean = raw
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_')
-        .replaceAll('__', '_');
+    final clean = raw.replaceAll('-', '_').replaceAll(' ', '_').replaceAll('__', '_');
 
     if (clean == 'MANGA_LONGA' ||
         clean == 'LONGA' ||
@@ -252,10 +255,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       return 'MANGA_LONGA';
     }
 
-    if (clean == 'REGATA') {
-      return 'REGATA';
-    }
-
+    if (clean == 'REGATA') return 'REGATA';
     return 'MANGA';
   }
 
@@ -283,20 +283,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   String _descricaoCamisaParticipacao(ParticipacaoModel p) {
     final tamanho = p.tamanhoCamisa?.trim();
-
-    if (tamanho == null || tamanho.isEmpty) {
-      return '---';
-    }
-
+    if (tamanho == null || tamanho.isEmpty) return '---';
     return '${p.modelagemCamisaLabel} • ${p.tipoCamisaLabel} • $tamanho';
   }
 
   String _chaveCamisaParticipacao(ParticipacaoModel p) {
     final tamanho = p.tamanhoCamisa?.trim().toUpperCase();
-
-    if (tamanho == null || tamanho.isEmpty) {
-      return '';
-    }
+    if (tamanho == null || tamanho.isEmpty) return '';
 
     return '${_normalizarModelagemCamisa(p.modelagemCamisa)}|'
         '${_normalizarTipoCamisa(p.tipoCamisa)}|'
@@ -305,13 +298,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   double _valorCamisaEventoPorTipo(String? tipoCamisa) {
     final evento = widget.evento ?? _eventoCarregado;
-
     if (evento == null || !evento.temCamisa) return 0;
 
-    final tipo = _normalizarTipoCamisa(tipoCamisa);
-
-    final valor = evento.valorCamisaPorTipo(tipo);
-
+    final valor = evento.valorCamisaPorTipo(_normalizarTipoCamisa(tipoCamisa));
     if (valor > 0) return valor;
 
     return evento.valorCamisa ?? 0;
@@ -324,7 +313,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
     final text = value?.toString().replaceAll(',', '.').trim() ?? '';
     if (text.isEmpty) return fallback;
-
     return double.tryParse(text) ?? fallback;
   }
 
@@ -340,15 +328,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   String _graduacaoSegura(dynamic graduacaoAluno, ParticipacaoModel p) {
-    final grad = _textoSeguro(
-      graduacaoAluno,
-      fallback: p.graduacao ?? '',
-    );
-
+    final grad = _textoSeguro(graduacaoAluno, fallback: p.graduacao ?? '');
     if (grad.trim().isEmpty) return 'SEM GRADUAÇÃO';
     return grad.trim();
   }
-
 
   void _onSearchAlunosChanged(String value) {
     _debounceTimer?.cancel();
@@ -374,7 +357,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     required VoidCallback onClear,
     required ValueChanged<String> onChanged,
   }) {
-    final appBarLike = _appBarBg();
     final accent = _ensureVisible(context.uai.primary, context.uai.card);
 
     return TextField(
@@ -401,7 +383,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             : null,
         filled: true,
         fillColor: context.uai.card,
-        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(context.uai.buttonRadius),
           borderSide: BorderSide(color: context.uai.border),
@@ -419,7 +401,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== INICIALIZAÇÃO ====================
   @override
   void initState() {
     super.initState();
@@ -432,17 +413,31 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     _verificarPermissoes();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_viewModeAutoApplied) {
+      _viewModeAutoApplied = true;
+      _viewMode = 0;
+    }
+  }
+
   Future<void> _buscarEventoDoFirestore() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('eventos').doc(widget.eventoId).get();
-      if (doc.exists) setState(() => _eventoCarregado = EventoModel.fromFirestore(doc));
-    } catch (e) { debugPrint('Erro ao buscar evento: $e'); }
+      final doc = await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(widget.eventoId)
+          .get();
+      if (doc.exists && mounted) {
+        setState(() => _eventoCarregado = EventoModel.fromFirestore(doc));
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar evento: $e');
+    }
   }
 
   Future<void> _verificarPermissoes() async {
-    if (mounted) {
-      setState(() => _carregandoPermissoes = true);
-    }
+    if (mounted) setState(() => _carregandoPermissoes = true);
 
     try {
       final permissoes = await Future.wait<bool>([
@@ -450,9 +445,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           'pode_gerenciar_participantes_evento',
           'pode_gerenciar_participantes',
         ]),
-        // 🔒 AÇÕES SENSÍVEIS: checagem direta.
-        // Não usa compatibilidade inversa, para "gerenciar participantes"
-        // não virar automaticamente "adicionar/remover/editar".
         _permissaoService.temQualquerPermissaoDireta([
           'pode_adicionar_participante_evento',
           'pode_adcionar_aluno_a_eventos',
@@ -518,29 +510,43 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           .collection('patrocinadores_eventos')
           .where('evento_id', isEqualTo: widget.eventoId)
           .get();
+
       final usos = <Map<String, dynamic>>[];
-      for (var doc in snap.docs) {
-        final sub = await doc.reference.collection('usos').orderBy('data', descending: true).get();
-        for (var uso in sub.docs) {
+      for (final doc in snap.docs) {
+        final sub = await doc.reference
+            .collection('usos')
+            .orderBy('data', descending: true)
+            .get();
+
+        for (final uso in sub.docs) {
           usos.add({
             'aluno_nome': uso.data()['aluno_nome'],
             'valor': (uso.data()['valor'] as num?)?.toDouble() ?? 0,
           });
         }
       }
+
+      if (!mounted) return;
       setState(() {
         _usosPatrocinio = usos;
-        _participantesPatrocinados = usos.map((u) => u['aluno_nome'] as String).toSet();
+        _participantesPatrocinados = usos
+            .map((u) => u['aluno_nome']?.toString() ?? '')
+            .where((nome) => nome.isNotEmpty)
+            .toSet();
       });
-    } catch (e) { debugPrint('Erro patrocínios: $e'); }
+    } catch (e) {
+      debugPrint('Erro patrocínios: $e');
+    }
   }
 
   Future<void> _carregarGraduacoes() async {
     final grad = await _graduacaoService.buscarTodasGraduacoes();
+    if (!mounted) return;
+
     setState(() {
       _graduacoes = grad;
       _coresGraduacao.clear();
-      for (var g in grad) {
+      for (final g in grad) {
         final id = g['id'] as String?;
         if (id != null) {
           _coresGraduacao[id] = {
@@ -554,16 +560,27 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   Future<void> _carregarParticipantesExistentes() async {
     try {
-      final participantes = await _participacaoService.listarParticipantesEmAndamento(widget.eventoId);
-      setState(() => _alunosParticipantesIds = participantes.map((p) => p['aluno_id'] as String).toList());
-    } catch (e) { debugPrint('Erro ao listar participantes: $e'); }
+      final participantes = await _participacaoService
+          .listarParticipantesEmAndamento(widget.eventoId);
+      if (!mounted) return;
+      setState(() {
+        _alunosParticipantesIds = participantes
+            .map((p) => p['aluno_id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+      });
+    } catch (e) {
+      debugPrint('Erro ao listar participantes: $e');
+    }
   }
 
   Future<Map<String, dynamic>> _buscarDadosAluno(String alunoId) async {
     final cached = _cacheAlunos[alunoId];
     if (cached != null && !cached.isExpired) return cached.data;
+
     try {
-      final doc = await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
+      final doc =
+      await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
       if (doc.exists) {
         final data = doc.data()!;
         final dados = {
@@ -576,13 +593,23 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         _cacheAlunos[alunoId] = CachedAlunoData(dados);
         return dados;
       }
-    } catch (e) { debugPrint('Erro ao buscar aluno $alunoId: $e'); }
-    return {'nome': '', 'foto': null, 'graduacao': '', 'turma': null, 'data_nascimento': null};
+    } catch (e) {
+      debugPrint('Erro ao buscar aluno $alunoId: $e');
+    }
+
+    return {
+      'nome': '',
+      'foto': null,
+      'graduacao': '',
+      'turma': null,
+      'data_nascimento': null,
+    };
   }
 
   int? _calcularIdade(dynamic dataNascimento) {
     if (dataNascimento == null) return null;
     DateTime nasc;
+
     if (dataNascimento is Timestamp) {
       nasc = dataNascimento.toDate();
     } else if (dataNascimento is DateTime) {
@@ -590,13 +617,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     } else {
       return null;
     }
+
     final hoje = DateTime.now();
     int idade = hoje.year - nasc.year;
-    if (hoje.month < nasc.month || (hoje.month == nasc.month && hoje.day < nasc.day)) idade--;
+    if (hoje.month < nasc.month ||
+        (hoje.month == nasc.month && hoje.day < nasc.day)) {
+      idade--;
+    }
     return idade;
   }
 
   Future<void> _limparCacheERecarregar() async {
+    if (!mounted) return;
+
     setState(() {
       _cacheAlunos.clear();
       _assinaturaEstatisticas = '';
@@ -615,7 +648,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Lista e permissões atualizadas!'),
+        content: const Text('✅ Lista e permissões atualizadas!'),
         backgroundColor: context.uai.success,
       ),
     );
@@ -623,20 +656,23 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   void _calcularEstatisticas(List<ParticipacaoModel> participantes) {
     final assinatura = participantes
-        .map((p) => '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.modelagemCamisa}|${p.tipoCamisa}|${p.estaQuitado}')
+        .map((p) =>
+    '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.modelagemCamisa}|${p.tipoCamisa}|${p.estaQuitado}')
         .join(';');
 
     if (_assinaturaEstatisticas == assinatura) return;
 
-    double arrecadado = 0, inscricoes = 0;
+    double arrecadado = 0;
+    double inscricoes = 0;
     int pagos = 0;
-    Map<String, int> camisasPorTamanho = {};
-    Map<String, int> camisasPorDetalhe = {};
+    final camisasPorTamanho = <String, int>{};
+    final camisasPorDetalhe = <String, int>{};
 
-    for (var p in participantes) {
+    for (final p in participantes) {
       arrecadado += p.totalPago;
       inscricoes += p.valorTotal;
       if (p.estaQuitado) pagos++;
+
       if (p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty) {
         final tamanho = p.tamanhoCamisa!.trim().toUpperCase();
         camisasPorTamanho[tamanho] = (camisasPorTamanho[tamanho] ?? 0) + 1;
@@ -657,12 +693,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       _participantesPagos = pagos;
       _camisasPorTamanho = Map.from(camisasPorTamanho);
       _camisasPorDetalhe = Map.from(camisasPorDetalhe);
-      _ultimoTotalParticipantes = participantes.length;
       _assinaturaEstatisticas = assinatura;
     });
   }
 
-  // ==================== DASHBOARD (apenas grade) ====================
   Widget _buildDashboard() {
     final saldoDevedor = _totalInscricoes - _totalArrecadado;
     final inadimplentes =
@@ -672,10 +706,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         : '0';
     final evento = widget.evento ?? _eventoCarregado;
     final temCamisa = evento?.temCamisa ?? false;
+    final r = context.uaiResponsive;
 
     return Container(
-      margin: EdgeInsets.fromLTRB(16, 16, 16, 8),
-      padding: EdgeInsets.all(15),
+      margin: EdgeInsets.fromLTRB(
+        r.pagePadding,
+        r.pagePadding,
+        r.pagePadding,
+        8,
+      ),
+      padding: EdgeInsets.all(r.cardPadding),
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
@@ -688,7 +728,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           Row(
             children: [
               _dashboardIconBox(Icons.analytics_rounded, context.uai.primary),
-              SizedBox(width: 11),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -701,7 +741,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'Pagamentos, pendências e camisas do evento.',
                       maxLines: 2,
@@ -716,11 +756,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 ),
               ),
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
                   color: context.uai.primary.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(99),
-                  border: Border.all(color: context.uai.primary.withOpacity(0.18)),
+                  border: Border.all(
+                    color: context.uai.primary.withOpacity(0.18),
+                  ),
                 ),
                 child: Text(
                   '$percentualPago%',
@@ -733,10 +776,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               ),
             ],
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = constraints.maxWidth < 430 ? 2 : 4;
+              final responsive = UaiResponsive.fromConstraints(
+                context,
+                constraints,
+              );
+              final columns = responsive.participantDashboardUseFourColumns
+                  ? 4
+                  : 2;
               const spacing = 10.0;
               final itemWidth =
                   (constraints.maxWidth - (spacing * (columns - 1))) / columns;
@@ -787,7 +836,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               );
             },
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 480;
@@ -810,7 +859,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 return Row(
                   children: [
                     Expanded(child: children[0]),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Expanded(child: children[1]),
                   ],
                 );
@@ -819,20 +868,24 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               return Column(
                 children: [
                   children[0],
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   children[1],
                 ],
               );
             },
           ),
           if (temCamisa && _camisasPorTamanho.isNotEmpty) ...[
-            SizedBox(height: 13),
+            const SizedBox(height: 13),
             Divider(color: context.uai.border, height: 1),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Row(
               children: [
-                _dashboardIconBox(Icons.shopping_bag_rounded, context.uai.warning, compact: true),
-                SizedBox(width: 9),
+                _dashboardIconBox(
+                  Icons.shopping_bag_rounded,
+                  context.uai.warning,
+                  compact: true,
+                ),
+                const SizedBox(width: 9),
                 Text(
                   'Camisas:',
                   style: TextStyle(
@@ -841,7 +894,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     fontSize: 13.5,
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -850,18 +903,28 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                           ? _camisasPorDetalhe.entries
                           : _camisasPorTamanho.entries)
                           .map((e) {
-                        final accent = _ensureVisible(context.uai.warning, context.uai.card);
+                        final accent = _ensureVisible(
+                          context.uai.warning,
+                          context.uai.card,
+                        );
                         final label = e.key.contains('|')
                             ? e.key.split('|').asMap().entries.map((part) {
-                          if (part.key == 0) return _modelagemCamisaLabel(part.value);
-                          if (part.key == 1) return _tipoCamisaLabel(part.value);
+                          if (part.key == 0) {
+                            return _modelagemCamisaLabel(part.value);
+                          }
+                          if (part.key == 1) {
+                            return _tipoCamisaLabel(part.value);
+                          }
                           return part.value;
                         }).join(' • ')
                             : e.key;
 
                         return Container(
-                          margin: EdgeInsets.only(right: 8),
-                          padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
                             color: accent.withOpacity(0.10),
                             borderRadius: BorderRadius.circular(99),
@@ -911,10 +974,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     required Color color,
   }) {
     final accent = _ensureVisible(color, context.uai.card);
+    final r = context.uaiResponsive;
 
     return Container(
-      constraints: BoxConstraints(minHeight: 92),
-      padding: EdgeInsets.all(11),
+      constraints: BoxConstraints(minHeight: r.isPhone ? 92 : 86),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
@@ -924,7 +988,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, color: accent, size: 22),
-          SizedBox(height: 7),
+          const SizedBox(height: 7),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
@@ -937,7 +1001,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               ),
             ),
           ),
-          SizedBox(height: 3),
+          const SizedBox(height: 3),
           Text(
             label,
             textAlign: TextAlign.center,
@@ -961,7 +1025,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     final accent = _ensureVisible(color, context.uai.card);
 
     return Container(
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
@@ -970,7 +1034,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       child: Row(
         children: [
           _dashboardIconBox(icon, accent, compact: true),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -985,7 +1049,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     fontSize: 15.5,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   label,
                   style: TextStyle(
@@ -1002,31 +1066,43 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== CARREGAR ALUNOS ====================
   Future<void> _carregarAlunos() async {
+    if (!mounted) return;
     setState(() => _isLoadingAlunos = true);
+
     try {
       final gradList = await _graduacaoService.buscarTodasGraduacoes();
-      final Map<String, Map<String, dynamic>> mapaGrad = {for (var g in gradList) g['id']: g};
+      final mapaGrad = <String, Map<String, dynamic>>{
+        for (final g in gradList) (g['id'] ?? '').toString(): g,
+      };
+
       final snap = await FirebaseFirestore.instance
           .collection('alunos')
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .get();
+
       final alunos = snap.docs
           .where((doc) => !_alunosParticipantesIds.contains(doc.id))
           .map((doc) {
         final data = doc.data();
-        final gradId = data['graduacao_atual_id'] ?? '';
+        final gradId = data['graduacao_atual_id']?.toString() ?? '';
         final gradInfo = mapaGrad[gradId];
         String tipoPublico = 'ADULTO';
-        int nivel = data['nivel_graduacao'] ?? 0;
+        int nivel = data['nivel_graduacao'] is int
+            ? data['nivel_graduacao'] as int
+            : int.tryParse(data['nivel_graduacao']?.toString() ?? '') ?? 0;
+
         if (gradInfo != null) {
-          tipoPublico = gradInfo['tipo_publico'] ?? 'ADULTO';
-          nivel = gradInfo['nivel_graduacao'] ?? nivel;
+          tipoPublico = gradInfo['tipo_publico']?.toString() ?? 'ADULTO';
+          nivel = gradInfo['nivel_graduacao'] is int
+              ? gradInfo['nivel_graduacao'] as int
+              : int.tryParse(gradInfo['nivel_graduacao']?.toString() ?? '') ??
+              nivel;
         } else {
-          final gradTexto = data['graduacao_atual'] ?? '';
+          final gradTexto = data['graduacao_atual']?.toString() ?? '';
           if (gradTexto.contains('INFANTIL')) tipoPublico = 'INFANTIL';
         }
+
         return {
           'id': doc.id,
           'nome': data['nome'] ?? '',
@@ -1038,20 +1114,27 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           'turma': data['turma'] as String?,
           'data_nascimento': data['data_nascimento'],
         };
-      })
-          .toList()
-        ..sort((a, b) => (a['nome'] as String).compareTo(b['nome'] as String));
+      }).toList()
+        ..sort((a, b) =>
+            (a['nome'] as String).compareTo(b['nome'] as String));
 
+      if (!mounted) return;
       setState(() => _alunosDisponiveis = alunos);
     } catch (e) {
       debugPrint('❌ Erro ao carregar alunos: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: context.uai.error));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: $e'),
+            backgroundColor: context.uai.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingAlunos = false);
     }
   }
 
-  // ==================== ADICIONAR / REMOVER ====================
   Future<void> _mostrarModalAdicionar(Map<String, dynamic> aluno) async {
     if (!_podeAdicionar) {
       _mostrarSemPermissao('Você não tem permissão para adicionar participantes.');
@@ -1060,34 +1143,38 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
     final evento = widget.evento ?? _eventoCarregado;
     if (evento == null) return;
+
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => AdicionarParticipanteModal(aluno: aluno, evento: evento, isBatizado: _isBatizado),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AdicionarParticipanteModal(
+        aluno: aluno,
+        evento: evento,
+        isBatizado: _isBatizado,
+      ),
     );
-    if (result != null) {
-      final tipoCamisa = result['tipoCamisa'] ??
-          result['tipo_camisa'] ??
-          'MANGA';
 
-      final valorCamisa = _asDoubleSeguro(
-        result['valorCamisa'] ?? result['valor_camisa'],
-        fallback: _valorCamisaEventoPorTipo(tipoCamisa?.toString()),
-      );
+    if (result == null) return;
 
-      await _adicionarParticipante(
-        aluno,
-        tamanhoCamisa: result['tamanhoCamisa'],
-        modelagemCamisa: result['modelagemCamisa'] ??
-            result['modelagem_camisa'] ??
-            'NORMAL',
-        tipoCamisa: tipoCamisa,
-        valorCamisa: valorCamisa,
-        novaGraduacao: result['graduacao']?['nome_graduacao'],
-        novaGraduacaoId: result['graduacaoId'],
-      );
-    }
+    final tipoCamisa = result['tipoCamisa'] ?? result['tipo_camisa'] ?? 'MANGA';
+    final valorCamisa = _asDoubleSeguro(
+      result['valorCamisa'] ?? result['valor_camisa'],
+      fallback: _valorCamisaEventoPorTipo(tipoCamisa?.toString()),
+    );
+
+    await _adicionarParticipante(
+      aluno,
+      tamanhoCamisa: result['tamanhoCamisa'],
+      modelagemCamisa:
+      result['modelagemCamisa'] ?? result['modelagem_camisa'] ?? 'NORMAL',
+      tipoCamisa: tipoCamisa,
+      valorCamisa: valorCamisa,
+      novaGraduacao: result['graduacao']?['nome_graduacao'],
+      novaGraduacaoId: result['graduacaoId'],
+    );
   }
 
   Future<void> _adicionarParticipante(
@@ -1099,14 +1186,23 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         String? novaGraduacao,
         String? novaGraduacaoId,
       }) async {
-    if (!_podeAdicionar) { _mostrarSemPermissao('Você não tem permissão para adicionar participantes.'); return; }
+    if (!_podeAdicionar) {
+      _mostrarSemPermissao('Você não tem permissão para adicionar participantes.');
+      return;
+    }
+
     try {
       final evento = widget.evento ?? _eventoCarregado;
       await _participacaoService.adicionarParticipante(
-        alunoId: aluno['id'], alunoNome: aluno['nome'], alunoFoto: aluno['foto'],
-        eventoId: widget.eventoId, eventoNome: widget.eventoNome,
-        dataEvento: evento?.data ?? DateTime.now(), tipoEvento: evento?.tipo ?? 'EVENTO',
-        graduacao: aluno['graduacao'], graduacaoId: aluno['nivel_graduacao'].toString(),
+        alunoId: aluno['id'],
+        alunoNome: aluno['nome'],
+        alunoFoto: aluno['foto'],
+        eventoId: widget.eventoId,
+        eventoNome: widget.eventoNome,
+        dataEvento: evento?.data ?? DateTime.now(),
+        tipoEvento: evento?.tipo ?? 'EVENTO',
+        graduacao: aluno['graduacao'],
+        graduacaoId: aluno['nivel_graduacao'].toString(),
         tamanhoCamisa: tamanhoCamisa,
         modelagemCamisa: modelagemCamisa ?? 'NORMAL',
         tipoCamisa: tipoCamisa ?? 'MANGA',
@@ -1118,40 +1214,79 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             ? (valorCamisa ?? _valorCamisaEventoPorTipo(tipoCamisa))
             : 0,
       );
+
+      if (!mounted) return;
       setState(() {
         _alunosParticipantesIds.add(aluno['id']);
         _alunosDisponiveis.removeWhere((a) => a['id'] == aluno['id']);
       });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_isBatizado && novaGraduacao != null
-            ? '✅ ${aluno['nome']} será graduado para $novaGraduacao!'
-            : '✅ ${aluno['nome']} adicionado!'),
-        backgroundColor: context.uai.success,
-      ));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isBatizado && novaGraduacao != null
+                ? '✅ ${aluno['nome']} será graduado para $novaGraduacao!'
+                : '✅ ${aluno['nome']} adicionado!',
+          ),
+          backgroundColor: context.uai.success,
+        ),
+      );
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: context.uai.error));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: $e'),
+            backgroundColor: context.uai.error,
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _removerParticipante(String id, String nome, String alunoId) async {
-    if (!_podeRemover) { _mostrarSemPermissao('Você não tem permissão para remover participantes.'); return; }
+  Future<void> _removerParticipante(
+      String id,
+      String nome,
+      String alunoId,
+      ) async {
+    if (!_podeRemover) {
+      _mostrarSemPermissao('Você não tem permissão para remover participantes.');
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remover Participante'),
         content: Text('Remover $nome do evento?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('REMOVER')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCELAR'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('REMOVER'),
+          ),
         ],
       ),
     );
-    if (confirm == true) {
-      await _participacaoService.removerParticipante(id);
-      _cacheAlunos.remove(alunoId);
-      setState(() { _alunosParticipantesIds.remove(alunoId); _carregarAlunos(); });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🗑️ $nome removido!'), backgroundColor: context.uai.warning));
-    }
+
+    if (confirm != true) return;
+
+    await _participacaoService.removerParticipante(id);
+    _cacheAlunos.remove(alunoId);
+    if (!mounted) return;
+    setState(() {
+      _alunosParticipantesIds.remove(alunoId);
+      _carregarAlunos();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('🗑️ $nome removido!'),
+        backgroundColor: context.uai.warning,
+      ),
+    );
   }
 
   void _mostrarSemPermissao([String mensagem = 'Sem permissão']) {
@@ -1176,41 +1311,48 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       return;
     }
 
-    Navigator.push(context, MaterialPageRoute(builder: (_) => DetalheParticipacaoScreen(
-      participacao: p.toMap(),
-      participacaoId: p.id!,
-      eventoId: widget.eventoId,
-    )));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetalheParticipacaoScreen(
+          participacao: p.toMap(),
+          participacaoId: p.id!,
+          eventoId: widget.eventoId,
+        ),
+      ),
+    );
   }
 
-  String _formatarValorResumido(double valor) =>
-      valor >= 100 ? 'R\$${valor.toStringAsFixed(0)}' : 'R\$${valor.toStringAsFixed(2)}';
-
-  // ==================== FILTROS ====================
   List<ParticipacaoModel> _aplicarFiltros(List<ParticipacaoModel> lista) {
-    final Map<String, String> idParaNome = {};
-    for (var g in _graduacoes) {
+    final idParaNome = <String, String>{};
+    for (final g in _graduacoes) {
       idParaNome[g['id'] as String] = g['nome_graduacao'] as String? ?? '';
     }
 
     return lista.where((p) {
-      // Pesquisa de participantes removida a pedido.
-      // Mantém apenas filtros por status, pagamento, graduação e camisa.
       if (_filtroStatus == 'pagos' && !p.estaQuitado) return false;
       if (_filtroStatus == 'pendentes' && p.estaQuitado) return false;
 
       if (_filtroStatusPagamento.isNotEmpty) {
-        if (_filtroStatusPagamento.contains('quitado') && !p.estaQuitado) return false;
-        if (_filtroStatusPagamento.contains('pendente') && p.estaQuitado) return false;
+        if (_filtroStatusPagamento.contains('quitado') && !p.estaQuitado) {
+          return false;
+        }
+        if (_filtroStatusPagamento.contains('pendente') && p.estaQuitado) {
+          return false;
+        }
         if (_filtroStatusPagamento.contains('patrocinado') &&
-            !_participantesPatrocinados.contains(p.alunoNome)) return false;
+            !_participantesPatrocinados.contains(p.alunoNome)) {
+          return false;
+        }
       }
 
       if (_filtroGraduacaoId != null && _filtroGraduacaoId!.isNotEmpty) {
         final nomeGraduacaoFiltrada = idParaNome[_filtroGraduacaoId!] ?? '';
         if (nomeGraduacaoFiltrada.isNotEmpty &&
             p.graduacao != nomeGraduacaoFiltrada &&
-            p.graduacaoNova != nomeGraduacaoFiltrada) return false;
+            p.graduacaoNova != nomeGraduacaoFiltrada) {
+          return false;
+        }
       }
 
       if (_filtroStatusCamisa != null) {
@@ -1218,6 +1360,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         if (_filtroStatusCamisa == 'com' && !temCamisa) return false;
         if (_filtroStatusCamisa == 'sem' && temCamisa) return false;
       }
+
       return true;
     }).toList();
   }
@@ -1230,7 +1373,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -1240,50 +1385,78 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Filtros Avançados', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Filtros Avançados',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 16),
                   const Text('Status de Pagamento:'),
-                  Wrap(spacing: 8, children: [
-                    FilterChip(
-                      label: const Text('Quitado'),
-                      selected: statusPagamento.contains('quitado'),
-                      onSelected: (v) => setSheetState(() => v ? statusPagamento.add('quitado') : statusPagamento.remove('quitado')),
-                    ),
-                    FilterChip(
-                      label: const Text('Pendente'),
-                      selected: statusPagamento.contains('pendente'),
-                      onSelected: (v) => setSheetState(() => v ? statusPagamento.add('pendente') : statusPagamento.remove('pendente')),
-                    ),
-                    FilterChip(
-                      label: const Text('Patrocinado'),
-                      selected: statusPagamento.contains('patrocinado'),
-                      onSelected: (v) => setSheetState(() => v ? statusPagamento.add('patrocinado') : statusPagamento.remove('patrocinado')),
-                    ),
-                  ]),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      FilterChip(
+                        label: const Text('Quitado'),
+                        selected: statusPagamento.contains('quitado'),
+                        onSelected: (v) => setSheetState(
+                              () => v
+                              ? statusPagamento.add('quitado')
+                              : statusPagamento.remove('quitado'),
+                        ),
+                      ),
+                      FilterChip(
+                        label: const Text('Pendente'),
+                        selected: statusPagamento.contains('pendente'),
+                        onSelected: (v) => setSheetState(
+                              () => v
+                              ? statusPagamento.add('pendente')
+                              : statusPagamento.remove('pendente'),
+                        ),
+                      ),
+                      FilterChip(
+                        label: const Text('Patrocinado'),
+                        selected: statusPagamento.contains('patrocinado'),
+                        onSelected: (v) => setSheetState(
+                              () => v
+                              ? statusPagamento.add('patrocinado')
+                              : statusPagamento.remove('patrocinado'),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   const Text('Graduação:'),
                   DropdownButtonFormField<String?>(
                     value: graduacaoId,
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Todas')),
-                      ..._graduacoes.map((g) => DropdownMenuItem(value: g['id'], child: Text(g['nome_graduacao']))),
+                      ..._graduacoes.map(
+                            (g) => DropdownMenuItem<String?>(
+                          value: g['id']?.toString(),
+                          child: Text(g['nome_graduacao']?.toString() ?? ''),
+                        ),
+                      ),
                     ],
                     onChanged: (v) => setSheetState(() => graduacaoId = v),
                   ),
                   const SizedBox(height: 16),
                   const Text('Camisa:'),
-                  Wrap(spacing: 8, children: [
-                    FilterChip(
-                      label: const Text('Com camisa'),
-                      selected: statusCamisa == 'com',
-                      onSelected: (v) => setSheetState(() => statusCamisa = v ? 'com' : null),
-                    ),
-                    FilterChip(
-                      label: const Text('Sem camisa'),
-                      selected: statusCamisa == 'sem',
-                      onSelected: (v) => setSheetState(() => statusCamisa = v ? 'sem' : null),
-                    ),
-                  ]),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      FilterChip(
+                        label: const Text('Com camisa'),
+                        selected: statusCamisa == 'com',
+                        onSelected: (v) =>
+                            setSheetState(() => statusCamisa = v ? 'com' : null),
+                      ),
+                      FilterChip(
+                        label: const Text('Sem camisa'),
+                        selected: statusCamisa == 'sem',
+                        onSelected: (v) =>
+                            setSheetState(() => statusCamisa = v ? 'sem' : null),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1318,29 +1491,50 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== WIDGETS DE APOIO ====================
   Widget _buildViewModeButton(IconData icon, bool isSelected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? context.uai.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, color: isSelected ? _readableOn(context.uai.primary) : context.uai.textSecondary, size: 20),
+        child: Icon(
+          icon,
+          color: isSelected
+              ? _readableOn(context.uai.primary)
+              : context.uai.textSecondary,
+          size: 20,
+        ),
       ),
     );
   }
 
   Widget _buildViewModeRow() {
     return Container(
-      decoration: BoxDecoration(color: context.uai.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: context.uai.border)),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.uai.border),
+      ),
       child: Row(
         children: [
-          _buildViewModeButton(Icons.grid_view, _viewMode == 0, () => setState(() => _viewMode = 0)),
-          _buildViewModeButton(Icons.list, _viewMode == 1, () => setState(() => _viewMode = 1)),
-          _buildViewModeButton(Icons.table_chart, _viewMode == 2, () => setState(() => _viewMode = 2)),
+          _buildViewModeButton(
+            Icons.grid_view,
+            _viewMode == 0,
+                () => setState(() => _viewMode = 0),
+          ),
+          _buildViewModeButton(
+            Icons.list,
+            _viewMode == 1,
+                () => setState(() => _viewMode = 1),
+          ),
+          _buildViewModeButton(
+            Icons.table_chart,
+            _viewMode == 2,
+                () => setState(() => _viewMode = 2),
+          ),
         ],
       ),
     );
@@ -1357,7 +1551,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       backgroundColor: context.uai.card,
       selectedColor: accent.withOpacity(0.14),
       checkmarkColor: accent,
-      side: BorderSide(color: selected ? accent.withOpacity(0.55) : context.uai.border),
+      side: BorderSide(
+        color: selected ? accent.withOpacity(0.55) : context.uai.border,
+      ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
       labelStyle: TextStyle(
         color: selected ? accent : context.uai.textSecondary,
@@ -1366,13 +1562,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== CORES DAS BORDAS ====================
   Color _statusBorderColor(ParticipacaoModel p) {
-    if (_participantesPatrocinados.contains(p.alunoNome)) return context.uai.associacao;
+    if (_participantesPatrocinados.contains(p.alunoNome)) {
+      return context.uai.associacao;
+    }
     return p.estaQuitado ? context.uai.success : context.uai.warning;
   }
 
-  // ==================== CARDS COM BORDAS COLORIDAS ====================
   Widget _buildParticipantCardGrade(ParticipacaoModel p) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _buscarDadosAluno(p.alunoId),
@@ -1382,55 +1578,173 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         final nome = _nomeAlunoSeguro(dados?['nome'], p);
         final grad = _graduacaoSegura(dados?['graduacao'], p);
         final borderColor = _statusBorderColor(p);
+        final isPaid = p.estaQuitado;
+        final isSponsored = _participantesPatrocinados.contains(p.alunoNome);
+        final accent = _ensureVisible(borderColor, context.uai.card);
+        final primeiroNome = nome.split(RegExp(r'\s+')).first.toUpperCase();
 
-        return Card(
-          color: context.uai.card,
-          surfaceTintColor: Colors.transparent,
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: borderColor.withOpacity(0.6), width: 2),
-          ),
-          child: InkWell(
-            onTap: () => _abrirDetalhe(p),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Stack(
-                      clipBehavior: Clip.none,
+        return RepaintBoundary(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withOpacity(0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _abrirDetalhe(p),
+                borderRadius: BorderRadius.circular(22),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  decoration: BoxDecoration(
+                    color: context.uai.card,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: accent.withOpacity(0.78),
+                      width: isPaid || isSponsored ? 2.1 : 1.8,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Stack(
                       children: [
-                        RobustAvatar(fotoUrl: fotoUrl, radius: 32, borderColor: borderColor),
+                        Positioned.fill(
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    _buildParticipanteFotoGrade(
+                                      fotoUrl: fotoUrl,
+                                      nome: nome,
+                                    ),
+                                    Positioned.fill(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.bottomCenter,
+                                            end: Alignment.center,
+                                            colors: [
+                                              Colors.black.withOpacity(0.66),
+                                              Colors.black.withOpacity(0.18),
+                                              Colors.transparent,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: 9,
+                                      right: 9,
+                                      bottom: 9,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            primeiroNome,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                              height: 1.05,
+                                              shadows: [
+                                                Shadow(
+                                                  color: Colors.black54,
+                                                  blurRadius: 5,
+                                                  offset: Offset(0, 1),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          _gradChipFoto(grad, p.graduacaoNova),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(8, 8, 8, 9),
+                                decoration: BoxDecoration(
+                                  color: accent.withOpacity(0.09),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Flexible(child: _statusBadgePremium(p)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: context.uai.card,
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.20),
+                                  blurRadius: 5,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                         if (p.aguardandoFinalizacao)
                           Positioned(
-                            bottom: -2,
-                            right: -2,
+                            top: 7,
+                            right: 7,
                             child: Container(
-                              padding: EdgeInsets.all(4),
-                              decoration: BoxDecoration(color: context.uai.warning, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
-                              child: Icon(Icons.access_time, color: Colors.white, size: 10),
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: context.uai.warning,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: context.uai.card,
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.18),
+                                    blurRadius: 7,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.access_time_rounded,
+                                color: _readableOn(context.uai.warning),
+                                size: 15,
+                              ),
                             ),
                           ),
                       ],
                     ),
-                    SizedBox(height: 6),
-                    Text(
-                      nome.split(RegExp(r'\s+')).first,
-                      style: TextStyle(
-                        color: _onCard(),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    _gradChip(grad, p.graduacaoNova),
-                    const SizedBox(height: 4),
-                    _statusBadge(p),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1440,14 +1754,147 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  Widget _graduacaoFluxoLista(String? gradAtualAluno, ParticipacaoModel p) {
-    final antigaBase = _textoSeguro(
-      gradAtualAluno,
-      fallback: p.graduacao ?? '',
+  Widget _buildParticipanteFotoGrade({
+    required String? fotoUrl,
+    required String nome,
+  }) {
+    final url = fotoUrl?.trim() ?? '';
+    final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
+
+    Widget fallback() {
+      return Container(
+        color: context.uai.cardAlt,
+        child: Center(
+          child: Text(
+            inicial,
+            style: TextStyle(
+              color: context.uai.textMuted,
+              fontSize: 42,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
+      return fallback();
+    }
+
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return fallback();
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Container(
+          color: context.uai.cardAlt,
+          child: Center(
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: context.uai.primary,
+              ),
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) => fallback(),
     );
-    final antiga = antigaBase.trim().isNotEmpty
-        ? antigaBase.trim()
-        : 'SEM GRADUAÇÃO';
+  }
+
+  Widget _gradChipFoto(String? gradAtual, String? gradNova) {
+    final nova = _textoSeguro(gradNova);
+    final atual = _textoSeguro(gradAtual, fallback: 'SEM GRADUAÇÃO');
+    final base = nova.isNotEmpty ? nova : atual;
+    final texto = base.trim().isEmpty
+        ? 'SEM GRADUAÇÃO'
+        : base.split(RegExp(r'\s+')).take(2).join(' ');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withOpacity(0.24)),
+      ),
+      child: Text(
+        texto,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 9.5,
+          color: Color(0xFF991B1B),
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBadgePremium(ParticipacaoModel p) {
+    final isPaid = p.estaQuitado;
+    final isSponsored = _participantesPatrocinados.contains(p.alunoNome);
+    final color = isSponsored
+        ? context.uai.associacao
+        : isPaid
+        ? context.uai.success
+        : context.uai.warning;
+    final accent = _ensureVisible(color, context.uai.card);
+
+    final icon = isSponsored
+        ? Icons.volunteer_activism_rounded
+        : isPaid
+        ? Icons.check_circle_rounded
+        : Icons.hourglass_empty_rounded;
+
+    final label = isSponsored
+        ? 'Patrocinado'
+        : isPaid
+        ? 'Pago'
+        : 'R\$ ${p.saldoDevedor.toStringAsFixed(0)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.11),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: accent.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: accent),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                color: accent,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _graduacaoFluxoLista(String? gradAtualAluno, ParticipacaoModel p) {
+    final antigaBase = _textoSeguro(gradAtualAluno, fallback: p.graduacao ?? '');
+    final antiga = antigaBase.trim().isNotEmpty ? antigaBase.trim() : 'SEM GRADUAÇÃO';
     final nova = (p.graduacaoNova ?? '').trim();
 
     if (nova.isEmpty || nova == antiga) {
@@ -1459,11 +1906,15 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       child: Row(
         children: [
           _gradChip(antiga, null),
-          SizedBox(width: 5),
-          Icon(Icons.arrow_forward_rounded, size: 13, color: context.uai.textMuted),
-          SizedBox(width: 5),
+          const SizedBox(width: 5),
+          Icon(
+            Icons.arrow_forward_rounded,
+            size: 13,
+            color: context.uai.textMuted,
+          ),
+          const SizedBox(width: 5),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: context.uai.success.withOpacity(0.10),
               borderRadius: BorderRadius.circular(12),
@@ -1497,7 +1948,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         final borderColor = _statusBorderColor(p);
 
         return Container(
-          margin: EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
             color: context.uai.card,
             borderRadius: BorderRadius.circular(16),
@@ -1507,7 +1958,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 color: Colors.black.withOpacity(0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
-              )
+              ),
             ],
           ),
           child: InkWell(
@@ -1522,26 +1973,34 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     children: [
                       Stack(
                         children: [
-                          RobustAvatar(fotoUrl: fotoUrl, radius: 30, borderColor: borderColor),
+                          RobustAvatar(
+                            fotoUrl: fotoUrl,
+                            radius: 30,
+                            borderColor: borderColor,
+                          ),
                           if (p.aguardandoFinalizacao)
                             Positioned(
                               bottom: 0,
                               right: 0,
                               child: Container(
-                                padding: EdgeInsets.all(4),
+                                padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
                                   color: context.uai.warning,
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
-                                child: Icon(Icons.access_time, color: Colors.white, size: 12),
+                                child: const Icon(
+                                  Icons.access_time,
+                                  color: Colors.white,
+                                  size: 12,
+                                ),
                               ),
                             ),
                         ],
                       ),
                       if (idade != null)
                         Padding(
-                          padding: EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             '$idade anos',
                             style: TextStyle(
@@ -1558,6 +2017,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             SizedBox(
@@ -1586,19 +2046,34 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       },
                     ),
                   ),
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_podeRemover)
                         IconButton(
                           tooltip: 'Remover',
-                          constraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                          constraints: const BoxConstraints(
+                            minWidth: 34,
+                            minHeight: 34,
+                          ),
                           padding: EdgeInsets.zero,
-                          icon: Icon(Icons.delete_outline_rounded, color: context.uai.error, size: 20),
-                          onPressed: () => _removerParticipante(p.id!, p.alunoNome, p.alunoId),
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            color: context.uai.error,
+                            size: 20,
+                          ),
+                          onPressed: () => _removerParticipante(
+                            p.id!,
+                            p.alunoNome,
+                            p.alunoId,
+                          ),
                         ),
-                      Icon(Icons.chevron_right, color: context.uai.primary, size: 22),
+                      Icon(
+                        Icons.chevron_right,
+                        color: context.uai.primary,
+                        size: 22,
+                      ),
                     ],
                   ),
                 ],
@@ -1613,12 +2088,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   Widget _gradChip(String? gradAtual, String? gradNova) {
     final nova = _textoSeguro(gradNova);
     final atual = _textoSeguro(gradAtual, fallback: 'SEM GRADUAÇÃO');
-
     final base = nova.isNotEmpty ? nova : atual;
     final texto = base.trim().isEmpty
         ? 'SEM GRADUAÇÃO'
         : base.split(RegExp(r'\s+')).take(2).join(' ');
-
     final accent = _ensureVisible(context.uai.primary, context.uai.card);
 
     return Container(
@@ -1630,14 +2103,21 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       ),
       child: Text(
         texto,
-        style: TextStyle(fontSize: 9, color: accent, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          fontSize: 9,
+          color: accent,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 
   Widget _statusBadge(ParticipacaoModel p) {
     final isPaid = p.estaQuitado;
-    final accent = _ensureVisible(isPaid ? context.uai.success : context.uai.warning, context.uai.card);
+    final accent = _ensureVisible(
+      isPaid ? context.uai.success : context.uai.warning,
+      context.uai.card,
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1649,11 +2129,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(isPaid ? Icons.check_circle : Icons.hourglass_empty, size: 10, color: accent),
+          Icon(
+            isPaid ? Icons.check_circle : Icons.hourglass_empty,
+            size: 10,
+            color: accent,
+          ),
           const SizedBox(width: 2),
           Text(
             isPaid ? 'Pago' : 'R\$ ${p.saldoDevedor.toStringAsFixed(0)}',
-            style: TextStyle(fontSize: 8, color: accent, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 8,
+              color: accent,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -1663,17 +2151,23 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   Widget _infoRow(ParticipacaoModel p, String? turma) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        _statusBadge(p),
-        if (turma != null && turma.isNotEmpty) ...[
-          SizedBox(width: 8),
-          _chip(Icons.class_, context.uai.associacao, turma),
+      child: Row(
+        children: [
+          _statusBadge(p),
+          if (turma != null && turma.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _chip(Icons.class_, context.uai.associacao, turma),
+          ],
+          if (p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _chip(
+              Icons.shopping_bag,
+              context.uai.info,
+              _descricaoCamisaParticipacao(p),
+            ),
+          ],
         ],
-        if (p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty) ...[
-          SizedBox(width: 8),
-          _chip(Icons.shopping_bag, context.uai.info, _descricaoCamisaParticipacao(p)),
-        ],
-      ]),
+      ),
     );
   }
 
@@ -1686,19 +2180,31 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: accent.withOpacity(0.14)),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: accent),
-        const SizedBox(width: 4),
-        Text(label, style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w700)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: accent),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: accent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // ==================== PLANILHA COM SCROLL VERTICAL E HORIZONTAL ====================
   Widget _buildPlanilhaView(List<ParticipacaoModel> participantes) {
     final filtrados = _aplicarFiltros(participantes);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.uaiResponsive.pagePadding,
+        vertical: 8,
+      ),
       child: Column(
         children: [
           Row(
@@ -1711,14 +2217,23 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   tooltip: 'Exportar PDFs',
                   onSelected: (v) => _exportarPdf(v, participantes),
                   itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'lista', child: Text('📋 PDF Lista Participantes')),
-                    PopupMenuItem(value: 'conferencia', child: Text('📋 PDF Conferência de Nomes')),
-                    PopupMenuItem(value: 'completa', child: Text('📋 PDF Lista Completa')),
+                    PopupMenuItem(
+                      value: 'lista',
+                      child: Text('📋 PDF Lista Participantes'),
+                    ),
+                    PopupMenuItem(
+                      value: 'conferencia',
+                      child: Text('📋 PDF Conferência de Nomes'),
+                    ),
+                    PopupMenuItem(
+                      value: 'completa',
+                      child: Text('📋 PDF Lista Completa'),
+                    ),
                   ],
                 ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1738,13 +2253,39 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
-                          columnSpacing: 16,
+                          columnSpacing:
+                          context.uaiResponsive.isPhone ? 14 : 22,
                           columns: const [
-                            DataColumn(label: Text('Nome', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Camisa', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Valor Pago', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Graduação', style: TextStyle(fontWeight: FontWeight.bold))),
+                            DataColumn(
+                              label: Text(
+                                'Nome',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            DataColumn(
+                              label: Text(
+                                'Status',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            DataColumn(
+                              label: Text(
+                                'Camisa',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            DataColumn(
+                              label: Text(
+                                'Valor Pago',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            DataColumn(
+                              label: Text(
+                                'Graduação',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
                             DataColumn(label: Text('')),
                           ],
                           rows: filtrados.map((p) {
@@ -1752,14 +2293,32 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                             return DataRow(
                               onSelectChanged: (_) => _abrirDetalhe(p),
                               cells: [
-                                DataCell(Row(children: [
-                                  Container(width: 4, height: 24, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(2))),
-                                  const SizedBox(width: 8),
-                                  Text(p.alunoNome),
-                                ])),
+                                DataCell(
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 4,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: borderColor,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(p.alunoNome),
+                                    ],
+                                  ),
+                                ),
                                 DataCell(_statusChip(p)),
                                 DataCell(Text(_descricaoCamisaParticipacao(p))),
-                                DataCell(Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(p.totalPago))),
+                                DataCell(
+                                  Text(
+                                    NumberFormat.currency(
+                                      locale: 'pt_BR',
+                                      symbol: 'R\$',
+                                    ).format(p.totalPago),
+                                  ),
+                                ),
                                 DataCell(Text(p.graduacaoNova ?? p.graduacao ?? '---')),
                                 const DataCell(Icon(Icons.chevron_right)),
                               ],
@@ -1779,7 +2338,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Widget _statusChip(ParticipacaoModel p) {
-    if (_participantesPatrocinados.contains(p.alunoNome)) return _miniChip('Patrocinado', context.uai.associacao);
+    if (_participantesPatrocinados.contains(p.alunoNome)) {
+      return _miniChip('Patrocinado', context.uai.associacao);
+    }
     if (p.estaQuitado) return _miniChip('Quitado', context.uai.success);
     return _miniChip('Pendente', context.uai.warning);
   }
@@ -1793,11 +2354,17 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: accent.withOpacity(0.14)),
       ),
-      child: Text(label, style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: accent,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 
-  // ==================== GRID COM DASHBOARD ROLANDO + FILTRO FIXO ====================
   Widget _buildGridView(List<ParticipacaoModel> participantes) {
     final filtrados = _aplicarFiltros(participantes);
 
@@ -1809,7 +2376,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         SliverPersistentHeader(
           pinned: true,
           delegate: _StickyHeaderDelegate(
-            height: 74,
+            height: context.uaiResponsive.stickyFilterHeight,
             child: _buildParticipantesFilterHeader(
               totalFiltrado: filtrados.length,
               totalGeral: participantes.length,
@@ -1856,18 +2423,20 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.all(12),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                    (ctx, i) => _buildParticipantCardGrade(filtrados[i]),
-                childCount: filtrados.length,
-              ),
+            padding: EdgeInsets.all(context.uaiResponsive.pagePadding),
+            sliver: SliverLayoutBuilder(
+              builder: (context, constraints) {
+                final r = context.uaiResponsive;
+
+                return UaiSliverMaxExtentGrid(
+                  itemCount: filtrados.length,
+                  maxCrossAxisExtent: r.participantCardMaxExtent,
+                  mainAxisExtent:
+                  r.isPhone ? 220 : r.participantCardMainExtent,
+                  spacing: r.isPhone ? 10 : 10,
+                  itemBuilder: (ctx, i) => _buildParticipantCardGrade(filtrados[i]),
+                );
+              },
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 18)),
@@ -1919,11 +2488,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.people_alt_rounded,
-                          size: 14,
-                          color: primary,
-                        ),
+                        Icon(Icons.people_alt_rounded, size: 14, color: primary),
                         const SizedBox(width: 5),
                         Text(
                           '$totalFiltrado/$totalGeral',
@@ -1947,36 +2512,95 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== LIST SEM DASHBOARD ====================
   Widget _buildListView(List<ParticipacaoModel> participantes) {
     final filtrados = _aplicarFiltros(participantes);
+
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.uaiResponsive.pagePadding,
+        vertical: 8,
+      ),
       child: Column(
         children: [
           Row(
             children: [
-              Text('${filtrados.length} participantes', style: TextStyle(color: context.uai.textSecondary, fontSize: 12)),
+              Text(
+                '${filtrados.length} participantes',
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
               const Spacer(),
               _buildViewModeRow(),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Expanded(
-            child: ListView.builder(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-              itemCount: filtrados.length + 1,
-              itemBuilder: (ctx, i) {
-                if (i == filtrados.length) {
-                  return Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text('🔹 MAIS PARTICIPANTES...',
-                          style: TextStyle(color: context.uai.error, fontWeight: FontWeight.w600)),
-                    ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final usarGrade = constraints.maxWidth >= 720;
+
+                if (!usarGrade) {
+                  return ListView.builder(
+                    keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.manual,
+                    itemCount: filtrados.length + 1,
+                    itemBuilder: (ctx, i) {
+                      if (i == filtrados.length) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              '🔹 MAIS PARTICIPANTES...',
+                              style: TextStyle(
+                                color: context.uai.error,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      return _buildParticipantCardLista(filtrados[i]);
+                    },
                   );
                 }
-                return _buildParticipantCardLista(filtrados[i]);
+
+                return GridView.builder(
+                  keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.manual,
+                  padding: const EdgeInsets.only(bottom: 18),
+                  gridDelegate:
+                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 620,
+                    mainAxisExtent: 118,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                  ),
+                  itemCount: filtrados.length + 1,
+                  itemBuilder: (ctx, i) {
+                    if (i == filtrados.length) {
+                      return Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: context.uai.border),
+                        ),
+                        child: Text(
+                          '🔹 MAIS PARTICIPANTES...',
+                          style: TextStyle(
+                            color: context.uai.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return _buildParticipantCardLista(filtrados[i]);
+                  },
+                );
               },
             ),
           ),
@@ -1985,7 +2609,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== BUILD PRINCIPAL ====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1995,29 +2618,38 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           '${widget.eventoNome} - Participantes',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
         ),
         backgroundColor: _appBarBg(),
         foregroundColor: _appBarFg(),
         actions: [
           IconButton(
             icon: _isRefreshing
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
                 : const Icon(Icons.refresh),
             onPressed: _isRefreshing ? null : _limparCacheERecarregar,
             tooltip: 'Atualizar lista',
           ),
-          if (_podeExportarListas)
+          if (_podeConcluirParticipacao)
             IconButton(
-              icon: Icon(Icons.table_chart),
+              icon: const Icon(Icons.fact_check_rounded),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => SelecionarParticipantesCsvScreen(
-                  eventoId: widget.eventoId,
-                  eventoNome: widget.eventoNome,
-                )),
-              ),
-              tooltip: 'Selecionar para CSV',
+                MaterialPageRoute(
+                  builder: (_) => FinalizacaoMassaEventoScreen(
+                    eventoId: widget.eventoId,
+                    eventoNome: widget.eventoNome,
+                  ),
+                ),
+              ).then((_) => _limparCacheERecarregar()),
+              tooltip: 'Finalização em massa',
             ),
         ],
         bottom: _podeAdicionar
@@ -2061,32 +2693,56 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline, size: 60, color: context.uai.error.withOpacity(0.50)),
+                  Icon(
+                    Icons.error_outline,
+                    size: 60,
+                    color: context.uai.error.withOpacity(0.50),
+                  ),
                   const SizedBox(height: 16),
                   Text('Erro: ${snapshot.error}'),
-                  ElevatedButton(onPressed: _limparCacheERecarregar, child: const Text('Tentar novamente')),
+                  ElevatedButton(
+                    onPressed: _limparCacheERecarregar,
+                    child: const Text('Tentar novamente'),
+                  ),
                 ],
               ),
             );
           }
+
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator(color: context.uai.primary));
+            return Center(
+              child: CircularProgressIndicator(color: context.uai.primary),
+            );
           }
+
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.people_outline, size: 60, color: context.uai.border),
-                  SizedBox(height: 16),
-                  Text('Nenhum participante ainda', style: TextStyle(fontSize: 16, color: context.uai.textMuted)),
-                  SizedBox(height: 8),
+                  Icon(
+                    Icons.people_outline,
+                    size: 60,
+                    color: context.uai.border,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Nenhum participante ainda',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: context.uai.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     _podeAdicionar
                         ? 'Adicione participantes na aba "ADICIONAR"'
                         : 'Nenhum participante cadastrado ainda',
-                    style: TextStyle(fontSize: 14, color: context.uai.textMuted),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: context.uai.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -2094,7 +2750,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           }
 
           final participantes = docs
-              .map((doc) => ParticipacaoModel.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>))
+              .map((doc) => ParticipacaoModel.fromFirestore(
+            doc as DocumentSnapshot<Map<String, dynamic>>,
+          ))
               .toList();
           _allParticipants = participantes;
 
@@ -2106,7 +2764,12 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             children: [
               if (_viewMode == 2)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                  padding: EdgeInsets.fromLTRB(
+                    context.uaiResponsive.pagePadding,
+                    12,
+                    context.uaiResponsive.pagePadding,
+                    6,
+                  ),
                   child: Row(
                     children: [
                       const Spacer(),
@@ -2127,14 +2790,20 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 ),
               if (_viewMode == 1)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: context.uaiResponsive.pagePadding,
+                  ),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: Row(children: [
-                      _buildFiltroChip('TODOS', 'todos'), const SizedBox(width: 8),
-                      _buildFiltroChip('💰 PAGOS', 'pagos'), const SizedBox(width: 8),
-                      _buildFiltroChip('⏳ PENDENTES', 'pendentes'),
-                    ]),
+                    child: Row(
+                      children: [
+                        _buildFiltroChip('TODOS', 'todos'),
+                        const SizedBox(width: 8),
+                        _buildFiltroChip('💰 PAGOS', 'pagos'),
+                        const SizedBox(width: 8),
+                        _buildFiltroChip('⏳ PENDENTES', 'pendentes'),
+                      ],
+                    ),
                   ),
                 ),
               Expanded(
@@ -2151,7 +2820,160 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== ABA ADICIONAR ====================
+  Widget _buildAlunoDisponivelCard(
+      Map<String, dynamic> aluno, {
+        required bool modoGrade,
+      }) {
+    final idade = _calcularIdade(aluno['data_nascimento']);
+    final nome = aluno['nome']?.toString() ?? 'Aluno';
+    final graduacao = aluno['graduacao']?.toString() ?? '';
+    final turma = aluno['turma']?.toString() ?? '';
+
+    return Card(
+      color: context.uai.card,
+      surfaceTintColor: Colors.transparent,
+      margin: EdgeInsets.only(bottom: modoGrade ? 0 : 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => _mostrarModalAdicionar(aluno),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(modoGrade ? 10 : 12),
+          child: Row(
+            children: [
+              RobustAvatar(
+                fotoUrl: aluno['foto'],
+                radius: modoGrade ? 24 : 28,
+              ),
+              SizedBox(width: modoGrade ? 12 : 16),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nome,
+                      maxLines: modoGrade ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _onCard(),
+                        fontWeight: FontWeight.bold,
+                        fontSize: modoGrade ? 14 : 16,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        if (graduacao.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: context.uai.primary.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              graduacao,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.uai.error,
+                              ),
+                            ),
+                          ),
+                        if (turma.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: context.uai.info.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              turma,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.uai.info,
+                              ),
+                            ),
+                          ),
+                        if (idade != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: context.uai.success.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.cake,
+                                  size: 12,
+                                  color: context.uai.success,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$idade anos',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: context.uai.success,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => _mostrarModalAdicionar(aluno),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.uai.primary,
+                  foregroundColor: _readableOn(context.uai.primary),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: modoGrade ? 12 : 16,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add, size: 18),
+                    const SizedBox(width: 4),
+                    Text(modoGrade ? 'ADD' : 'ADICIONAR'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAdicionarParticipantes() {
     if (!_podeAdicionar) {
       return Center(
@@ -2159,17 +2981,20 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.lock, size: 60, color: context.uai.textMuted),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
               'Você não tem permissão para adicionar participantes',
               textAlign: TextAlign.center,
               style: TextStyle(color: context.uai.textSecondary),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Peça para o administrador liberar “Adicionar participante” nas permissões do evento.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: context.uai.textMuted, fontSize: 12),
+              style: TextStyle(
+                color: context.uai.textMuted,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -2177,13 +3002,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     }
 
     final alunosFiltrados = _alunosDisponiveis
-        .where((aluno) => _searchQuery.isEmpty || aluno['nome'].toLowerCase().contains(_searchQuery))
+        .where(
+          (aluno) => _searchQuery.isEmpty ||
+          (aluno['nome'] ?? '')
+              .toString()
+              .toLowerCase()
+              .contains(_searchQuery),
+    )
         .toList();
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(context.uaiResponsive.pagePadding),
           child: _buildSearchField(
             controller: _searchController,
             focusNode: _searchFocusNode,
@@ -2199,17 +3030,37 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         ),
         Expanded(
           child: _isLoadingAlunos
-              ? Center(child: CircularProgressIndicator(color: context.uai.primary))
+              ? Center(
+            child: CircularProgressIndicator(
+              color: context.uai.primary,
+            ),
+          )
               : _alunosDisponiveis.isEmpty
               ? Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.people_outline, size: 60, color: context.uai.border),
-                SizedBox(height: 16),
-                Text('Nenhum aluno disponível', style: TextStyle(fontSize: 16, color: context.uai.textMuted)),
-                SizedBox(height: 8),
-                Text('Todos os alunos já estão participando!', style: TextStyle(fontSize: 14, color: context.uai.textMuted)),
+                Icon(
+                  Icons.people_outline,
+                  size: 60,
+                  color: context.uai.border,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhum aluno disponível',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: context.uai.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Todos os alunos já estão participando!',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: context.uai.textMuted,
+                  ),
+                ),
               ],
             ),
           )
@@ -2218,9 +3069,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.search_off, size: 60, color: context.uai.textMuted),
-                SizedBox(height: 16),
-                Text('Nenhum aluno encontrado para "$_searchQuery"', style: TextStyle(color: context.uai.textSecondary, fontSize: 16)),
+                Icon(
+                  Icons.search_off,
+                  size: 60,
+                  color: context.uai.textMuted,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhum aluno encontrado para "$_searchQuery"',
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 16,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextButton.icon(
                   onPressed: () {
@@ -2233,90 +3094,43 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               ],
             ),
           )
-              : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: alunosFiltrados.length,
-            itemBuilder: (context, index) {
-              final aluno = alunosFiltrados[index];
-              final idade = _calcularIdade(aluno['data_nascimento']);
-              return Card(
-                color: context.uai.card,
-                surfaceTintColor: Colors.transparent,
-                margin: const EdgeInsets.only(bottom: 8),
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: InkWell(
-                  onTap: () => _mostrarModalAdicionar(aluno),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        RobustAvatar(fotoUrl: aluno['foto'], radius: 28),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(aluno['nome'], style: TextStyle(color: _onCard(), fontWeight: FontWeight.bold, fontSize: 16)),
-                              SizedBox(height: 4),
-                              Wrap(
-                                spacing: 4,
-                                runSpacing: 4,
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(color: context.uai.primary.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
-                                    child: Text(aluno['graduacao'], style: TextStyle(fontSize: 11, color: context.uai.error)),
-                                  ),
-                                  if (aluno['turma'] != null && aluno['turma'].toString().isNotEmpty)
-                                    Container(
-                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(color: context.uai.info.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
-                                      child: Text(aluno['turma'], style: TextStyle(fontSize: 11, color: context.uai.info)),
-                                    ),
-                                  if (idade != null)
-                                    Container(
-                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(color: context.uai.success.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.cake, size: 12, color: context.uai.success),
-                                          SizedBox(width: 4),
-                                          Text('$idade anos', style: TextStyle(fontSize: 11, color: context.uai.success)),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.only(left: 8),
-                          child: ElevatedButton(
-                            onPressed: () => _mostrarModalAdicionar(aluno),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: context.uai.primary,
-                              foregroundColor: _readableOn(context.uai.primary),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.add, size: 18),
-                                SizedBox(width: 4),
-                                Text('ADICIONAR'),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              : LayoutBuilder(
+            builder: (context, constraints) {
+              final usarGrade = constraints.maxWidth >= 720;
+
+              if (!usarGrade) {
+                return ListView.builder(
+                  padding: EdgeInsets.all(
+                    context.uaiResponsive.pagePadding,
                   ),
+                  itemCount: alunosFiltrados.length,
+                  itemBuilder: (context, index) {
+                    return _buildAlunoDisponivelCard(
+                      alunosFiltrados[index],
+                      modoGrade: false,
+                    );
+                  },
+                );
+              }
+
+              return GridView.builder(
+                padding: EdgeInsets.all(
+                  context.uaiResponsive.pagePadding,
                 ),
+                gridDelegate:
+                const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 560,
+                  mainAxisExtent: 106,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                ),
+                itemCount: alunosFiltrados.length,
+                itemBuilder: (context, index) {
+                  return _buildAlunoDisponivelCard(
+                    alunosFiltrados[index],
+                    modoGrade: true,
+                  );
+                },
               );
             },
           ),
@@ -2325,7 +3139,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  // ==================== EXPORTAÇÃO PDF ====================
   Future<Map<String, dynamic>?> _mostrarDialogoOrdenacao() async {
     String campoSelecionado = 'nome';
     bool crescente = true;
@@ -2350,11 +3163,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 children: [
                   DropdownButtonFormField<String>(
                     value: campoSelecionado,
-                    decoration: const InputDecoration(labelText: 'Campo de ordenação'),
+                    decoration: const InputDecoration(
+                      labelText: 'Campo de ordenação',
+                    ),
                     items: campos.entries.map((entry) {
-                      return DropdownMenuItem(value: entry.key, child: Text(entry.value));
+                      return DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      );
                     }).toList(),
-                    onChanged: (value) => setState(() => campoSelecionado = value!),
+                    onChanged: (value) => setState(
+                          () => campoSelecionado = value!,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -2364,10 +3184,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       Expanded(
                         child: ToggleButtons(
                           isSelected: [crescente, !crescente],
-                          onPressed: (index) => setState(() => crescente = index == 0),
+                          onPressed: (index) => setState(
+                                () => crescente = index == 0,
+                          ),
                           children: const [
-                            Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Crescente')),
-                            Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Decrescente')),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Crescente'),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Decrescente'),
+                            ),
                           ],
                         ),
                       ),
@@ -2378,9 +3206,15 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             },
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, {'campo': campoSelecionado, 'crescente': crescente}),
+              onPressed: () => Navigator.pop(dialogContext, {
+                'campo': campoSelecionado,
+                'crescente': crescente,
+              }),
               child: const Text('Gerar PDF'),
             ),
           ],
@@ -2389,10 +3223,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  List<ParticipacaoModel> _ordenarParticipantes(List<ParticipacaoModel> lista, String campo, bool crescente) {
+  List<ParticipacaoModel> _ordenarParticipantes(
+      List<ParticipacaoModel> lista,
+      String campo,
+      bool crescente,
+      ) {
     final copia = List<ParticipacaoModel>.from(lista);
     copia.sort((a, b) {
-      dynamic valA, valB;
+      dynamic valA;
+      dynamic valB;
+
       switch (campo) {
         case 'nome':
           valA = a.alunoNome;
@@ -2417,6 +3257,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         default:
           return 0;
       }
+
       int cmp;
       if (valA is String && valB is String) {
         cmp = valA.compareTo(valB);
@@ -2425,6 +3266,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       } else {
         cmp = 0;
       }
+
       return crescente ? cmp : -cmp;
     });
     return copia;
@@ -2436,9 +3278,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return 'Inadimplente';
   }
 
-  List<Map<String, dynamic>> _participantesParaExportacao(List<ParticipacaoModel> participantes) {
+  List<Map<String, dynamic>> _participantesParaExportacao(
+      List<ParticipacaoModel> participantes,
+      ) {
     return participantes.map((p) {
-      final Map<String, dynamic> map = {
+      final map = <String, dynamic>{
         'nome': p.alunoNome,
         'status': _statusParaTexto(p),
         'tamanho_camisa': _descricaoCamisaParticipacao(p),
@@ -2451,11 +3295,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         'hex_cor1': null,
         'hex_cor2': null,
       };
+
       final gId = p.graduacaoNovaId;
       if (gId != null && _coresGraduacao.containsKey(gId)) {
         map['hex_cor1'] = _coresGraduacao[gId]?['hex_cor1'];
         map['hex_cor2'] = _coresGraduacao[gId]?['hex_cor2'];
       }
+
       return map;
     }).toList();
   }
@@ -2470,24 +3316,42 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     if (opcoes == null) return;
 
     final filtrados = _aplicarFiltros(todos);
-    final ordenados = _ordenarParticipantes(filtrados, opcoes['campo'] as String, opcoes['crescente'] as bool);
+    final ordenados = _ordenarParticipantes(
+      filtrados,
+      opcoes['campo'] as String,
+      opcoes['crescente'] as bool,
+    );
     final mapa = _participantesParaExportacao(ordenados);
 
     try {
       switch (tipo) {
         case 'lista':
-          await EventoFinanceiroPdfService.gerarPdfListaParticipantes(participantes: mapa, eventoNome: widget.eventoNome);
+          await EventoFinanceiroPdfService.gerarPdfListaParticipantes(
+            participantes: mapa,
+            eventoNome: widget.eventoNome,
+          );
           break;
         case 'conferencia':
-          await EventoFinanceiroPdfService.gerarPdfConferenciaNomes(participantes: mapa, eventoNome: widget.eventoNome);
+          await EventoFinanceiroPdfService.gerarPdfConferenciaNomes(
+            participantes: mapa,
+            eventoNome: widget.eventoNome,
+          );
           break;
         case 'completa':
-          await EventoFinanceiroPdfService.gerarPdfListaCompleta(participantes: mapa, eventoNome: widget.eventoNome);
+          await EventoFinanceiroPdfService.gerarPdfListaCompleta(
+            participantes: mapa,
+            eventoNome: widget.eventoNome,
+          );
           break;
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao gerar PDF: $e'), backgroundColor: context.uai.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao gerar PDF: $e'),
+            backgroundColor: context.uai.error,
+          ),
+        );
       }
     }
   }

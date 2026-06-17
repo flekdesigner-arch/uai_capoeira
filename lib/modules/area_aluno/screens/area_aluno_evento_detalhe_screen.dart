@@ -24,14 +24,17 @@ import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_certificado_viewer_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_config_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
 
 class AreaAlunoEventoDetalheScreen extends StatefulWidget {
   final AreaAlunoEventoResumo evento;
+  final Map<String, dynamic> config;
 
   const AreaAlunoEventoDetalheScreen({
     super.key,
     required this.evento,
+    this.config = const {},
   });
 
   @override
@@ -45,6 +48,7 @@ class _AreaAlunoEventoDetalheScreenState
   String? _cordaNovaGraduacaoSvg;
 
   AreaAlunoEventoResumo get evento => widget.evento;
+  AreaAlunoConfig get _areaConfig => AreaAlunoConfig.fromMap(widget.config);
 
   @override
   void initState() {
@@ -54,8 +58,9 @@ class _AreaAlunoEventoDetalheScreenState
 
   Future<void> _loadCordaSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (!mounted) return;
 
@@ -71,6 +76,7 @@ class _AreaAlunoEventoDetalheScreenState
   String? _montarCordaNovaGraduacaoSvg() {
     if (_svgContent == null) return null;
     if (!evento.temCoresNovaGraduacao) return null;
+    if (_areaConfig.graduacaoEventoSuspense) return null;
 
     try {
       final document = xml.XmlDocument.parse(_svgContent!);
@@ -85,36 +91,35 @@ class _AreaAlunoEventoDetalheScreenState
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
         final style = element.getAttribute('style') ?? '';
         final newStyle = style.contains('fill:')
-            ? style.replaceAll(
-          RegExp(r'fill:#[0-9a-fA-F]{6}'),
-          'fill:$hex',
-        )
+            ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
             : 'fill:$hex;$style';
 
         element.setAttribute('style', newStyle);
       }
 
-      changeColor('cor1', evento.graduacaoNovaCor1);
-      changeColor('cor2', evento.graduacaoNovaCor2);
-      changeColor(
-        'corponta1',
-        evento.graduacaoNovaPonta1.isNotEmpty
-            ? evento.graduacaoNovaPonta1
-            : evento.graduacaoNovaCor1,
-      );
-      changeColor(
-        'corponta2',
-        evento.graduacaoNovaPonta2.isNotEmpty
-            ? evento.graduacaoNovaPonta2
-            : evento.graduacaoNovaCor2,
-      );
+      if (!_areaConfig.graduacaoEventoSuspense) {
+        changeColor('cor1', evento.graduacaoNovaCor1);
+        changeColor('cor2', evento.graduacaoNovaCor2);
+        changeColor(
+          'corponta1',
+          evento.graduacaoNovaPonta1.isNotEmpty
+              ? evento.graduacaoNovaPonta1
+              : evento.graduacaoNovaCor1,
+        );
+        changeColor(
+          'corponta2',
+          evento.graduacaoNovaPonta2.isNotEmpty
+              ? evento.graduacaoNovaPonta2
+              : evento.graduacaoNovaCor2,
+        );
+      }
 
       return document.toXmlString();
     } catch (e) {
@@ -145,8 +150,8 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -160,10 +165,7 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   String _formatMoney(double value) {
-    return NumberFormat.currency(
-      locale: 'pt_BR',
-      symbol: 'R\$',
-    ).format(value);
+    return NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(value);
   }
 
   String _formatDate(DateTime? date) {
@@ -209,7 +211,7 @@ class _AreaAlunoEventoDetalheScreenState
       _mostrarAviso(
         titulo: 'Certificado',
         mensagem:
-        'O certificado deste evento ainda não foi liberado pela coordenação.',
+            'O certificado deste evento ainda não foi liberado pela coordenação.',
         icon: Icons.hourglass_bottom_rounded,
         color: context.uai.warning,
       );
@@ -265,10 +267,7 @@ class _AreaAlunoEventoDetalheScreenState
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'ENTENDI',
-                style: TextStyle(
-                  color: accent,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: TextStyle(color: accent, fontWeight: FontWeight.w900),
               ),
             ),
           ],
@@ -298,8 +297,9 @@ class _AreaAlunoEventoDetalheScreenState
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth =
-          constraints.maxWidth > 920 ? 920.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 920
+              ? 920.0
+              : constraints.maxWidth;
           final isMobile = constraints.maxWidth < 650;
 
           return RefreshIndicator(
@@ -320,10 +320,14 @@ class _AreaAlunoEventoDetalheScreenState
                     _buildHeroHeader(context, isMobile: isMobile),
                     const SizedBox(height: 12),
                     _buildMiniResumoEvento(context),
-                    const SizedBox(height: 14),
-                    _buildFinanceiroResumo(context),
-                    const SizedBox(height: 14),
-                    _buildGraduacaoNovaCard(context),
+                    if (_areaConfig.mostrarFinanceiroEventos) ...[
+                      const SizedBox(height: 14),
+                      _buildFinanceiroResumo(context),
+                    ],
+                    if (_areaConfig.mostrarGraduacaoEvento) ...[
+                      const SizedBox(height: 14),
+                      _buildGraduacaoNovaCard(context),
+                    ],
                     const SizedBox(height: 14),
                     _buildSection(
                       context,
@@ -362,114 +366,55 @@ class _AreaAlunoEventoDetalheScreenState
                             fallback: 'Participando',
                           ),
                         ),
-                        _buildInfoRow(
-                          context,
-                          'Graduação atual',
-                          _safe(evento.graduacaoAtual),
-                        ),
-                        _buildInfoRow(
-                          context,
-                          'Nova graduação',
-                          _safe(
-                            evento.graduacaoNova,
-                            fallback: 'Não definida',
-                          ),
-                        ),
-                        _buildInfoRow(context, 'Camisa', evento.camisaLabel),
-                        _buildInfoRow(
-                          context,
-                          'Camisa entregue',
-                          evento.camisaEntregue ? 'Sim' : 'Ainda não',
-                        ),
-                        _buildInfoRow(
-                          context,
-                          'Presença',
-                          evento.presente ? 'Confirmada' : 'Ainda não marcada',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _buildSection(
-                      context,
-                      icon: Icons.payments_rounded,
-                      title: 'Financeiro',
-                      color: _pagamentoColor(context),
-                      children: [
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Status',
-                          evento.statusPagamentoLabel,
-                          accent: _pagamentoColor(context),
-                        ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Tipo',
-                          evento.origemPagamentoLabel,
-                          accent: _origemPagamentoColor(context),
-                        ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Inscrição',
-                          _formatMoney(evento.valorInscricao),
-                          accent: t.primary,
-                        ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Camisa',
-                          _formatMoney(evento.valorCamisa),
-                          accent: t.warning,
-                        ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Total',
-                          _formatMoney(evento.valorTotal),
-                          accent: t.primary,
-                          emphasize: true,
-                        ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Valor pago',
-                          _formatMoney(evento.totalPago),
-                          accent: t.success,
-                          emphasize: true,
-                        ),
-                        if (evento.possuiPatrocinio)
-                          _buildFinanceiroInfoRow(
+                        if (_areaConfig.mostrarGraduacaoAtual)
+                          _buildInfoRow(
                             context,
-                            'Patrocínio',
-                            _formatMoney(evento.totalPatrocinado),
-                            accent: t.info,
-                            emphasize: true,
+                            'Graduação atual',
+                            _safe(evento.graduacaoAtual),
                           ),
-                        _buildFinanceiroInfoRow(
-                          context,
-                          'Saldo devedor',
-                          _formatMoney(evento.saldo),
-                          accent: _saldoColor(context),
-                          emphasize: true,
-                        ),
-                        if (evento.saldo > 0.01) ...[
-                          const SizedBox(height: 4),
-                          _buildReadonlyNotice(
+                        if (_areaConfig.mostrarGraduacaoEvento &&
+                            !_areaConfig.graduacaoEventoSuspense)
+                          _buildInfoRow(
                             context,
-                            icon: Icons.info_outline_rounded,
-                            color: t.info,
-                            text:
-                            'O pagamento online ainda não está liberado nesta tela. '
-                                'Por enquanto, a coordenação registra os pagamentos no sistema.',
+                            'Nova graduação',
+                            _safe(
+                              evento.graduacaoNova,
+                              fallback: 'Não definida',
+                            ),
+                          ),
+                        if (_areaConfig.mostrarCamisaEvento) ...[
+                          _buildInfoRow(context, 'Camisa', evento.camisaLabel),
+                          _buildInfoRow(
+                            context,
+                            'Camisa entregue',
+                            evento.camisaEntregue ? 'Sim' : 'Ainda não',
                           ),
                         ],
+                        if (_areaConfig.mostrarPresencaEvento)
+                          _buildInfoRow(
+                            context,
+                            'Presença',
+                            evento.presente
+                                ? 'Confirmada'
+                                : 'Ainda não marcada',
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    _buildCertificadoSection(context),
+                    if (_areaConfig.mostrarFinanceiroEventos) ...[
+                      const SizedBox(height: 14),
+                      _buildFinanceiroSection(context),
+                    ],
+                    if (_areaConfig.mostrarCertificados) ...[
+                      const SizedBox(height: 14),
+                      _buildCertificadoSection(context),
+                    ],
                     const SizedBox(height: 14),
                     _buildReadonlyNotice(
                       context,
                       icon: Icons.lock_outline_rounded,
                       color: t.info,
                       text:
-                      'Esta tela é somente leitura. Para corrigir nome, camisa, graduação ou qualquer informação do evento, volte para a Área do Aluno e use o card “Solicitar alterações”.',
+                          'Esta tela é somente leitura. Para corrigir nome, camisa, graduação ou qualquer informação do evento, volte para a Área do Aluno e use o card “Solicitar alterações”.',
                     ),
                   ],
                 ),
@@ -536,24 +481,27 @@ class _AreaAlunoEventoDetalheScreenState
                   spacing: 7,
                   runSpacing: 6,
                   children: [
-                    _buildHeaderChip(
-                      context,
-                      text: evento.statusPagamentoLabel.toUpperCase(),
-                      icon: evento.pagamentoQuitado
-                          ? Icons.check_circle_rounded
-                          : Icons.pending_actions_rounded,
-                      color: _pagamentoColor(context),
-                      onColorBackground: accent,
-                    ),
-                    _buildHeaderChip(
-                      context,
-                      text: evento.origemPagamentoLabel.toUpperCase(),
-                      icon: evento.possuiPatrocinio
-                          ? Icons.volunteer_activism_rounded
-                          : Icons.payments_rounded,
-                      color: _origemPagamentoColor(context),
-                      onColorBackground: accent,
-                    ),
+                    if (_areaConfig.mostrarFinanceiroEventos)
+                      _buildHeaderChip(
+                        context,
+                        text: evento.statusPagamentoLabel.toUpperCase(),
+                        icon: evento.pagamentoQuitado
+                            ? Icons.check_circle_rounded
+                            : Icons.pending_actions_rounded,
+                        color: _pagamentoColor(context),
+                        onColorBackground: accent,
+                      ),
+                    if (_areaConfig.mostrarFinanceiroEventos &&
+                        !_areaConfig.financeiroResumo)
+                      _buildHeaderChip(
+                        context,
+                        text: evento.origemPagamentoLabel.toUpperCase(),
+                        icon: evento.possuiPatrocinio
+                            ? Icons.volunteer_activism_rounded
+                            : Icons.payments_rounded,
+                        color: _origemPagamentoColor(context),
+                        onColorBackground: accent,
+                      ),
                   ],
                 ),
               ],
@@ -606,21 +554,24 @@ class _AreaAlunoEventoDetalheScreenState
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _buildTinyChip(
-                      context,
-                      text: evento.statusPagamentoLabel,
-                      icon: Icons.verified_rounded,
-                      color: pagamentoColor,
-                    ),
-                    _buildTinyChip(
-                      context,
-                      text: evento.origemPagamentoLabel,
-                      icon: evento.possuiPatrocinio
-                          ? Icons.volunteer_activism_rounded
-                          : Icons.payments_rounded,
-                      color: origemColor,
-                    ),
-                    if (evento.temCamisa)
+                    if (_areaConfig.mostrarFinanceiroEventos)
+                      _buildTinyChip(
+                        context,
+                        text: evento.statusPagamentoLabel,
+                        icon: Icons.verified_rounded,
+                        color: pagamentoColor,
+                      ),
+                    if (_areaConfig.mostrarFinanceiroEventos &&
+                        !_areaConfig.financeiroResumo)
+                      _buildTinyChip(
+                        context,
+                        text: evento.origemPagamentoLabel,
+                        icon: evento.possuiPatrocinio
+                            ? Icons.volunteer_activism_rounded
+                            : Icons.payments_rounded,
+                        color: origemColor,
+                      ),
+                    if (_areaConfig.mostrarCamisaEvento && evento.temCamisa)
                       _buildTinyChip(
                         context,
                         text: evento.tamanhoCamisa,
@@ -638,12 +589,12 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Widget _buildLogoEvento(
-      BuildContext context, {
-        required double size,
-        required Color background,
-        required Color foreground,
-        required double radius,
-      }) {
+    BuildContext context, {
+    required double size,
+    required Color background,
+    required Color foreground,
+    required double radius,
+  }) {
     final logo = evento.logoEventoUrl.trim();
 
     return Container(
@@ -657,31 +608,31 @@ class _AreaAlunoEventoDetalheScreenState
       clipBehavior: Clip.antiAlias,
       child: logo.isNotEmpty
           ? Image.network(
-        logo,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) {
-          return Icon(
-            Icons.emoji_events_rounded,
-            color: foreground,
-            size: size * 0.52,
-          );
-        },
-      )
+              logo,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) {
+                return Icon(
+                  Icons.emoji_events_rounded,
+                  color: foreground,
+                  size: size * 0.52,
+                );
+              },
+            )
           : Icon(
-        Icons.emoji_events_rounded,
-        color: foreground,
-        size: size * 0.52,
-      ),
+              Icons.emoji_events_rounded,
+              color: foreground,
+              size: size * 0.52,
+            ),
     );
   }
 
   Widget _buildHeaderChip(
-      BuildContext context, {
-        required String text,
-        required IconData icon,
-        required Color color,
-        required Color onColorBackground,
-      }) {
+    BuildContext context, {
+    required String text,
+    required IconData icon,
+    required Color color,
+    required Color onColorBackground,
+  }) {
     final visible = _ensureVisible(color, onColorBackground);
     final foreground = _readableOn(visible);
 
@@ -712,11 +663,11 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Widget _buildTinyChip(
-      BuildContext context, {
-        required String text,
-        required IconData icon,
-        required Color color,
-      }) {
+    BuildContext context, {
+    required String text,
+    required IconData icon,
+    required Color color,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -753,6 +704,64 @@ class _AreaAlunoEventoDetalheScreenState
     final pagoAccent = _ensureVisible(t.success, t.card);
     final saldoAccent = _ensureVisible(_saldoColor(context), t.card);
     final totalAccent = _ensureVisible(t.primary, t.card);
+
+    if (_areaConfig.financeiroResumo) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accent.withOpacity(0.14)),
+          boxShadow: t.softShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 53,
+              height: 53,
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(
+                evento.pagamentoQuitado
+                    ? Icons.check_circle_rounded
+                    : Icons.payments_rounded,
+                color: accent,
+                size: 29,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    evento.statusPagamentoLabel,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    evento.pagamentoQuitado
+                        ? 'Participação quitada neste evento.'
+                        : 'Existe pendência registrada para este evento.',
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -900,12 +909,12 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Widget _buildFinanceResumoTile(
-      BuildContext context, {
-        required String title,
-        required String value,
-        required IconData icon,
-        required Color accent,
-      }) {
+    BuildContext context, {
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color accent,
+  }) {
     final t = context.uai;
 
     return Container(
@@ -960,6 +969,43 @@ class _AreaAlunoEventoDetalheScreenState
   Widget _buildGraduacaoNovaCard(BuildContext context) {
     final t = context.uai;
     final accent = _ensureVisible(t.warning, t.card);
+
+    if (_areaConfig.graduacaoEventoSuspense) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accent.withOpacity(0.14)),
+          boxShadow: t.softShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 53,
+              height: 53,
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(Icons.auto_awesome_rounded, color: accent, size: 29),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Graduação definida, mas a revelação será feita no evento.',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 14.5,
+                  height: 1.2,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final temCordaSvg = _cordaNovaGraduacaoSvg != null;
     final titulo = evento.temNovaGraduacao
@@ -1044,13 +1090,93 @@ class _AreaAlunoEventoDetalheScreenState
     );
   }
 
+  Widget _buildFinanceiroSection(BuildContext context) {
+    final t = context.uai;
+
+    return _buildSection(
+      context,
+      icon: Icons.payments_rounded,
+      title: 'Financeiro',
+      color: _pagamentoColor(context),
+      children: [
+        _buildFinanceiroInfoRow(
+          context,
+          'Status',
+          evento.statusPagamentoLabel,
+          accent: _pagamentoColor(context),
+        ),
+        if (!_areaConfig.financeiroResumo) ...[
+          _buildFinanceiroInfoRow(
+            context,
+            'Tipo',
+            evento.origemPagamentoLabel,
+            accent: _origemPagamentoColor(context),
+          ),
+          _buildFinanceiroInfoRow(
+            context,
+            'Inscrição',
+            _formatMoney(evento.valorInscricao),
+            accent: t.primary,
+          ),
+          if (_areaConfig.mostrarCamisaEvento)
+            _buildFinanceiroInfoRow(
+              context,
+              'Camisa',
+              _formatMoney(evento.valorCamisa),
+              accent: t.warning,
+            ),
+          _buildFinanceiroInfoRow(
+            context,
+            'Total',
+            _formatMoney(evento.valorTotal),
+            accent: t.primary,
+            emphasize: true,
+          ),
+          _buildFinanceiroInfoRow(
+            context,
+            'Valor pago',
+            _formatMoney(evento.totalPago),
+            accent: t.success,
+            emphasize: true,
+          ),
+          if (evento.possuiPatrocinio)
+            _buildFinanceiroInfoRow(
+              context,
+              'Patrocínio',
+              _formatMoney(evento.totalPatrocinado),
+              accent: t.info,
+              emphasize: true,
+            ),
+          _buildFinanceiroInfoRow(
+            context,
+            'Saldo devedor',
+            _formatMoney(evento.saldo),
+            accent: _saldoColor(context),
+            emphasize: true,
+          ),
+          if (evento.saldo > 0.01) ...[
+            const SizedBox(height: 4),
+            _buildReadonlyNotice(
+              context,
+              icon: Icons.info_outline_rounded,
+              color: t.info,
+              text:
+                  'O pagamento online ainda não está liberado nesta tela. '
+                  'Por enquanto, a coordenação registra os pagamentos no sistema.',
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
   Widget _buildSection(
-      BuildContext context, {
-        required IconData icon,
-        required String title,
-        required Color color,
-        required List<Widget> children,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required Color color,
+    required List<Widget> children,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -1139,12 +1265,12 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Widget _buildFinanceiroInfoRow(
-      BuildContext context,
-      String label,
-      String value, {
-        required Color accent,
-        bool emphasize = false,
-      }) {
+    BuildContext context,
+    String label,
+    String value, {
+    required Color accent,
+    bool emphasize = false,
+  }) {
     final t = context.uai;
     final visible = _ensureVisible(accent, t.card);
 
@@ -1286,7 +1412,7 @@ class _AreaAlunoEventoDetalheScreenState
             icon: Icons.visibility_outlined,
             color: t.info,
             text:
-            'O certificado abre dentro do app apenas para visualização. '
+                'O certificado abre dentro do app apenas para visualização. '
                 'A opção de baixar deve ser liberada somente após a finalização do evento.',
           ),
         ],
@@ -1295,11 +1421,11 @@ class _AreaAlunoEventoDetalheScreenState
   }
 
   Widget _buildReadonlyNotice(
-      BuildContext context, {
-        required IconData icon,
-        required Color color,
-        required String text,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 

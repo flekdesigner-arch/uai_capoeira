@@ -37,7 +37,6 @@ class _DashboardEstatisticasScreenState
   DocumentSnapshot? _ultimoDocumento;
   final int _limitePorPagina = 30;
 
-
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -45,7 +44,8 @@ class _DashboardEstatisticasScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -101,10 +101,7 @@ class _DashboardEstatisticasScreenState
   }
 
   Future<void> _carregarTudo() async {
-    await Future.wait([
-      _carregarDadosAgregados(),
-      _carregarPrimeiraPagina(),
-    ]);
+    await Future.wait([_carregarDadosAgregados(), _carregarPrimeiraPagina()]);
   }
 
   Future<void> _atualizarTudo() async {
@@ -211,7 +208,9 @@ class _DashboardEstatisticasScreenState
 
       setState(() {
         _acessosCarregados.addAll(novosAcessos);
-        _ultimoDocumento = snapshot.docs.isNotEmpty ? snapshot.docs.last : _ultimoDocumento;
+        _ultimoDocumento = snapshot.docs.isNotEmpty
+            ? snapshot.docs.last
+            : _ultimoDocumento;
         _temMaisDados = snapshot.docs.length == _limitePorPagina;
         _carregandoMais = false;
       });
@@ -266,8 +265,8 @@ class _DashboardEstatisticasScreenState
   }
 
   Map<String, dynamic> _converterNotacaoPontoParaArvore(
-      Map<String, dynamic> dados,
-      ) {
+    Map<String, dynamic> dados,
+  ) {
     final resultado = <String, dynamic>{};
 
     dados.forEach((chave, valor) {
@@ -379,7 +378,10 @@ class _DashboardEstatisticasScreenState
       }
     }
 
-    _mostrarSnack('Não foi possível abrir o Google Maps neste dispositivo.', erro: true);
+    _mostrarSnack(
+      'Não foi possível abrir o Google Maps neste dispositivo.',
+      erro: true,
+    );
   }
 
   void _mostrarSnack(String mensagem, {bool erro = false}) {
@@ -401,7 +403,9 @@ class _DashboardEstatisticasScreenState
   Map<String, int> _resumoTiposEvento(List<Map<String, dynamic>> eventos) {
     return {
       'menus': _contarEventos(eventos, 'menu'),
-      'botoes': _contarEventos(eventos, 'botao_social') + _contarEventos(eventos, 'clique'),
+      'botoes':
+          _contarEventos(eventos, 'botao_social') +
+          _contarEventos(eventos, 'clique'),
       'cards': _contarEventos(eventos, 'card'),
       'paginas': _contarEventos(eventos, 'pagina'),
       'telas': _contarEventos(eventos, 'tela'),
@@ -440,7 +444,8 @@ class _DashboardEstatisticasScreenState
       if (evento['tipo']?.toString() != tipo) continue;
       final metadata = evento['metadata'];
       if (metadata is! Map) continue;
-      final valor = metadata['duracao_segundos'] ?? metadata['duracao_etapa_segundos'];
+      final valor =
+          metadata['duracao_segundos'] ?? metadata['duracao_etapa_segundos'];
       if (valor is int) total += valor;
       if (valor is double) total += valor.round();
     }
@@ -454,7 +459,8 @@ class _DashboardEstatisticasScreenState
 
     final minutos = segundos ~/ 60;
     final resto = segundos % 60;
-    if (minutos < 60) return resto == 0 ? '${minutos}min' : '${minutos}min ${resto}s';
+    if (minutos < 60)
+      return resto == 0 ? '${minutos}min' : '${minutos}min ${resto}s';
 
     final horas = minutos ~/ 60;
     final minutosRestantes = minutos % 60;
@@ -464,7 +470,9 @@ class _DashboardEstatisticasScreenState
   String _descricaoEvento(Map<String, dynamic> evento) {
     final tipo = evento['tipo']?.toString() ?? 'evento';
     final metadataRaw = evento['metadata'];
-    final metadata = metadataRaw is Map ? Map<String, dynamic>.from(metadataRaw) : <String, dynamic>{};
+    final metadata = metadataRaw is Map
+        ? Map<String, dynamic>.from(metadataRaw)
+        : <String, dynamic>{};
 
     switch (tipo) {
       case 'etapa_formulario':
@@ -498,18 +506,7 @@ class _DashboardEstatisticasScreenState
   }
 
   void _mostrarRastroDocumento(Map<String, dynamic> documento) {
-    final eventosMap = <Map<String, dynamic>>[];
-    final eventosRaw = documento['eventos'];
-
-    if (eventosRaw is List) {
-      for (final e in eventosRaw) {
-        if (e is Map<String, dynamic>) {
-          eventosMap.add(e);
-        } else if (e is Map) {
-          eventosMap.add(Map<String, dynamic>.from(e));
-        }
-      }
-    }
+    final eventosMap = _eventosDoDocumento(documento);
 
     final totalEventos = eventosMap.length;
     final resumoTipos = _resumoTiposEvento(eventosMap);
@@ -560,10 +557,18 @@ class _DashboardEstatisticasScreenState
                         ),
                         const SizedBox(height: 10),
                         _buildInteligenciaFluxo(eventosMap, compact),
+                        if (_eventoLoginAreaAluno(eventosMap) != null) ...[
+                          const SizedBox(height: 10),
+                          _buildAreaAlunoRastroCard(
+                            _eventoLoginAreaAluno(eventosMap)!,
+                          ),
+                        ],
                         if (latitude != null && longitude != null) ...[
                           const SizedBox(height: 10),
                           _buildMapaCard(latitude, longitude),
                         ],
+                        const SizedBox(height: 10),
+                        _buildDispositivoCard(documento),
                         const SizedBox(height: 14),
                         _buildTimeline(eventosMap, compact),
                         const SizedBox(height: 14),
@@ -586,6 +591,117 @@ class _DashboardEstatisticasScreenState
     if (value is double) return value;
     if (value is int) return value.toDouble();
     return double.tryParse(value.toString());
+  }
+
+  Map<String, dynamic> _mapFromDynamic(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _eventosDoDocumento(
+    Map<String, dynamic> documento,
+  ) {
+    final eventosRaw = documento['eventos'];
+    if (eventosRaw is! List) return <Map<String, dynamic>>[];
+
+    return eventosRaw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Map<String, dynamic>? _eventoLoginAreaAluno(
+    List<Map<String, dynamic>> eventos,
+  ) {
+    for (final evento in eventos.reversed) {
+      final tipo = evento['tipo']?.toString();
+      final nome = evento['nome']?.toString();
+      if ((tipo == 'area_aluno' && nome == 'login_aluno_sucesso') ||
+          (tipo == 'conversao' && nome == 'area_aluno_login_sucesso')) {
+        return evento;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _metadataEvento(Map<String, dynamic>? evento) {
+    if (evento == null) return <String, dynamic>{};
+    return _mapFromDynamic(evento['metadata']);
+  }
+
+  String _textoValor(dynamic value, [String fallback = 'N/A']) {
+    final texto = value?.toString().trim() ?? '';
+    if (texto.isEmpty || texto == 'null') return fallback;
+    return texto;
+  }
+
+  String _capitalizar(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+
+  String _textoDispositivo(Map<String, dynamic> documento) {
+    final dispositivo = _mapFromDynamic(documento['dispositivo']);
+    return _textoDispositivoMapa(dispositivo);
+  }
+
+  String _textoDispositivoMapa(Map<String, dynamic> dispositivo) {
+    final tipo = dispositivo['tipo_dispositivo']?.toString().trim();
+    final plataforma =
+        dispositivo['tipo_plataforma']?.toString().trim() ??
+        dispositivo['plataforma_flutter']?.toString().trim();
+    final sistema = dispositivo['sistema_operacional_aproximado']
+        ?.toString()
+        .trim();
+    final marca = dispositivo['celular_marca_aproximada']?.toString().trim();
+    final modelo = dispositivo['celular_modelo_aproximado']?.toString().trim();
+
+    if ((tipo == null || tipo.isEmpty) &&
+        (plataforma == null || plataforma.isEmpty)) {
+      return 'Dispositivo não informado';
+    }
+
+    final partes = <String>[
+      if (tipo != null &&
+          tipo.isNotEmpty &&
+          sistema != null &&
+          sistema.isNotEmpty)
+        '${_capitalizar(tipo)} $sistema'
+      else ...[
+        if (tipo != null && tipo.isNotEmpty) _capitalizar(tipo),
+        if (plataforma != null && plataforma.isNotEmpty) plataforma,
+      ],
+      if (marca != null &&
+          marca.isNotEmpty &&
+          marca != 'desconhecido' &&
+          marca != 'nao_aplicavel')
+        [
+          marca,
+          if (modelo != null &&
+              modelo.isNotEmpty &&
+              modelo != 'nao_disponivel_pelo_navegador')
+            modelo,
+        ].join(' '),
+    ];
+
+    return partes.join(' / ');
+  }
+
+  String _tamanhoTelaDispositivo(Map<String, dynamic> documento) {
+    final dispositivo = _mapFromDynamic(documento['dispositivo']);
+
+    final largura = dispositivo['largura_tela'];
+    final altura = dispositivo['altura_tela'];
+
+    if (largura == null || altura == null) return 'Tela não informada';
+
+    final orientacao = dispositivo['orientacao']?.toString();
+    final sufixo = orientacao == null || orientacao.isEmpty
+        ? ''
+        : ' / $orientacao';
+
+    return '${largura}x$altura$sufixo';
   }
 
   @override
@@ -613,48 +729,49 @@ class _DashboardEstatisticasScreenState
       body: _carregandoInicial
           ? _buildLoadingInicial()
           : RefreshIndicator(
-        color: context.uai.primary,
-        onRefresh: _atualizarTudo,
-        child: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  compact ? 12 : 20,
-                  compact ? 12 : 18,
-                  compact ? 12 : 20,
-                  24,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1180),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeroDashboard(compact),
-                        const SizedBox(height: 12),
-                        _buildCardsRapidos(),
-                        const SizedBox(height: 14),
-                        _buildGraficosSection(compact),
-                        const SizedBox(height: 14),
-                        _buildTopCidadesEstados(),
-                        const SizedBox(height: 14),
-                        _buildFiltroPeriodo(),
-                        const SizedBox(height: 10),
-                        _buildListaAcessos(),
-                        if (_carregandoMais) _buildLoadingIndicator(),
-                        if (!_temMaisDados && _acessosCarregados.isNotEmpty)
-                          _buildFimLista(),
-                      ],
+              color: context.uai.primary,
+              onRefresh: _atualizarTudo,
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        compact ? 12 : 20,
+                        compact ? 12 : 18,
+                        compact ? 12 : 20,
+                        24,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1180),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildHeroDashboard(compact),
+                              const SizedBox(height: 12),
+                              _buildCardsRapidos(),
+                              const SizedBox(height: 14),
+                              _buildGraficosSection(compact),
+                              const SizedBox(height: 14),
+                              _buildTopCidadesEstados(),
+                              const SizedBox(height: 14),
+                              _buildFiltroPeriodo(),
+                              const SizedBox(height: 10),
+                              _buildListaAcessos(),
+                              if (_carregandoMais) _buildLoadingIndicator(),
+                              if (!_temMaisDados &&
+                                  _acessosCarregados.isNotEmpty)
+                                _buildFimLista(),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -721,8 +838,9 @@ class _DashboardEstatisticasScreenState
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Estatísticas do Site',
@@ -751,8 +869,14 @@ class _DashboardEstatisticasScreenState
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildWhiteChip(Icons.people_alt_rounded, '$_totalAcessos visitas'),
-                  _buildWhiteChip(Icons.history_rounded, '${filtrados.length} carregados'),
+                  _buildWhiteChip(
+                    Icons.people_alt_rounded,
+                    '$_totalAcessos visitas',
+                  ),
+                  _buildWhiteChip(
+                    Icons.history_rounded,
+                    '${filtrados.length} carregados',
+                  ),
                   _buildWhiteChip(Icons.location_on_rounded, 'Mapa integrado'),
                 ],
               ),
@@ -760,13 +884,7 @@ class _DashboardEstatisticasScreenState
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 12),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 12), text]);
           }
 
           return Row(
@@ -811,8 +929,18 @@ class _DashboardEstatisticasScreenState
     final cards = [
       _MetricCard('Total', _totalAcessos.toString(), Icons.people, Colors.red),
       _MetricCard('Hoje', _visitasHoje.toString(), Icons.today, Colors.orange),
-      _MetricCard('Semana', _visitasSemana.toString(), Icons.calendar_view_week, Colors.green),
-      _MetricCard('Mês', _visitasMes.toString(), Icons.calendar_month, Colors.blue),
+      _MetricCard(
+        'Semana',
+        _visitasSemana.toString(),
+        Icons.calendar_view_week,
+        Colors.green,
+      ),
+      _MetricCard(
+        'Mês',
+        _visitasMes.toString(),
+        Icons.calendar_month,
+        Colors.blue,
+      ),
     ];
 
     return LayoutBuilder(
@@ -897,7 +1025,8 @@ class _DashboardEstatisticasScreenState
           return Column(
             children: [
               hora,
-              if (hora is! SizedBox && dia is! SizedBox) const SizedBox(height: 14),
+              if (hora is! SizedBox && dia is! SizedBox)
+                const SizedBox(height: 14),
               dia,
             ],
           );
@@ -921,7 +1050,11 @@ class _DashboardEstatisticasScreenState
     final horasOrdenadas = _acessosPorHora.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final maxY =
-        horasOrdenadas.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble() + 1;
+        horasOrdenadas
+            .map((e) => e.value)
+            .reduce((a, b) => a > b ? a : b)
+            .toDouble() +
+        1;
 
     return _chartCard(
       title: 'Acessos por hora',
@@ -982,8 +1115,12 @@ class _DashboardEstatisticasScreenState
                 },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           gridData: FlGridData(
             show: true,
@@ -999,7 +1136,9 @@ class _DashboardEstatisticasScreenState
                   toY: entry.value.value.toDouble(),
                   color: Colors.purple.shade300,
                   width: 14,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(5),
+                  ),
                 ),
               ],
             );
@@ -1013,10 +1152,15 @@ class _DashboardEstatisticasScreenState
     if (_acessosPorDia.isEmpty) return const SizedBox.shrink();
 
     final diasOrdem = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
-    final dadosOrdenados =
-    diasOrdem.map((dia) => MapEntry(dia, _acessosPorDia[dia] ?? 0)).toList();
+    final dadosOrdenados = diasOrdem
+        .map((dia) => MapEntry(dia, _acessosPorDia[dia] ?? 0))
+        .toList();
     final maxY =
-        dadosOrdenados.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble() + 1;
+        dadosOrdenados
+            .map((e) => e.value)
+            .reduce((a, b) => a > b ? a : b)
+            .toDouble() +
+        1;
 
     return _chartCard(
       title: 'Acessos por dia',
@@ -1077,8 +1221,12 @@ class _DashboardEstatisticasScreenState
                 },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           gridData: FlGridData(
             show: true,
@@ -1094,7 +1242,9 @@ class _DashboardEstatisticasScreenState
                   toY: entry.value.value.toDouble(),
                   color: Colors.teal.shade300,
                   width: 18,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(5),
+                  ),
                 ),
               ],
             );
@@ -1135,7 +1285,9 @@ class _DashboardEstatisticasScreenState
     final estados = <String, int>{};
 
     for (final pais in paises.values) {
-      final paisMap = pais is Map ? Map<String, dynamic>.from(pais) : <String, dynamic>{};
+      final paisMap = pais is Map
+          ? Map<String, dynamic>.from(pais)
+          : <String, dynamic>{};
       final estadosDoPaisRaw = paisMap['estados'];
 
       if (estadosDoPaisRaw is! Map) continue;
@@ -1236,11 +1388,11 @@ class _DashboardEstatisticasScreenState
   }
 
   Widget _buildSecaoTop(
-      String titulo,
-      IconData icone,
-      MaterialColor cor,
-      List<MapEntry<String, int>> items,
-      ) {
+    String titulo,
+    IconData icone,
+    MaterialColor cor,
+    List<MapEntry<String, int>> items,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(cor, t.card);
 
@@ -1285,7 +1437,7 @@ class _DashboardEstatisticasScreenState
           ),
           const SizedBox(height: 10),
           ...items.map(
-                (entry) => Padding(
+            (entry) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
@@ -1303,7 +1455,10 @@ class _DashboardEstatisticasScreenState
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(accent.withOpacity(0.12), t.card),
                       borderRadius: BorderRadius.circular(99),
@@ -1400,7 +1555,11 @@ class _DashboardEstatisticasScreenState
         child: Center(
           child: Column(
             children: [
-              Icon(Icons.travel_explore_rounded, size: 54, color: context.uai.textMuted),
+              Icon(
+                Icons.travel_explore_rounded,
+                size: 54,
+                color: context.uai.textMuted,
+              ),
               const SizedBox(height: 10),
               Text(
                 'Nenhum acesso neste período',
@@ -1432,8 +1591,10 @@ class _DashboardEstatisticasScreenState
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: acessosFiltrados.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: context.uai.cardAlt),
-            itemBuilder: (context, index) => _buildAcessoItem(acessosFiltrados[index]),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: context.uai.cardAlt),
+            itemBuilder: (context, index) =>
+                _buildAcessoItem(acessosFiltrados[index]),
           ),
         ],
       ),
@@ -1442,7 +1603,9 @@ class _DashboardEstatisticasScreenState
 
   Widget _buildAcessoItem(Map<String, dynamic> acesso) {
     final timestamp = acesso['data_acesso'];
-    final dataAcesso = timestamp is Timestamp ? timestamp.toDate() : DateTime.now();
+    final dataAcesso = timestamp is Timestamp
+        ? timestamp.toDate()
+        : DateTime.now();
 
     final dataFormatada =
         '${dataAcesso.day.toString().padLeft(2, '0')}/${dataAcesso.month.toString().padLeft(2, '0')}';
@@ -1450,16 +1613,19 @@ class _DashboardEstatisticasScreenState
         '${dataAcesso.hour.toString().padLeft(2, '0')}:${dataAcesso.minute.toString().padLeft(2, '0')}';
 
     final ip = acesso['ip']?.toString() ?? 'N/A';
-    final ipCurto = ip.contains('.') ? ip.substring(0, ip.lastIndexOf('.')) : ip;
+    final ipCurto = ip.contains('.')
+        ? ip.substring(0, ip.lastIndexOf('.'))
+        : ip;
 
-    final eventos = acesso['eventos'];
-    final temEventos = eventos is List && eventos.isNotEmpty;
-    final eventosLista = temEventos
-        ? eventos.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
-        : <Map<String, dynamic>>[];
+    final eventosLista = _eventosDoDocumento(acesso);
+    final temEventos = eventosLista.isNotEmpty;
     final temConversao = eventosLista.any((e) => e['tipo'] == 'conversao');
     final temErro = eventosLista.any((e) => e['tipo'] == 'erro_formulario');
     final suspeitos = _contarCamposSuspeitos(eventosLista);
+    final eventoLogin = _eventoLoginAreaAluno(eventosLista);
+    final metadataLogin = _metadataEvento(eventoLogin);
+    final alunoLogin = _textoValor(metadataLogin['aluno_nome'], '');
+    final possivelTrocaAluno = metadataLogin['possivel_troca_aluno'] == true;
 
     final cidade = acesso['cidade']?.toString().trim();
     final estado = acesso['estado']?.toString().trim();
@@ -1484,7 +1650,11 @@ class _DashboardEstatisticasScreenState
                   ),
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(Icons.person_pin_circle_rounded, color: _readableOn(Colors.green), size: 23),
+                child: Icon(
+                  Icons.person_pin_circle_rounded,
+                  color: _readableOn(Colors.green),
+                  size: 23,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1493,7 +1663,7 @@ class _DashboardEstatisticasScreenState
                   children: [
                     Text(
                       '${cidade?.isNotEmpty == true ? cidade : 'Desconhecida'}'
-                          '${estado?.isNotEmpty == true ? ', $estado' : ''}',
+                      '${estado?.isNotEmpty == true ? ', $estado' : ''}',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 13,
@@ -1511,6 +1681,32 @@ class _DashboardEstatisticasScreenState
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _textoDispositivo(acesso),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: context.uai.textMuted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (alunoLogin.isNotEmpty || possivelTrocaAluno) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          if (alunoLogin.isNotEmpty)
+                            _buildInfoChip('Aluno', alunoLogin),
+                          if (possivelTrocaAluno)
+                            _buildAlertaAcessoChip(
+                              'Mesmo aparelho em outro aluno',
+                            ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1528,27 +1724,37 @@ class _DashboardEstatisticasScreenState
                   mainAxisSize: MainAxisSize.min,
                   children: temEventos
                       ? [
-                    Icon(Icons.timeline_rounded, size: 13, color: _softOnCard(Colors.blue)),
-                    const SizedBox(width: 4),
-                    Text(
-                      suspeitos > 0 ? 'Suspeito' : temConversao ? 'Conversão' : temErro ? 'Erro' : '${eventosLista.length} eventos',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _softOnCard(Colors.blue),
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ]
+                          Icon(
+                            Icons.timeline_rounded,
+                            size: 13,
+                            color: _softOnCard(Colors.blue),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            suspeitos > 0
+                                ? 'Suspeito'
+                                : temConversao
+                                ? 'Conversão'
+                                : temErro
+                                ? 'Erro'
+                                : '${eventosLista.length} eventos',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: _softOnCard(Colors.blue),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ]
                       : [
-                    Text(
-                      ipCurto,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _softOnCard(Colors.green),
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
+                          Text(
+                            ipCurto,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: _softOnCard(Colors.green),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
                 ),
               ),
             ],
@@ -1614,7 +1820,10 @@ class _DashboardEstatisticasScreenState
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: _onPrimary().withOpacity(0.16)),
             ),
-            child: Icon(Icons.timeline_rounded, color: _readableOn(Colors.blue.shade900)),
+            child: Icon(
+              Icons.timeline_rounded,
+              color: _readableOn(Colors.blue.shade900),
+            ),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -1660,15 +1869,55 @@ class _DashboardEstatisticasScreenState
     required bool compact,
   }) {
     final items = [
-      _ResumoDialog('Total', totalEventos.toString(), Icons.touch_app_rounded, Colors.blue),
-      _ResumoDialog('Telas', (resumoTipos['telas'] ?? 0).toString(), Icons.web_rounded, Colors.indigo),
-      _ResumoDialog('Cliques', (resumoTipos['botoes'] ?? 0).toString(), Icons.ads_click_rounded, Colors.orange),
-      _ResumoDialog('Etapas', (resumoTipos['etapas'] ?? 0).toString(), Icons.stairs_rounded, Colors.purple),
-      _ResumoDialog('Campos', (resumoTipos['campos'] ?? 0).toString(), Icons.edit_note_rounded, Colors.teal),
-      _ResumoDialog('Erros', (resumoTipos['erros'] ?? 0).toString(), Icons.warning_rounded, Colors.red),
-      _ResumoDialog('Conversões', (resumoTipos['conversoes'] ?? 0).toString(), Icons.verified_rounded, Colors.green),
+      _ResumoDialog(
+        'Total',
+        totalEventos.toString(),
+        Icons.touch_app_rounded,
+        Colors.blue,
+      ),
+      _ResumoDialog(
+        'Telas',
+        (resumoTipos['telas'] ?? 0).toString(),
+        Icons.web_rounded,
+        Colors.indigo,
+      ),
+      _ResumoDialog(
+        'Cliques',
+        (resumoTipos['botoes'] ?? 0).toString(),
+        Icons.ads_click_rounded,
+        Colors.orange,
+      ),
+      _ResumoDialog(
+        'Etapas',
+        (resumoTipos['etapas'] ?? 0).toString(),
+        Icons.stairs_rounded,
+        Colors.purple,
+      ),
+      _ResumoDialog(
+        'Campos',
+        (resumoTipos['campos'] ?? 0).toString(),
+        Icons.edit_note_rounded,
+        Colors.teal,
+      ),
+      _ResumoDialog(
+        'Erros',
+        (resumoTipos['erros'] ?? 0).toString(),
+        Icons.warning_rounded,
+        Colors.red,
+      ),
+      _ResumoDialog(
+        'Conversões',
+        (resumoTipos['conversoes'] ?? 0).toString(),
+        Icons.verified_rounded,
+        Colors.green,
+      ),
       if (camposSuspeitos > 0)
-        _ResumoDialog('Suspeitos', camposSuspeitos.toString(), Icons.report_rounded, Colors.deepOrange),
+        _ResumoDialog(
+          'Suspeitos',
+          camposSuspeitos.toString(),
+          Icons.report_rounded,
+          Colors.deepOrange,
+        ),
     ];
 
     return Wrap(
@@ -1713,7 +1962,10 @@ class _DashboardEstatisticasScreenState
     );
   }
 
-  Widget _buildInteligenciaFluxo(List<Map<String, dynamic>> eventosMap, bool compact) {
+  Widget _buildInteligenciaFluxo(
+    List<Map<String, dynamic>> eventosMap,
+    bool compact,
+  ) {
     final resumo = _resumoTiposEvento(eventosMap);
     final duracaoTelas = _somarDuracaoEventos(eventosMap, 'tela');
     final duracaoEtapas = _somarDuracaoEventos(eventosMap, 'etapa_formulario');
@@ -1725,13 +1977,17 @@ class _DashboardEstatisticasScreenState
       padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(
         radius: 22,
-        borderColor: _softBorder(suspeitos > 0 ? Colors.deepOrange : Colors.green),
+        borderColor: _softBorder(
+          suspeitos > 0 ? Colors.deepOrange : Colors.green,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHeader(
-            icon: suspeitos > 0 ? Icons.report_rounded : Icons.auto_graph_rounded,
+            icon: suspeitos > 0
+                ? Icons.report_rounded
+                : Icons.auto_graph_rounded,
             title: 'Leitura inteligente do fluxo',
             color: suspeitos > 0 ? Colors.deepOrange : Colors.green,
           ),
@@ -1741,7 +1997,10 @@ class _DashboardEstatisticasScreenState
             runSpacing: 8,
             children: [
               _buildInfoChip('Tempo em telas', _formatarDuracao(duracaoTelas)),
-              _buildInfoChip('Tempo em etapas', _formatarDuracao(duracaoEtapas)),
+              _buildInfoChip(
+                'Tempo em etapas',
+                _formatarDuracao(duracaoEtapas),
+              ),
               _buildInfoChip('Erros', erros),
               _buildInfoChip('Conversões', conversoes),
               _buildInfoChip('Campos suspeitos', suspeitos),
@@ -1764,6 +2023,109 @@ class _DashboardEstatisticasScreenState
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAreaAlunoRastroCard(Map<String, dynamic> evento) {
+    final metadata = _metadataEvento(evento);
+    final dispositivo = _mapFromDynamic(metadata['dispositivo']);
+    final possivelTroca = metadata['possivel_troca_aluno'] == true;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(
+        radius: 22,
+        borderColor: _softBorder(
+          possivelTroca ? Colors.deepOrange : Colors.green,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.school_rounded,
+            title: 'Área do Aluno',
+            color: possivelTroca ? Colors.deepOrange : Colors.green,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip(
+                'Aluno logado',
+                _textoValor(metadata['aluno_nome']),
+              ),
+              _buildInfoChip('Turma', _textoValor(metadata['turma'])),
+              _buildInfoChip('Academia', _textoValor(metadata['academia'])),
+              _buildInfoChip(
+                'Horário',
+                _formatarHoraEvento(evento['data_hora'] ?? evento['timestamp']),
+              ),
+              if (dispositivo.isNotEmpty)
+                _buildInfoChip(
+                  'Dispositivo',
+                  _textoDispositivoMapa(dispositivo),
+                ),
+              if (dispositivo['navegador_nome'] != null)
+                _buildInfoChip(
+                  'Navegador',
+                  [
+                    dispositivo['navegador_nome'],
+                    if (_textoValor(
+                      dispositivo['navegador_versao'],
+                      '',
+                    ).isNotEmpty)
+                      dispositivo['navegador_versao'],
+                  ].join(' '),
+                ),
+              if (dispositivo['sistema_operacional_aproximado'] != null)
+                _buildInfoChip(
+                  'Sistema',
+                  dispositivo['sistema_operacional_aproximado'],
+                ),
+              if (dispositivo['celular_marca_aproximada'] != null)
+                _buildInfoChip(
+                  'Marca/modelo',
+                  [
+                    dispositivo['celular_marca_aproximada'],
+                    dispositivo['celular_modelo_aproximado'],
+                  ].where((e) => _textoValor(e, '').isNotEmpty).join(' '),
+                ),
+              if (dispositivo['largura_tela'] != null &&
+                  dispositivo['altura_tela'] != null)
+                _buildInfoChip(
+                  'Tela',
+                  '${dispositivo['largura_tela']}x${dispositivo['altura_tela']}',
+                ),
+              if (dispositivo['idioma'] != null)
+                _buildInfoChip('Idioma', dispositivo['idioma']),
+              if (dispositivo['timezone'] != null)
+                _buildInfoChip('Fuso', dispositivo['timezone']),
+            ],
+          ),
+          if (possivelTroca) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: _softFill(Colors.deepOrange),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _softBorder(Colors.deepOrange)),
+              ),
+              child: Text(
+                'Mesmo aparelho usado em outro aluno anteriormente.',
+                style: TextStyle(
+                  color: _softOnCard(Colors.deepOrange),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -1800,7 +2162,11 @@ class _DashboardEstatisticasScreenState
                   ),
                 ),
               ),
-              Icon(Icons.open_in_new_rounded, color: Colors.blue.shade800, size: 18),
+              Icon(
+                Icons.open_in_new_rounded,
+                color: Colors.blue.shade800,
+                size: 18,
+              ),
             ],
           ),
         ),
@@ -1843,14 +2209,16 @@ class _DashboardEstatisticasScreenState
   }
 
   Widget _buildEventoLinha(
-      Map<String, dynamic> evento,
-      int index,
-      bool compact,
-      ) {
+    Map<String, dynamic> evento,
+    int index,
+    bool compact,
+  ) {
     final tipo = evento['tipo']?.toString() ?? 'evento';
     final nome = evento['nome']?.toString() ?? 'Evento';
     final origem = evento['origem']?.toString() ?? 'N/A';
-    final hora = _formatarHoraEvento(evento['data_hora'] ?? evento['timestamp']);
+    final hora = _formatarHoraEvento(
+      evento['data_hora'] ?? evento['timestamp'],
+    );
 
     final (icone, cor) = switch (tipo) {
       'menu' => (Icons.menu_rounded, Colors.green),
@@ -1889,11 +2257,7 @@ class _DashboardEstatisticasScreenState
                 child: Icon(icone, color: _softOnCard(cor), size: 18),
               ),
               if (index != 9999)
-                Container(
-                  width: 2,
-                  height: 24,
-                  color: context.uai.border,
-                ),
+                Container(width: 2, height: 24, color: context.uai.border),
             ],
           ),
           const SizedBox(width: 10),
@@ -1953,11 +2317,102 @@ class _DashboardEstatisticasScreenState
     );
   }
 
+  Widget _buildDispositivoCard(Map<String, dynamic> documento) {
+    final dispositivo = _mapFromDynamic(documento['dispositivo']);
+    final userAgent = documento['user_agent']?.toString().trim();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(radius: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.devices_rounded,
+            title: 'Dispositivo de acesso',
+            color: Colors.deepPurple,
+          ),
+          const SizedBox(height: 10),
+          if (dispositivo.isEmpty && (userAgent == null || userAgent.isEmpty))
+            _emptyMiniCard('Nenhum dado de dispositivo registrado neste acesso')
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildInfoChip('Dispositivo', _textoDispositivo(documento)),
+                _buildInfoChip('Tela', _tamanhoTelaDispositivo(documento)),
+                if (dispositivo['navegador_nome'] != null)
+                  _buildInfoChip(
+                    'Navegador',
+                    [
+                      dispositivo['navegador_nome'],
+                      if (_textoValor(
+                        dispositivo['navegador_versao'],
+                        '',
+                      ).isNotEmpty)
+                        dispositivo['navegador_versao'],
+                    ].join(' '),
+                  ),
+                if (dispositivo['sistema_operacional_aproximado'] != null)
+                  _buildInfoChip(
+                    'Sistema',
+                    dispositivo['sistema_operacional_aproximado'],
+                  ),
+                if (dispositivo['celular_marca_aproximada'] != null)
+                  _buildInfoChip(
+                    'Celular',
+                    [
+                      dispositivo['celular_marca_aproximada'],
+                      dispositivo['celular_modelo_aproximado'],
+                    ].where((e) => _textoValor(e, '').isNotEmpty).join(' '),
+                  ),
+                if (dispositivo['idioma'] != null)
+                  _buildInfoChip('Idioma', dispositivo['idioma']),
+                if (dispositivo['timezone'] != null)
+                  _buildInfoChip('Fuso', dispositivo['timezone']),
+                if (dispositivo['tema_sistema'] != null)
+                  _buildInfoChip('Tema', dispositivo['tema_sistema']),
+                if (dispositivo['pixel_ratio'] != null)
+                  _buildInfoChip('Pixel ratio', dispositivo['pixel_ratio']),
+                if (dispositivo['tela'] != null)
+                  _buildInfoChip('Tela origem', dispositivo['tela']),
+                if (dispositivo['origem'] != null)
+                  _buildInfoChip('Origem', dispositivo['origem']),
+              ],
+            ),
+            if (userAgent != null && userAgent.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: context.uai.cardAlt,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: context.uai.border),
+                ),
+                child: Text(
+                  'User agent: $userAgent',
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 10.5,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoAcesso(
-      Map<String, dynamic> documento,
-      double? latitude,
-      double? longitude,
-      ) {
+    Map<String, dynamic> documento,
+    double? latitude,
+    double? longitude,
+  ) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(radius: 22),
@@ -2015,7 +2470,9 @@ class _DashboardEstatisticasScreenState
               foregroundColor: _onPrimary(),
               padding: const EdgeInsets.symmetric(vertical: 13),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),
@@ -2039,6 +2496,25 @@ class _DashboardEstatisticasScreenState
           fontSize: 11,
           color: context.uai.textPrimary,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlertaAcessoChip(String texto) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: _softFill(Colors.deepOrange),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: _softBorder(Colors.deepOrange)),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(
+          fontSize: 11,
+          color: _softOnCard(Colors.deepOrange),
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
@@ -2106,17 +2582,11 @@ class _DashboardEstatisticasScreenState
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.uai.border),
       ),
-      child: Text(
-        text,
-        style: TextStyle(color: context.uai.textSecondary),
-      ),
+      child: Text(text, style: TextStyle(color: context.uai.textSecondary)),
     );
   }
 
-  BoxDecoration _cardDecoration({
-    double radius = 18,
-    Color? borderColor,
-  }) {
+  BoxDecoration _cardDecoration({double radius = 18, Color? borderColor}) {
     final t = context.uai;
 
     return BoxDecoration(

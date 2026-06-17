@@ -28,10 +28,9 @@ import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish
 class LocalPublishRunnerWindows extends LocalPublishRunner {
   final LocalPublishPlatformInfo _platformInfo;
 
-  LocalPublishRunnerWindows({
-    LocalPublishPlatformInfo? platformInfo,
-  }) : _platformInfo =
-      platformInfo ?? const LocalPublishPlatformService().getInfo();
+  LocalPublishRunnerWindows({LocalPublishPlatformInfo? platformInfo})
+    : _platformInfo =
+          platformInfo ?? const LocalPublishPlatformService().getInfo();
 
   @override
   LocalPublishPlatformInfo get platformInfo => _platformInfo;
@@ -42,15 +41,16 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
     LocalPublishStateCallback? onState,
     LocalPublishLogCallback? onLog,
   }) async {
-    var state = LocalPublishAutomationState.initial(
-      available: platformInfo.canRunLocalAutomation,
-      platformLabel: platformInfo.platformLabel,
-    ).copyWith(
-      running: true,
-      startedAt: DateTime.now(),
-      clearError: true,
-      clearFinalApkPath: true,
-    );
+    var state =
+        LocalPublishAutomationState.initial(
+          available: platformInfo.canRunLocalAutomation,
+          platformLabel: platformInfo.platformLabel,
+        ).copyWith(
+          running: true,
+          startedAt: DateTime.now(),
+          clearError: true,
+          clearFinalApkPath: true,
+        );
 
     void emit() => onState?.call(state);
 
@@ -60,15 +60,11 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
     }
 
     void setStep(
-        String stepId,
-        LocalPublishStepStatus status, {
-          String? stepLog,
-        }) {
-      state = state.updateStep(
-        stepId: stepId,
-        status: status,
-        log: stepLog,
-      );
+      String stepId,
+      LocalPublishStepStatus status, {
+      String? stepLog,
+    }) {
+      state = state.updateStep(stepId: stepId, status: status, log: stepLog);
       emit();
     }
 
@@ -168,32 +164,24 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
         runInShell: false,
       );
 
-      final stdoutDone = process.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
-        stdoutBuffer.writeln(line);
-        log(line);
-        _updateStateFromOutputLine(
-          line: line,
-          setStep: setStep,
-        );
-      }).asFuture<void>();
+      final stdoutDone = _listenProcessOutput(
+        stream: process.stdout,
+        buffer: stdoutBuffer,
+        onLine: (line) {
+          log(line);
+          _updateStateFromOutputLine(line: line, setStep: setStep);
+        },
+      );
 
-      final stderrDone = process.stderr
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
-        stderrBuffer.writeln(line);
-        log(line);
-      }).asFuture<void>();
+      final stderrDone = _listenProcessOutput(
+        stream: process.stderr,
+        buffer: stderrBuffer,
+        onLine: log,
+      );
 
       final exitCode = await process.exitCode;
 
-      await Future.wait([
-        stdoutDone,
-        stderrDone,
-      ]);
+      await Future.wait([stdoutDone, stderrDone]);
 
       final finalApkFile = File(config.expectedApkPath);
       final apkExists = finalApkFile.existsSync();
@@ -229,11 +217,7 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
           : 'Script finalizou com erro. Código de saída: $exitCode';
 
       if (!apkExists) {
-        setStep(
-          'locate_apk',
-          LocalPublishStepStatus.error,
-          stepLog: message,
-        );
+        setStep('locate_apk', LocalPublishStepStatus.error, stepLog: message);
       }
 
       state = state.copyWith(
@@ -281,13 +265,83 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
     }
   }
 
+  Future<void> _listenProcessOutput({
+    required Stream<List<int>> stream,
+    required StringBuffer buffer,
+    required void Function(String line) onLine,
+  }) {
+    final completer = Completer<void>();
+    final pending = StringBuffer();
+
+    late final StreamSubscription<List<int>> subscription;
+    subscription = stream.listen(
+      (bytes) {
+        final text = _decodeProcessOutput(bytes);
+        if (text.isEmpty) return;
+
+        pending.write(text);
+        final content = pending.toString();
+        final lines = const LineSplitter().convert(content);
+
+        pending.clear();
+
+        final endsWithLineBreak =
+            content.endsWith('\n') || content.endsWith('\r');
+        final completedCount = endsWithLineBreak
+            ? lines.length
+            : lines.length - 1;
+
+        for (var i = 0; i < completedCount; i++) {
+          final line = lines[i];
+          buffer.writeln(line);
+          onLine(line);
+        }
+
+        if (!endsWithLineBreak && lines.isNotEmpty) {
+          pending.write(lines.last);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        final line = 'Falha ao ler saída do processo: $error';
+        buffer.writeln(line);
+        onLine(line);
+      },
+      onDone: () {
+        final rest = pending.toString();
+        if (rest.trim().isNotEmpty) {
+          buffer.writeln(rest);
+          onLine(rest);
+        }
+        completer.complete();
+      },
+      cancelOnError: false,
+    );
+
+    return completer.future.whenComplete(subscription.cancel);
+  }
+
+  String _decodeProcessOutput(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+
+    try {
+      return utf8.decode(bytes, allowMalformed: true);
+    } catch (_) {
+      try {
+        return latin1.decode(bytes, allowInvalid: true);
+      } catch (_) {
+        return String.fromCharCodes(bytes);
+      }
+    }
+  }
+
   void _updateStateFromOutputLine({
     required String line,
     required void Function(
-        String stepId,
-        LocalPublishStepStatus status, {
-        String? stepLog,
-        }) setStep,
+      String stepId,
+      LocalPublishStepStatus status, {
+      String? stepLog,
+    })
+    setStep,
   }) {
     final lower = line.toLowerCase();
 
@@ -342,7 +396,9 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
       return;
     }
 
-    if (lower.contains('built build\\app\\outputs\\flutter-apk\\app-release.apk') ||
+    if (lower.contains(
+          'built build\\app\\outputs\\flutter-apk\\app-release.apk',
+        ) ||
         lower.contains('built build/app/outputs/flutter-apk/app-release.apk')) {
       setStep('build_apk', LocalPublishStepStatus.success);
       setStep('locate_apk', LocalPublishStepStatus.running);

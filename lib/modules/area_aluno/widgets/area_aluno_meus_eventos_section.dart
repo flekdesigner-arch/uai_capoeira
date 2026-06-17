@@ -21,17 +21,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_config_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
 
 class AreaAlunoMeusEventosSection extends StatefulWidget {
   final Map<String, dynamic> aluno;
   final Map<String, dynamic> authPayload;
+  final Map<String, dynamic> config;
   final ValueChanged<AreaAlunoEventoResumo>? onAbrirEvento;
 
   const AreaAlunoMeusEventosSection({
     super.key,
     required this.aluno,
     required this.authPayload,
+    this.config = const {},
     this.onAbrirEvento,
   });
 
@@ -47,6 +50,8 @@ class _AreaAlunoMeusEventosSectionState
 
   late Future<List<AreaAlunoEventoResumo>> _future;
 
+  AreaAlunoConfig get _areaConfig => AreaAlunoConfig.fromMap(widget.config);
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +63,8 @@ class _AreaAlunoMeusEventosSectionState
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.aluno != widget.aluno ||
-        oldWidget.authPayload != widget.authPayload) {
+        oldWidget.authPayload != widget.authPayload ||
+        oldWidget.config != widget.config) {
       _future = _carregarEventos();
     }
   }
@@ -77,8 +83,8 @@ class _AreaAlunoMeusEventosSectionState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -92,10 +98,7 @@ class _AreaAlunoMeusEventosSectionState
   }
 
   String _formatMoney(double value) {
-    return NumberFormat.currency(
-      locale: 'pt_BR',
-      symbol: 'R\$',
-    ).format(value);
+    return NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(value);
   }
 
   String _formatDate(DateTime? date) {
@@ -152,10 +155,7 @@ class _AreaAlunoMeusEventosSectionState
           SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.4,
-              color: accent,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: accent),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -205,10 +205,7 @@ class _AreaAlunoMeusEventosSectionState
                 total == 1
                     ? 'Evento em andamento vinculado ao seu cadastro'
                     : '$total eventos em andamento vinculados ao seu cadastro',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: t.textSecondary, fontSize: 11),
               ),
             ],
           ),
@@ -220,8 +217,7 @@ class _AreaAlunoMeusEventosSectionState
   Widget _buildEventoSlimCard(AreaAlunoEventoResumo evento) {
     final t = context.uai;
     final pagamentoAccent = _ensureVisible(_pagamentoColor(evento), t.card);
-    final origemAccent =
-    _ensureVisible(_origemPagamentoColor(evento), t.card);
+    final origemAccent = _ensureVisible(_origemPagamentoColor(evento), t.card);
     final cardBg = _cardBackgroundColor(evento);
     final onCardBg = _readableOn(cardBg);
 
@@ -278,33 +274,38 @@ class _AreaAlunoMeusEventosSectionState
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  _buildPagamentoStatusPill(
-                                    evento,
-                                    pagamentoAccent,
-                                  ),
+                                  if (_areaConfig.mostrarFinanceiroEventos)
+                                    _buildPagamentoStatusPill(
+                                      evento,
+                                      pagamentoAccent,
+                                    ),
                                 ],
                               ),
                               const SizedBox(height: 5),
                               Row(
                                 children: [
-                                  Icon(
-                                    _pagamentoIcon(evento),
-                                    color: pagamentoAccent,
-                                    size: 14,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      _pagamentoResumo(evento),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: pagamentoAccent,
-                                        fontSize: 11.2,
-                                        fontWeight: FontWeight.w900,
+                                  if (_areaConfig.mostrarFinanceiroEventos) ...[
+                                    Icon(
+                                      _pagamentoIcon(evento),
+                                      color: pagamentoAccent,
+                                      size: 14,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        _areaConfig.financeiroResumo
+                                            ? evento.statusPagamentoLabel
+                                            : _pagamentoResumo(evento),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: pagamentoAccent,
+                                          fontSize: 11.2,
+                                          fontWeight: FontWeight.w900,
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                               const SizedBox(height: 7),
@@ -327,7 +328,8 @@ class _AreaAlunoMeusEventosSectionState
                                     color: origemAccent,
                                     background: cardBg,
                                   ),
-                                  if (evento.temCamisa)
+                                  if (_areaConfig.mostrarCamisaEvento &&
+                                      evento.temCamisa)
                                     _buildMiniChip(
                                       icon: Icons.checkroom_rounded,
                                       label: evento.tamanhoCamisa,
@@ -382,11 +384,10 @@ class _AreaAlunoMeusEventosSectionState
   }
 
   Widget _buildEventoLogo(
-      AreaAlunoEventoResumo evento,
-      Color accent,
-      Color background,
-      ) {
-    final t = context.uai;
+    AreaAlunoEventoResumo evento,
+    Color accent,
+    Color background,
+  ) {
     final logo = evento.logoEventoUrl.trim();
 
     return Container(
@@ -399,42 +400,38 @@ class _AreaAlunoMeusEventosSectionState
       ),
       child: logo.isNotEmpty
           ? ClipRRect(
-        borderRadius: BorderRadius.circular(17),
-        child: Image.network(
-          logo,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildEventoLogoFallback(accent),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: accent,
-                ),
+              borderRadius: BorderRadius.circular(17),
+              child: Image.network(
+                logo,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildEventoLogoFallback(accent),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: accent,
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      )
+            )
           : _buildEventoLogoFallback(accent),
     );
   }
 
   Widget _buildEventoLogoFallback(Color accent) {
-    return Icon(
-      Icons.emoji_events_rounded,
-      color: accent,
-      size: 30,
-    );
+    return Icon(Icons.emoji_events_rounded, color: accent, size: 30);
   }
 
   Widget _buildPagamentoStatusPill(
-      AreaAlunoEventoResumo evento,
-      Color pagamentoAccent,
-      ) {
+    AreaAlunoEventoResumo evento,
+    Color pagamentoAccent,
+  ) {
     final t = context.uai;
     final label = evento.statusPagamentoLabel.toUpperCase();
     final fg = evento.pagamentoQuitado || !evento.pagamentoParcial
@@ -667,10 +664,7 @@ class _AreaAlunoMeusEventosSectionState
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        accent.withOpacity(0.07),
-                        t.card,
-                      ),
+                      color: Color.alphaBlend(accent.withOpacity(0.07), t.card),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: accent.withOpacity(0.13)),
                     ),

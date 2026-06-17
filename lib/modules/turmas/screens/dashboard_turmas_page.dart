@@ -65,6 +65,91 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Color _onGradient() => _readableOn(context.uai.primary);
 
 
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1460;
+    if (width >= 1180) return 1320;
+    if (width >= 900) return 1080;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 28);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 24);
+    return const EdgeInsets.all(16);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  int _dashboardColumns(
+      double width, {
+        double minItemWidth = 360,
+        int maxColumns = 4,
+      }) {
+    if (width <= 0) return 1;
+    final columns = (width / minItemWidth).floor().clamp(1, maxColumns);
+    return columns;
+  }
+
+  Widget _dashboardResponsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 360,
+    int maxColumns = 4,
+    double spacing = 12,
+    double runSpacing = 12,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (width < 720) {
+          return Column(children: children);
+        }
+
+        final columns = _dashboardColumns(
+          width,
+          minItemWidth: minItemWidth,
+          maxColumns: maxColumns,
+        );
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map(
+                (child) => SizedBox(
+              width: itemWidth,
+              child: child,
+            ),
+          )
+              .toList(),
+        );
+      },
+    );
+  }
+
+
   @override
   bool get wantKeepAlive => true;
 
@@ -1853,18 +1938,54 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     child: SingleChildScrollView(
       controller: _scrollController,
       physics: AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildHeaderMetricas(),
-          SizedBox(height: 14),
-          _buildFiltroTemporal(),
-          _buildGraficoFrequencia(),
-          SizedBox(height: 20),
-          _buildListaTop5(),
-          SizedBox(height: 20),
-          _buildListaCompleta(),
-        ],
+      padding: _dashboardPagePadding,
+      child: _dashboardWidthLimiter(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 1060) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 6,
+                    child: Column(
+                      children: [
+                        _buildHeaderMetricas(),
+                        SizedBox(height: 14),
+                        _buildFiltroTemporal(),
+                        _buildGraficoFrequencia(),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      children: [
+                        _buildListaTop5(),
+                        SizedBox(height: 16),
+                        _buildListaCompleta(),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              children: [
+                _buildHeaderMetricas(),
+                SizedBox(height: 14),
+                _buildFiltroTemporal(),
+                _buildGraficoFrequencia(),
+                SizedBox(height: 20),
+                _buildListaTop5(),
+                SizedBox(height: 20),
+                _buildListaCompleta(),
+              ],
+            );
+          },
+        ),
       ),
     ),
   );
@@ -1875,8 +1996,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     child: SingleChildScrollView(
       controller: _scrollController,
       physics: AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(16),
-      child: _buildGraficoGraduacao(),
+      padding: _dashboardPagePadding,
+      child: _dashboardWidthLimiter(_buildGraficoGraduacao()),
     ),
   );
 
@@ -1886,8 +2007,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     child: SingleChildScrollView(
       controller: _scrollController,
       physics: AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(16),
-      child: _buildGraficoIdade(),
+      padding: _dashboardPagePadding,
+      child: _dashboardWidthLimiter(_buildGraficoIdade()),
     ),
   );
 
@@ -1897,10 +2018,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     child: SingleChildScrollView(
       controller: _scrollController,
       physics: AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(16),
-      child: _buildFiltroSexo(),
+      padding: _dashboardPagePadding,
+      child: _dashboardWidthLimiter(_buildFiltroSexo()),
     ),
   );
+
+
 
 
   String _periodoAtualDestaqueLabel() {
@@ -4639,8 +4762,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     color: context.uai.warning,
     child: SingleChildScrollView(
       physics: AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.all(16),
-      child: _buildAlunoDestaqueConteudo(),
+      padding: _dashboardPagePadding,
+      child: _dashboardWidthLimiter(_buildAlunoDestaqueConteudo()),
     ),
   );
 
@@ -4877,10 +5000,22 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         SizedBox(height: 14),
         _buildFiltroTemporal(),
         SizedBox(height: 4),
-        ..._alunosDestaque.asMap().entries.map((entry) {
-          return _buildAlunoDestaqueCard(entry.key + 1, entry.value);
-        }),
+        _buildAlunoDestaqueCardsResponsive(),
       ],
+    );
+  }
+
+  Widget _buildAlunoDestaqueCardsResponsive() {
+    final cards = _alunosDestaque.asMap().entries.map((entry) {
+      return _buildAlunoDestaqueCard(entry.key + 1, entry.value);
+    }).toList();
+
+    return _dashboardResponsiveWrap(
+      children: cards,
+      minItemWidth: 390,
+      maxColumns: 3,
+      spacing: 12,
+      runSpacing: 12,
     );
   }
 
@@ -5067,27 +5202,47 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Widget _buildAlunoAvatarDestaque(String foto, String nome) {
     final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
+    final url = foto.trim();
 
-    if (foto.startsWith('http')) {
-      return ClipOval(
-        child: Image.network(
-          foto,
+    return ClipOval(
+      child: SizedBox.square(
+        dimension: 48,
+        child: url.startsWith('http')
+            ? Image.network(
+          url,
+          fit: BoxFit.cover,
           width: 48,
           height: 48,
-          fit: BoxFit.cover,
-          cacheWidth: 120,
-          errorBuilder: (_, __, ___) => _avatarDestaqueFallback(letra),
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
-            return _avatarDestaqueFallback(letra);
+            return _avatarDestaqueFallbackBox(letra);
           },
-        ),
-      );
-    }
-
-    return _avatarDestaqueFallback(letra);
+        )
+            : _avatarDestaqueFallbackBox(letra),
+      ),
+    );
   }
 
+  Widget _avatarDestaqueFallbackBox(String letra) {
+    return Container(
+      width: 48,
+      height: 48,
+      color: context.uai.warning.withOpacity(0.16),
+      alignment: Alignment.center,
+      child: Text(
+        letra,
+        style: TextStyle(
+          color: context.uai.warning,
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
+        ),
+      ),
+    );
+  }
   Widget _avatarDestaqueFallback(String letra) {
     return CircleAvatar(
       radius: 24,
@@ -5594,15 +5749,30 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
         ),
         SizedBox(height: 12),
-        ...ordenadas.map(
-              (e) => _buildGraduacaoCard(
-            nomeGraduacao: e.key,
-            quantidade: e.value,
-            totalAlunos: totalAlunos,
-            alunos: _alunosPorGraduacao[e.key] ?? [],
-          ),
-        ),
+        _buildGraduacaoCardsResponsive(ordenadas, totalAlunos),
       ],
+    );
+  }
+
+  Widget _buildGraduacaoCardsResponsive(
+      List<MapEntry<String, int>> ordenadas,
+      int totalAlunos,
+      ) {
+    final cards = ordenadas.map((e) {
+      return _buildGraduacaoCard(
+        nomeGraduacao: e.key,
+        quantidade: e.value,
+        totalAlunos: totalAlunos,
+        alunos: _alunosPorGraduacao[e.key] ?? [],
+      );
+    }).toList();
+
+    return _dashboardResponsiveWrap(
+      children: cards,
+      minItemWidth: 420,
+      maxColumns: 2,
+      spacing: 12,
+      runSpacing: 12,
     );
   }
 
@@ -5899,292 +6069,584 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildAlunoAvatar(Map<String, dynamic> aluno) {
-    final foto = aluno['foto_perfil_aluno'] as String?;
-    return CircleAvatar(
-      radius: 18,
-      backgroundColor: context.uai.border,
-      backgroundImage: foto != null && foto.isNotEmpty
-          ? NetworkImage(foto)
-          : null,
-      child: foto == null || foto.isEmpty
-          ? Text(
-        aluno['nome']?.substring(0, 1).toUpperCase() ?? '?',
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          color: context.uai.textMuted,
-        ),
-      )
-          : null,
+    final foto = aluno['foto_perfil_aluno']?.toString().trim() ?? '';
+    final nome = aluno['nome']?.toString().trim() ?? '';
+    final letra = nome.isNotEmpty ? nome[0].toUpperCase() : '?';
+
+    return ClipOval(
+      child: SizedBox.square(
+        dimension: 40,
+        child: foto.startsWith('http')
+            ? Image.network(
+          foto,
+          fit: BoxFit.cover,
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => _avatarFallback(letra, 40),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return _avatarFallback(letra, 40);
+          },
+        )
+            : _avatarFallback(letra, 40),
+      ),
     );
   }
 
+  Widget _avatarFallback(String letra, double size) {
+    return Container(
+      width: size,
+      height: size,
+      color: context.uai.cardAlt,
+      alignment: Alignment.center,
+      child: Text(
+        letra,
+        style: TextStyle(
+          color: context.uai.textMuted,
+          fontWeight: FontWeight.w900,
+          fontSize: size * 0.38,
+        ),
+      ),
+    );
+  }
   // ============ IDADE, SEXO, LISTAS ============
   Widget _buildGraficoIdade() {
-    if (_alunosOrdenadosPorIdade.isEmpty)
+    if (_alunosOrdenadosPorIdade.isEmpty) {
       return _emptyChart('Nenhum aluno com idade calculada');
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 1060) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 5,
+                child: Column(
+                  children: [
+                    _buildIdadeDistribuicaoCard(),
+                    SizedBox(height: 12),
+                    _buildFaixaEtariaCards(),
+                  ],
+                ),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                flex: 6,
+                child: _buildListaIdade(),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildIdadeDistribuicaoCard(),
+            SizedBox(height: 12),
+            _buildFaixaEtariaCards(),
+            SizedBox(height: 12),
+            _buildListaIdade(),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildIdadeDistribuicaoCard() {
     final maxV =
         _distribuicaoIdade.values.reduce((a, b) => a > b ? a : b).toDouble() +
             1;
-    return Column(
-      children: [
-        Card(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
+
+    return Card(
+      elevation: 3,
+      color: context.uai.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: context.uai.border),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Text(
-                  'Distribuição por Faixa Etária',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: context.uai.textPrimary,
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: context.uai.success.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.cake_rounded,
+                    color: context.uai.success,
+                    size: 20,
                   ),
                 ),
-                SizedBox(height: 16),
-                SizedBox(
-                  height: 220,
-                  child: BarChart(
-                    BarChartData(
-                      alignment: BarChartAlignment.spaceAround,
-                      maxY: maxV,
-                      barTouchData: BarTouchData(enabled: false),
-                      titlesData: FlTitlesData(
-                        show: true,
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            getTitlesWidget: (v, m) {
-                              final idx = v.toInt();
-                              if (idx >= 0 &&
-                                  idx < _distribuicaoIdade.keys.length)
-                                return Padding(
-                                  padding: EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    _distribuicaoIdade.keys
-                                        .elementAt(idx)
-                                        .split(' ')
-                                        .first,
-                                    style: TextStyle(fontSize: 10),
-                                  ),
-                                );
-                              return Text('');
-                            },
-                          ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            interval: 2,
-                            reservedSize: 25,
-                          ),
-                        ),
-                        topTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      barGroups: _distribuicaoIdade.entries.map((e) {
-                        final idx = _distribuicaoIdade.keys.toList().indexOf(
-                          e.key,
-                        );
-                        return BarChartGroupData(
-                          x: idx,
-                          barRods: [
-                            BarChartRodData(
-                              toY: e.value.toDouble(),
-                              gradient: LinearGradient(
-                                colors: [
-                                  context.uai.success.withOpacity(0.78),
-                                  context.uai.inscricoes.withOpacity(0.55),
-                                ],
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                              ),
-                              width: 20,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 16),
-                ..._distribuicaoIdade.entries.map(
-                      (e) => Padding(
-                    padding: EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _iconesFaixa[e.key] ?? Icons.person,
-                          size: 18,
-                          color: context.uai.success,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            e.key,
-                            style: TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        Text(
-                          '${e.value} alunos',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Distribuição por Faixa Etária',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _onCard(),
                     ),
                   ),
                 ),
               ],
             ),
-          ),
+            SizedBox(height: 16),
+            SizedBox(
+              height: _isDesktopDashboard ? 260 : 220,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: maxV,
+                  barTouchData: BarTouchData(enabled: false),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 34,
+                        getTitlesWidget: (v, m) {
+                          final idx = v.toInt();
+                          if (idx >= 0 && idx < _distribuicaoIdade.keys.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: Text(
+                                _distribuicaoIdade.keys.elementAt(idx).split(' ').first,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: context.uai.textSecondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            );
+                          }
+                          return Text('');
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 2,
+                        reservedSize: 28,
+                        getTitlesWidget: (v, m) => Text(
+                          v.toInt().toString(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: context.uai.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 2,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: context.uai.border.withOpacity(0.65),
+                        strokeWidth: 1,
+                      );
+                    },
+                  ),
+                  barGroups: _distribuicaoIdade.entries.map((e) {
+                    final idx = _distribuicaoIdade.keys.toList().indexOf(e.key);
+                    return BarChartGroupData(
+                      x: idx,
+                      barRods: [
+                        BarChartRodData(
+                          toY: e.value.toDouble(),
+                          gradient: LinearGradient(
+                            colors: [
+                              context.uai.success.withOpacity(0.82),
+                              context.uai.inscricoes.withOpacity(0.58),
+                            ],
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                          ),
+                          width: _isDesktopDashboard ? 26 : 20,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
         ),
-        SizedBox(height: 12),
-        _buildListaIdade(),
-      ],
+      ),
     );
   }
 
-  Widget _buildListaIdade() => Card(
-    elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    child: Padding(
+  Widget _buildFaixaEtariaCards() {
+    final cards = _distribuicaoIdade.entries.map((e) {
+      return _buildFaixaEtariaTile(e.key, e.value);
+    }).toList();
+
+    return _dashboardResponsiveWrap(
+      children: cards,
+      minItemWidth: 170,
+      maxColumns: _isDesktopDashboard ? 4 : 3,
+      spacing: 10,
+      runSpacing: 10,
+    );
+  }
+
+  Widget _buildFaixaEtariaTile(String faixa, int quantidade) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.uai.success.withOpacity(0.16)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: context.uai.success.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              _iconesFaixa[faixa] ?? Icons.person,
+              size: 18,
+              color: context.uai.success,
+            ),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              faixa,
+              style: TextStyle(
+                color: _onCard(),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SizedBox(width: 8),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: context.uai.success.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$quantidade',
+              style: TextStyle(
+                color: context.uai.success,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListaIdade() {
+    final totalVisivel = _alunosOrdenadosPorIdade.length > _visibleItems
+        ? _visibleItems
+        : _alunosOrdenadosPorIdade.length;
+
+    final cards = List.generate(totalVisivel, (i) {
+      final aluno = _alunosOrdenadosPorIdade[i];
+      final idade = _parseInt(aluno['idade_calculada']);
+      return _buildAlunoIdadeTile(aluno, idade, i + 1);
+    });
+
+    return Card(
+      elevation: 2,
+      color: context.uai.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: context.uai.border),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: context.uai.success.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.sort_rounded, color: context.uai.success, size: 18),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Alunos por idade',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: _onCard(),
+                    ),
+                  ),
+                ),
+                Text(
+                  '${_alunosOrdenadosPorIdade.length} alunos',
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            _dashboardResponsiveWrap(
+              children: cards,
+              minItemWidth: 300,
+              maxColumns: _isDesktopDashboard ? 3 : 2,
+              spacing: 10,
+              runSpacing: 10,
+            ),
+            if (_alunosOrdenadosPorIdade.length > _visibleItems)
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _visibleItems += 20),
+                    icon: Icon(Icons.expand_more_rounded),
+                    label: Text('Ver mais...'),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlunoIdadeTile(Map<String, dynamic> aluno, int idade, int posicao) {
+    final nome = aluno['nome']?.toString() ?? '?';
+    final graduacao = _obterNomeGraduacaoAluno(aluno);
+
+    return InkWell(
+      onTap: () => _mostrarDialog(aluno),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: context.uai.cardAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: context.uai.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: context.uai.success.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '$posicao',
+                style: TextStyle(
+                  color: context.uai.success,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            SizedBox(width: 9),
+            _buildAlunoAvatar(aluno),
+            SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nome,
+                    style: TextStyle(
+                      color: _onCard(),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    graduacao,
+                    style: TextStyle(
+                      color: _onCardMuted(),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              decoration: BoxDecoration(
+                color: context.uai.success.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: context.uai.success.withOpacity(0.16)),
+              ),
+              child: Text(
+                '$idade a',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: context.uai.success,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFiltroSexo() {
+    final filtrados = _alunosDaTurma.where((a) {
+      if (filtroSexo == null) return true;
+      return (a['sexo'] as String?)?.toUpperCase() == filtroSexo;
+    }).toList();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 1060) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 360,
+                child: Column(
+                  children: [
+                    _buildSexoFiltroCard(),
+                    SizedBox(height: 14),
+                    _buildSexoResumoCard(),
+                  ],
+                ),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: _buildListaSexo(filtrados: filtrados),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildSexoFiltroCard(),
+            SizedBox(height: 16),
+            _buildSexoResumoCard(),
+            SizedBox(height: 16),
+            _buildListaSexo(filtrados: filtrados),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSexoFiltroCard() {
+    return Container(
       padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.uai.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.sort, color: context.uai.success, size: 18),
+              Icon(Icons.filter_alt_rounded, color: context.uai.error, size: 18),
               SizedBox(width: 8),
               Text(
-                'Alunos por idade',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                'Filtrar por sexo',
+                style: TextStyle(
+                  color: _onCard(),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ],
           ),
-          SizedBox(height: 8),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            itemCount: _alunosOrdenadosPorIdade.length > _visibleItems
-                ? _visibleItems
-                : _alunosOrdenadosPorIdade.length,
-            itemBuilder: (ctx, i) {
-              final a = _alunosOrdenadosPorIdade[i];
-              final idade = a['idade_calculada'] ?? 0;
-              return ListTile(
-                contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                leading: _buildAlunoAvatar(a),
-                title: Text(
-                  a['nome'] ?? '?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _btnSexo(
+                  'TODOS',
+                  Icons.people,
+                  filtroSexo == null,
+                  context.uai.info,
+                      () => setState(() => filtroSexo = null),
                 ),
-                trailing: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.uai.success.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$idade a',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: context.uai.success,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          if (_alunosOrdenadosPorIdade.length > _visibleItems)
-            Center(
-              child: TextButton(
-                onPressed: () => setState(() => _visibleItems += 20),
-                child: Text('Ver mais...'),
               ),
-            ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _buildFiltroSexo() => Column(
-    children: [
-      Row(
-        children: [
-          Expanded(
-            child: _btnSexo(
-              'TODOS',
-              Icons.people,
-              filtroSexo == null,
-              context.uai.info,
-                  () => setState(() => filtroSexo = null),
-            ),
-          ),
-          SizedBox(width: 8),
-          Expanded(
-            child: _btnSexo(
-              'MENINOS',
-              Icons.male,
-              filtroSexo == 'MASCULINO',
-              context.uai.info,
-                  () => setState(() => filtroSexo = 'MASCULINO'),
-            ),
-          ),
-          SizedBox(width: 8),
-          Expanded(
-            child: _btnSexo(
-              'MENINAS',
-              Icons.female,
-              filtroSexo == 'FEMININO',
-              context.uai.error,
-                  () => setState(() => filtroSexo = 'FEMININO'),
-            ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _btnSexo(
+                  'MENINOS',
+                  Icons.male,
+                  filtroSexo == 'MASCULINO',
+                  context.uai.info,
+                      () => setState(() => filtroSexo = 'MASCULINO'),
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _btnSexo(
+                  'MENINAS',
+                  Icons.female,
+                  filtroSexo == 'FEMININO',
+                  context.uai.error,
+                      () => setState(() => filtroSexo = 'FEMININO'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            child: _cardSexo('MENINOS', _totalMeninos, context.uai.info, Icons.male),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: _cardSexo(
-              'MENINAS',
-              _totalMeninas,
-              context.uai.error,
-              Icons.female,
-            ),
-          ),
-        ],
-      ),
-      SizedBox(height: 16),
-      _buildListaSexo(),
-    ],
-  );
+    );
+  }
 
   Widget _btnSexo(
       String t,
@@ -6196,10 +6658,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     onTap: onTap,
     child: AnimatedContainer(
       duration: Duration(milliseconds: 200),
-      padding: EdgeInsets.symmetric(vertical: 12),
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 6),
       decoration: BoxDecoration(
-        color: ativo ? c.withOpacity(0.1) : context.uai.cardAlt,
-        borderRadius: BorderRadius.circular(12),
+        color: ativo ? c.withOpacity(0.12) : context.uai.cardAlt,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: ativo ? c : context.uai.border,
           width: ativo ? 2 : 1,
@@ -6213,150 +6675,173 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             t,
             style: TextStyle(
               color: ativo ? c : context.uai.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              fontSize: 10.5,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     ),
   );
 
+  Widget _buildSexoResumoCard() {
+    return _dashboardResponsiveWrap(
+      children: [
+        _cardSexo('MENINOS', _totalMeninos, context.uai.info, Icons.male),
+        _cardSexo('MENINAS', _totalMeninas, context.uai.error, Icons.female),
+      ],
+      minItemWidth: 155,
+      maxColumns: 2,
+      spacing: 10,
+      runSpacing: 10,
+    );
+  }
+
   Widget _cardSexo(String t, int qtd, Color c, IconData i) => Container(
     padding: EdgeInsets.all(16),
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [c.withOpacity(0.7), c],
+        colors: [c.withOpacity(0.74), c],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: [BoxShadow(color: c.withOpacity(0.3), blurRadius: 8)],
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [BoxShadow(color: c.withOpacity(0.24), blurRadius: 10, offset: Offset(0, 4))],
     ),
-    child: Column(
+    child: Row(
       children: [
-        Icon(i, color: context.uai.textPrimary, size: 32),
-        SizedBox(height: 8),
-        Text(
-          t,
-          style: TextStyle(
-            color: context.uai.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.16),
+            borderRadius: BorderRadius.circular(14),
           ),
+          child: Icon(i, color: _readableOn(c), size: 25),
         ),
-        SizedBox(height: 4),
-        Text(
-          '$qtd',
-          style: TextStyle(
-            color: context.uai.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+        SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                t,
+                style: TextStyle(
+                  color: _readableOn(c),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                '$qtd',
+                style: TextStyle(
+                  color: _readableOn(c),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     ),
   );
 
-  Widget _buildListaSexo() {
-    final filtrados = _alunosDaTurma.where((a) {
+  Widget _buildListaSexo({List<Map<String, dynamic>>? filtrados}) {
+    final alunos = filtrados ?? _alunosDaTurma.where((a) {
       if (filtroSexo == null) return true;
       return (a['sexo'] as String?)?.toUpperCase() == filtroSexo;
     }).toList();
-    if (filtrados.isEmpty) return _emptyChart('Nenhum aluno');
+
+    if (alunos.isEmpty) return _emptyChart('Nenhum aluno');
+
+    final totalVisivel = alunos.length > _visibleItems ? _visibleItems : alunos.length;
+    final cards = List.generate(totalVisivel, (i) {
+      final aluno = alunos[i];
+      final isM = (aluno['sexo'] as String?)?.toUpperCase() == 'MASCULINO';
+      return _buildAlunoSexoTile(aluno, isM);
+    });
+
+    final titulo = filtroSexo == null
+        ? 'TODOS'
+        : filtroSexo == 'MASCULINO'
+        ? 'MENINOS'
+        : 'MENINAS';
+
+    final cor = filtroSexo == 'MASCULINO'
+        ? context.uai.info
+        : filtroSexo == 'FEMININO'
+        ? context.uai.error
+        : context.uai.textSecondary;
+
+    final icon = filtroSexo == 'MASCULINO'
+        ? Icons.male
+        : filtroSexo == 'FEMININO'
+        ? Icons.female
+        : Icons.people;
+
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      color: context.uai.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: context.uai.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(
-                  filtroSexo == 'MASCULINO'
-                      ? Icons.male
-                      : filtroSexo == 'FEMININO'
-                      ? Icons.female
-                      : Icons.people,
-                  color: filtroSexo == 'MASCULINO'
-                      ? context.uai.info
-                      : filtroSexo == 'FEMININO'
-                      ? context.uai.error
-                      : context.uai.textSecondary,
-                  size: 18,
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: cor.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: cor, size: 18),
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: 10),
                 Text(
-                  filtroSexo == null
-                      ? 'TODOS'
-                      : filtroSexo == 'MASCULINO'
-                      ? 'MENINOS'
-                      : 'MENINAS',
+                  titulo,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: filtroSexo == 'MASCULINO'
-                        ? context.uai.info
-                        : filtroSexo == 'FEMININO'
-                        ? context.uai.error
-                        : context.uai.textSecondary,
+                    color: cor,
                   ),
                 ),
                 Spacer(),
                 Text(
-                  '${filtrados.length} alunos',
-                  style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                  '${alunos.length} alunos',
+                  style: TextStyle(fontSize: 12, color: _onCardMuted()),
                 ),
               ],
             ),
-            SizedBox(height: 8),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              itemCount: filtrados.length > _visibleItems
-                  ? _visibleItems
-                  : filtrados.length,
-              itemBuilder: (ctx, i) {
-                final a = filtrados[i];
-                final isM =
-                    (a['sexo'] as String?)?.toUpperCase() == 'MASCULINO';
-                return ListTile(
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                  leading: _buildAlunoAvatar(a),
-                  title: Text(
-                    a['nome'] ?? '?',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isM ? context.uai.info.withOpacity(0.10) : context.uai.error.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      isM ? Icons.male : Icons.female,
-                      size: 14,
-                      color: isM ? context.uai.info : context.uai.error,
-                    ),
-                  ),
-                );
-              },
+            SizedBox(height: 12),
+            _dashboardResponsiveWrap(
+              children: cards,
+              minItemWidth: 300,
+              maxColumns: _isDesktopDashboard ? 3 : 2,
+              spacing: 10,
+              runSpacing: 10,
             ),
-            if (filtrados.length > _visibleItems)
+            if (alunos.length > _visibleItems)
               Center(
-                child: TextButton(
-                  onPressed: () => setState(() => _visibleItems += 20),
-                  child: Text('Ver mais...'),
+                child: Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _visibleItems += 20),
+                    icon: Icon(Icons.expand_more_rounded),
+                    label: Text('Ver mais...'),
+                  ),
                 ),
               ),
           ],
@@ -6365,6 +6850,72 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
+  Widget _buildAlunoSexoTile(Map<String, dynamic> aluno, bool isM) {
+    final nome = aluno['nome']?.toString() ?? '?';
+    final graduacao = _obterNomeGraduacaoAluno(aluno);
+    final cor = isM ? context.uai.info : context.uai.error;
+
+    return InkWell(
+      onTap: () => _mostrarDialog(aluno),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: context.uai.cardAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cor.withOpacity(0.18)),
+        ),
+        child: Row(
+          children: [
+            _buildAlunoAvatar(aluno),
+            SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nome,
+                    style: TextStyle(
+                      color: _onCard(),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    graduacao,
+                    style: TextStyle(
+                      color: _onCardMuted(),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: cor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                isM ? Icons.male : Icons.female,
+                size: 16,
+                color: cor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildRankingAlunoTile(
       Map<String, dynamic> aluno, {
@@ -6658,7 +7209,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     baseColor: context.uai.border,
     highlightColor: context.uai.cardAlt,
     child: ListView.builder(
-      padding: EdgeInsets.all(16),
+      padding: _dashboardPagePadding,
       itemCount: 6,
       itemBuilder: (_, __) => Container(
         margin: EdgeInsets.only(bottom: 12),

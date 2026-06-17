@@ -1,12 +1,10 @@
-﻿import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -19,6 +17,7 @@ import 'package:uai_capoeira/modules/auth/screens/login_screen.dart';
 import 'package:uai_capoeira/modules/inscricoes/public/inscricao_campeonato_screen.dart';
 import 'package:uai_capoeira/modules/inscricoes/public/inscricao_publica_screen.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
+import 'package:uai_capoeira/modules/rastreio/services/dispositivo_rastreio_service.dart';
 import 'package:uai_capoeira/modules/rastreio/widgets/arvore_visitas_dialog.dart';
 import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
 import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart';
@@ -36,6 +35,8 @@ class LandingPage extends StatefulWidget {
 class _LandingPageState extends State<LandingPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final RastreioSiteService _rastreioService = RastreioSiteService();
+  final DispositivoRastreioService _dispositivoRastreioService =
+  const DispositivoRastreioService();
 
   int _selectedIndex = 0;
   final ScrollController _scrollController = ScrollController();
@@ -140,7 +141,10 @@ class _LandingPageState extends State<LandingPage> {
     _incrementarContadorVisitas();
     _carregarSenhaApp();
     _carregarConfiguracoesMenu();
-    _registrarLocalizacao();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _registrarLocalizacao();
+    });
   }
 
   @override
@@ -199,31 +203,56 @@ class _LandingPageState extends State<LandingPage> {
   // ==================== RASTREAMENTO ====================
   Future<void> _registrarLocalizacao() async {
     try {
-      debugPrint('🌐 Obtendo IP público...');
-      final ipResponse = await http.get(Uri.parse('https://api.ipify.org'));
-      final ip = ipResponse.body.trim();
-      debugPrint('📡 IP obtido: $ip');
+      debugPrint('🌐 Registrando localização e dispositivo...');
+
+      final dispositivo = _dispositivoRastreioService.coletar(
+        context,
+        tela: 'landing_page',
+        origem: 'site_landing',
+        extra: {
+          'pagina_inicial': 'home',
+          'modulo': 'site_publico',
+        },
+      );
 
       final functions = FirebaseFunctions.instance;
       final callable = functions.httpsCallable('registrarLocalizacaoAcesso');
-      debugPrint('📡 Chamando Cloud Function...');
-      final result = await callable.call({'ip': ip});
 
-      debugPrint('📡 Resposta da Cloud Function: ${result.data}');
+      debugPrint('📡 Chamando Cloud Function registrarLocalizacaoAcesso...');
+      final result = await callable.call({
+        'origem': 'site_landing',
+        'dispositivo': dispositivo,
+      });
 
-      if (result.data['success'] == true) {
-        final docId = result.data['docId'] as String;
+      final data = Map<String, dynamic>.from(result.data as Map);
+
+      debugPrint('📡 Resposta da Cloud Function: $data');
+
+      if (data['success'] == true && data['docId'] != null) {
+        final docId = data['docId'].toString();
+
         debugPrint('📄 Documento criado com ID: $docId');
 
         _rastreioService.iniciarSessaoComDocumento(docId);
-        await _rastreioService.registrarPaginaVista('home', 'inicial');
 
-        debugPrint('✅ Rastreamento iniciado com sucesso para documento $docId');
+        await _rastreioService.registrarPaginaVista(
+          'home',
+          'inicial',
+        );
+
+        await _rastreioService.registrarEvento(
+          tipo: 'dispositivo',
+          nome: 'dados_dispositivo_inicial',
+          origem: 'site_landing',
+          metadata: dispositivo,
+        );
+
+        debugPrint('✅ Rastreamento iniciado com dispositivo para documento $docId');
       } else {
-        debugPrint('❌ Falha na Cloud Function: ${result.data['error']}');
+        debugPrint('❌ Falha na Cloud Function: ${data['error']}');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao registrar localização: $e');
+      debugPrint('❌ Erro ao registrar localização/dispositivo: $e');
     }
   }
 
@@ -444,6 +473,19 @@ class _LandingPageState extends State<LandingPage> {
     return _textosPersonalizados[item['id']] ?? item['label'];
   }
 
+  Map<String, dynamic> _coletarDispositivoEvento({
+    required String tela,
+    required String origem,
+    Map<String, dynamic>? extra,
+  }) {
+    return _dispositivoRastreioService.coletar(
+      context,
+      tela: tela,
+      origem: origem,
+      extra: extra,
+    );
+  }
+
   // ==================== NAVEGAÇÃO E RASTREIO ====================
   Future<void> _launchURL(String url) async {
     final uri = Uri.parse(url);
@@ -460,7 +502,15 @@ class _LandingPageState extends State<LandingPage> {
       tipo: 'menu',
       nome: itemId,
       origem: 'drawer',
-      metadata: {'label': label, 'isSpecial': isSpecial},
+      metadata: {
+        'label': label,
+        'isSpecial': isSpecial,
+        'dispositivo': _coletarDispositivoEvento(
+          tela: 'landing_page',
+          origem: 'drawer',
+          extra: {'item_id': itemId},
+        ),
+      },
     );
 
     if (isSpecial) {
@@ -480,7 +530,14 @@ class _LandingPageState extends State<LandingPage> {
       tipo: 'card',
       nome: itemId,
       origem: 'home_grid',
-      metadata: {'titulo': titulo},
+      metadata: {
+        'titulo': titulo,
+        'dispositivo': _coletarDispositivoEvento(
+          tela: 'landing_page',
+          origem: 'home_grid',
+          extra: {'item_id': itemId},
+        ),
+      },
     );
 
     setState(() => _selectedIndex = index);
@@ -493,7 +550,14 @@ class _LandingPageState extends State<LandingPage> {
       tipo: 'botao_social',
       nome: rede,
       origem: origem,
-      metadata: {'url': url},
+      metadata: {
+        'url': url,
+        'dispositivo': _coletarDispositivoEvento(
+          tela: 'landing_page',
+          origem: origem,
+          extra: {'rede': rede},
+        ),
+      },
     );
 
     _launchURL(url);
@@ -528,6 +592,11 @@ class _LandingPageState extends State<LandingPage> {
         metadata: {
           'email': user.email,
           'uid': user.uid,
+          'dispositivo': _coletarDispositivoEvento(
+            tela: 'landing_page',
+            origem: 'acesso_app',
+            extra: {'estado_login': 'sessao_restaurada'},
+          ),
         },
       );
 
@@ -915,6 +984,12 @@ class _LandingPageState extends State<LandingPage> {
                         tipo: 'ui',
                         nome: 'abrir_drawer',
                         origem: 'appbar',
+                        metadata: {
+                          'dispositivo': _coletarDispositivoEvento(
+                            tela: 'landing_page',
+                            origem: 'appbar',
+                          ),
+                        },
                       );
                       Scaffold.of(context).openDrawer();
                     },

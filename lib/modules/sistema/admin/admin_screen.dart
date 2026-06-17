@@ -17,6 +17,8 @@ import 'package:uai_capoeira/modules/site/admin/gerenciar_site_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_logo_screen.dart';
 import 'package:uai_capoeira/modules/certificados/screens/certificado_preview_teste_screen.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/admin/controle_atualizacoes_screen.dart';
+import 'package:uai_capoeira/modules/sistema/admin/indicadores_ausencia_screen.dart';
+import 'package:uai_capoeira/modules/sistema/admin/modo_troll_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -363,6 +365,20 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Upload de APK, versões, histórico e obrigatoriedade',
                             color: t.success,
                             tela: const ControleAtualizacoesScreen(),
+                          ),
+                          _AdminCardData(
+                            icon: Icons.rule_rounded,
+                            title: 'Indicadores de Ausência',
+                            subtitle: 'Configure dias e cores do alerta de frequência',
+                            color: t.info,
+                            tela: const IndicadoresAusenciaScreen(),
+                          ),
+                          _AdminCardData(
+                            icon: Icons.psychology_alt_rounded,
+                            title: 'Brincadeiras da Chamada',
+                            subtitle: 'Telepatia e chamada inversa com controle seguro',
+                            color: t.warning,
+                            tela: const ModoTrollScreen(),
                           ),
                           _AdminCardData(
                             icon: Icons.workspace_premium_rounded,

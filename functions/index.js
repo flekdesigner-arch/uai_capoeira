@@ -6,6 +6,7 @@ const admin = require('firebase-admin');
 const { Storage } = require('@google-cloud/storage');
 const { DateTime } = require('luxon');
 const axios = require('axios');
+const crypto = require('crypto');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 admin.initializeApp();
@@ -1223,35 +1224,273 @@ exports.restaurarFotosDoBackup = onRequest(
     }
 );
 
+function limparIpAcesso(valor) {
+    if (!valor) return '';
+
+    const texto = String(valor).trim();
+    const primeiro = texto.split(',')[0].trim();
+
+    return primeiro.replace(/^::ffff:/, '');
+}
+
+function obterIpRequisicao(request, ipFallback) {
+    const raw = request.rawRequest;
+
+    const headers = [
+        raw?.headers?.['x-forwarded-for'],
+        raw?.headers?.['x-real-ip'],
+        raw?.headers?.['fastly-client-ip'],
+        raw?.headers?.['cf-connecting-ip'],
+    ];
+
+    for (const item of headers) {
+        const ip = limparIpAcesso(item);
+        if (ip) return ip;
+    }
+
+    const ipSocket = limparIpAcesso(raw?.ip || raw?.socket?.remoteAddress);
+    if (ipSocket) return ipSocket;
+
+    return limparIpAcesso(ipFallback);
+}
+
+function valorSeguroLocalizacao(valor, fallback = 'Desconhecido') {
+    const texto = String(valor || '').trim();
+    return texto || fallback;
+}
+
+function limparMapaDispositivo(valor) {
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) {
+        return {};
+    }
+
+    const permitido = [
+        'tipo_dispositivo',
+        'tipo_plataforma',
+        'plataforma_flutter',
+        'is_web',
+        'largura_tela',
+        'altura_tela',
+        'menor_lado',
+        'maior_lado',
+        'pixel_ratio',
+        'orientacao',
+        'tema_sistema',
+        'text_scale',
+        'padding_top',
+        'padding_bottom',
+        'view_insets_bottom',
+        'idioma',
+        'timezone',
+        'timezone_offset_minutos',
+        'user_agent_cliente',
+        'navegador_nome',
+        'navegador_versao',
+        'sistema_operacional_aproximado',
+        'celular_marca_aproximada',
+        'celular_modelo_aproximado',
+        'user_agent_data',
+        'mobile_user_agent_data',
+        'brands_user_agent_data',
+        'plataforma_browser',
+        'tela',
+        'origem',
+        'coletado_em',
+    ];
+
+    const saida = {};
+
+    for (const chave of permitido) {
+        if (valor[chave] !== undefined && valor[chave] !== null) {
+            saida[chave] = valor[chave];
+        }
+    }
+
+    return saida;
+}
+
+function montarAssinaturaDispositivoAreaAluno({ dispositivo = {}, userAgent = '', ip = '' }) {
+    const d = limparMapaDispositivo(dispositivo);
+
+    const partes = [
+        d.tipo_dispositivo || '',
+        d.tipo_plataforma || '',
+        d.plataforma_flutter || '',
+        d.is_web === true ? 'web' : 'nao_web',
+        d.largura_tela || '',
+        d.altura_tela || '',
+        d.pixel_ratio || '',
+        d.sistema_operacional_aproximado || '',
+        d.navegador_nome || '',
+        d.celular_marca_aproximada || '',
+        d.celular_modelo_aproximado || '',
+        userAgent || '',
+        ip || '',
+    ];
+
+    return partes
+        .join('|')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function buscarAlunosMesmoDispositivoAreaAluno({
+    assinaturaDispositivo,
+    alunoIdAtual = '',
+}) {
+    const resultado = {
+        possivelTrocaAluno: false,
+        alunosAnteriores: [],
+        totalAcessosEncontrados: 0,
+    };
+
+    if (!assinaturaDispositivo) return resultado;
+
+    try {
+        const snapshot = await db
+            .collection('area_aluno_logs_acesso')
+            .where('assinatura_dispositivo', '==', assinaturaDispositivo)
+            .orderBy('acesso_em', 'desc')
+            .limit(20)
+            .get();
+
+        resultado.totalAcessosEncontrados = snapshot.size;
+
+        const alunos = new Map();
+
+        snapshot.forEach(doc => {
+            const data = doc.data() || {};
+            const alunoId = data.aluno_id || '';
+
+            if (!alunoId || alunoId === alunoIdAtual) return;
+
+            alunos.set(alunoId, {
+                aluno_id: alunoId,
+                aluno_nome: data.aluno_nome || '',
+                turma_id: data.turma_id || '',
+                turma: data.turma || '',
+                acesso_em: data.acesso_em || null,
+            });
+        });
+
+        resultado.alunosAnteriores = Array.from(alunos.values());
+        resultado.possivelTrocaAluno = resultado.alunosAnteriores.length > 0;
+
+        return resultado;
+    } catch (e) {
+        console.error('⚠️ Erro ao buscar alunos no mesmo dispositivo:', e);
+        return resultado;
+    }
+}
+
+
 // ============================================
 // FUNÇÃO 5: REGISTRAR LOCALIZAÇÃO DE ACESSO
 // ============================================
-exports.registrarLocalizacaoAcesso = onCall(async (request) => {
-    const { ip } = request.data;
+exports.registrarLocalizacaoAcesso = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        const payload = request.data || {};
+        const ipDetectado = obterIpRequisicao(request, payload.ip);
+        const origem = String(payload.origem || 'landing_page').trim() || 'landing_page';
+        const dispositivo = limparMapaDispositivo(payload.dispositivo || {});
+        const userAgent = request.rawRequest?.headers?.['user-agent'] || '';
+        const ip = obterIpRequisicao(request, payload.ip || '');
+        const assinaturaDispositivo = montarAssinaturaDispositivoAreaAluno({
+            dispositivo,
+            userAgent,
+            ip,
+        });
 
-    try {
-        const response = await axios.get(`http://ip-api.com/json/${ip}`);
-        const location = response.data;
+        if (!ipDetectado) {
+            return {
+                success: false,
+                error: 'IP não identificado',
+            };
+        }
 
-        if (location.status === 'success') {
-            const cidade = location.city;
-            const estado = location.regionName;
-            const pais = location.country;
+        try {
+            const response = await axios.get(
+                `http://ip-api.com/json/${encodeURIComponent(ipDetectado)}?fields=status,message,country,regionName,city,lat,lon,isp,timezone,query`
+            );
+
+            const location = response.data || {};
+
+            if (location.status !== 'success') {
+                console.log('⚠️ Localização não encontrada:', {
+                    ip: ipDetectado,
+                    message: location.message || null,
+                });
+
+                const docRef = await db.collection('estatisticas_acessos').add({
+                    ip: ipDetectado,
+                    cidade: 'Desconhecida',
+                    estado: 'Desconhecido',
+                    pais: 'Desconhecido',
+                    latitude: null,
+                    longitude: null,
+                    data_acesso: admin.firestore.FieldValue.serverTimestamp(),
+                    origem,
+                    isp: 'Desconhecido',
+                    timezone: '',
+                    user_agent: userAgent,
+                    dispositivo,
+                    eventos: [],
+                    total_eventos: 0,
+                    ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
+                    localizacao_status: 'falha',
+                    localizacao_erro: location.message || 'Localização não encontrada',
+                });
+
+                await db.collection('estatisticas').doc('contadores_agregados').set({
+                    total_visitas: admin.firestore.FieldValue.increment(1),
+                    ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+
+                return {
+                    success: true,
+                    docId: docRef.id,
+                    ip: ipDetectado,
+                    cidade: 'Desconhecida',
+                    estado: 'Desconhecido',
+                    pais: 'Desconhecido',
+                    latitude: null,
+                    longitude: null,
+                    isp: 'Desconhecido',
+                    timezone: '',
+                    localizacaoStatus: 'falha',
+                };
+            }
+
+            const cidade = valorSeguroLocalizacao(location.city, 'Desconhecida');
+            const estado = valorSeguroLocalizacao(location.regionName, 'Desconhecido');
+            const pais = valorSeguroLocalizacao(location.country, 'Desconhecido');
+            const isp = valorSeguroLocalizacao(location.isp, 'Desconhecido');
+            const timezone = String(location.timezone || '').trim();
 
             const docRef = await db.collection('estatisticas_acessos').add({
-                ip: ip,
-                cidade: cidade,
-                estado: estado,
-                pais: pais,
-                latitude: location.lat,
-                longitude: location.lon,
+                ip: ipDetectado,
+                cidade,
+                estado,
+                pais,
+                latitude: location.lat ?? null,
+                longitude: location.lon ?? null,
                 data_acesso: admin.firestore.FieldValue.serverTimestamp(),
-                origem: 'landing_page',
-                isp: location.isp,
-                timezone: location.timezone,
+                origem,
+                isp,
+                timezone,
+                user_agent: userAgent,
+                dispositivo,
                 eventos: [],
                 total_eventos: 0,
                 ultima_atividade: admin.firestore.FieldValue.serverTimestamp(),
+                localizacao_status: 'sucesso',
             });
 
             const statsRef = db.collection('estatisticas').doc('contadores_agregados');
@@ -1264,31 +1503,37 @@ exports.registrarLocalizacaoAcesso = onCall(async (request) => {
                 [`paises.${pais}.estados.${estado}.nome`]: estado,
                 [`paises.${pais}.estados.${estado}.cidades.${cidade}.total`]: admin.firestore.FieldValue.increment(1),
                 [`paises.${pais}.estados.${estado}.cidades.${cidade}.nome`]: cidade,
-                ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
+                ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp(),
             }, { merge: true });
 
-            console.log(`📍 Acesso registrado com ID: ${docRef.id} - ${cidade}/${estado}`);
+            console.log(`📍 Acesso registrado com ID: ${docRef.id} - ${cidade}/${estado}`, {
+                origem,
+                dispositivo,
+            });
 
             return {
                 success: true,
                 docId: docRef.id,
-                cidade: cidade,
-                estado: estado,
-                pais: pais,
-                latitude: location.lat,
-                longitude: location.lon,
-                isp: location.isp,
-                timezone: location.timezone
+                ip: ipDetectado,
+                cidade,
+                estado,
+                pais,
+                latitude: location.lat ?? null,
+                longitude: location.lon ?? null,
+                isp,
+                timezone,
+                localizacaoStatus: 'sucesso',
+            };
+        } catch (error) {
+            console.error('❌ Erro ao registrar localização:', error);
+
+            return {
+                success: false,
+                error: error.message,
             };
         }
-
-        return { success: false, error: 'Localização não encontrada' };
-
-    } catch (error) {
-        console.error('❌ Erro:', error);
-        return { success: false, error: error.message };
     }
-});
+);
 
 // ============================================
 // 🔥 FUNÇÃO PARA BUSCAR TURMAS E HORÁRIOS (ATUALIZADA)
@@ -1712,6 +1957,7 @@ function montarDadosTurmaLiberados(turmaId, turmaData) {
 }
 
 async function montarDadosAlunoLiberados(alunoId, alunoData, config) {
+    const cfg = normalizarConfigAreaAluno(config);
     const dados = {
         aluno_id: alunoId,
         nome: alunoData.nome || '',
@@ -1719,28 +1965,45 @@ async function montarDadosAlunoLiberados(alunoId, alunoData, config) {
         status_atividade: alunoData.status_atividade || '',
     };
 
-    if (config.mostrar_foto !== false) {
+    if (cfg.mostrar_foto !== false) {
         dados.foto_perfil_aluno = alunoData.foto_perfil_aluno || '';
     }
 
-    if (config.mostrar_dados_basicos !== false) {
-        dados.sexo = alunoData.sexo || '';
-        dados.data_nascimento = timestampToDataBR(alunoData.data_nascimento);
-        dados.cidade = alunoData.cidade || '';
-        dados.endereco = alunoData.endereco || '';
-        dados.nome_responsavel = alunoData.nome_responsavel || '';
+    if (cfg.mostrar_dados_basicos !== false && cfg.modo_dados_basicos !== 'oculto') {
+        if (cfg.modo_dados_basicos === 'completo') {
+            dados.sexo = alunoData.sexo || '';
+            dados.data_nascimento = timestampToDataBR(alunoData.data_nascimento);
+        }
 
-        // Na Área do Aluno, o próprio aluno/responsável precisa conferir os dados.
-        // Por isso retornamos os contatos cadastrados para leitura.
-        dados.contato_aluno = alunoData.contato_aluno || '';
-        dados.contato_responsavel = alunoData.contato_responsavel || '';
+        dados.cidade = alunoData.cidade || '';
+
+        if (cfg.modo_endereco === 'completo') {
+            dados.endereco = alunoData.endereco || '';
+        } else if (cfg.modo_endereco === 'cidade_bairro') {
+            dados.endereco = enderecoLimitadoAreaAluno(alunoData);
+        }
+
+        if (cfg.modo_responsavel === 'completo') {
+            dados.nome_responsavel = alunoData.nome_responsavel || '';
+            dados.contato_responsavel = cfg.modo_telefone === 'completo'
+                ? (alunoData.contato_responsavel || '')
+                : mascararTelefoneAreaAluno(alunoData.contato_responsavel || '');
+        } else if (cfg.modo_responsavel === 'nome') {
+            dados.nome_responsavel = alunoData.nome_responsavel || '';
+        }
+
+        if (cfg.modo_telefone === 'completo') {
+            dados.contato_aluno = alunoData.contato_aluno || '';
+        } else if (cfg.modo_telefone === 'mascarado') {
+            dados.contato_aluno = mascararTelefoneAreaAluno(alunoData.contato_aluno || '');
+        }
 
         // Mantém também os finais por compatibilidade/segurança visual se quiser usar depois.
         dados.contato_aluno_final = ultimos4AreaAluno(alunoData.contato_aluno || '');
         dados.contato_responsavel_final = ultimos4AreaAluno(alunoData.contato_responsavel || '');
     }
 
-    if (config.mostrar_academia_turma !== false) {
+    if (cfg.mostrar_academia_turma !== false) {
         dados.academia = alunoData.academia || '';
         dados.academia_id = alunoData.academia_id || '';
         dados.turma = alunoData.turma || '';
@@ -1748,7 +2011,7 @@ async function montarDadosAlunoLiberados(alunoId, alunoData, config) {
         dados.modalidade = alunoData.modalidade || '';
     }
 
-    if (config.mostrar_graduacao !== false) {
+    if (cfg.mostrar_graduacao_atual !== false) {
         dados.graduacao_atual = alunoData.graduacao_atual || alunoData.graduacao_nome || '';
         dados.graduacao_nome = alunoData.graduacao_nome || alunoData.graduacao_atual || '';
         dados.graduacao_cor1 = alunoData.graduacao_cor1 || '';
@@ -1759,7 +2022,7 @@ async function montarDadosAlunoLiberados(alunoId, alunoData, config) {
         dados.data_graduacao_atual = timestampToDataBR(alunoData.data_graduacao_atual);
     }
 
-    if (config.mostrar_presencas !== false) {
+    if (cfg.mostrar_presencas !== false) {
         dados.ultima_presenca = timestampToDataBR(alunoData.ultima_presenca);
         dados.ultimo_dia_presente = alunoData.ultimo_dia_presente || '';
         dados.ultima_chamada = timestampToDataBR(alunoData.ultima_chamada);
@@ -1793,15 +2056,31 @@ async function registrarLogErroAreaAluno({
     telefoneFinal,
     motivo,
     detalhes = {},
+    dispositivo = {},
+    userAgent = '',
+    ip = '',
+    assinaturaDispositivo = '',
 }) {
     try {
+        const dispositivoLimpo = limparMapaDispositivo(dispositivo);
+        const assinatura = assinaturaDispositivo || montarAssinaturaDispositivoAreaAluno({
+            dispositivo: dispositivoLimpo,
+            userAgent,
+            ip,
+        });
+
         await db.collection('area_aluno_logs_erro').add({
             data_nascimento_usada: dataNascimento || '',
             iniciais_usadas: iniciais || '',
             telefone_final_usado: telefoneFinal || '',
             motivo,
             detalhes,
+            dispositivo: dispositivoLimpo,
+            assinatura_dispositivo: assinatura,
+            user_agent: userAgent || '',
+            ip: ip || '',
             origem: 'site_area_aluno',
+            sucesso: false,
             tentativa_em: admin.firestore.FieldValue.serverTimestamp(),
         });
     } catch (e) {
@@ -1813,8 +2092,24 @@ async function registrarLogAcessoAreaAluno({
     alunoId,
     alunoData,
     iniciais,
+    dispositivo = {},
+    userAgent = '',
+    ip = '',
+    assinaturaDispositivo = '',
 }) {
     try {
+        const dispositivoLimpo = limparMapaDispositivo(dispositivo);
+        const assinatura = assinaturaDispositivo || montarAssinaturaDispositivoAreaAluno({
+            dispositivo: dispositivoLimpo,
+            userAgent,
+            ip,
+        });
+
+        const leituraMesmoDispositivo = await buscarAlunosMesmoDispositivoAreaAluno({
+            assinaturaDispositivo: assinatura,
+            alunoIdAtual: alunoId,
+        });
+
         await db.collection('area_aluno_logs_acesso').add({
             aluno_id: alunoId,
             aluno_nome: alunoData.nome || '',
@@ -1826,11 +2121,332 @@ async function registrarLogAcessoAreaAluno({
             academia: alunoData.academia || '',
             origem: 'site_area_aluno',
             sucesso: true,
+            dispositivo: dispositivoLimpo,
+            assinatura_dispositivo: assinatura,
+            user_agent: userAgent || '',
+            ip: ip || '',
+            possivel_troca_aluno: leituraMesmoDispositivo.possivelTrocaAluno,
+            alunos_anteriores_mesmo_dispositivo: leituraMesmoDispositivo.alunosAnteriores,
+            total_acessos_mesmo_dispositivo: leituraMesmoDispositivo.totalAcessosEncontrados,
             acesso_em: admin.firestore.FieldValue.serverTimestamp(),
         });
+
+        if (leituraMesmoDispositivo.possivelTrocaAluno) {
+            await db.collection('area_aluno_alertas_seguranca').add({
+                tipo: 'mesmo_dispositivo_multiplos_alunos',
+                aluno_id_atual: alunoId,
+                aluno_nome_atual: alunoData.nome || '',
+                alunos_anteriores_mesmo_dispositivo: leituraMesmoDispositivo.alunosAnteriores,
+                assinatura_dispositivo: assinatura,
+                dispositivo: dispositivoLimpo,
+                user_agent: userAgent || '',
+                ip: ip || '',
+                origem: 'site_area_aluno',
+                criado_em: admin.firestore.FieldValue.serverTimestamp(),
+                resolvido: false,
+            });
+        }
+
+        return leituraMesmoDispositivo;
     } catch (e) {
         console.error('⚠️ Erro ao registrar log de acesso da área do aluno:', e);
+        return {
+            possivelTrocaAluno: false,
+            alunosAnteriores: [],
+            totalAcessosEncontrados: 0,
+        };
     }
+}
+
+function boolConfigAreaAluno(config, chave, padrao = true) {
+    const valor = config?.[chave];
+    return typeof valor === 'boolean' ? valor : padrao;
+}
+
+function textoConfigAreaAluno(config, chave, padrao) {
+    const valor = String(config?.[chave] || '').trim();
+    return valor || padrao;
+}
+
+function normalizarConfigAreaAluno(config = {}) {
+    const mostrarGraduacaoLegado = boolConfigAreaAluno(config, 'mostrar_graduacao', true);
+    const visivelSite = boolConfigAreaAluno(config, 'visivel_site', false);
+    const ativo = boolConfigAreaAluno(config, 'ativo', visivelSite);
+
+    return {
+        ativo,
+        visivel_site: visivelSite,
+        aceitar_apenas_ativos: boolConfigAreaAluno(config, 'aceitar_apenas_ativos', true),
+        exigir_telefone_confirmacao: boolConfigAreaAluno(config, 'exigir_telefone_confirmacao', true),
+        mostrar_dashboard: boolConfigAreaAluno(config, 'mostrar_dashboard', true),
+        mostrar_foto: boolConfigAreaAluno(config, 'mostrar_foto', true),
+        mostrar_dados_basicos: boolConfigAreaAluno(config, 'mostrar_dados_basicos', true),
+        mostrar_academia_turma: boolConfigAreaAluno(config, 'mostrar_academia_turma', true),
+        mostrar_graduacao: mostrarGraduacaoLegado,
+        mostrar_graduacao_atual: boolConfigAreaAluno(config, 'mostrar_graduacao_atual', mostrarGraduacaoLegado),
+        mostrar_frequencia: boolConfigAreaAluno(config, 'mostrar_frequencia', true),
+        mostrar_eventos: boolConfigAreaAluno(config, 'mostrar_eventos', true),
+        mostrar_certificados: boolConfigAreaAluno(config, 'mostrar_certificados', true),
+        mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true),
+        mostrar_solicitacao_alteracao: boolConfigAreaAluno(config, 'mostrar_solicitacao_alteracao', true),
+        mostrar_graduacao_evento: boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true),
+        mostrar_camisa_evento: boolConfigAreaAluno(config, 'mostrar_camisa_evento', true),
+        mostrar_presenca_evento: boolConfigAreaAluno(config, 'mostrar_presenca_evento', true),
+        mostrar_presencas: boolConfigAreaAluno(config, 'mostrar_presencas', false),
+        mostrar_historico_chamadas: boolConfigAreaAluno(config, 'mostrar_historico_chamadas', false),
+        mostrar_aviso_auditoria: boolConfigAreaAluno(config, 'mostrar_aviso_auditoria', false),
+        google_login_ativo: boolConfigAreaAluno(config, 'google_login_ativo', false),
+        google_vinculacao_modo: textoConfigAreaAluno(config, 'google_vinculacao_modo', 'desativada'),
+        permitir_acesso_basico_sem_google: boolConfigAreaAluno(config, 'permitir_acesso_basico_sem_google', true),
+        permitir_vincular_google_no_primeiro_acesso: boolConfigAreaAluno(config, 'permitir_vincular_google_no_primeiro_acesso', true),
+        permitir_trocar_google_sem_admin: boolConfigAreaAluno(config, 'permitir_trocar_google_sem_admin', false),
+        sem_google_mostrar_dashboard: boolConfigAreaAluno(config, 'sem_google_mostrar_dashboard', boolConfigAreaAluno(config, 'mostrar_dashboard', true)),
+        sem_google_mostrar_dados_basicos: boolConfigAreaAluno(config, 'sem_google_mostrar_dados_basicos', boolConfigAreaAluno(config, 'mostrar_dados_basicos', true)),
+        sem_google_modo_dados_basicos: textoConfigAreaAluno(config, 'sem_google_modo_dados_basicos', textoConfigAreaAluno(config, 'modo_dados_basicos', 'limitado')),
+        sem_google_mostrar_frequencia: boolConfigAreaAluno(config, 'sem_google_mostrar_frequencia', boolConfigAreaAluno(config, 'mostrar_frequencia', true)),
+        sem_google_mostrar_eventos: boolConfigAreaAluno(config, 'sem_google_mostrar_eventos', boolConfigAreaAluno(config, 'mostrar_eventos', true)),
+        sem_google_mostrar_certificados: boolConfigAreaAluno(config, 'sem_google_mostrar_certificados', boolConfigAreaAluno(config, 'mostrar_certificados', true)),
+        sem_google_mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'sem_google_mostrar_financeiro_eventos', boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true)),
+        sem_google_modo_financeiro: textoConfigAreaAluno(config, 'sem_google_modo_financeiro', textoConfigAreaAluno(config, 'modo_financeiro', 'completo')),
+        sem_google_mostrar_graduacao_evento: boolConfigAreaAluno(config, 'sem_google_mostrar_graduacao_evento', boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true)),
+        sem_google_modo_graduacao_evento: textoConfigAreaAluno(config, 'sem_google_modo_graduacao_evento', textoConfigAreaAluno(config, 'modo_graduacao_evento', 'completo')),
+        sem_google_mostrar_camisa_evento: boolConfigAreaAluno(config, 'sem_google_mostrar_camisa_evento', boolConfigAreaAluno(config, 'mostrar_camisa_evento', true)),
+        sem_google_mostrar_presenca_evento: boolConfigAreaAluno(config, 'sem_google_mostrar_presenca_evento', boolConfigAreaAluno(config, 'mostrar_presenca_evento', true)),
+        sem_google_mostrar_solicitacao_alteracao: boolConfigAreaAluno(config, 'sem_google_mostrar_solicitacao_alteracao', boolConfigAreaAluno(config, 'mostrar_solicitacao_alteracao', true)),
+        com_google_mostrar_dashboard: boolConfigAreaAluno(config, 'com_google_mostrar_dashboard', boolConfigAreaAluno(config, 'mostrar_dashboard', true)),
+        com_google_mostrar_dados_basicos: boolConfigAreaAluno(config, 'com_google_mostrar_dados_basicos', boolConfigAreaAluno(config, 'mostrar_dados_basicos', true)),
+        com_google_modo_dados_basicos: textoConfigAreaAluno(config, 'com_google_modo_dados_basicos', textoConfigAreaAluno(config, 'modo_dados_basicos', 'limitado')),
+        com_google_mostrar_frequencia: boolConfigAreaAluno(config, 'com_google_mostrar_frequencia', boolConfigAreaAluno(config, 'mostrar_frequencia', true)),
+        com_google_mostrar_eventos: boolConfigAreaAluno(config, 'com_google_mostrar_eventos', boolConfigAreaAluno(config, 'mostrar_eventos', true)),
+        com_google_mostrar_certificados: boolConfigAreaAluno(config, 'com_google_mostrar_certificados', boolConfigAreaAluno(config, 'mostrar_certificados', true)),
+        com_google_mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'com_google_mostrar_financeiro_eventos', boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true)),
+        com_google_modo_financeiro: textoConfigAreaAluno(config, 'com_google_modo_financeiro', textoConfigAreaAluno(config, 'modo_financeiro', 'completo')),
+        com_google_mostrar_graduacao_evento: boolConfigAreaAluno(config, 'com_google_mostrar_graduacao_evento', boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true)),
+        com_google_modo_graduacao_evento: textoConfigAreaAluno(config, 'com_google_modo_graduacao_evento', textoConfigAreaAluno(config, 'modo_graduacao_evento', 'completo')),
+        com_google_mostrar_camisa_evento: boolConfigAreaAluno(config, 'com_google_mostrar_camisa_evento', boolConfigAreaAluno(config, 'mostrar_camisa_evento', true)),
+        com_google_mostrar_presenca_evento: boolConfigAreaAluno(config, 'com_google_mostrar_presenca_evento', boolConfigAreaAluno(config, 'mostrar_presenca_evento', true)),
+        com_google_mostrar_solicitacao_alteracao: boolConfigAreaAluno(config, 'com_google_mostrar_solicitacao_alteracao', boolConfigAreaAluno(config, 'mostrar_solicitacao_alteracao', true)),
+        modo_dados_basicos: textoConfigAreaAluno(config, 'modo_dados_basicos', 'limitado'),
+        modo_telefone: textoConfigAreaAluno(config, 'modo_telefone', 'mascarado'),
+        modo_endereco: textoConfigAreaAluno(config, 'modo_endereco', 'cidade_bairro'),
+        modo_responsavel: textoConfigAreaAluno(config, 'modo_responsavel', 'nome'),
+        modo_financeiro: textoConfigAreaAluno(config, 'modo_financeiro', 'completo'),
+        modo_graduacao_evento: textoConfigAreaAluno(config, 'modo_graduacao_evento', 'completo'),
+        mensagem_topo: textoConfigAreaAluno(config, 'mensagem_topo', 'Bem-vindo(a) à Área do Aluno'),
+        mensagem_area_desativada: textoConfigAreaAluno(
+            config,
+            'mensagem_area_desativada',
+            'A Área do Aluno não está disponível no momento.'
+        ),
+        mensagem_dados_ocultos: textoConfigAreaAluno(
+            config,
+            'mensagem_dados_ocultos',
+            'Algumas informações foram ocultadas pela coordenação.'
+        ),
+        aviso_auditoria_acesso: textoConfigAreaAluno(
+            config,
+            'aviso_auditoria_acesso',
+            ''
+        ),
+    };
+}
+
+function configEfetivaAreaAluno(config, modoAcesso = 'basico', alunoData = {}) {
+    const base = normalizarConfigAreaAluno(config);
+    const prefixo = modoAcesso === 'google' ? 'com_google' : 'sem_google';
+    const googleVinculado = alunoData.areaAlunoGoogleVinculado === true && !!alunoData.areaAlunoGoogleUid;
+    const exigirGoogle = base.google_login_ativo === true && (
+        base.google_vinculacao_modo === 'obrigatoria_para_completo' ||
+        (base.google_vinculacao_modo === 'obrigatoria_apos_vincular' && googleVinculado)
+    );
+
+    const efetiva = { ...base };
+    const campos = [
+        'mostrar_dashboard',
+        'mostrar_dados_basicos',
+        'modo_dados_basicos',
+        'mostrar_frequencia',
+        'mostrar_eventos',
+        'mostrar_certificados',
+        'mostrar_financeiro_eventos',
+        'modo_financeiro',
+        'mostrar_graduacao_evento',
+        'modo_graduacao_evento',
+        'mostrar_camisa_evento',
+        'mostrar_presenca_evento',
+        'mostrar_solicitacao_alteracao',
+    ];
+
+    for (const campo of campos) {
+        const chave = `${prefixo}_${campo}`;
+        if (Object.prototype.hasOwnProperty.call(base, chave)) {
+            efetiva[campo] = base[chave];
+        }
+    }
+
+    if (modoAcesso !== 'google' && exigirGoogle && base.permitir_acesso_basico_sem_google !== true) {
+        efetiva.mostrar_dashboard = true;
+        efetiva.mostrar_foto = false;
+        efetiva.mostrar_dados_basicos = false;
+        efetiva.mostrar_academia_turma = false;
+        efetiva.mostrar_graduacao_atual = false;
+        efetiva.mostrar_frequencia = false;
+        efetiva.mostrar_eventos = false;
+        efetiva.mostrar_certificados = false;
+        efetiva.mostrar_financeiro_eventos = false;
+        efetiva.mostrar_graduacao_evento = false;
+        efetiva.mostrar_camisa_evento = false;
+        efetiva.mostrar_presenca_evento = false;
+        efetiva.mostrar_solicitacao_alteracao = false;
+        efetiva.mostrar_presencas = false;
+        efetiva.mostrar_historico_chamadas = false;
+    }
+
+    efetiva.modo_acesso = modoAcesso;
+    efetiva.google_vinculado = googleVinculado;
+    efetiva.google_email_mascarado = mascararEmailAreaAluno(alunoData.areaAlunoGoogleEmail || '');
+    efetiva.exige_google_para_completo = modoAcesso !== 'google' && exigirGoogle;
+    efetiva.mostrar_aviso_auditoria = false;
+    efetiva.aviso_auditoria_acesso = '';
+
+    return efetiva;
+}
+
+function mascararEmailAreaAluno(email) {
+    const clean = String(email || '').trim();
+    const partes = clean.split('@');
+    if (partes.length !== 2) return '';
+    const nome = partes[0];
+    const dominio = partes[1];
+    const prefixo = nome.length <= 2 ? nome[0] || '*' : nome.slice(0, 2);
+    return `${prefixo}${'*'.repeat(Math.max(2, nome.length - prefixo.length))}@${dominio}`;
+}
+
+function mascararTelefoneAreaAluno(valor) {
+    const limpo = limparNumeroAreaAluno(valor);
+    if (!limpo) return '';
+    if (limpo.length <= 4) return `****${limpo}`;
+    return `${'*'.repeat(Math.max(0, limpo.length - 4))}${limpo.slice(-4)}`;
+}
+
+function enderecoLimitadoAreaAluno(alunoData) {
+    const bairro = alunoData.bairro || alunoData.endereco_bairro || '';
+    const cidade = alunoData.cidade || '';
+    return [bairro, cidade].filter(Boolean).join(' - ');
+}
+
+function millisTimestampAreaAluno(valor) {
+    if (!valor) return 0;
+    if (typeof valor.toMillis === 'function') return valor.toMillis();
+    if (valor instanceof Date) return valor.getTime();
+    return 0;
+}
+
+function chaveRateLimitAreaAluno({ ip = '', assinaturaDispositivo = '', origem = 'area_aluno_login' }) {
+    const base = [
+        origem || 'area_aluno_login',
+        ip || 'ip_desconhecido',
+        assinaturaDispositivo || 'assinatura_desconhecida',
+    ].join('|');
+
+    return crypto.createHash('sha256').update(base).digest('hex');
+}
+
+function rateLimitRefAreaAluno({ ip = '', assinaturaDispositivo = '', origem = 'area_aluno_login' }) {
+    return db.collection('area_aluno_rate_limit').doc(
+        chaveRateLimitAreaAluno({ ip, assinaturaDispositivo, origem })
+    );
+}
+
+async function verificarRateLimitAreaAluno({ ip = '', assinaturaDispositivo = '', origem = 'area_aluno_login' }) {
+    const ref = rateLimitRefAreaAluno({ ip, assinaturaDispositivo, origem });
+    const doc = await ref.get();
+
+    if (!doc.exists) {
+        return { bloqueado: false, ref };
+    }
+
+    const data = doc.data() || {};
+    const bloqueadoAteMillis = millisTimestampAreaAluno(data.bloqueado_ate);
+
+    if (bloqueadoAteMillis > Date.now()) {
+        return {
+            bloqueado: true,
+            ref,
+            bloqueadoAte: data.bloqueado_ate,
+        };
+    }
+
+    return { bloqueado: false, ref };
+}
+
+async function registrarRateLimitErroAreaAluno({
+    ip = '',
+    assinaturaDispositivo = '',
+    origem = 'area_aluno_login',
+    motivo = '',
+}) {
+    const ref = rateLimitRefAreaAluno({ ip, assinaturaDispositivo, origem });
+    const agora = Date.now();
+    const janela10Ms = 10 * 60 * 1000;
+    const janela30Ms = 30 * 60 * 1000;
+
+    await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const atual = snap.exists ? (snap.data() || {}) : {};
+        const inicio10 = millisTimestampAreaAluno(atual.janela_10_inicio);
+        const inicio30 = millisTimestampAreaAluno(atual.janela_30_inicio);
+        const dentro10 = inicio10 > 0 && agora - inicio10 <= janela10Ms;
+        const dentro30 = inicio30 > 0 && agora - inicio30 <= janela30Ms;
+        const erros10 = (dentro10 ? (atual.erros_10_min || 0) : 0) + 1;
+        const erros30 = (dentro30 ? (atual.erros_30_min || 0) : 0) + 1;
+
+        let bloqueadoAte = atual.bloqueado_ate || null;
+
+        if (erros30 >= 10) {
+            bloqueadoAte = admin.firestore.Timestamp.fromMillis(agora + janela30Ms);
+        } else if (erros10 >= 5) {
+            bloqueadoAte = admin.firestore.Timestamp.fromMillis(agora + janela10Ms);
+        }
+
+        tx.set(ref, {
+            ip,
+            assinatura_dispositivo: assinaturaDispositivo || '',
+            origem,
+            total_tentativas: admin.firestore.FieldValue.increment(1),
+            total_erros: admin.firestore.FieldValue.increment(1),
+            janela_inicio: admin.firestore.Timestamp.fromMillis(dentro30 ? inicio30 : agora),
+            janela_10_inicio: admin.firestore.Timestamp.fromMillis(dentro10 ? inicio10 : agora),
+            janela_30_inicio: admin.firestore.Timestamp.fromMillis(dentro30 ? inicio30 : agora),
+            erros_10_min: erros10,
+            erros_30_min: erros30,
+            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+            bloqueado_ate: bloqueadoAte,
+            ultimo_motivo: motivo,
+        }, { merge: true });
+    });
+}
+
+async function limparRateLimitAreaAluno({ ip = '', assinaturaDispositivo = '', origem = 'area_aluno_login' }) {
+    const ref = rateLimitRefAreaAluno({ ip, assinaturaDispositivo, origem });
+    await ref.set({
+        total_tentativas: 0,
+        total_erros: 0,
+        erros_10_min: 0,
+        erros_30_min: 0,
+        bloqueado_ate: null,
+        ultimo_motivo: 'login_sucesso',
+        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+}
+
+async function registrarErroAcessoAreaAlunoComRateLimit(params) {
+    await registrarLogErroAreaAluno(params);
+    await registrarRateLimitErroAreaAluno({
+        ip: params.ip || '',
+        assinaturaDispositivo: params.assinaturaDispositivo || '',
+        motivo: params.motivo || '',
+    });
 }
 
 exports.validarAcessoAreaAluno = onCall(
@@ -1844,25 +2460,61 @@ exports.validarAcessoAreaAluno = onCall(
         const dataNascimentoInformada = (payload.dataNascimento || payload.data_nascimento || '').toString().trim();
         const iniciaisInformadas = normalizarTextoAreaAluno(payload.iniciais || '');
         const telefoneFinalInformado = limparNumeroAreaAluno(payload.telefoneFinal || payload.telefone_final || '');
+        const dispositivo = limparMapaDispositivo(payload.dispositivo || {});
+        const userAgent = request.rawRequest?.headers?.['user-agent'] || '';
+        const ip = obterIpRequisicao(request, payload.ip || '');
+        const assinaturaDispositivo = montarAssinaturaDispositivoAreaAluno({
+            dispositivo,
+            userAgent,
+            ip,
+        });
 
         try {
+            const rateLimit = await verificarRateLimitAreaAluno({
+                ip,
+                assinaturaDispositivo,
+            });
+
+            if (rateLimit.bloqueado) {
+                await registrarLogErroAreaAluno({
+                    dataNascimento: dataNascimentoInformada,
+                    iniciais: iniciaisInformadas,
+                    telefoneFinal: telefoneFinalInformado,
+                    motivo: 'rate_limit',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
+                });
+
+                return {
+                    success: false,
+                    code: 'rate_limit',
+                    message: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+                };
+            }
+
             const configDoc = await db
                 .collection('configuracoes_site')
                 .doc('area_aluno')
                 .get();
 
-            const config = configDoc.exists ? (configDoc.data() || {}) : {};
+            const config = normalizarConfigAreaAluno(configDoc.exists ? (configDoc.data() || {}) : {});
 
-            const visivelSite = config.visivel_site === true;
+            const visivelSite = config.ativo === true || config.visivel_site === true;
             const aceitarApenasAtivos = config.aceitar_apenas_ativos !== false;
             const exigirTelefone = config.exigir_telefone_confirmacao !== false;
 
             if (!visivelSite) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
                     motivo: 'area_aluno_desativada',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -1873,11 +2525,15 @@ exports.validarAcessoAreaAluno = onCall(
             }
 
             if (!dataNascimentoInformada || !iniciaisInformadas) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
                     motivo: 'campos_obrigatorios_ausentes',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -1888,11 +2544,15 @@ exports.validarAcessoAreaAluno = onCall(
             }
 
             if (exigirTelefone && telefoneFinalInformado.length !== 4) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
                     motivo: 'telefone_final_invalido',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -1905,11 +2565,15 @@ exports.validarAcessoAreaAluno = onCall(
             const dataNascimento = parseDataNascimentoAreaAluno(dataNascimentoInformada);
 
             if (!dataNascimento) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
                     motivo: 'data_nascimento_invalida',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -1930,6 +2594,8 @@ exports.validarAcessoAreaAluno = onCall(
                 exigirTelefone,
                 inicioDia: inicioDia.toDate().toISOString(),
                 fimDia: fimDia.toDate().toISOString(),
+                dispositivo,
+                ip: ip ? 'registrado' : '',
             });
 
             let query = db.collection('alunos');
@@ -1950,11 +2616,15 @@ exports.validarAcessoAreaAluno = onCall(
             console.log(`🔎 Área do Aluno - documentos encontrados pela data/status: ${snapshot.size}`);
 
             if (snapshot.empty) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
                     motivo: 'nenhum_aluno_encontrado',
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -1979,7 +2649,7 @@ exports.validarAcessoAreaAluno = onCall(
             });
 
             if (candidatos.length === 0) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
@@ -1987,6 +2657,10 @@ exports.validarAcessoAreaAluno = onCall(
                     detalhes: {
                         encontrados_mesma_data: snapshot.size,
                     },
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -2008,11 +2682,15 @@ exports.validarAcessoAreaAluno = onCall(
                 });
 
                 if (candidatos.length === 0) {
-                    await registrarLogErroAreaAluno({
+                    await registrarErroAcessoAreaAlunoComRateLimit({
                         dataNascimento: dataNascimentoInformada,
                         iniciais: iniciaisInformadas,
                         telefoneFinal: telefoneFinalInformado,
                         motivo: 'telefone_final_nao_confere',
+                        dispositivo,
+                        userAgent,
+                        ip,
+                        assinaturaDispositivo,
                     });
 
                     return {
@@ -2024,7 +2702,7 @@ exports.validarAcessoAreaAluno = onCall(
             }
 
             if (candidatos.length > 1) {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
@@ -2032,6 +2710,10 @@ exports.validarAcessoAreaAluno = onCall(
                     detalhes: {
                         quantidade: candidatos.length,
                     },
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -2045,7 +2727,7 @@ exports.validarAcessoAreaAluno = onCall(
             const alunoData = candidato.data;
 
             if (aceitarApenasAtivos && alunoData.status_atividade !== 'ATIVO(A)') {
-                await registrarLogErroAreaAluno({
+                await registrarErroAcessoAreaAlunoComRateLimit({
                     dataNascimento: dataNascimentoInformada,
                     iniciais: iniciaisInformadas,
                     telefoneFinal: telefoneFinalInformado,
@@ -2054,6 +2736,10 @@ exports.validarAcessoAreaAluno = onCall(
                         aluno_id: candidato.id,
                         status_atividade: alunoData.status_atividade || '',
                     },
+                    dispositivo,
+                    userAgent,
+                    ip,
+                    assinaturaDispositivo,
                 });
 
                 return {
@@ -2063,33 +2749,44 @@ exports.validarAcessoAreaAluno = onCall(
                 };
             }
 
-            await registrarLogAcessoAreaAluno({
+            const configEfetiva = configEfetivaAreaAluno(config, 'basico', alunoData);
+            const leituraMesmoDispositivo = await registrarLogAcessoAreaAluno({
                 alunoId: candidato.id,
                 alunoData,
                 iniciais: iniciaisInformadas,
+                dispositivo,
+                userAgent,
+                ip,
+                assinaturaDispositivo,
             });
 
-            const dadosAluno = await montarDadosAlunoLiberados(candidato.id, alunoData, config);
+            const dadosAluno = await montarDadosAlunoLiberados(candidato.id, alunoData, configEfetiva);
+            await limparRateLimitAreaAluno({
+                ip,
+                assinaturaDispositivo,
+            });
 
             return {
                 success: true,
                 code: 'acesso_liberado',
                 message: 'Acesso liberado.',
                 aluno: dadosAluno,
-                config: {
-                    mostrar_foto: config.mostrar_foto !== false,
-                    mostrar_dados_basicos: config.mostrar_dados_basicos !== false,
-                    mostrar_academia_turma: config.mostrar_academia_turma !== false,
-                    mostrar_graduacao: config.mostrar_graduacao !== false,
-                    mostrar_presencas: config.mostrar_presencas !== false,
-                    mostrar_historico_chamadas: config.mostrar_historico_chamadas === true,
-                    mensagem_topo: config.mensagem_topo || 'Bem-vindo(a) à Área do Aluno',
+                modo_acesso: 'basico',
+                google_vinculado: configEfetiva.google_vinculado,
+                google_email_mascarado: configEfetiva.google_email_mascarado,
+                exige_google_para_completo: configEfetiva.exige_google_para_completo,
+                auditoria: {
+                    possivel_troca_aluno: leituraMesmoDispositivo.possivelTrocaAluno,
+                    alunos_anteriores_mesmo_dispositivo: leituraMesmoDispositivo.alunosAnteriores,
+                    total_acessos_mesmo_dispositivo: leituraMesmoDispositivo.totalAcessosEncontrados,
+                    assinatura_dispositivo: assinaturaDispositivo,
                 },
+                config: configEfetiva,
             };
         } catch (error) {
             console.error('❌ Erro em validarAcessoAreaAluno:', error);
 
-            await registrarLogErroAreaAluno({
+            await registrarErroAcessoAreaAlunoComRateLimit({
                 dataNascimento: dataNascimentoInformada,
                 iniciais: iniciaisInformadas,
                 telefoneFinal: telefoneFinalInformado,
@@ -2097,6 +2794,10 @@ exports.validarAcessoAreaAluno = onCall(
                 detalhes: {
                     message: error.message || String(error),
                 },
+                dispositivo,
+                userAgent,
+                ip,
+                assinaturaDispositivo,
             });
 
             return {
@@ -2105,6 +2806,492 @@ exports.validarAcessoAreaAluno = onCall(
                 message: 'Não foi possível validar o acesso agora. Tente novamente mais tarde.',
             };
         }
+    }
+);
+
+async function carregarConfigAreaAluno() {
+    const configDoc = await db.collection('configuracoes_site').doc('area_aluno').get();
+    return normalizarConfigAreaAluno(configDoc.exists ? (configDoc.data() || {}) : {});
+}
+
+function dadosGoogleAuthAreaAluno(request) {
+    const token = request.auth?.token || {};
+    const provider = token.firebase?.sign_in_provider || '';
+    return {
+        uid: request.auth?.uid || '',
+        email: token.email || '',
+        nome: token.name || token.displayName || '',
+        foto: token.picture || '',
+        provider,
+    };
+}
+
+function validarIdentidadeBasicaAreaAluno(alunoData, authPayload = {}) {
+    const dataInformada = String(authPayload.dataNascimento || authPayload.data_nascimento || '').trim();
+    const iniciaisInformadas = normalizarTextoAreaAluno(authPayload.iniciais || '');
+    const telefoneFinalInformado = limparNumeroAreaAluno(authPayload.telefoneFinal || authPayload.telefone_final || '');
+    const dataNascimento = parseDataNascimentoAreaAluno(dataInformada);
+
+    if (!dataNascimento || !iniciaisInformadas || telefoneFinalInformado.length !== 4) return false;
+
+    const nascimentoAluno = alunoData.data_nascimento;
+    const nascimentoMillis = typeof nascimentoAluno?.toMillis === 'function'
+        ? nascimentoAluno.toMillis()
+        : 0;
+    const inicioMillis = dataNascimento.startOf('day').toMillis();
+    const fimMillis = dataNascimento.plus({ days: 1 }).startOf('day').toMillis();
+    const dataConfere = nascimentoMillis >= inicioMillis && nascimentoMillis < fimMillis;
+    const iniciaisConferem = gerarIniciaisAreaAluno(alunoData.nome || '') === iniciaisInformadas;
+    const finaisPossiveis = [
+        ultimos4AreaAluno(alunoData.contato_aluno || ''),
+        ultimos4AreaAluno(alunoData.contato_responsavel || ''),
+    ].filter(Boolean);
+
+    return dataConfere && iniciaisConferem && finaisPossiveis.includes(telefoneFinalInformado);
+}
+
+async function registrarLogGoogleAreaAluno(evento, dados = {}) {
+    try {
+        await db.collection('area_aluno_google_logs').add({
+            evento,
+            ...dados,
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (e) {
+        console.error('⚠️ Erro ao registrar log Google da área do aluno:', e);
+    }
+}
+
+async function validarAdminAreaAluno(request) {
+    if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+    }
+
+    const userDoc = await db.collection('usuarios').doc(request.auth.uid).get();
+    const data = userDoc.exists ? (userDoc.data() || {}) : {};
+    const tipo = String(data.tipo || '').trim().toLowerCase();
+    const peso = Number(data.peso_permissao || 0);
+    const status = String(data.status_conta || '').trim().toLowerCase();
+    const ativo = !['bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'].includes(status);
+
+    if (!ativo || (peso < 90 && tipo !== 'admin' && tipo !== 'administrador')) {
+        throw new HttpsError('permission-denied', 'Apenas administradores podem executar esta ação.');
+    }
+
+    return {
+        uid: request.auth.uid,
+        nome: data.nome_completo || data.nome || request.auth.token?.email || 'Administrador',
+    };
+}
+
+function timestampIsoAreaAluno(valor) {
+    if (!valor) return '';
+    if (typeof valor.toDate === 'function') {
+        return valor.toDate().toISOString();
+    }
+    if (valor instanceof Date) return valor.toISOString();
+    return '';
+}
+
+function sanitizarAlunoVinculadoGoogle(doc) {
+    const data = doc.data() || {};
+    return {
+        alunoId: doc.id,
+        nome: String(data.nome || ''),
+        foto: String(data.foto_perfil_aluno || data.foto || ''),
+        turma: String(data.turma || data.turma_nome || ''),
+        academia: String(data.academia || data.academia_nome || ''),
+        status_atividade: String(data.status_atividade || ''),
+        graduacao: String(data.graduacao_nome || data.graduacao_atual || data.graduacao || ''),
+        areaAlunoGoogleEmail: String(data.areaAlunoGoogleEmail || ''),
+        areaAlunoGoogleNome: String(data.areaAlunoGoogleNome || ''),
+        ultimoAcessoGoogleEm: timestampIsoAreaAluno(data.areaAlunoUltimoAcessoGoogleEm),
+    };
+}
+
+async function buscarAlunosVinculadosGooglePorUid(uid) {
+    const snapshot = await db
+        .collection('alunos')
+        .where('areaAlunoGoogleUid', '==', uid)
+        .get();
+
+    const alunos = [];
+    snapshot.forEach((doc) => {
+        const data = doc.data() || {};
+        if (data.areaAlunoGoogleVinculado === true) {
+            alunos.push(sanitizarAlunoVinculadoGoogle(doc));
+        }
+    });
+
+    alunos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    return alunos;
+}
+
+exports.buscarAlunosVinculadosAoGoogle = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Entre com uma conta Google para continuar.');
+        }
+
+        const google = dadosGoogleAuthAreaAluno(request);
+        const alunos = await buscarAlunosVinculadosGooglePorUid(request.auth.uid);
+
+        await registrarLogGoogleAreaAluno('buscar_alunos_vinculados_google', {
+            google_uid: request.auth.uid,
+            google_email: google.email || '',
+            total_alunos: alunos.length,
+        });
+
+        return {
+            success: true,
+            alunos,
+        };
+    }
+);
+
+exports.resolverDestinoInicialUsuario = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'UsuÃ¡rio nÃ£o autenticado.');
+        }
+
+        const alunosVinculados = await buscarAlunosVinculadosGooglePorUid(request.auth.uid);
+        let destinoAlunoSugerido = 'nenhum';
+        let motivoAluno = 'sem_aluno_vinculado';
+
+        if (alunosVinculados.length === 1) {
+            destinoAlunoSugerido = 'area_aluno';
+            motivoAluno = 'aluno_unico';
+        } else if (alunosVinculados.length > 1) {
+            destinoAlunoSugerido = 'escolher_aluno';
+            motivoAluno = 'multiplos_alunos';
+        }
+
+        return {
+            success: true,
+            alunosVinculados,
+            destinoAlunoSugerido,
+            motivoAluno,
+        };
+    }
+);
+
+exports.registrarEventoGoogleAreaAluno = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'UsuÃ¡rio nÃ£o autenticado.');
+        }
+
+        const evento = String(request.data?.evento || '').trim();
+        if (!evento) {
+            return { success: false, code: 'evento_invalido' };
+        }
+
+        const dados = request.data?.dados && typeof request.data.dados === 'object'
+            ? request.data.dados
+            : {};
+        const google = dadosGoogleAuthAreaAluno(request);
+
+        await registrarLogGoogleAreaAluno(evento, {
+            ...dados,
+            google_uid: request.auth.uid,
+            google_email: google.email || '',
+        });
+
+        return { success: true };
+    }
+);
+
+exports.vincularGoogleAreaAluno = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Entre com uma conta Google para continuar.');
+        }
+
+        const payload = request.data || {};
+        const alunoId = String(payload.alunoId || payload.aluno_id || '').trim();
+        const authPayload = payload.authPayload || {};
+        const google = dadosGoogleAuthAreaAluno(request);
+
+        if (!alunoId || !google.uid || !google.email || google.provider !== 'google.com') {
+            return {
+                success: false,
+                code: 'dados_invalidos',
+                message: 'Não foi possível confirmar a conta Google.',
+            };
+        }
+
+        const config = await carregarConfigAreaAluno();
+        if (config.google_login_ativo !== true || config.google_vinculacao_modo === 'desativada') {
+            return {
+                success: false,
+                code: 'google_desativado',
+                message: 'O acesso com Google não está disponível no momento.',
+            };
+        }
+
+        const alunoRef = db.collection('alunos').doc(alunoId);
+        const alunoDoc = await alunoRef.get();
+
+        if (!alunoDoc.exists) {
+            return {
+                success: false,
+                code: 'aluno_nao_encontrado',
+                message: 'Perfil não encontrado.',
+            };
+        }
+
+        const alunoData = alunoDoc.data() || {};
+        const identidadeOk = validarIdentidadeBasicaAreaAluno(alunoData, authPayload);
+
+        if (!identidadeOk) {
+            await registrarLogGoogleAreaAluno('vinculo_negado_identidade_basica', {
+                aluno_id: alunoId,
+                google_uid: google.uid,
+                google_email: google.email,
+            });
+
+            return {
+                success: false,
+                code: 'identidade_nao_confirmada',
+                message: 'Não foi possível confirmar este perfil. Entre novamente e tente vincular a conta Google.',
+            };
+        }
+
+        const uidVinculado = String(alunoData.areaAlunoGoogleUid || '').trim();
+
+        if (uidVinculado && uidVinculado !== google.uid) {
+            await registrarLogGoogleAreaAluno('vinculo_negado_ja_vinculado_outro_uid', {
+                aluno_id: alunoId,
+                google_uid: google.uid,
+                google_email: google.email,
+            });
+
+            return {
+                success: false,
+                code: 'google_diferente',
+                message: 'Este perfil está vinculado a outra conta Google. Entre com a conta correta ou procure a coordenação.',
+            };
+        }
+
+        const update = {
+            areaAlunoGoogleVinculado: true,
+            areaAlunoGoogleUid: google.uid,
+            areaAlunoGoogleEmail: google.email,
+            areaAlunoGoogleNome: google.nome || '',
+            areaAlunoGoogleFoto: google.foto || '',
+            areaAlunoUltimoAcessoGoogleEm: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!uidVinculado) {
+            update.areaAlunoVinculadoEm = admin.firestore.FieldValue.serverTimestamp();
+            update.areaAlunoVinculadoOrigem = 'area_aluno';
+        }
+
+        await alunoRef.set(update, { merge: true });
+
+        const alunoAtualizado = { ...alunoData, ...update, areaAlunoGoogleUid: google.uid };
+        const configEfetiva = configEfetivaAreaAluno(config, 'google', alunoAtualizado);
+        const dadosAluno = await montarDadosAlunoLiberados(alunoId, alunoAtualizado, configEfetiva);
+
+        await registrarLogGoogleAreaAluno(uidVinculado ? 'vinculo_existente_confirmado' : 'vinculo_criado', {
+            aluno_id: alunoId,
+            aluno_nome: alunoData.nome || '',
+            google_uid: google.uid,
+            google_email: google.email,
+        });
+
+        return {
+            success: true,
+            code: 'acesso_google_liberado',
+            message: 'Conta Google confirmada.',
+            modo_acesso: 'google',
+            google_vinculado: true,
+            google_email_mascarado: mascararEmailAreaAluno(google.email),
+            aluno: dadosAluno,
+            config: configEfetiva,
+        };
+    }
+);
+
+exports.validarAcessoGoogleAreaAluno = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Entre com a conta Google vinculada.');
+        }
+
+        const alunoId = String(request.data?.alunoId || request.data?.aluno_id || '').trim();
+        const google = dadosGoogleAuthAreaAluno(request);
+
+        if (!alunoId || google.provider !== 'google.com') {
+            return { success: false, code: 'dados_invalidos', message: 'Perfil não informado.' };
+        }
+
+        const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+        if (!alunoDoc.exists) {
+            return { success: false, code: 'aluno_nao_encontrado', message: 'Perfil não encontrado.' };
+        }
+
+        const alunoData = alunoDoc.data() || {};
+        const uidVinculado = String(alunoData.areaAlunoGoogleUid || '').trim();
+
+        if (!uidVinculado || alunoData.areaAlunoGoogleVinculado !== true) {
+            return { success: false, code: 'sem_vinculo', message: 'Este perfil ainda não possui conta Google vinculada.' };
+        }
+
+        if (uidVinculado !== google.uid) {
+            await registrarLogGoogleAreaAluno('acesso_google_negado_uid_diferente', {
+                aluno_id: alunoId,
+                google_uid: google.uid,
+                google_email: google.email,
+            });
+
+            return {
+                success: false,
+                code: 'google_diferente',
+                message: 'Este perfil está vinculado a outra conta Google. Entre com a conta correta ou procure a coordenação.',
+            };
+        }
+
+        await db.collection('alunos').doc(alunoId).set({
+            areaAlunoUltimoAcessoGoogleEm: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        const config = await carregarConfigAreaAluno();
+        const configEfetiva = configEfetivaAreaAluno(config, 'google', alunoData);
+        const dadosAluno = await montarDadosAlunoLiberados(alunoId, alunoData, configEfetiva);
+
+        await registrarLogGoogleAreaAluno('acesso_google_sucesso', {
+            aluno_id: alunoId,
+            aluno_nome: alunoData.nome || '',
+            google_uid: google.uid,
+            google_email: google.email,
+        });
+
+        return {
+            success: true,
+            code: 'acesso_google_liberado',
+            message: 'Acesso liberado.',
+            modo_acesso: 'google',
+            google_vinculado: true,
+            google_email_mascarado: mascararEmailAreaAluno(google.email),
+            aluno: dadosAluno,
+            config: configEfetiva,
+        };
+    }
+);
+
+exports.resetarVinculoGoogleAreaAluno = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminAreaAluno(request);
+        const alunoIds = Array.isArray(request.data?.alunoIds)
+            ? request.data.alunoIds
+            : [request.data?.alunoId].filter(Boolean);
+
+        if (alunoIds.length === 0) {
+            return { success: false, code: 'sem_alunos', message: 'Nenhum aluno informado.' };
+        }
+
+        const batch = db.batch();
+        for (const alunoIdRaw of alunoIds) {
+            const alunoId = String(alunoIdRaw || '').trim();
+            if (!alunoId) continue;
+            batch.set(db.collection('alunos').doc(alunoId), {
+                areaAlunoGoogleVinculado: false,
+                areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
+                areaAlunoVinculoResetadoEm: admin.firestore.FieldValue.serverTimestamp(),
+                areaAlunoVinculoResetadoPor: adminAtual.uid,
+            }, { merge: true });
+        }
+
+        await batch.commit();
+        await registrarLogGoogleAreaAluno('vinculo_resetado_admin', {
+            aluno_ids: alunoIds,
+            resetado_por: adminAtual.uid,
+            resetado_por_nome: adminAtual.nome,
+        });
+
+        return { success: true, total: alunoIds.length };
+    }
+);
+
+exports.resetarVinculosGoogleAreaAlunoEmMassa = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminAreaAluno(request);
+        const resetarTodos = request.data?.resetarTodos === true;
+        const alunoIds = Array.isArray(request.data?.alunoIds) ? request.data.alunoIds : [];
+        let refs = [];
+
+        if (resetarTodos) {
+            const snap = await db.collection('alunos')
+                .where('areaAlunoGoogleVinculado', '==', true)
+                .limit(450)
+                .get();
+            refs = snap.docs.map(doc => doc.ref);
+        } else {
+            refs = alunoIds
+                .map(id => String(id || '').trim())
+                .filter(Boolean)
+                .map(id => db.collection('alunos').doc(id));
+        }
+
+        if (refs.length === 0) {
+            return { success: false, code: 'sem_alunos', message: 'Nenhum vínculo encontrado.' };
+        }
+
+        const batch = db.batch();
+        for (const ref of refs) {
+            batch.set(ref, {
+                areaAlunoGoogleVinculado: false,
+                areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
+                areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
+                areaAlunoVinculoResetadoEm: admin.firestore.FieldValue.serverTimestamp(),
+                areaAlunoVinculoResetadoPor: adminAtual.uid,
+            }, { merge: true });
+        }
+
+        await batch.commit();
+        await registrarLogGoogleAreaAluno('vinculos_resetados_em_massa', {
+            total: refs.length,
+            resetado_por: adminAtual.uid,
+            resetado_por_nome: adminAtual.nome,
+            resetar_todos: resetarTodos,
+        });
+
+        return { success: true, total: refs.length };
     }
 );
 

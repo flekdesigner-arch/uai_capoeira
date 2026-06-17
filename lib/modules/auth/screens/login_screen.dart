@@ -1,4 +1,4 @@
-﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'cadastro_screen.dart';
 import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/shared/services/validation_service.dart';
 
@@ -55,7 +57,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _versaoApp = '1.0.0';
         });
 
-        print('⚠️ Documento "configuracoes/app" não encontrado, usando versão padrão');
+        print(
+          '⚠️ Documento "configuracoes/app" não encontrado, usando versão padrão',
+        );
       }
     } catch (e) {
       print('❌ Erro ao carregar versão: $e');
@@ -96,6 +100,31 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (!hasAccess) {
+      try {
+        final googleService = AreaAlunoGoogleService();
+        final alunos = await googleService.buscarAlunosVinculados();
+
+        if (!mounted) return;
+
+        if (alunos.length == 1) {
+          await googleService.abrirAreaAlunoVinculado(context, alunos.first);
+          return;
+        }
+
+        if (alunos.length > 1) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EscolherAlunoVinculadoScreen(alunos: alunos),
+            ),
+            (route) => false,
+          );
+          return;
+        }
+      } catch (e) {
+        debugPrint('Erro ao verificar Área do Aluno vinculada: $e');
+      }
+
       _showPendingAccountDialog();
       return;
     }
@@ -103,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const AuthCheck()),
-          (route) => false,
+      (route) => false,
     );
   }
 
@@ -170,7 +199,8 @@ class _LoginScreenState extends State<LoginScreen> {
         message = 'Esta conta está desativada. Entre em contato com o suporte.';
         break;
       case 'too-many-requests':
-        message = 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+        message =
+            'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
         break;
       case 'network-request-failed':
         message = 'Sem conexão com a internet. Verifique sua rede.';
@@ -195,12 +225,10 @@ class _LoginScreenState extends State<LoginScreen> {
         print('✅ Persistência LOCAL confirmada antes do login Google Web.');
 
         final provider = GoogleAuthProvider()
-          ..setCustomParameters({
-            'prompt': 'select_account',
-          });
+          ..setCustomParameters({'prompt': 'select_account'});
 
-        final UserCredential userCredential =
-        await FirebaseAuth.instance.signInWithPopup(provider);
+        final UserCredential userCredential = await FirebaseAuth.instance
+            .signInWithPopup(provider);
 
         final user = userCredential.user;
 
@@ -238,15 +266,15 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+          await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential =
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithCredential(credential);
 
       final user = userCredential.user;
 
@@ -271,13 +299,15 @@ class _LoginScreenState extends State<LoginScreen> {
       String message = 'Erro no login com Google';
 
       if (e.code == 'account-exists-with-different-credential') {
-        message = 'Já existe uma conta com este email. Use outro método de login.';
+        message =
+            'Já existe uma conta com este email. Use outro método de login.';
       } else if (e.code == 'network-request-failed') {
         message = 'Sem conexão com a internet. Verifique sua rede.';
       } else if (e.code == 'popup-closed-by-user') {
         message = 'Login cancelado antes de concluir.';
       } else if (e.code == 'popup-blocked') {
-        message = 'O navegador bloqueou a janela de login. Libere pop-ups para este site.';
+        message =
+            'O navegador bloqueou a janela de login. Libere pop-ups para este site.';
       }
 
       _showErrorSnackBar(message);
@@ -314,10 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
             Text(
               'Você receberá uma notificação quando tiver acesso liberado.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -327,9 +354,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Navigator.pop(context);
               await FirebaseAuth.instance.signOut();
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red.shade900,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade900),
             child: const Text('VOLTAR'),
           ),
         ],
@@ -345,9 +370,7 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Text(message),
         backgroundColor: Colors.red.shade900,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'OK',
@@ -441,10 +464,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: _isLoading
                               ? null
                               : () {
-                            setState(() {
-                              _isPasswordVisible = !_isPasswordVisible;
-                            });
-                          },
+                                  setState(() {
+                                    _isPasswordVisible = !_isPasswordVisible;
+                                  });
+                                },
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -494,21 +517,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: _isLoading
                             ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
                             : const Text(
-                          'ENTRAR',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                                'ENTRAR',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -567,13 +591,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _isLoading
                           ? null
                           : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CadastroScreen(),
-                          ),
-                        );
-                      },
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const CadastroScreen(),
+                                ),
+                              );
+                            },
                       child: Text(
                         'Não tem uma conta? Cadastre-se',
                         style: TextStyle(
@@ -588,10 +612,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Versão do app vindo do Firestore
                     Text(
                       'Versão $_versaoApp',
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
                     ),
                   ],
                 ),
@@ -631,4 +652,3 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 }
-

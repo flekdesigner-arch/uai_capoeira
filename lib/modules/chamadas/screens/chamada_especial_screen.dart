@@ -1,4 +1,4 @@
-// chamada_especial_screen.dart
+// lib/modules/chamadas/screens/chamada_especial_screen.dart
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,14 +6,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// ============================================
-// ENUM PARA MODO DE VISUALIZAÇÃO
-// ============================================
 enum ViewMode { list, grid }
 
-// ============================================
-// SELETOR DE VISUALIZAÇÃO
-// ============================================
 class ViewModeSelector extends StatelessWidget {
   final ViewMode currentMode;
   final ValueChanged<ViewMode> onChanged;
@@ -26,47 +20,45 @@ class ViewModeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.uai;
+    final onPrimary = t.primary.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : Colors.white;
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: context.uai.card,
+        color: t.card,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.uai.border),
+        border: Border.all(color: t.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildButton(
-            context: context,
-            icon: Icons.view_list,
-            label: 'Lista',
-            mode: ViewMode.list,
-          ),
+          _buildButton(context, Icons.view_list, 'Lista', ViewMode.list, onPrimary),
           const SizedBox(width: 8),
-          _buildButton(
-            context: context,
-            icon: Icons.grid_view,
-            label: 'Grade',
-            mode: ViewMode.grid,
-          ),
+          _buildButton(context, Icons.grid_view, 'Grade', ViewMode.grid, onPrimary),
         ],
       ),
     );
   }
 
-  Widget _buildButton({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required ViewMode mode,
-  }) {
+  Widget _buildButton(
+      BuildContext context,
+      IconData icon,
+      String label,
+      ViewMode mode,
+      Color onPrimary,
+      ) {
+    final t = context.uai;
     final isSelected = currentMode == mode;
+
     return GestureDetector(
       onTap: () => onChanged(mode),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: isSelected ? context.uai.primary : Colors.transparent,
+          color: isSelected ? t.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -74,15 +66,15 @@ class ViewModeSelector extends StatelessWidget {
             Icon(
               icon,
               size: 14,
-              color: isSelected ? Theme.of(context).colorScheme.onPrimary : context.uai.textSecondary,
+              color: isSelected ? onPrimary : t.textSecondary,
             ),
-            SizedBox(width: 4),
+            const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Theme.of(context).colorScheme.onPrimary : context.uai.textSecondary,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? onPrimary : t.textSecondary,
               ),
             ),
           ],
@@ -115,62 +107,39 @@ class ChamadaEspecialScreen extends StatefulWidget {
 }
 
 class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-  }
-
-  Color _onPrimary() => _readableOn(context.uai.primary);
-
-  Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
-
-    if (diff >= 0.26) return color;
-
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
-
-  Color _appBarBg() =>
-      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-
-  Color _appBarFg() =>
-      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
-
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final TextEditingController _observacaoController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _mostrarProgresso = false;
+
   List<Map<String, dynamic>> _alunos = [];
   Map<String, bool> _presencas = {};
   Map<String, String> _observacoes = {};
-  final TextEditingController _observacaoController = TextEditingController();
 
   String _professorNome = 'Carregando...';
   String _professorId = '';
-  String _tipoAula = 'CARREGANDO...';
+  String _tipoAula = 'OBJETIVA';
   String _diaSemana = '';
-  String _diaSemanaAbrev = '';
-
-  // 🔥 CONTROLE DA ANIMAÇÃO DE SALVAMENTO
-  bool _mostrarProgresso = false;
   String _statusMensagem = '';
-
-  // Modo de visualização
   ViewMode _viewMode = ViewMode.grid;
 
+  bool _indicadoresAusenciaAtivo = true;
+  bool _mostrarTextoUltimaPresencaIndicador = true;
+  List<Map<String, dynamic>> _faixasIndicadoresAusencia = [];
+
   final Map<String, String> _diasAbreviados = {
-    'SEGUNDA': 'seg', 'TERÇA': 'ter', 'TERCA': 'ter',
-    'QUARTA': 'qua', 'QUINTA': 'qui', 'SEXTA': 'sex',
-    'SÁBADO': 'sab', 'SABADO': 'sab', 'DOMINGO': 'dom',
+    'SEGUNDA': 'seg',
+    'TERÇA': 'ter',
+    'TERCA': 'ter',
+    'QUARTA': 'qua',
+    'QUINTA': 'qui',
+    'SEXTA': 'sex',
+    'SÁBADO': 'sab',
+    'SABADO': 'sab',
+    'DOMINGO': 'dom',
   };
 
   @override
@@ -179,77 +148,266 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     _carregarDados();
   }
 
-  Future<void> _carregarDados() async {
+  @override
+  void dispose() {
+    _observacaoController.dispose();
+    super.dispose();
+  }
+
+  Color _readableOn(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+
+  Color _onPrimary() => _readableOn(context.uai.primary);
+
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+
+  int _parseIntIndicador(dynamic value, {required int fallback}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '') ?? fallback;
+  }
+
+  List<Map<String, dynamic>> _faixasIndicadoresPadrao() {
+    return [
+      {'ate_dias': 3, 'cor': '#2196F3', 'label': 'Frequente'},
+      {'ate_dias': 6, 'cor': '#4CAF50', 'label': 'Regular'},
+      {'ate_dias': 12, 'cor': '#FFC107', 'label': 'Atenção'},
+      {'ate_dias': 24, 'cor': '#FF9800', 'label': 'Ausente'},
+      {'ate_dias': 35, 'cor': '#FF5722', 'label': 'Muito ausente'},
+      {'ate_dias': 9999, 'cor': '#F44336', 'label': 'Risco de inatividade'},
+    ];
+  }
+
+  Color _colorFromHexIndicador(String value, {Color? fallback}) {
     try {
-      // Formatar o dia da semana
-      final diaSemanaOriginal = DateFormat('EEEE', 'pt_BR')
-          .format(widget.dataSelecionada).toLowerCase();
+      var cleaned = value.trim().replaceAll('#', '').toUpperCase();
+      if (cleaned.length == 6) cleaned = 'FF$cleaned';
+      if (cleaned.length != 8) return fallback ?? context.uai.textMuted;
+      return Color(int.parse(cleaned, radix: 16));
+    } catch (_) {
+      return fallback ?? context.uai.textMuted;
+    }
+  }
 
-      String diaSemanaFormatado = diaSemanaOriginal;
-
-      if (diaSemanaOriginal.contains('segunda')) {
-        diaSemanaFormatado = 'SEGUNDA';
-      } else if (diaSemanaOriginal.contains('terça') || diaSemanaOriginal.contains('terca')) {
-        diaSemanaFormatado = 'TERCA';
-      } else if (diaSemanaOriginal.contains('quarta')) {
-        diaSemanaFormatado = 'QUARTA';
-      } else if (diaSemanaOriginal.contains('quinta')) {
-        diaSemanaFormatado = 'QUINTA';
-      } else if (diaSemanaOriginal.contains('sexta')) {
-        diaSemanaFormatado = 'SEXTA';
-      } else if (diaSemanaOriginal.contains('sábado') || diaSemanaOriginal.contains('sabado')) {
-        diaSemanaFormatado = 'SABADO';
-      } else if (diaSemanaOriginal.contains('domingo')) {
-        diaSemanaFormatado = 'DOMINGO';
-      }
-
-      _diaSemana = diaSemanaFormatado;
-      _diaSemanaAbrev = _getDiaAbreviado(diaSemanaFormatado);
-
-      debugPrint('📅 Data selecionada: ${widget.dataSelecionada}');
-      debugPrint('📅 Dia formatado: $_diaSemana');
-
-      // Carregar tipo de aula da configuração da turma
-      final turmaDoc = await _firestore
-          .collection('turmas')
-          .doc(widget.turmaId)
+  Future<void> _carregarConfiguracaoIndicadoresAusencia() async {
+    try {
+      final doc = await _firestore
+          .collection('configuracoes_sistema')
+          .doc('indicadores_ausencia')
           .get();
 
-      if (turmaDoc.exists) {
-        final turmaData = turmaDoc.data()!;
-        final diasConfiguracao = turmaData['dias_configuracao'] as Map<String, dynamic>?;
+      final data = doc.data();
+      final faixasRaw = data?['faixas'];
+      final faixas = faixasRaw is List
+          ? faixasRaw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList()
+          : _faixasIndicadoresPadrao();
 
-        if (diasConfiguracao != null) {
-          final configuracaoDia = diasConfiguracao[_diaSemana];
-          if (configuracaoDia != null) {
-            _tipoAula = configuracaoDia['tipoAula'] ?? 'OBJETIVA';
-            debugPrint('✅ Tipo de aula: $_tipoAula para $_diaSemana');
-          } else {
-            _tipoAula = 'OBJETIVA';
-          }
-        } else {
-          _tipoAula = 'OBJETIVA';
+      faixas.sort((a, b) {
+        final aDias = _parseIntIndicador(a['ate_dias'], fallback: 9999);
+        final bDias = _parseIntIndicador(b['ate_dias'], fallback: 9999);
+        return aDias.compareTo(bDias);
+      });
+
+      _indicadoresAusenciaAtivo = data?['ativo'] != false;
+      _mostrarTextoUltimaPresencaIndicador =
+          data?['mostrar_texto_ultima_presenca'] != false;
+      _faixasIndicadoresAusencia = faixas;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar configuração dos indicadores: $e');
+      _indicadoresAusenciaAtivo = true;
+      _mostrarTextoUltimaPresencaIndicador = true;
+      _faixasIndicadoresAusencia = _faixasIndicadoresPadrao();
+    }
+  }
+
+  DateTime? _dateTimeSeguro(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+
+    if (value is String) {
+      final texto = value.trim();
+      if (texto.isEmpty) return null;
+      final parsedIso = DateTime.tryParse(texto);
+      if (parsedIso != null) return parsedIso;
+      try {
+        return DateFormat('dd/MM/yyyy').parseStrict(texto);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (value is Map) {
+      final seconds = value['_seconds'] ?? value['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+      if (seconds is num) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds.toInt() * 1000);
+      }
+    }
+
+    return null;
+  }
+
+  DateTime? _ultimaPresencaDoAluno(Map<String, dynamic> aluno) {
+    final campos = [
+      aluno['ultimo_dia_presente'],
+      aluno['ultimoDiaPresente'],
+      aluno['ultima_presenca'],
+      aluno['ultimaPresenca'],
+      aluno['data_ultima_presenca'],
+      aluno['dataUltimaPresenca'],
+      aluno['ultimo_presente_em'],
+      aluno['ultimoPresenteEm'],
+      aluno['last_presence'],
+      aluno['lastPresence'],
+    ];
+
+    for (final campo in campos) {
+      final data = _dateTimeSeguro(campo);
+      if (data != null) return data;
+    }
+
+    return null;
+  }
+
+  int? _diasDesdeUltimaPresenca(Map<String, dynamic> aluno) {
+    final ultima = _ultimaPresencaDoAluno(aluno);
+    if (ultima == null) return null;
+
+    final hoje = DateTime.now();
+    final hojeLimpo = DateTime(hoje.year, hoje.month, hoje.day);
+    final ultimaLimpa = DateTime(ultima.year, ultima.month, ultima.day);
+    final dias = hojeLimpo.difference(ultimaLimpa).inDays;
+
+    return dias < 0 ? 0 : dias;
+  }
+
+  Color _corIndicadorAusencia(Map<String, dynamic> aluno) {
+    if (!_indicadoresAusenciaAtivo) return context.uai.textMuted;
+
+    final dias = _diasDesdeUltimaPresenca(aluno);
+    if (dias == null) return context.uai.textMuted;
+
+    final faixas = _faixasIndicadoresAusencia.isEmpty
+        ? _faixasIndicadoresPadrao()
+        : _faixasIndicadoresAusencia;
+
+    for (final faixa in faixas) {
+      final ateDias = _parseIntIndicador(faixa['ate_dias'], fallback: 9999);
+      if (dias <= ateDias) {
+        return _colorFromHexIndicador(
+          faixa['cor']?.toString() ?? '#9E9E9E',
+          fallback: context.uai.textMuted,
+        );
+      }
+    }
+
+    final ultimaFaixa = faixas.isNotEmpty ? faixas.last : null;
+    return _colorFromHexIndicador(
+      ultimaFaixa?['cor']?.toString() ?? '#F44336',
+      fallback: context.uai.error,
+    );
+  }
+
+  String _textoUltimaPresenca(Map<String, dynamic> aluno) {
+    final dias = _diasDesdeUltimaPresenca(aluno);
+
+    if (dias == null) return 'Sem presença registrada';
+    if (dias == 0) return 'Última presença hoje';
+    if (dias == 1) return 'Última presença ontem';
+    return 'Última presença há $dias dias';
+  }
+
+  String _getDiaAbreviado(String diaCompleto) {
+    final diaUpper = diaCompleto.toUpperCase().trim();
+    if (_diasAbreviados.containsKey(diaUpper)) {
+      return _diasAbreviados[diaUpper]!;
+    }
+    for (final entry in _diasAbreviados.entries) {
+      if (diaUpper.contains(entry.key) || entry.key.contains(diaUpper)) {
+        return entry.value;
+      }
+    }
+    return diaUpper.length >= 3
+        ? diaUpper.substring(0, 3).toLowerCase()
+        : diaUpper.toLowerCase();
+  }
+
+  String _formatarDiaSemana(DateTime data) {
+    final diaSemanaOriginal = DateFormat('EEEE', 'pt_BR').format(data).toLowerCase();
+
+    if (diaSemanaOriginal.contains('segunda')) return 'SEGUNDA';
+    if (diaSemanaOriginal.contains('terça') || diaSemanaOriginal.contains('terca')) {
+      return 'TERCA';
+    }
+    if (diaSemanaOriginal.contains('quarta')) return 'QUARTA';
+    if (diaSemanaOriginal.contains('quinta')) return 'QUINTA';
+    if (diaSemanaOriginal.contains('sexta')) return 'SEXTA';
+    if (diaSemanaOriginal.contains('sábado') || diaSemanaOriginal.contains('sabado')) {
+      return 'SABADO';
+    }
+    if (diaSemanaOriginal.contains('domingo')) return 'DOMINGO';
+
+    return diaSemanaOriginal.toUpperCase();
+  }
+
+  Future<void> _carregarDados() async {
+    try {
+      await _carregarConfiguracaoIndicadoresAusencia();
+
+      final diaSemanaFormatado = _formatarDiaSemana(widget.dataSelecionada);
+      final diaSemanaAbrev = _getDiaAbreviado(diaSemanaFormatado);
+
+      final turmaDoc = await _firestore.collection('turmas').doc(widget.turmaId).get();
+      String tipoAula = 'OBJETIVA';
+
+      if (turmaDoc.exists) {
+        final turmaData = turmaDoc.data() ?? {};
+        final diasConfiguracao = turmaData['dias_configuracao'] as Map<String, dynamic>?;
+        final configuracaoDia = diasConfiguracao?[diaSemanaFormatado];
+        if (configuracaoDia is Map<String, dynamic>) {
+          tipoAula = configuracaoDia['tipoAula']?.toString() ?? 'OBJETIVA';
         }
       }
 
-      // Carregar dados do professor
-      final userDoc = await _firestore
-          .collection('usuarios')
-          .doc(widget.usuarioId)
-          .get();
-
+      final userDoc = await _firestore.collection('usuarios').doc(widget.usuarioId).get();
+      String professorNome = 'Professor';
       if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        _professorId = widget.usuarioId;
-        _professorNome = userData['nome_completo']?.toString() ??
-            userData['nome']?.toString() ?? 'Professor';
+        final userData = userDoc.data() ?? {};
+        professorNome = userData['nome_completo']?.toString() ??
+            userData['nome']?.toString() ??
+            'Professor';
       }
 
-      // Carregar alunos da turma
       final alunosSnapshot = await _firestore
           .collection('alunos')
           .where('turma_id', isEqualTo: widget.turmaId)
-          .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO(A) '])
+          .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO(A) ', 'ATIVO'])
           .get();
 
       final alunosList = alunosSnapshot.docs.map((doc) {
@@ -258,25 +416,48 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           'id': doc.id,
           'nome': data['nome'] ?? 'Sem nome',
           'foto': data['foto_perfil_aluno'] as String?,
+          'ultimo_dia_presente': data['ultimo_dia_presente'] ??
+              data['ultimoDiaPresente'] ??
+              data['ultima_presenca'] ??
+              data['ultimaPresenca'] ??
+              data['data_ultima_presenca'] ??
+              data['dataUltimaPresenca'] ??
+              data['ultimo_presente_em'] ??
+              data['ultimoPresenteEm'] ??
+              data['last_presence'] ??
+              data['lastPresence'],
         };
       }).toList();
 
-      alunosList.sort((a, b) => (a['nome'] as String).compareTo(b['nome'] as String));
+      alunosList.sort(
+            (a, b) => (a['nome'] as String).compareTo(b['nome'] as String),
+      );
 
       final presencasIniciais = <String, bool>{};
-      for (var aluno in alunosList) {
+      for (final aluno in alunosList) {
         presencasIniciais[aluno['id'] as String] = false;
       }
 
+      if (!mounted) return;
       setState(() {
+        _diaSemana = diaSemanaFormatado;
+        _tipoAula = tipoAula;
+        _professorId = widget.usuarioId;
+        _professorNome = professorNome;
         _alunos = alunosList;
         _presencas = presencasIniciais;
         _isLoading = false;
       });
 
+      debugPrint('📅 Chamada especial: $diaSemanaFormatado / $diaSemanaAbrev');
+      debugPrint('✅ ${alunosList.length} alunos carregados para chamada especial');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar dados: $e');
+      debugPrint('❌ Erro ao carregar dados da chamada especial: $e');
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _tipoAula = 'OBJETIVA';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao carregar dados: $e'),
@@ -284,24 +465,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           ),
         );
       }
-      setState(() {
-        _isLoading = false;
-        _tipoAula = 'OBJETIVA';
-      });
     }
-  }
-
-  String _getDiaAbreviado(String diaCompleto) {
-    final diaUpper = diaCompleto.toUpperCase().trim();
-    if (_diasAbreviados.containsKey(diaUpper)) {
-      return _diasAbreviados[diaUpper]!;
-    }
-    for (var entry in _diasAbreviados.entries) {
-      if (diaUpper.contains(entry.key) || entry.key.contains(diaUpper)) {
-        return entry.value;
-      }
-    }
-    return diaUpper.length >= 3 ? diaUpper.substring(0, 3).toLowerCase() : diaUpper.toLowerCase();
   }
 
   void _togglePresenca(String alunoId) {
@@ -362,22 +526,16 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                if (_observacaoController.text.isNotEmpty) {
-                  setState(() {
-                    _observacoes[alunoId] = _observacaoController.text;
-                  });
-                  _observacaoController.clear();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('✅ Observação salva!'),
-                        backgroundColor: context.uai.success,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                setState(() {
+                  final texto = _observacaoController.text.trim();
+                  if (texto.isEmpty) {
+                    _observacoes.remove(alunoId);
+                  } else {
+                    _observacoes[alunoId] = texto;
                   }
-                  Navigator.pop(context);
-                }
+                });
+                _observacaoController.clear();
+                Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: primary,
@@ -395,28 +553,21 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     if (value == null) return 0;
     if (value is int) return value;
     if (value is double) return value.round();
+    if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
   }
 
-  // ============================================
-  // FUNÇÃO PRINCIPAL DE SALVAR CHAMADA ESPECIAL
-  // Usa a mesma Cloud Function processarChamada.
-  // A Cloud Function agora cria os logs e atualiza os contadores:
-  // alunos/{alunoId}/contadores/frequencia_dashboard
-  // ============================================
   Future<void> _salvarChamada() async {
     if (_isSaving) return;
 
     if (_alunos.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⚠️ Não há alunos para salvar chamada'),
-            backgroundColor: context.uai.warning,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('⚠️ Não há alunos para salvar chamada'),
+          backgroundColor: context.uai.warning,
+        ),
+      );
       return;
     }
 
@@ -469,7 +620,6 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
 
     final alunosPayload = _alunos.map((aluno) {
       final alunoId = aluno['id']?.toString() ?? '';
-
       return {
         'id': alunoId,
         'nome': aluno['nome']?.toString() ?? 'Sem nome',
@@ -501,13 +651,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         _statusMensagem = 'Criando chamada, logs e contadores...';
       });
 
-      final HttpsCallable callable = _functions.httpsCallable('processarChamada');
+      final callable = _functions.httpsCallable('processarChamada');
       final result = await callable.call(dadosChamada);
-
       final data = Map<String, dynamic>.from(result.data as Map);
 
-      final success = data['success'] == true;
-      if (!success) {
+      if (data['success'] != true) {
         throw Exception('A Cloud Function não confirmou o salvamento.');
       }
 
@@ -519,9 +667,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           : processados > 0
           ? ((presentesCloud / processados) * 100).round()
           : 0;
+      final duplicate = data['duplicate'] == true;
 
-      final bool duplicate = data['duplicate'] == true;
-
+      if (!mounted) return;
       setState(() {
         _statusMensagem = duplicate
             ? '⚠️ Esta chamada já existia. Dados carregados sem duplicar.'
@@ -541,13 +689,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       }
     } catch (e) {
       debugPrint('❌ Erro ao processar chamada especial: $e');
-
       if (mounted) {
         setState(() {
           _isSaving = false;
           _mostrarProgresso = false;
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao salvar chamada especial: ${e.toString()}'),
@@ -559,9 +705,6 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     }
   }
 
-  // ============================================
-  // TELA DE CONCLUSÃO DA CHAMADA
-  // ============================================
   void _mostrarTelaConclusao(Map<String, dynamic> dados) {
     final success = _ensureVisible(context.uai.success, context.uai.background);
     final onSuccess = _readableOn(success);
@@ -573,46 +716,37 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         insetPadding: const EdgeInsets.all(20),
         child: Container(
           width: double.infinity,
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [success, success],
-            ),
+            color: success,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TweenAnimationBuilder<double>(
-                duration: const Duration(seconds: 1),
-                tween: Tween(begin: 0.0, end: 1.0),
-                builder: (context, value, child) {
-                  return Transform.scale(
-                    scale: value,
-                    child: Icon(Icons.celebration, size: 80, color: onSuccess),
-                  );
-                },
-              ),
-              SizedBox(height: 20),
+              Icon(Icons.celebration, size: 76, color: onSuccess),
+              const SizedBox(height: 18),
               Text(
                 dados['duplicate'] == true
                     ? '⚠️ CHAMADA ESPECIAL JÁ EXISTIA!'
                     : '🎉 CHAMADA ESPECIAL CONCLUÍDA!',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSuccess),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: onSuccess,
+                ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Text(
-                DateFormat("dd/MM/yyyy", 'pt_BR').format(widget.dataSelecionada),
-                style: TextStyle(fontSize: 16, color: onSuccess.withOpacity(0.72)),
+                DateFormat('dd/MM/yyyy', 'pt_BR').format(widget.dataSelecionada),
+                style: TextStyle(fontSize: 16, color: onSuccess.withOpacity(0.78)),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Container(
-                padding: EdgeInsets.all(15),
+                padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: onSuccess.withOpacity(0.20),
+                  color: onSuccess.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Row(
@@ -624,49 +758,18 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                   ],
                 ),
               ),
-              SizedBox(height: 20),
-              Text(
-                'Professor: $_professorNome',
-                style: TextStyle(fontSize: 14, color: _onPrimary()),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Tipo de aula: $_tipoAula',
-                style: TextStyle(fontSize: 12, color: onSuccess.withOpacity(0.72)),
-              ),
-              const SizedBox(height: 25),
-              TweenAnimationBuilder<Duration>(
-                duration: const Duration(seconds: 5),
-                tween: Tween(begin: const Duration(seconds: 5), end: Duration.zero),
-                onEnd: () {
-                  Navigator.pop(context);
-                  if (mounted) Navigator.pop(context);
-                },
-                builder: (context, value, child) {
-                  return Column(
-                    children: [
-                      LinearProgressIndicator(
-                        value: value.inSeconds / 5,
-                        backgroundColor: onSuccess.withOpacity(0.30),
-                        valueColor: AlwaysStoppedAnimation<Color>(onSuccess),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Fechando em ${value.inSeconds} segundos...',
-                        style: TextStyle(color: onSuccess.withOpacity(0.72), fontSize: 12),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              SizedBox(height: 10),
+              const SizedBox(height: 20),
+              Text('Professor: $_professorNome', style: TextStyle(fontSize: 14, color: onSuccess)),
+              const SizedBox(height: 8),
+              Text('Tipo de aula: $_tipoAula', style: TextStyle(fontSize: 12, color: onSuccess.withOpacity(0.78))),
+              const SizedBox(height: 22),
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
                   if (mounted) Navigator.pop(context);
                 },
                 child: Text(
-                  'FECHAR AGORA',
+                  'FECHAR',
                   style: TextStyle(color: onSuccess, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -695,62 +798,80 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         ),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: onSuccess.withOpacity(0.72),
-          ),
+          style: TextStyle(fontSize: 11, color: onSuccess.withOpacity(0.74)),
         ),
       ],
     );
   }
 
-  // ============================================
-  // TELA DE PROGRESSO
-  // ============================================
   Widget _buildTelaProgresso() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              gradient: context.uai.primaryGradient,
-              borderRadius: BorderRadius.circular(20),
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          gradient: context.uai.primaryGradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: context.uai.cardShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_upload, size: 60, color: _onPrimary()),
+            const SizedBox(height: 20),
+            Text(
+              'PROCESSANDO CHAMADA ESPECIAL',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: _onPrimary(),
+              ),
+              textAlign: TextAlign.center,
             ),
-            child: Column(
-              children: [
-                Icon(Icons.cloud_upload, size: 60, color: _onPrimary()),
-                SizedBox(height: 20),
-                Text(
-                  'PROCESSANDO CHAMADA ESPECIAL',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _onPrimary()),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  _statusMensagem,
-                  style: TextStyle(fontSize: 14, color: _onPrimary().withOpacity(0.90)),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 30),
-                CircularProgressIndicator(color: _onPrimary()),
-              ],
+            const SizedBox(height: 16),
+            Text(
+              _statusMensagem,
+              style: TextStyle(fontSize: 14, color: _onPrimary().withOpacity(0.90)),
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 30),
+            CircularProgressIndicator(color: _onPrimary()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIndicadorBolinha(Map<String, dynamic> aluno, {double size = 13}) {
+    if (!_indicadoresAusenciaAtivo) return const SizedBox.shrink();
+
+    final color = _corIndicadorAusencia(aluno);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: context.uai.card, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
     );
   }
 
-  // ============================================
-  // WIDGETS DE LISTA E GRADE
-  // ============================================
   Widget _buildAlunoListTile(Map<String, dynamic> aluno) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
     final estaPresente = _presencas[alunoId] ?? false;
     final observacao = _observacoes[alunoId];
     final fotoUrl = aluno['foto'] as String?;
+    final indicadorColor = _corIndicadorAusencia(aluno);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -762,78 +883,102 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: estaPresente
-              ? context.uai.success.withOpacity(0.45)
-              : context.uai.border,
+          color: estaPresente ? context.uai.success.withOpacity(0.45) : context.uai.border,
         ),
       ),
-      child: Container(
-        margin: EdgeInsets.all(0),
-        child: ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: CircleAvatar(
-            radius: 18,
-            backgroundColor: estaPresente ? context.uai.success.withOpacity(0.10) : context.uai.border,
-            backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? NetworkImage(fotoUrl) : null,
-            child: fotoUrl == null || fotoUrl.isEmpty
-                ? Icon(Icons.person, size: 18, color: context.uai.textMuted)
-                : null,
-          ),
-          title: Text(
-            nomeAluno,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: estaPresente ? context.uai.textPrimary : context.uai.textSecondary,
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              radius: 19,
+              backgroundColor: estaPresente
+                  ? context.uai.success.withOpacity(0.10)
+                  : context.uai.border,
+              backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? NetworkImage(fotoUrl) : null,
+              child: fotoUrl == null || fotoUrl.isEmpty
+                  ? Icon(Icons.person, size: 18, color: context.uai.textMuted)
+                  : null,
             ),
-          ),
-          subtitle: observacao != null
-              ? Text(
-            observacao,
-            style: TextStyle(fontSize: 10, color: context.uai.warning, fontStyle: FontStyle.italic),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          )
-              : null,
-          trailing: SizedBox(
-            width: 72,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    icon: Icon(
-                      Icons.note_add,
-                      size: 14,
-                      color: observacao != null ? context.uai.warning : context.uai.info,
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
-                    splashRadius: 14,
-                  ),
-                ),
-                SizedBox(width: 2),
-                Transform.scale(
-                  scale: 0.55,
-                  child: Switch(
-                    value: estaPresente,
-                    activeColor: context.uai.success,
-                    inactiveTrackColor: context.uai.textMuted,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    onChanged: (_) => _togglePresenca(alunoId),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          tileColor: Colors.transparent,
-          onTap: () => _togglePresenca(alunoId),
+            Positioned(right: -1, bottom: -1, child: _buildIndicadorBolinha(aluno, size: 12)),
+          ],
         ),
+        title: Text(
+          nomeAluno,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: estaPresente ? context.uai.textPrimary : context.uai.textSecondary,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_indicadoresAusenciaAtivo && _mostrarTextoUltimaPresencaIndicador)
+              Text(
+                _textoUltimaPresenca(aluno),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: indicadorColor,
+                  fontWeight: FontWeight.w800,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            if (observacao != null && observacao.trim().isNotEmpty)
+              Text(
+                observacao,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: context.uai.warning,
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        trailing: SizedBox(
+          width: 72,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: IconButton(
+                  icon: Icon(
+                    Icons.note_add,
+                    size: 14,
+                    color: observacao != null ? context.uai.warning : context.uai.info,
+                  ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
+                  splashRadius: 14,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Transform.scale(
+                scale: 0.55,
+                child: Switch(
+                  value: estaPresente,
+                  activeColor: context.uai.success,
+                  inactiveTrackColor: context.uai.textMuted,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (_) => _togglePresenca(alunoId),
+                ),
+              ),
+            ],
+          ),
+        ),
+        onTap: () => _togglePresenca(alunoId),
       ),
     );
   }
@@ -843,6 +988,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     final nomeAluno = aluno['nome'] as String;
     final estaPresente = _presencas[alunoId] ?? false;
     final fotoUrl = aluno['foto'] as String?;
+    final indicadorColor = _corIndicadorAusencia(aluno);
 
     return Card(
       elevation: 0,
@@ -868,28 +1014,34 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    Container(
-                      color: context.uai.cardAlt,
-                      child: fotoUrl != null && fotoUrl.isNotEmpty
-                          ? CachedNetworkImage(
-                        imageUrl: fotoUrl,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        memCacheWidth: 600,
-                        fadeInDuration: const Duration(milliseconds: 120),
-                        errorWidget: (c, u, e) => _placeholderIcon(size: 80),
-                      )
-                          : _placeholderIcon(size: 80),
+                    Positioned.fill(
+                      child: Container(
+                        color: context.uai.cardAlt,
+                        child: fotoUrl != null && fotoUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                          imageUrl: fotoUrl,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          memCacheWidth: 600,
+                          fadeInDuration: const Duration(milliseconds: 120),
+                          errorWidget: (c, u, e) => _placeholderIcon(size: 80),
+                        )
+                            : _placeholderIcon(size: 80),
+                      ),
                     ),
+                    Positioned(top: 8, left: 8, child: _buildIndicadorBolinha(aluno, size: 14)),
                     if (estaPresente)
                       Positioned(
                         top: 8,
                         right: 8,
                         child: Container(
-                          padding: EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: context.uai.success, shape: BoxShape.circle),
-                          child: Icon(Icons.check, size: 14, color: _onPrimary()),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: context.uai.success,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.check, size: 14, color: _readableOn(context.uai.success)),
                         ),
                       ),
                     Positioned(
@@ -898,12 +1050,16 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                       child: GestureDetector(
                         onTap: () => _adicionarObservacao(alunoId, nomeAluno),
                         child: Container(
-                          padding: EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             color: context.uai.surface.withOpacity(0.92),
                             shape: BoxShape.circle,
                             boxShadow: [
-                              BoxShadow(color: Colors.black.withOpacity(0.16), blurRadius: 4, offset: const Offset(0, 2)),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.16),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
                             ],
                           ),
                           child: Icon(Icons.note_add, size: 16, color: context.uai.info),
@@ -914,7 +1070,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -928,9 +1084,21 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 3),
+                    if (_indicadoresAusenciaAtivo && _mostrarTextoUltimaPresencaIndicador) ...[
+                      Text(
+                        _textoUltimaPresenca(aluno),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: indicadorColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Align(
                       alignment: Alignment.center,
                       child: Transform.scale(
@@ -977,18 +1145,121 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           children: [
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 2),
-            Flexible(
-              child: Text(
-                value,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
-                overflow: TextOverflow.ellipsis,
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
             ),
           ],
         ),
-        SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 9, color: context.uai.textSecondary)),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 9, color: context.uai.textSecondary),
+        ),
       ],
+    );
+  }
+
+  Widget _buildHeaderResumo() {
+    final presentes = _presencas.values.where((v) => v).length;
+    final total = _alunos.length;
+    final porcentagem = total > 0 ? (presentes / total * 100).round() : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.uai.surface,
+        border: Border(bottom: BorderSide(color: context.uai.border)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _diaSemana,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: context.uai.textPrimary,
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: context.uai.primary,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'TIPO: $_tipoAula',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _readableOn(context.uai.primary),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: context.uai.cardAlt,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.person, size: 12, color: context.uai.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      _professorNome.split(' ').first,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.uai.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildStatItem(value: '$presentes', label: 'Presentes', color: context.uai.success, icon: Icons.check_circle),
+              _buildStatItem(value: '${total - presentes}', label: 'Ausentes', color: context.uai.error, icon: Icons.cancel),
+              _buildStatItem(value: '$porcentagem%', label: 'Frequência', color: context.uai.info, icon: Icons.trending_up),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: total > 0 ? presentes / total : 0,
+            backgroundColor: context.uai.border,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              presentes == 0
+                  ? context.uai.error
+                  : presentes == total
+                  ? context.uai.success
+                  : context.uai.warning,
+            ),
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ],
+      ),
     );
   }
 
@@ -996,7 +1267,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   Widget build(BuildContext context) {
     final presentes = _presencas.values.where((v) => v).length;
     final total = _alunos.length;
-    final porcentagem = total > 0 ? (presentes / total * 100).round() : 0;
+    final ausentes = total - presentes;
 
     return Scaffold(
       backgroundColor: context.uai.background,
@@ -1017,11 +1288,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           if (!_isSaving)
             ViewModeSelector(
               currentMode: _viewMode,
-              onChanged: (mode) {
-                setState(() {
-                  _viewMode = mode;
-                });
-              },
+              onChanged: (mode) => setState(() => _viewMode = mode),
             ),
           const SizedBox(width: 8),
         ],
@@ -1032,122 +1299,13 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           ? _buildTelaProgresso()
           : Column(
         children: [
-          // Header
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.uai.surface,
-              border: Border(bottom: BorderSide(color: context.uai.border)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _diaSemana,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: context.uai.textPrimary,
-                            ),
-                          ),
-                          Container(
-                            margin: EdgeInsets.only(top: 4),
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: context.uai.primary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'TIPO: $_tipoAula',
-                              style: TextStyle(fontSize: 10, color: _readableOn(context.uai.primary), fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: context.uai.cardAlt,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.person, size: 12, color: context.uai.textSecondary),
-                          SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              _professorNome.split(' ').first,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.uai.textSecondary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildStatItem(
-                      value: '$presentes',
-                      label: 'Presentes',
-                      color: context.uai.success,
-                      icon: Icons.check_circle,
-                    ),
-                    _buildStatItem(
-                      value: '${total - presentes}',
-                      label: 'Ausentes',
-                      color: context.uai.error,
-                      icon: Icons.cancel,
-                    ),
-                    _buildStatItem(
-                      value: '$porcentagem%',
-                      label: 'Frequência',
-                      color: context.uai.info,
-                      icon: Icons.trending_up,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: total > 0 ? presentes / total : 0,
-                  backgroundColor: context.uai.border,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    presentes == 0
-                        ? context.uai.error
-                        : presentes == total
-                        ? context.uai.success
-                        : context.uai.warning,
-                  ),
-                  minHeight: 6,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ],
-            ),
-          ),
-          // Lista de alunos
+          _buildHeaderResumo(),
           Expanded(
             child: _viewMode == ViewMode.list
                 ? ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: _alunos.length,
-              itemBuilder: (context, index) {
-                return _buildAlunoListTile(_alunos[index]);
-              },
+              itemBuilder: (context, index) => _buildAlunoListTile(_alunos[index]),
             )
                 : GridView.builder(
               padding: const EdgeInsets.all(16),
@@ -1158,49 +1316,46 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 childAspectRatio: 0.75,
               ),
               itemCount: _alunos.length,
-              itemBuilder: (context, index) {
-                return _buildAlunoGridItem(_alunos[index]);
-              },
+              itemBuilder: (context, index) => _buildAlunoGridItem(_alunos[index]),
             ),
           ),
-          // Botão salvar
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.uai.surface,
-              border: Border(top: BorderSide(color: context.uai.border)),
-            ),
-            child: ElevatedButton.icon(
-              onPressed: _isSaving ? null : _salvarChamada,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _appBarBg(),
-                foregroundColor: _appBarFg(),
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: context.uai.surface,
+                border: Border(top: BorderSide(color: context.uai.border)),
               ),
-              icon: _isSaving
-                  ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: _appBarFg()),
-              )
-                  : const Icon(Icons.save, size: 24),
-              label: _isSaving
-                  ? const Text('SALVANDO...')
-                  : const Text(
-                '✅ SALVAR CHAMADA ESPECIAL',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _salvarChamada,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _appBarBg(),
+                  foregroundColor: _appBarFg(),
+                  minimumSize: const Size(double.infinity, 55),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: _isSaving
+                    ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _appBarFg(),
+                  ),
+                )
+                    : const Icon(Icons.save, size: 24),
+                label: _isSaving
+                    ? const Text('SALVANDO...')
+                    : Text(
+                  '✅ SALVAR • $presentes P / $ausentes A',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _observacaoController.dispose();
-    super.dispose();
   }
 }

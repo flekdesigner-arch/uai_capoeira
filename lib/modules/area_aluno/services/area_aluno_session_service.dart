@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,16 +16,34 @@ class AreaAlunoSessionService {
     required Map<String, dynamic> aluno,
     required Map<String, dynamic> config,
     required Map<String, dynamic> authPayload,
+    String? alunoSelecionadoId,
+    String? ultimoAlunoSelecionadoId,
+    String? googleUid,
+    String? googleEmail,
+    bool? temAcessoGestao,
+    List<Map<String, dynamic>> alunosVinculadosResumo = const [],
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
     final agora = DateTime.now();
-    final alunoId = aluno['id']?.toString() ?? aluno['docId']?.toString() ?? '';
+    final alunoId =
+        aluno['aluno_id']?.toString() ??
+        aluno['id']?.toString() ??
+        aluno['docId']?.toString() ??
+        '';
 
     final payload = {
       'versao': 1,
       'aluno_id': alunoId,
+      'alunoSelecionadoId': alunoSelecionadoId ?? alunoId,
+      'ultimoAlunoSelecionadoId': ultimoAlunoSelecionadoId ?? alunoId,
       'aluno_nome': aluno['nome']?.toString() ?? '',
+      'google_uid': googleUid ?? authPayload['google_uid']?.toString() ?? '',
+      'google_email':
+          googleEmail ?? authPayload['google_email']?.toString() ?? '',
+      if (temAcessoGestao != null) 'temAcessoGestao': temAcessoGestao,
+      'modoAtual': 'area_aluno',
+      'alunosVinculadosResumo': alunosVinculadosResumo,
       'authPayload': authPayload,
       'alunoCache': aluno,
       'configCache': config,
@@ -83,6 +102,43 @@ class AreaAlunoSessionService {
     final authPayload = Map<String, dynamic>.from(authRaw);
 
     try {
+      final modoAcesso = authPayload['modo_acesso']?.toString();
+      final alunoId =
+          authPayload['aluno_id_login']?.toString() ??
+          authPayload['aluno_id']?.toString() ??
+          sessao['aluno_id']?.toString() ??
+          '';
+      final googleUid = authPayload['google_uid']?.toString() ?? '';
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (modoAcesso == 'google' &&
+          alunoId.isNotEmpty &&
+          googleUid.isNotEmpty &&
+          user?.uid == googleUid) {
+        final result = await FirebaseFunctions.instance
+            .httpsCallable('validarAcessoGoogleAreaAluno')
+            .call({'alunoId': alunoId});
+
+        final data = Map<String, dynamic>.from(result.data as Map);
+        final success = data['success'] == true;
+
+        if (!success) {
+          debugPrint('⚠️ Sessão Google da Área do Aluno não foi revalidada.');
+          await limparSessao();
+          return null;
+        }
+
+        final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
+        final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+        await salvarSessao(
+          aluno: aluno,
+          config: config,
+          authPayload: authPayload,
+        );
+
+        return {'aluno': aluno, 'config': config, 'authPayload': authPayload};
+      }
+
       final callable = FirebaseFunctions.instance.httpsCallable(
         'validarAcessoAreaAluno',
       );
@@ -111,29 +167,16 @@ class AreaAlunoSessionService {
         authPayload: authPayload,
       );
 
-      return {
-        'aluno': aluno,
-        'config': config,
-        'authPayload': authPayload,
-      };
+      return {'aluno': aluno, 'config': config, 'authPayload': authPayload};
     } catch (e) {
       debugPrint('⚠️ Erro ao revalidar sessão da Área do Aluno: $e');
 
-      // Se não conseguir revalidar por internet/instabilidade, usa cache local.
-      // O próximo acesso tenta revalidar novamente.
-      final alunoCacheRaw = sessao['alunoCache'];
-      final configCacheRaw = sessao['configCache'];
-
-      if (alunoCacheRaw is Map && configCacheRaw is Map) {
-        return {
-          'aluno': Map<String, dynamic>.from(alunoCacheRaw),
-          'config': Map<String, dynamic>.from(configCacheRaw),
-          'authPayload': authPayload,
-          'offline': true,
-        };
-      }
-
-      return null;
+      return {
+        'sessionValidationFailed': true,
+        'message':
+            'Não foi possível validar sua sessão. Verifique sua internet e entre novamente.',
+        'authPayload': authPayload,
+      };
     }
   }
 

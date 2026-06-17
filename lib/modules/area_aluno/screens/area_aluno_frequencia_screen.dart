@@ -22,6 +22,8 @@ class AreaAlunoFrequenciaScreen extends StatefulWidget {
 }
 
 class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   String _periodo = 'Este Mês';
   String? _tipoAula;
 
@@ -37,9 +39,19 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
   String _mensagemErroRealtime = '';
   _FrequenciaResumo? _resumoRealtime;
 
+  bool _carregandoIndicadores = true;
+  bool _indicadoresAtivo = true;
+  bool _mostrarTextoUltimaPresencaIndicador = true;
+  List<_IndicadorFaixa> _faixasIndicadores = [];
+
   final Map<String, _CacheFrequenciaEntry> _cache = {};
 
   static const Duration _cacheValidade = Duration(minutes: 20);
+  static DateTime? _indicadoresCacheEm;
+  static bool? _indicadoresAtivoCache;
+  static bool? _mostrarTextoUltimaPresencaIndicadorCache;
+  static List<_IndicadorFaixa>? _faixasIndicadoresCache;
+  static const Duration _indicadoresCacheValidade = Duration(minutes: 20);
 
   final List<String> _periodos = const [
     'Este Mês',
@@ -76,13 +88,18 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarAtual();
+    _prepararTela();
   }
 
   @override
   void dispose() {
     _realtimeSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _prepararTela() async {
+    await _carregarConfiguracaoIndicadores();
+    await _carregarAtual();
   }
 
   Color _readableOn(Color background) {
@@ -106,9 +123,142 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         .toColor();
   }
 
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  Color _onPrimary() {
+    final t = context.uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return Colors.white;
+    return _readableOn(t.primary);
+  }
+
+  Future<void> _carregarConfiguracaoIndicadores({bool forcar = false}) async {
+    final cacheValido = _indicadoresCacheEm != null &&
+        DateTime.now().difference(_indicadoresCacheEm!) < _indicadoresCacheValidade &&
+        _faixasIndicadoresCache != null;
+
+    if (!forcar && cacheValido) {
+      if (!mounted) return;
+      setState(() {
+        _indicadoresAtivo = _indicadoresAtivoCache ?? true;
+        _mostrarTextoUltimaPresencaIndicador =
+            _mostrarTextoUltimaPresencaIndicadorCache ?? true;
+        _faixasIndicadores = List<_IndicadorFaixa>.from(_faixasIndicadoresCache!);
+        _carregandoIndicadores = false;
+      });
+      return;
+    }
+
+    if (mounted) setState(() => _carregandoIndicadores = true);
+
+    try {
+      final doc = await _firestore
+          .collection('configuracoes_sistema')
+          .doc('indicadores_ausencia')
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      final data = doc.data();
+      final faixasRaw = data?['faixas'];
+      final faixas = faixasRaw is List
+          ? faixasRaw
+          .whereType<Map>()
+          .map((e) => _IndicadorFaixa.fromMap(Map<String, dynamic>.from(e)))
+          .toList()
+          : _faixasIndicadoresPadrao();
+
+      faixas.sort((a, b) => a.ateDias.compareTo(b.ateDias));
+
+      _indicadoresAtivoCache = data?['ativo'] != false;
+      _mostrarTextoUltimaPresencaIndicadorCache =
+          data?['mostrar_texto_ultima_presenca'] != false;
+      _faixasIndicadoresCache = faixas;
+      _indicadoresCacheEm = DateTime.now();
+
+      if (!mounted) return;
+      setState(() {
+        _indicadoresAtivo = _indicadoresAtivoCache ?? true;
+        _mostrarTextoUltimaPresencaIndicador =
+            _mostrarTextoUltimaPresencaIndicadorCache ?? true;
+        _faixasIndicadores = faixas;
+        _carregandoIndicadores = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _indicadoresAtivo = true;
+        _mostrarTextoUltimaPresencaIndicador = true;
+        _faixasIndicadores = _faixasIndicadoresPadrao();
+        _carregandoIndicadores = false;
+      });
+    }
+  }
+
+  List<_IndicadorFaixa> _faixasIndicadoresPadrao() {
+    return const [
+      _IndicadorFaixa(
+        ateDias: 3,
+        corHex: '#2196F3',
+        label: 'Frequente',
+        geraAlerta: false,
+        mensagemAlerta: '',
+      ),
+      _IndicadorFaixa(
+        ateDias: 6,
+        corHex: '#4CAF50',
+        label: 'Regular',
+        geraAlerta: false,
+        mensagemAlerta: '',
+      ),
+      _IndicadorFaixa(
+        ateDias: 12,
+        corHex: '#FFC107',
+        label: 'Atenção',
+        geraAlerta: true,
+        mensagemAlerta: '',
+      ),
+      _IndicadorFaixa(
+        ateDias: 24,
+        corHex: '#FF9800',
+        label: 'Ausente',
+        geraAlerta: true,
+        mensagemAlerta: '',
+      ),
+      _IndicadorFaixa(
+        ateDias: 35,
+        corHex: '#FF5722',
+        label: 'Muito ausente',
+        geraAlerta: true,
+        mensagemAlerta: '',
+      ),
+      _IndicadorFaixa(
+        ateDias: 9999,
+        corHex: '#F44336',
+        label: 'Risco de inatividade',
+        geraAlerta: true,
+        mensagemAlerta: '',
+      ),
+    ];
+  }
+
   Future<void> _carregarAtual({bool forcar = false}) async {
     await _realtimeSub?.cancel();
     _realtimeSub = null;
+
+    if (_alunoId.isEmpty) {
+      setState(() {
+        _carregandoRealtime = false;
+        _carregandoBuscaUnica = false;
+        _erroRealtime = true;
+        _mensagemErroRealtime = 'Aluno não identificado.';
+      });
+      return;
+    }
 
     if (_usaTempoReal) {
       _iniciarTempoReal();
@@ -172,9 +322,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     });
 
     try {
-      final snapshot = await _buildLogsQuery().get(
-        const GetOptions(source: Source.server),
-      );
+      final snapshot = await _buildLogsQuery()
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
 
       final resumo = _calcularResumo(snapshot.docs);
 
@@ -216,6 +366,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
 
   Future<void> _atualizar() async {
     _cache.remove(_cacheKey);
+    await _carregarConfiguracaoIndicadores(forcar: true);
     await _carregarAtual(forcar: true);
   }
 
@@ -274,7 +425,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
   }
 
   Query<Map<String, dynamic>> _buildLogsQuery() {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+    Query<Map<String, dynamic>> query = _firestore
         .collection('log_presenca_alunos')
         .where('aluno_id', isEqualTo: _alunoId);
 
@@ -304,9 +455,11 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       ) {
     int presencas = 0;
     int faltas = 0;
-    int sequencia = 0;
-    bool sequenciaAtiva = true;
-    String ultimaPresenca = '';
+    int sequenciaPresencasAtual = 0;
+    int sequenciaFaltasAtual = 0;
+    int melhorSequenciaPresencas = 0;
+    int maiorSequenciaFaltas = 0;
+    DateTime? ultimaPresenca;
 
     final porDia = <String, int>{
       'seg': 0,
@@ -349,14 +502,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
 
       if (presente) {
         presencas++;
-
-        if (ultimaPresenca.isEmpty) {
-          ultimaPresenca = dataFormatada;
-        }
-
-        if (sequenciaAtiva) {
-          sequencia++;
-        }
+        ultimaPresenca ??= dataAula;
 
         if (porDia.containsKey(dia)) {
           porDia[dia] = (porDia[dia] ?? 0) + 1;
@@ -365,7 +511,6 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         porTipo[tipo] = (porTipo[tipo] ?? 0) + 1;
       } else {
         faltas++;
-        sequenciaAtiva = false;
       }
 
       historico.add({
@@ -374,8 +519,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         'data_formatada': dataFormatada,
         'presente': presente,
         'tipo_aula': tipo,
-        'professor_nome': data['professor_nome']?.toString() ??
+        'registrado_por': data['professor_nome']?.toString() ??
             data['professor']?.toString() ??
+            data['usuario_nome']?.toString() ??
             'Não informado',
         'observacao': data['observacao']?.toString() ?? '',
         'turma_id': data['turma_id']?.toString() ?? '',
@@ -389,13 +535,90 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     final totalAulas = presencas + faltas;
     final percentual = totalAulas > 0 ? (presencas / totalAulas) * 100 : 0.0;
 
+    if (docs.isNotEmpty) {
+      final primeiroStatusPresente = docs.first.data()['presente'] == true;
+
+      for (final doc in docs) {
+        final presente = doc.data()['presente'] == true;
+        if (presente == primeiroStatusPresente) {
+          if (presente) {
+            sequenciaPresencasAtual++;
+          } else {
+            sequenciaFaltasAtual++;
+          }
+        } else {
+          break;
+        }
+      }
+    }
+
+    final cronologico = docs.reversed.toList();
+    int atualPresencas = 0;
+    int atualFaltas = 0;
+
+    for (final doc in cronologico) {
+      final presente = doc.data()['presente'] == true;
+      if (presente) {
+        atualPresencas++;
+        atualFaltas = 0;
+      } else {
+        atualFaltas++;
+        atualPresencas = 0;
+      }
+      if (atualPresencas > melhorSequenciaPresencas) {
+        melhorSequenciaPresencas = atualPresencas;
+      }
+      if (atualFaltas > maiorSequenciaFaltas) {
+        maiorSequenciaFaltas = atualFaltas;
+      }
+    }
+
+    final ultimaWidget = _ultimaPresencaDoAlunoWidget();
+    if (ultimaWidget != null &&
+        (ultimaPresenca == null || ultimaWidget.isAfter(ultimaPresenca))) {
+      ultimaPresenca = ultimaWidget;
+    }
+
+    final diasDesdeUltimaPresenca = _diasDesde(ultimaPresenca);
+    final indicador = _faixaParaDias(diasDesdeUltimaPresenca);
+    final perfil = _classificarPerfil(percentual: percentual, totalAulas: totalAulas);
+    final tendencia = _classificarTendencia(docs);
+    final risco = _classificarRisco(
+      indicador: indicador,
+      percentual: percentual,
+      totalAulas: totalAulas,
+      sequenciaFaltasAtual: sequenciaFaltasAtual,
+      diasDesdeUltimaPresenca: diasDesdeUltimaPresenca,
+    );
+    final diagnostico = _montarDiagnostico(
+      indicador: indicador,
+      perfil: perfil,
+      tendencia: tendencia,
+      risco: risco,
+      presencas: presencas,
+      totalAulas: totalAulas,
+      percentual: percentual,
+      sequenciaPresencasAtual: sequenciaPresencasAtual,
+      sequenciaFaltasAtual: sequenciaFaltasAtual,
+      diasDesdeUltimaPresenca: diasDesdeUltimaPresenca,
+    );
+
     return _FrequenciaResumo(
       totalPresencas: presencas,
       totalFaltas: faltas,
       totalAulas: totalAulas,
       percentualPresenca: percentual,
-      sequenciaAtual: sequencia,
+      sequenciaPresencasAtual: sequenciaPresencasAtual,
+      sequenciaFaltasAtual: sequenciaFaltasAtual,
+      melhorSequenciaPresencas: melhorSequenciaPresencas,
+      maiorSequenciaFaltas: maiorSequenciaFaltas,
       ultimaPresenca: ultimaPresenca,
+      diasDesdeUltimaPresenca: diasDesdeUltimaPresenca,
+      indicadorAtual: indicador,
+      perfil: perfil,
+      tendencia: tendencia,
+      risco: risco,
+      diagnostico: diagnostico,
       presencasPorDia: porDia,
       presencasPorTipoAula: porTipo,
       historico: historico,
@@ -404,10 +627,276 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     );
   }
 
+  DateTime? _ultimaPresencaDoAlunoWidget() {
+    final campos = [
+      widget.aluno['ultimo_dia_presente'],
+      widget.aluno['ultimoDiaPresente'],
+      widget.aluno['ultima_presenca'],
+      widget.aluno['ultimaPresenca'],
+      widget.aluno['data_ultima_presenca'],
+      widget.aluno['dataUltimaPresenca'],
+      widget.aluno['ultimo_presente_em'],
+      widget.aluno['ultimoPresenteEm'],
+      widget.aluno['last_presence'],
+      widget.aluno['lastPresence'],
+    ];
+
+    for (final campo in campos) {
+      final data = _toDate(campo) ?? _parseDataBrasileira(campo);
+      if (data != null) return data;
+    }
+
+    return null;
+  }
+
+  DateTime? _parseDataBrasileira(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+
+    try {
+      return DateFormat('dd/MM/yyyy').parseStrict(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _diasDesde(DateTime? data) {
+    if (data == null) return null;
+    final agora = DateTime.now();
+    final hoje = DateTime(agora.year, agora.month, agora.day);
+    final base = DateTime(data.year, data.month, data.day);
+    final dias = hoje.difference(base).inDays;
+    return dias < 0 ? 0 : dias;
+  }
+
+  _IndicadorFaixa? _faixaParaDias(int? dias) {
+    if (!_indicadoresAtivo || dias == null) return null;
+
+    final faixas = _faixasIndicadores.isEmpty
+        ? _faixasIndicadoresPadrao()
+        : _faixasIndicadores;
+
+    for (final faixa in faixas) {
+      if (dias <= faixa.ateDias) return faixa;
+    }
+
+    return faixas.isNotEmpty ? faixas.last : null;
+  }
+
+  _AnaliseInfo _classificarPerfil({
+    required double percentual,
+    required int totalAulas,
+  }) {
+    if (totalAulas == 0) {
+      return const _AnaliseInfo(
+        titulo: 'Sem dados no período',
+        descricao: 'Ainda não existem chamadas suficientes nesse filtro para avaliar a constância.',
+        icone: Icons.hourglass_empty_rounded,
+        corHex: '#9E9E9E',
+      );
+    }
+
+    if (percentual >= 85) {
+      return const _AnaliseInfo(
+        titulo: 'Muito frequente',
+        descricao: 'Participa da maioria das aulas. Ótimo sinal de compromisso.',
+        icone: Icons.verified_rounded,
+        corHex: '#4CAF50',
+      );
+    }
+
+    if (percentual >= 65) {
+      return const _AnaliseInfo(
+        titulo: 'Frequente',
+        descricao: 'Vai bem, mas ainda pode melhorar a regularidade.',
+        icone: Icons.thumb_up_alt_rounded,
+        corHex: '#2196F3',
+      );
+    }
+
+    if (percentual >= 45) {
+      return const _AnaliseInfo(
+        titulo: 'Regular',
+        descricao: 'Participa algumas vezes, mas perde uma parte importante das aulas.',
+        icone: Icons.balance_rounded,
+        corHex: '#FFC107',
+      );
+    }
+
+    if (percentual >= 20) {
+      return const _AnaliseInfo(
+        titulo: 'Baixa constância',
+        descricao: 'A presença está baixa. É bom acompanhar para não perder o ritmo.',
+        icone: Icons.trending_down_rounded,
+        corHex: '#FF9800',
+      );
+    }
+
+    if (percentual > 0) {
+      return const _AnaliseInfo(
+        titulo: 'Muito irregular',
+        descricao: 'Aparece pouco no período escolhido. Precisa de atenção.',
+        icone: Icons.warning_amber_rounded,
+        corHex: '#FF5722',
+      );
+    }
+
+    return const _AnaliseInfo(
+      titulo: 'Sem presença no período',
+      descricao: 'Não há presença registrada no período escolhido.',
+      icone: Icons.person_off_rounded,
+      corHex: '#F44336',
+    );
+  }
+
+  _AnaliseInfo _classificarTendencia(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
+    if (docs.length < 4) {
+      return const _AnaliseInfo(
+        titulo: 'Poucos registros',
+        descricao: 'Ainda há poucos registros para identificar uma tendência confiável.',
+        icone: Icons.insights_rounded,
+        corHex: '#9E9E9E',
+      );
+    }
+
+    final recentes = docs.take(4).toList();
+    final anteriores = docs.skip(4).take(4).toList();
+
+    final recentesPct = _percentualDocs(recentes);
+    final anterioresPct = anteriores.isEmpty ? recentesPct : _percentualDocs(anteriores);
+    final diff = recentesPct - anterioresPct;
+
+    if (diff >= 18) {
+      return const _AnaliseInfo(
+        titulo: 'Melhorando',
+        descricao: 'Nas últimas aulas, a participação melhorou em relação ao período anterior.',
+        icone: Icons.trending_up_rounded,
+        corHex: '#4CAF50',
+      );
+    }
+
+    if (diff <= -18) {
+      return const _AnaliseInfo(
+        titulo: 'Queda recente',
+        descricao: 'Nas últimas aulas, a presença caiu. Vale ficar atento.',
+        icone: Icons.south_east_rounded,
+        corHex: '#F44336',
+      );
+    }
+
+    return const _AnaliseInfo(
+      titulo: 'Estável',
+      descricao: 'O padrão recente está parecido com o comportamento anterior.',
+      icone: Icons.trending_flat_rounded,
+      corHex: '#2196F3',
+    );
+  }
+
+  double _percentualDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) return 0;
+    final presentes = docs.where((d) => d.data()['presente'] == true).length;
+    return (presentes / docs.length) * 100;
+  }
+
+  _AnaliseInfo _classificarRisco({
+    required _IndicadorFaixa? indicador,
+    required double percentual,
+    required int totalAulas,
+    required int sequenciaFaltasAtual,
+    required int? diasDesdeUltimaPresenca,
+  }) {
+    if (indicador?.geraAlerta == true ||
+        sequenciaFaltasAtual >= 3 ||
+        (diasDesdeUltimaPresenca != null && diasDesdeUltimaPresenca >= 21)) {
+      return const _AnaliseInfo(
+        titulo: 'Precisa de atenção',
+        descricao: 'Existe sinal de afastamento. É bom conversar com a coordenação ou professor responsável.',
+        icone: Icons.priority_high_rounded,
+        corHex: '#F44336',
+      );
+    }
+
+    if (totalAulas >= 4 && percentual < 45) {
+      return const _AnaliseInfo(
+        titulo: 'Acompanhar de perto',
+        descricao: 'A frequência está baixa no período. Melhor manter atenção para recuperar o ritmo.',
+        icone: Icons.visibility_rounded,
+        corHex: '#FF9800',
+      );
+    }
+
+    return const _AnaliseInfo(
+      titulo: 'Sem alerta forte',
+      descricao: 'Não existe sinal forte de afastamento neste momento.',
+      icone: Icons.check_circle_rounded,
+      corHex: '#4CAF50',
+    );
+  }
+
+  String _montarDiagnostico({
+    required _IndicadorFaixa? indicador,
+    required _AnaliseInfo perfil,
+    required _AnaliseInfo tendencia,
+    required _AnaliseInfo risco,
+    required int presencas,
+    required int totalAulas,
+    required double percentual,
+    required int sequenciaPresencasAtual,
+    required int sequenciaFaltasAtual,
+    required int? diasDesdeUltimaPresenca,
+  }) {
+    final estado = indicador?.label ?? 'Sem indicador atual';
+    final ultima = diasDesdeUltimaPresenca == null
+        ? 'sem presença registrada'
+        : diasDesdeUltimaPresenca == 0
+        ? 'com presença hoje'
+        : diasDesdeUltimaPresenca == 1
+        ? 'com última presença ontem'
+        : 'com última presença há $diasDesdeUltimaPresenca dias';
+
+    final buffer = StringBuffer()
+      ..write('Situação atual: $estado, $ultima. ');
+
+    if (totalAulas == 0) {
+      buffer.write('Neste filtro ainda não existem aulas registradas para montar uma análise completa.');
+      return buffer.toString();
+    }
+
+    buffer.write(
+      'No período selecionado, participou de $presencas de $totalAulas aula(s), '
+          'ficando com ${percentual.toStringAsFixed(0)}% de frequência. ',
+    );
+
+    buffer.write('Perfil: ${perfil.titulo.toLowerCase()}. ');
+
+    if (sequenciaPresencasAtual > 0) {
+      buffer.write('Vem de $sequenciaPresencasAtual presença(s) seguida(s). ');
+    } else if (sequenciaFaltasAtual > 0) {
+      buffer.write('Vem de $sequenciaFaltasAtual falta(s) seguida(s). ');
+    }
+
+    buffer.write('Tendência: ${tendencia.titulo.toLowerCase()}. ');
+    buffer.write('Leitura geral: ${risco.titulo.toLowerCase()}.');
+
+    return buffer.toString();
+  }
+
   DateTime? _toDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
+    if (value is Map) {
+      final seconds = value['_seconds'] ?? value['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+      if (seconds is num) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds.toInt() * 1000);
+      }
+    }
     return null;
   }
 
@@ -493,7 +982,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         return 'Janeiro a Dezembro de ${agora.year - 1}';
 
       case 'Todos':
-        return 'Todos os registros encontrados nos logs';
+        return 'Todos os registros encontrados';
 
       default:
         return '';
@@ -502,6 +991,22 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
 
   String _formatHora(DateTime date) {
     return DateFormat('HH:mm').format(date);
+  }
+
+  String _formatDataCurta(DateTime? date) {
+    if (date == null) return 'Nunca';
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
+  Color _colorFromHex(String value, {Color? fallback}) {
+    try {
+      var cleaned = value.trim().replaceAll('#', '').toUpperCase();
+      if (cleaned.length == 6) cleaned = 'FF$cleaned';
+      if (cleaned.length != 8) return fallback ?? context.uai.textMuted;
+      return Color(int.parse(cleaned, radix: 16));
+    } catch (_) {
+      return fallback ?? context.uai.textMuted;
+    }
   }
 
   @override
@@ -514,9 +1019,6 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     final erroAtual = _usaTempoReal ? _erroRealtime : _erroBuscaUnica;
     final mensagemErro =
     _usaTempoReal ? _mensagemErroRealtime : _mensagemErroBuscaUnica;
-
-    final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = _readableOn(appBarBg);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -534,16 +1036,16 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: appBarFg.withOpacity(0.82),
+                fontWeight: FontWeight.w600,
+                color: _appBarFg().withOpacity(0.82),
               ),
             ),
           ],
         ),
         centerTitle: true,
-        backgroundColor: appBarBg,
-        foregroundColor: appBarFg,
-        iconTheme: IconThemeData(color: appBarFg),
+        backgroundColor: _appBarBg(),
+        foregroundColor: _appBarFg(),
+        iconTheme: IconThemeData(color: _appBarFg()),
         elevation: 0,
         actions: [
           IconButton(
@@ -555,8 +1057,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth =
-          constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth;
 
           return Center(
             child: ConstrainedBox(
@@ -567,7 +1068,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                   Expanded(
                     child: _buildBody(
                       resumo: resumoAtual,
-                      carregando: carregandoAtual,
+                      carregando: carregandoAtual || _carregandoIndicadores,
                       erro: erroAtual,
                       mensagemErro: mensagemErro,
                     ),
@@ -602,12 +1103,22 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
               const SizedBox(height: 14),
               Text(
                 _usaTempoReal
-                    ? 'Escutando logs deste mês...'
-                    : 'Buscando logs do período...',
+                    ? 'Atualizando sua frequência deste mês...'
+                    : 'Buscando sua frequência do período...',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: t.textSecondary,
                   fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Só um instante, estamos organizando os dados de forma fácil de entender.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: t.textMuted,
+                  fontSize: 12,
+                  height: 1.3,
                 ),
               ),
             ],
@@ -639,7 +1150,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
               Icon(Icons.error_outline_rounded, size: 76, color: danger),
               const SizedBox(height: 14),
               Text(
-                'Ops! Algo deu errado',
+                'Não foi possível carregar agora',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: t.textPrimary,
@@ -708,11 +1219,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: primary.withOpacity(0.12)),
                       ),
-                      child: Icon(
-                        Icons.tune_rounded,
-                        color: primary,
-                        size: 19,
-                      ),
+                      child: Icon(Icons.tune_rounded, color: primary, size: 19),
                     ),
                     const SizedBox(width: 9),
                     Expanded(
@@ -720,7 +1227,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Filtros da frequência',
+                            'Escolha o período',
                             style: TextStyle(
                               color: t.textPrimary,
                               fontWeight: FontWeight.w900,
@@ -731,8 +1238,8 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                           const SizedBox(height: 2),
                           Text(
                             _usaTempoReal
-                                ? 'Este mês em tempo real'
-                                : 'Busca única com cache inteligente',
+                                ? 'Este mês atualiza sozinho quando há nova chamada'
+                                : 'Este filtro usa cache para economizar internet e leituras',
                             style: TextStyle(
                               color: t.textSecondary,
                               fontSize: 11,
@@ -888,7 +1395,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             ],
           ),
           content: Text(
-            'Esse filtro busca todos os logs encontrados para este aluno. '
+            'Esse filtro busca todos os registros encontrados para este aluno. '
                 'Depois da primeira busca, o resultado fica em cache por ${_cacheValidade.inMinutes} minutos.',
             style: TextStyle(color: t.textSecondary, height: 1.35),
           ),
@@ -1043,7 +1550,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tente alterar o filtro ou confira se existem logs para este aluno.',
+              'Tente escolher outro período ou outro tipo de aula.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: t.textSecondary),
             ),
@@ -1059,8 +1566,14 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
         children: [
-          _buildHeaderEstatistico(resumo),
-          const SizedBox(height: 10),
+          _buildResumoLeigo(resumo),
+          const SizedBox(height: 12),
+          _buildExplicacaoCard(resumo),
+          const SizedBox(height: 12),
+          _buildAnalisesCards(resumo),
+          const SizedBox(height: 12),
+          _buildMetricasDetalhadas(resumo),
+          const SizedBox(height: 12),
           _buildFonteDadosCard(resumo),
           const SizedBox(height: 12),
           _buildPresencasPorDia(resumo),
@@ -1075,52 +1588,13 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     );
   }
 
-  Widget _buildFonteDadosCard(_FrequenciaResumo resumo) {
+  Widget _buildResumoLeigo(_FrequenciaResumo resumo) {
     final t = context.uai;
-    final cacheEntry = _cache[_cacheKey];
-    final usandoCache = !_usaTempoReal && cacheEntry != null;
-    final color = _usaTempoReal ? t.success : t.info;
-    final accent = _ensureVisible(color, t.card);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.14)),
-        boxShadow: t.softShadow,
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded,
-            color: accent,
-            size: 20,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              _usaTempoReal
-                  ? 'Este mês está em tempo real. Novos logs aparecem automaticamente.'
-                  : usandoCache
-                  ? 'Filtro carregado em cache às ${_formatHora(cacheEntry.criadoEm)}. Toque em atualizar para buscar de novo.'
-                  : 'Filtro carregado por busca única.',
-              style: TextStyle(
-                color: accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderEstatistico(_FrequenciaResumo resumo) {
-    final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onPrimary();
+    final indicador = resumo.indicadorAtual;
+    final indicadorColor = indicador == null
+        ? onPrimary
+        : _ensureVisible(_colorFromHex(indicador.corHex), t.primary);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1159,53 +1633,390 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 430;
-
-              final children = [
-                _buildMetrica(
-                  '${resumo.totalPresencas}',
-                  'Presenças',
-                  Icons.check_circle_rounded,
-                  t.success,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Resumo fácil',
+                      style: TextStyle(
+                        color: onPrimary.withOpacity(0.82),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${resumo.percentualPresenca.toStringAsFixed(0)}% de frequência',
+                      style: TextStyle(
+                        color: onPrimary,
+                        fontSize: 27,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${resumo.totalPresencas} presença(s) em ${resumo.totalAulas} aula(s)',
+                      style: TextStyle(
+                        color: onPrimary.withOpacity(0.82),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
-                _buildMetrica(
-                  '${resumo.totalFaltas}',
-                  'Faltas',
-                  Icons.cancel_rounded,
-                  t.error,
+              ),
+              SizedBox(
+                width: 86,
+                height: 86,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 86,
+                      height: 86,
+                      child: CircularProgressIndicator(
+                        value: resumo.totalAulas > 0
+                            ? (resumo.percentualPresenca / 100).clamp(0.0, 1.0)
+                            : 0,
+                        strokeWidth: 9,
+                        backgroundColor: onPrimary.withOpacity(0.24),
+                        valueColor: AlwaysStoppedAnimation<Color>(indicadorColor),
+                      ),
+                    ),
+                    Text(
+                      '${resumo.percentualPresenca.toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        color: onPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
                 ),
-                _buildMetrica(
-                  '${resumo.percentualPresenca.toStringAsFixed(0)}%',
-                  'Frequência',
-                  Icons.pie_chart_rounded,
-                  t.warning,
-                ),
-              ];
-
-              if (narrow) {
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  alignment: WrapAlignment.center,
-                  children: children,
-                );
-              }
-
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: children,
-              );
-            },
+              ),
+            ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
+          _buildIndicadorAtualPill(resumo),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIndicadorAtualPill(_FrequenciaResumo resumo) {
+    final t = context.uai;
+    final onPrimary = _onPrimary();
+    final indicador = resumo.indicadorAtual;
+    final color = indicador == null
+        ? onPrimary
+        : _ensureVisible(_colorFromHex(indicador.corHex), t.primary);
+    final label = indicador?.label ?? 'Sem indicador atual';
+    final dias = resumo.diasDesdeUltimaPresenca;
+    final ultimaTexto = dias == null
+        ? 'Sem presença registrada'
+        : dias == 0
+        ? 'Presença registrada hoje'
+        : dias == 1
+        ? 'Última presença ontem'
+        : 'Última presença há $dias dias';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: onPrimary.withOpacity(0.13),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: onPrimary.withOpacity(0.16)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: onPrimary.withOpacity(0.30)),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Situação atual: $label',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: onPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                if (_mostrarTextoUltimaPresencaIndicador)
+                  Text(
+                    ultimaTexto,
+                    style: TextStyle(
+                      color: onPrimary.withOpacity(0.78),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExplicacaoCard(_FrequenciaResumo resumo) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.card);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(borderColor: accent.withOpacity(0.14)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(Icons.psychology_alt_rounded, color: accent),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'O que isso quer dizer?',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  resumo.diagnostico,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 12.5,
+                    height: 1.34,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalisesCards(_FrequenciaResumo resumo) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildAnaliseCard(
+                title: 'Constância',
+                info: resumo.perfil,
+                help: 'Mostra se a presença é regular no período escolhido.',
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: _buildAnaliseCard(
+                title: 'Tendência',
+                info: resumo.tendencia,
+                help: 'Compara as aulas recentes com as anteriores.',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        _buildAnaliseCard(
+          title: 'Acompanhamento',
+          info: resumo.risco,
+          help: 'Junta presença atual, faltas seguidas e frequência para indicar atenção.',
+          fullWidth: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnaliseCard({
+    required String title,
+    required _AnaliseInfo info,
+    required String help,
+    bool fullWidth = false,
+  }) {
+    final t = context.uai;
+    final color = _ensureVisible(_colorFromHex(info.corHex), t.card);
+
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.all(13),
+      decoration: _cardDecoration(borderColor: color.withOpacity(0.14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(info.icone, color: color, size: 19),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      info.titulo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            info.descricao,
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 11.8,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            help,
+            style: TextStyle(
+              color: t.textMuted,
+              fontSize: 10.5,
+              height: 1.22,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricasDetalhadas(_FrequenciaResumo resumo) {
+    final t = context.uai;
+
+    return _buildWhiteCard(
+      icon: Icons.analytics_rounded,
+      iconColor: t.associacao,
+      title: 'Detalhes do período',
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.totalPresencas}',
+                  label: 'Presenças',
+                  icon: Icons.check_circle_rounded,
+                  color: t.success,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.totalFaltas}',
+                  label: 'Faltas',
+                  icon: Icons.cancel_rounded,
+                  color: t.error,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.totalAulas}',
+                  label: 'Aulas',
+                  icon: Icons.event_note_rounded,
+                  color: t.info,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.sequenciaPresencasAtual}',
+                  label: 'Presenças seguidas',
+                  icon: Icons.local_fire_department_rounded,
+                  color: t.warning,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.melhorSequenciaPresencas}',
+                  label: 'Melhor sequência',
+                  icon: Icons.emoji_events_rounded,
+                  color: t.inscricoes,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMiniMetric(
+                  value: '${resumo.maiorSequenciaFaltas}',
+                  label: 'Maior sequência de faltas',
+                  icon: Icons.warning_amber_rounded,
+                  color: t.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
-              value: resumo.totalAulas > 0 ? resumo.percentualPresenca / 100 : 0,
+              value: resumo.totalAulas > 0
+                  ? (resumo.percentualPresenca / 100).clamp(0.0, 1.0)
+                  : 0,
               minHeight: 10,
-              backgroundColor: onPrimary.withOpacity(0.25),
+              backgroundColor: t.border,
               valueColor: AlwaysStoppedAnimation<Color>(
                 resumo.percentualPresenca >= 80
                     ? t.success
@@ -1215,80 +2026,58 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 430;
-
-              final widgets = [
-                _buildInfoRow(
-                  Icons.local_fire_department_rounded,
-                  'Sequência',
-                  '${resumo.sequenciaAtual} presença(s)',
-                  t.warning,
-                ),
-                _buildInfoRow(
-                  Icons.event_available_rounded,
-                  'Última presença',
-                  resumo.ultimaPresenca.isEmpty ? 'Nunca' : resumo.ultimaPresenca,
-                  t.success,
-                ),
-              ];
-
-              if (narrow) {
-                return Column(
-                  children: [
-                    widgets[0],
-                    const SizedBox(height: 10),
-                    widgets[1],
-                  ],
-                );
-              }
-
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: widgets,
-              );
-            },
+          const SizedBox(height: 7),
+          Text(
+            'Essa barra mostra a porcentagem de presença dentro do período escolhido.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMetrica(String valor, String label, IconData icon, Color color) {
+  Widget _buildMiniMetric({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
-    final accent = _ensureVisible(color, t.primary);
+    final accent = _ensureVisible(color, t.cardAlt);
 
-    return SizedBox(
-      width: 94,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withOpacity(0.12)),
+      ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: onPrimary.withOpacity(0.13)),
-            ),
-            child: Icon(icon, color: accent, size: 25),
-          ),
-          const SizedBox(height: 8),
+          Icon(icon, color: accent, size: 18),
+          const SizedBox(height: 4),
           Text(
-            valor,
+            value,
             style: TextStyle(
-              color: onPrimary,
-              fontSize: 24,
+              color: t.textPrimary,
+              fontSize: 17,
               fontWeight: FontWeight.w900,
             ),
           ),
           Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.80),
-              fontSize: 11,
+              color: t.textSecondary,
+              fontSize: 9.5,
+              height: 1.1,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1297,38 +2086,46 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
+  Widget _buildFonteDadosCard(_FrequenciaResumo resumo) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
-    final accent = _ensureVisible(color, t.primary);
+    final cacheEntry = _cache[_cacheKey];
+    final usandoCache = !_usaTempoReal && cacheEntry != null;
+    final color = _usaTempoReal ? t.success : t.info;
+    final accent = _ensureVisible(color, t.card);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: accent, size: 18),
-        const SizedBox(width: 7),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withOpacity(0.14)),
+        boxShadow: t.softShadow,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded,
+            color: accent,
+            size: 20,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              _usaTempoReal
+                  ? 'Este mês está em tempo real. Quando uma chamada nova for registrada, esta tela atualiza sozinha.'
+                  : usandoCache
+                  ? 'Dados carregados em cache às ${_formatHora(cacheEntry.criadoEm)}. Toque em atualizar para buscar de novo.'
+                  : 'Dados carregados uma vez para economizar leituras.',
               style: TextStyle(
-                color: onPrimary.withOpacity(0.70),
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
+                color: accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
               ),
             ),
-            Text(
-              value,
-              style: TextStyle(
-                color: onPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1352,26 +2149,42 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return _buildWhiteCard(
       icon: Icons.calendar_month_rounded,
       iconColor: context.uai.primary,
-      title: 'Presenças por dia',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final cardWidth =
-          constraints.maxWidth < 420 ? (constraints.maxWidth - 18) / 4 : 46.0;
+      title: 'Em quais dias mais teve presença',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Aqui dá para ver em quais dias da semana existem mais presenças registradas.',
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 11.5,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = constraints.maxWidth < 420
+                  ? (constraints.maxWidth - 18) / 4
+                  : 46.0;
 
-          return Wrap(
-            spacing: 6,
-            runSpacing: 7,
-            alignment: WrapAlignment.center,
-            children: dias.map((dia) {
-              final qtd = porDia[dia[0]] ?? 0;
+              return Wrap(
+                spacing: 6,
+                runSpacing: 7,
+                alignment: WrapAlignment.center,
+                children: dias.map((dia) {
+                  final qtd = porDia[dia[0]] ?? 0;
 
-              return SizedBox(
-                width: cardWidth,
-                child: _buildDiaCard(dia[1], qtd),
+                  return SizedBox(
+                    width: cardWidth,
+                    child: _buildDiaCard(dia[1], qtd),
+                  );
+                }).toList(),
               );
-            }).toList(),
-          );
-        },
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1427,18 +2240,31 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       iconColor: context.uai.info,
       title: 'Presenças por tipo de aula',
       child: Column(
-        children: entries.map((entry) {
-          final color = _tipoAulaColor(entry.key);
-          final total = resumo.totalPresencas == 0 ? 1 : resumo.totalPresencas;
-          final percent = entry.value / total;
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Mostra em quais tipos de aula houve presença. Exemplo: objetiva, roda, instrumentação ou evento.',
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 11.5,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...entries.map((entry) {
+            final color = _tipoAulaColor(entry.key);
+            final total = resumo.totalPresencas == 0 ? 1 : resumo.totalPresencas;
+            final percent = entry.value / total;
 
-          return _buildTipoAulaBar(
-            tipo: entry.key,
-            quantidade: entry.value,
-            percent: percent,
-            color: color,
-          );
-        }).toList(),
+            return _buildTipoAulaBar(
+              tipo: entry.key,
+              quantidade: entry.value,
+              percent: percent,
+              color: color,
+            );
+          }),
+        ],
       ),
     );
   }
@@ -1593,8 +2419,8 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             ),
             _buildHistoricoDetail(
               icon: Icons.person_rounded,
-              label: 'Professor',
-              value: item['professor_nome']?.toString() ?? 'Não informado',
+              label: 'Aula registrada por',
+              value: item['registrado_por']?.toString() ?? 'Não informado',
               color: t.info,
             ),
             if ((item['turma_nome']?.toString() ?? '').isNotEmpty)
@@ -1607,7 +2433,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             if (data != null)
               _buildHistoricoDetail(
                 icon: Icons.access_time_rounded,
-                label: 'Registro',
+                label: 'Data do registro',
                 value: DateFormat('dd/MM/yyyy HH:mm').format(data),
                 color: t.warning,
               ),
@@ -1647,7 +2473,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
           Icon(icon, color: accent, size: 18),
           const SizedBox(width: 8),
           SizedBox(
-            width: 94,
+            width: 118,
             child: Text(
               label,
               style: TextStyle(
@@ -1775,8 +2601,57 @@ class _CacheFrequenciaEntry {
   });
 
   bool get estaValido {
-    return DateTime.now().difference(criadoEm) < const Duration(minutes: 20);
+    return DateTime.now().difference(criadoEm) <
+        _AreaAlunoFrequenciaScreenState._cacheValidade;
   }
+}
+
+class _IndicadorFaixa {
+  final int ateDias;
+  final String corHex;
+  final String label;
+  final bool geraAlerta;
+  final String mensagemAlerta;
+
+  const _IndicadorFaixa({
+    required this.ateDias,
+    required this.corHex,
+    required this.label,
+    required this.geraAlerta,
+    required this.mensagemAlerta,
+  });
+
+  factory _IndicadorFaixa.fromMap(Map<String, dynamic> map) {
+    return _IndicadorFaixa(
+      ateDias: _parseInt(map['ate_dias'], fallback: 9999),
+      corHex: map['cor']?.toString() ?? '#9E9E9E',
+      label: map['label']?.toString().trim().isNotEmpty == true
+          ? map['label'].toString().trim()
+          : 'Indicador',
+      geraAlerta: map['gera_alerta'] == true,
+      mensagemAlerta: map['mensagem_alerta']?.toString() ?? '',
+    );
+  }
+
+  static int _parseInt(dynamic value, {required int fallback}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '') ?? fallback;
+  }
+}
+
+class _AnaliseInfo {
+  final String titulo;
+  final String descricao;
+  final IconData icone;
+  final String corHex;
+
+  const _AnaliseInfo({
+    required this.titulo,
+    required this.descricao,
+    required this.icone,
+    required this.corHex,
+  });
 }
 
 class _FrequenciaResumo {
@@ -1784,8 +2659,17 @@ class _FrequenciaResumo {
   final int totalFaltas;
   final int totalAulas;
   final double percentualPresenca;
-  final int sequenciaAtual;
-  final String ultimaPresenca;
+  final int sequenciaPresencasAtual;
+  final int sequenciaFaltasAtual;
+  final int melhorSequenciaPresencas;
+  final int maiorSequenciaFaltas;
+  final DateTime? ultimaPresenca;
+  final int? diasDesdeUltimaPresenca;
+  final _IndicadorFaixa? indicadorAtual;
+  final _AnaliseInfo perfil;
+  final _AnaliseInfo tendencia;
+  final _AnaliseInfo risco;
+  final String diagnostico;
   final Map<String, int> presencasPorDia;
   final Map<String, int> presencasPorTipoAula;
   final List<Map<String, dynamic>> historico;
@@ -1797,8 +2681,17 @@ class _FrequenciaResumo {
     required this.totalFaltas,
     required this.totalAulas,
     required this.percentualPresenca,
-    required this.sequenciaAtual,
+    required this.sequenciaPresencasAtual,
+    required this.sequenciaFaltasAtual,
+    required this.melhorSequenciaPresencas,
+    required this.maiorSequenciaFaltas,
     required this.ultimaPresenca,
+    required this.diasDesdeUltimaPresenca,
+    required this.indicadorAtual,
+    required this.perfil,
+    required this.tendencia,
+    required this.risco,
+    required this.diagnostico,
     required this.presencasPorDia,
     required this.presencasPorTipoAula,
     required this.historico,

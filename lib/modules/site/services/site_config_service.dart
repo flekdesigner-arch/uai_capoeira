@@ -85,17 +85,71 @@ class SiteConfigService {
   Map<String, dynamic> configuracaoPadraoAreaAluno() {
     return {
       'visivel_site': false,
+      'ativo': false,
       'aceitar_apenas_ativos': true,
       'exigir_telefone_confirmacao': true,
+      'mostrar_dashboard': true,
       'mostrar_foto': true,
       'mostrar_dados_basicos': true,
       'mostrar_academia_turma': true,
       'mostrar_graduacao': true,
+      'mostrar_graduacao_atual': true,
+      'mostrar_frequencia': true,
+      'mostrar_eventos': true,
+      'mostrar_certificados': true,
+      'mostrar_financeiro_eventos': true,
+      'mostrar_solicitacao_alteracao': true,
+      'mostrar_graduacao_evento': true,
+      'mostrar_camisa_evento': true,
+      'mostrar_presenca_evento': true,
       'mostrar_presencas': false,
       'mostrar_historico_chamadas': false,
+      'modo_dados_basicos': 'limitado',
+      'modo_telefone': 'mascarado',
+      'modo_endereco': 'cidade_bairro',
+      'modo_responsavel': 'nome',
+      'modo_financeiro': 'completo',
+      'modo_graduacao_evento': 'completo',
+      'google_login_ativo': false,
+      'google_vinculacao_modo': 'desativada',
+      'permitir_acesso_basico_sem_google': true,
+      'permitir_vincular_google_no_primeiro_acesso': true,
+      'permitir_trocar_google_sem_admin': false,
+      'sem_google_mostrar_dashboard': true,
+      'sem_google_mostrar_dados_basicos': true,
+      'sem_google_modo_dados_basicos': 'limitado',
+      'sem_google_mostrar_frequencia': true,
+      'sem_google_mostrar_eventos': true,
+      'sem_google_mostrar_certificados': true,
+      'sem_google_mostrar_financeiro_eventos': true,
+      'sem_google_modo_financeiro': 'completo',
+      'sem_google_mostrar_graduacao_evento': true,
+      'sem_google_modo_graduacao_evento': 'completo',
+      'sem_google_mostrar_camisa_evento': true,
+      'sem_google_mostrar_presenca_evento': true,
+      'sem_google_mostrar_solicitacao_alteracao': true,
+      'com_google_mostrar_dashboard': true,
+      'com_google_mostrar_dados_basicos': true,
+      'com_google_modo_dados_basicos': 'limitado',
+      'com_google_mostrar_frequencia': true,
+      'com_google_mostrar_eventos': true,
+      'com_google_mostrar_certificados': true,
+      'com_google_mostrar_financeiro_eventos': true,
+      'com_google_modo_financeiro': 'completo',
+      'com_google_mostrar_graduacao_evento': true,
+      'com_google_modo_graduacao_evento': 'completo',
+      'com_google_mostrar_camisa_evento': true,
+      'com_google_mostrar_presenca_evento': true,
+      'com_google_mostrar_solicitacao_alteracao': true,
+      'mostrar_aviso_auditoria': false,
       'mensagem_topo': 'Bem-vindo(a) à Área do Aluno',
+      'mensagem_area_desativada':
+          'A Área do Aluno não está disponível no momento.',
+      'mensagem_dados_ocultos':
+          'Algumas informações foram ocultadas pela coordenação.',
+      'aviso_auditoria_acesso': '',
       'texto_ajuda':
-      'Informe sua data de nascimento, as iniciais do seu nome completo e os últimos 4 dígitos do telefone cadastrado.',
+          'Informe sua data de nascimento, as iniciais do seu nome completo e os últimos 4 dígitos do telefone cadastrado.',
       'ultima_atualizacao': null,
     };
   }
@@ -115,10 +169,7 @@ class SiteConfigService {
 
       final data = doc.data() ?? {};
 
-      return {
-        ...padrao,
-        ...data,
-      };
+      return {...padrao, ...data};
     } catch (e) {
       print('Erro ao carregar configurações da Área do Aluno: $e');
       return configuracaoPadraoAreaAluno();
@@ -126,9 +177,9 @@ class SiteConfigService {
   }
 
   Future<void> salvarConfiguracoesAreaAluno(
-      Map<String, dynamic> configuracoes, {
-        String? atualizadoPor,
-      }) async {
+    Map<String, dynamic> configuracoes, {
+    String? atualizadoPor,
+  }) async {
     await _firestore.collection('configuracoes_site').doc('area_aluno').set({
       ...configuracoes,
       'ultima_atualizacao': FieldValue.serverTimestamp(),
@@ -139,6 +190,7 @@ class SiteConfigService {
   Future<void> alterarVisibilidadeAreaAluno(bool visivel) async {
     await _firestore.collection('configuracoes_site').doc('area_aluno').set({
       'visivel_site': visivel,
+      'ativo': visivel,
       'ultima_atualizacao': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 

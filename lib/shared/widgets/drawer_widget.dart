@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -11,6 +11,8 @@ import 'package:uai_capoeira/modules/sistema/admin/admin_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/screens/profile_screen.dart';
 import 'package:uai_capoeira/shared/widgets/botao_atualizar_melhorado.dart';
 import 'package:uai_capoeira/modules/inscricoes/admin/gerenciar_inscricoes_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 
 // Services
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
@@ -31,7 +33,8 @@ class AppDrawer extends StatelessWidget {
   });
 
   bool get _contaAtiva {
-    final status = userData['status_conta']?.toString().toLowerCase().trim() ?? '';
+    final status =
+        userData['status_conta']?.toString().toLowerCase().trim() ?? '';
     return status == 'ativa' || status == 'ativo';
   }
 
@@ -58,7 +61,8 @@ class AppDrawer extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -82,31 +86,14 @@ class AppDrawer extends StatelessWidget {
         'podeAcessarEventos',
         'pode_ver_eventos',
       ]),
-      _temAlguma([
-        'pode_acessar_associacao',
-        'podeAcessarAssociacao',
-      ]),
-      _temAlguma([
-        'pode_acessar_rifas',
-        'podeAcessarRifas',
-      ]),
-      _temAlguma([
-        'pode_acessar_uniformes',
-        'podeAcessarUniformes',
-      ]),
-      _temAlguma([
-        'pode_acessar_inscricoes',
-        'podeAcessarInscricoes',
-      ]),
-      _temAlguma([
-        'pode_mostrar_alunos_drawer',
-        'podeMostrarAlunosDrawer',
-      ]),
+      _temAlguma(['pode_acessar_associacao', 'podeAcessarAssociacao']),
+      _temAlguma(['pode_acessar_rifas', 'podeAcessarRifas']),
+      _temAlguma(['pode_acessar_uniformes', 'podeAcessarUniformes']),
+      _temAlguma(['pode_acessar_inscricoes', 'podeAcessarInscricoes']),
+      _temAlguma(['pode_mostrar_alunos_drawer', 'podeMostrarAlunosDrawer']),
 
       // Administração flexível
-      _temAlguma([
-        'pode_gerenciar_usuarios',
-      ]),
+      _temAlguma(['pode_gerenciar_usuarios']),
     ]);
 
     final admin = _isAdminLocal;
@@ -125,9 +112,11 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String displayName =
-        userData['nome_completo']?.toString() ?? userData['name']?.toString() ?? 'Usuário';
+        userData['nome_completo']?.toString() ??
+        userData['name']?.toString() ??
+        'Usuário';
     final String? photoUrl =
-    (userData['foto_url'] ?? userData['foto_perfil_aluno'])?.toString();
+        (userData['foto_url'] ?? userData['foto_perfil_aluno'])?.toString();
 
     final t = context.uai;
 
@@ -147,17 +136,18 @@ class AppDrawer extends StatelessWidget {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return ListView(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-                        children: [
-                          _buildLoadingSection(context),
-                        ],
+                        children: [_buildLoadingSection(context)],
                       );
                     }
 
                     if (snapshot.hasError) {
-                      debugPrint('Erro ao carregar permissões do drawer: ${snapshot.error}');
+                      debugPrint(
+                        'Erro ao carregar permissões do drawer: ${snapshot.error}',
+                      );
                     }
 
-                    final permissoes = snapshot.data ?? const _DrawerPermissoes();
+                    final permissoes =
+                        snapshot.data ?? const _DrawerPermissoes();
 
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
@@ -165,6 +155,7 @@ class AppDrawer extends StatelessWidget {
                         if (!_contaAtiva)
                           _buildContaInativaAviso(context)
                         else ...[
+                          _buildMinhaAreaAlunoSection(context),
                           _buildAcessosEspeciaisSection(context, permissoes),
                           _buildAdministracaoSection(context, permissoes),
                           if (!permissoes.temAlgumAcesso &&
@@ -186,10 +177,10 @@ class AppDrawer extends StatelessWidget {
 
   // ========== HEADER DO DRAWER ==========
   Widget _buildDrawerHeader(
-      BuildContext context,
-      String displayName,
-      String? photoUrl,
-      ) {
+    BuildContext context,
+    String displayName,
+    String? photoUrl,
+  ) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
     final statusColor = _contaAtiva ? t.success : t.error;
@@ -202,9 +193,7 @@ class AppDrawer extends StatelessWidget {
         right: 16,
         bottom: 18,
       ),
-      decoration: BoxDecoration(
-        color: t.background,
-      ),
+      decoration: BoxDecoration(color: t.background),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -220,7 +209,9 @@ class AppDrawer extends StatelessWidget {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
+                  ),
                 );
               },
               borderRadius: BorderRadius.circular(t.cardRadius),
@@ -294,11 +285,7 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderBadge(
-      BuildContext context,
-      String label, {
-        Color? color,
-      }) {
+  Widget _buildHeaderBadge(BuildContext context, String label, {Color? color}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
     final badgeColor = color ?? onPrimary;
@@ -326,9 +313,9 @@ class AppDrawer extends StatelessWidget {
 
   // ========== SEÇÃO: ACESSOS ESPECIAIS ==========
   Widget _buildAcessosEspeciaisSection(
-      BuildContext context,
-      _DrawerPermissoes permissoes,
-      ) {
+    BuildContext context,
+    _DrawerPermissoes permissoes,
+  ) {
     if (!permissoes.temAlgumAcesso) return SizedBox.shrink();
 
     return Column(
@@ -393,9 +380,9 @@ class AppDrawer extends StatelessWidget {
 
   // ========== SEÇÃO: ADMINISTRAÇÃO ==========
   Widget _buildAdministracaoSection(
-      BuildContext context,
-      _DrawerPermissoes permissoes,
-      ) {
+    BuildContext context,
+    _DrawerPermissoes permissoes,
+  ) {
     if (!permissoes.temAlgumaAdministracao) return SizedBox.shrink();
 
     return Column(
@@ -422,6 +409,41 @@ class AppDrawer extends StatelessWidget {
           ),
         _buildDivider(context),
       ],
+    );
+  }
+
+  Widget _buildMinhaAreaAlunoSection(BuildContext context) {
+    if (currentUser == null) return const SizedBox.shrink();
+
+    return FutureBuilder<List<AlunoVinculadoGoogle>>(
+      future: AreaAlunoGoogleService().buscarAlunosVinculados(),
+      builder: (context, snapshot) {
+        final alunos = snapshot.data ?? const <AlunoVinculadoGoogle>[];
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            alunos.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSecaoTitulo(context, 'CONTA'),
+            _buildMenuItem(
+              context: context,
+              icone: Icons.school_rounded,
+              cor: context.uai.info,
+              titulo: 'MINHA ÁREA DO ALUNO',
+              subtitulo: alunos.length == 1
+                  ? 'Abrir meu perfil vinculado'
+                  : 'Escolher perfil vinculado',
+              tela: alunos.length == 1
+                  ? _AbrirAreaAlunoVinculadaScreen(aluno: alunos.first)
+                  : EscolherAlunoVinculadoScreen(alunos: alunos),
+            ),
+            _buildDivider(context),
+          ],
+        );
+      },
     );
   }
 
@@ -474,10 +496,7 @@ class AppDrawer extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(t.buttonRadius),
           ),
-          textStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-          ),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
           elevation: 0,
         ),
         icon: const Icon(Icons.logout_rounded, size: 20),
@@ -567,7 +586,10 @@ class AppDrawer extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: Color.alphaBlend(accent.withOpacity(0.13), t.cardAlt),
+                    color: Color.alphaBlend(
+                      accent.withOpacity(0.13),
+                      t.cardAlt,
+                    ),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
                     border: Border.all(color: accent.withOpacity(0.20)),
                   ),
@@ -808,6 +830,37 @@ class AppDrawer extends StatelessWidget {
   }
 }
 
+class _AbrirAreaAlunoVinculadaScreen extends StatefulWidget {
+  final AlunoVinculadoGoogle aluno;
+
+  const _AbrirAreaAlunoVinculadaScreen({required this.aluno});
+
+  @override
+  State<_AbrirAreaAlunoVinculadaScreen> createState() =>
+      _AbrirAreaAlunoVinculadaScreenState();
+}
+
+class _AbrirAreaAlunoVinculadaScreenState
+    extends State<_AbrirAreaAlunoVinculadaScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AreaAlunoGoogleService().abrirAreaAlunoVinculado(context, widget.aluno);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: context.uai.background,
+      body: Center(
+        child: CircularProgressIndicator(color: context.uai.primary),
+      ),
+    );
+  }
+}
+
 class _DrawerPermissoes {
   final bool temEventos;
   final bool temAssociacao;
@@ -832,4 +885,3 @@ class _DrawerPermissoes {
 
   bool get temAlgumaAdministracao => temAlunos || temAdminApp;
 }
-

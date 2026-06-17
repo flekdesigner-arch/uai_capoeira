@@ -506,7 +506,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     return _onPrimaryText(t).withOpacity(opacity);
   }
 
-  Widget _buildTurmaCard(Map<String, dynamic> turma) {
+  Widget _buildTurmaCard(
+      Map<String, dynamic> turma, {
+        bool gridMode = false,
+      }) {
     final t = context.uai;
     final alunosAtivos = _parseInt(turma['alunos_ativos'], 0);
     final capacidade = _parseInt(turma['capacidade_maxima'], 0);
@@ -515,7 +518,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     final capacidadeColor = _capacidadeColor(porcentagem);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: gridMode
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       child: Material(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
@@ -575,6 +580,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildTurmaTitle(turma, corTurma, t),
@@ -1494,14 +1500,17 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 22),
                       sliver: SliverGrid(
                         delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildTurmaCard(_turmas[index]),
+                              (context, index) => _buildTurmaCard(
+                            _turmas[index],
+                            gridMode: true,
+                          ),
                           childCount: _turmas.length,
                         ),
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 560,
-                          mainAxisExtent: 148,
-                          mainAxisSpacing: 2,
-                          crossAxisSpacing: 2,
+                          maxCrossAxisExtent: 430,
+                          mainAxisExtent: 200,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
                         ),
                       ),
                     );

@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.66+1
+version: 2.0.80+1
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -128,6 +128,7 @@ dependencies:
   # =============================================
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  web: ^1.1.1
 
 # =============================================
 # 🛠️ DEPENDÊNCIAS DE DESENVOLVIMENTO

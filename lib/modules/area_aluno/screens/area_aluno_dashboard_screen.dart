@@ -1,13 +1,21 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_config_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/widgets/area_aluno_meus_eventos_section.dart';
+import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
 import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart';
@@ -40,6 +48,7 @@ class AreaAlunoDashboardScreen extends StatefulWidget {
 class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   String? _svgContent;
   String? _cordaSvg;
+  bool _vinculandoGoogle = false;
 
   final RastreioSiteService _rastreioService = RastreioSiteService();
   final AreaAlunoSessionService _sessionService = AreaAlunoSessionService();
@@ -48,6 +57,24 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   String get _apelido => _safeText(widget.aluno['apelido'], '');
   String get _foto => _safeText(widget.aluno['foto_perfil_aluno'], '');
   String get _status => _safeText(widget.aluno['status_atividade'], '');
+  String get _alunoId => _safeText(
+    widget.aluno['aluno_id'] ?? widget.aluno['id'] ?? widget.aluno['docId'],
+    '',
+  );
+  Map<String, dynamic> get _dispositivoLogin {
+    final data = widget.authPayload['dispositivo_login'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {};
+  }
+
+  AreaAlunoConfig get _areaConfig => AreaAlunoConfig.fromMap(widget.config);
+
+  bool get _temAcoesDashboard =>
+      _areaConfig.mostrarDadosBasicos ||
+      _areaConfig.mostrarSolicitacaoAlteracao ||
+      _areaConfig.mostrarFrequencia ||
+      _areaConfig.mostrarCertificados;
 
   Map<String, dynamic> get _turmaInfo {
     final data = widget.aluno['turma_info'];
@@ -73,11 +100,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       'area_aluno_dashboard',
       origem: 'area_aluno_login',
       metadata: {
+        'aluno_id': _alunoId,
         'aluno_nome': _nome,
         'aluno_apelido': _apelido,
         'status': _status,
         'graduacao': _graduacao,
         'turma': widget.aluno['turma']?.toString() ?? '',
+        'academia': widget.aluno['academia']?.toString() ?? '',
+        if (_dispositivoLogin.isNotEmpty) 'dispositivo': _dispositivoLogin,
       },
     );
     _rastreioService.marcarTempo('area_aluno_dashboard_tempo');
@@ -103,8 +133,8 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -119,8 +149,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
   Future<void> _loadCordaSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (!mounted) return;
 
@@ -158,17 +189,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
         final style = element.getAttribute('style') ?? '';
         final newStyle = style.contains('fill:')
-            ? style.replaceAll(
-          RegExp(r'fill:#[0-9a-fA-F]{6}'),
-          'fill:$hex',
-        )
+            ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
             : 'fill:$hex;$style';
 
         element.setAttribute('style', newStyle);
@@ -229,6 +257,18 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Future<void> _sairAreaAluno() async {
+    await _rastreioService.registrarEvento(
+      tipo: 'area_aluno',
+      nome: 'logout_area_aluno',
+      origem: 'area_aluno_dashboard',
+      metadata: {
+        'aluno_id': _alunoId,
+        'aluno_nome': _nome,
+        if (_dispositivoLogin.isNotEmpty)
+          'dispositivo_login': _dispositivoLogin,
+      },
+    );
+
     await _sessionService.limparSessao();
 
     if (!mounted) return;
@@ -236,7 +276,130 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LandingPage()),
-          (route) => false,
+      (route) => false,
+    );
+  }
+
+  Future<void> _irParaGestao() async {
+    await AreaAlunoGoogleService().abrirGestao(context);
+  }
+
+  Future<void> _trocarAlunoVinculado(List<AlunoVinculadoGoogle> alunos) async {
+    Navigator.pop(context);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EscolherAlunoVinculadoScreen(alunos: alunos),
+      ),
+    );
+  }
+
+  Future<User?> _entrarComGoogle() async {
+    if (kIsWeb) {
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
+      final credential = await FirebaseAuth.instance.signInWithPopup(provider);
+      return credential.user;
+    }
+
+    final googleUser = await GoogleSignIn().signIn();
+    if (googleUser == null) return null;
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+    final result = await FirebaseAuth.instance.signInWithCredential(credential);
+    return result.user;
+  }
+
+  Future<void> _vincularContaGoogle() async {
+    if (_vinculandoGoogle) return;
+
+    setState(() => _vinculandoGoogle = true);
+    final successColor = context.uai.success;
+    final errorColor = context.uai.error;
+
+    try {
+      final user = await _entrarComGoogle();
+      if (user == null) return;
+
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('vincularGoogleAreaAluno')
+          .call({
+            'alunoId': _alunoId,
+            'authPayload': widget.authPayload,
+            'dispositivo': _dispositivoLogin,
+            'origem': 'area_aluno_dashboard',
+          });
+
+      final data = Map<String, dynamic>.from(result.data as Map);
+      if (data['success'] != true) {
+        _mostrarSnack(
+          data['message']?.toString() ??
+              'Não foi possível vincular a conta Google.',
+          errorColor,
+        );
+        return;
+      }
+
+      final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
+      final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+      final authPayload = {
+        ...widget.authPayload,
+        'modo_acesso': 'google',
+        'google_uid': user.uid,
+        'google_email': user.email ?? '',
+        'login_google_em': DateTime.now().toIso8601String(),
+      };
+
+      await _sessionService.salvarSessao(
+        aluno: aluno,
+        config: config,
+        authPayload: authPayload,
+      );
+
+      if (!mounted) return;
+
+      _mostrarSnack('Conta vinculada. Acesso completo liberado.', successColor);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AreaAlunoDashboardScreen(
+            aluno: aluno,
+            config: config,
+            authPayload: authPayload,
+          ),
+        ),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      _mostrarSnack(
+        e.message ?? 'Não foi possível confirmar a conta Google.',
+        errorColor,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _mostrarSnack(
+        'Erro ao conectar com Google. Tente novamente.',
+        errorColor,
+      );
+    } finally {
+      if (mounted) setState(() => _vinculandoGoogle = false);
+    }
+  }
+
+  void _mostrarSnack(String mensagem, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -245,9 +408,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => _blindarTelaPublicaAreaAluno(tela),
-      ),
+      MaterialPageRoute(builder: (_) => _blindarTelaPublicaAreaAluno(tela)),
     );
   }
 
@@ -354,7 +515,8 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AreaAlunoEventoDetalheScreen(evento: evento),
+        builder: (_) =>
+            AreaAlunoEventoDetalheScreen(evento: evento, config: widget.config),
       ),
     );
   }
@@ -459,7 +621,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                           final preset = presets[index];
                           final selected =
                               controller.currentPreset == preset &&
-                                  controller.activeSavedThemeId == null;
+                              controller.activeSavedThemeId == null;
 
                           return _buildThemePresetTile(
                             preset: preset,
@@ -523,11 +685,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                   color: accent,
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(
-                  preset.icon,
-                  color: _readableOn(accent),
-                  size: 22,
-                ),
+                child: Icon(preset.icon, color: _readableOn(accent), size: 22),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -580,7 +738,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const LandingPage()),
-              (route) => false,
+          (route) => false,
         );
       }),
       _AreaAlunoMenuItem('Regimento Interno', Icons.description_rounded, () {
@@ -614,7 +772,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                 CircleAvatar(
                   radius: 27,
                   backgroundColor: onPrimary.withOpacity(0.15),
-                  backgroundImage: _foto.isNotEmpty ? NetworkImage(_foto) : null,
+                  backgroundImage: _foto.isNotEmpty
+                      ? NetworkImage(_foto)
+                      : null,
                   child: _foto.isEmpty
                       ? Icon(Icons.person_rounded, color: onPrimary)
                       : null,
@@ -682,9 +842,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                               color: item.selecionado
                                   ? visible
                                   : Color.alphaBlend(
-                                visible.withOpacity(0.08),
-                                t.card,
-                              ),
+                                      visible.withOpacity(0.08),
+                                      t.card,
+                                    ),
                               borderRadius: BorderRadius.circular(13),
                             ),
                             child: Icon(
@@ -729,6 +889,8 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               },
             ),
           ),
+          _buildGestaoDrawerButton(t),
+          _buildTrocarAlunoDrawerButton(t),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
@@ -753,6 +915,67 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGestaoDrawerButton(dynamic t) {
+    return FutureBuilder<bool>(
+      future: FirebaseAuth.instance.currentUser == null
+          ? Future.value(false)
+          : UserService.hasAccess(FirebaseAuth.instance.currentUser!.uid),
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return const SizedBox.shrink();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+          color: t.cardAlt,
+          child: FilledButton.icon(
+            onPressed: _irParaGestao,
+            icon: const Icon(Icons.home_work_rounded),
+            label: const Text('IR PARA GESTÃO'),
+            style: FilledButton.styleFrom(
+              backgroundColor: t.primary,
+              foregroundColor: _readableOn(t.primary),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.buttonRadius),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTrocarAlunoDrawerButton(dynamic t) {
+    return FutureBuilder<List<AlunoVinculadoGoogle>>(
+      future: AreaAlunoGoogleService().buscarAlunosVinculados(),
+      builder: (context, snapshot) {
+        final alunos = snapshot.data ?? const <AlunoVinculadoGoogle>[];
+        if (alunos.length < 2) return const SizedBox.shrink();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          color: t.cardAlt,
+          child: OutlinedButton.icon(
+            onPressed: () => _trocarAlunoVinculado(alunos),
+            icon: const Icon(Icons.switch_account_rounded),
+            label: const Text('TROCAR ALUNO'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _ensureVisible(t.info, t.cardAlt),
+              side: BorderSide(color: t.info.withOpacity(0.25)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.buttonRadius),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -841,20 +1064,29 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     _buildHeader(isMobile),
                     const SizedBox(height: 14),
                     _buildResumoCards(isMobile),
-                    const SizedBox(height: 16),
-                    AreaAlunoMeusEventosSection(
-                      aluno: widget.aluno,
-                      authPayload: widget.authPayload,
-                      onAbrirEvento: _abrirDetalhesEventoAluno,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildSectionTitle(
-                      icon: Icons.dashboard_customize_rounded,
-                      title: 'Painel do aluno',
-                      subtitle: 'Escolha o que deseja consultar',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildAcoesResponsive(maxWidth),
+                    if (_areaConfig.deveMostrarCardGoogle) ...[
+                      const SizedBox(height: 16),
+                      _buildGoogleAccessCard(),
+                    ],
+                    if (_areaConfig.mostrarEventos) ...[
+                      const SizedBox(height: 16),
+                      AreaAlunoMeusEventosSection(
+                        aluno: widget.aluno,
+                        authPayload: widget.authPayload,
+                        config: widget.config,
+                        onAbrirEvento: _abrirDetalhesEventoAluno,
+                      ),
+                    ],
+                    if (_temAcoesDashboard) ...[
+                      const SizedBox(height: 16),
+                      _buildSectionTitle(
+                        icon: Icons.dashboard_customize_rounded,
+                        title: 'Painel do aluno',
+                        subtitle: 'Escolha o que deseja consultar',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildAcoesResponsive(maxWidth),
+                    ],
                     const SizedBox(height: 16),
                     _buildAvisoSomenteLeitura(),
                   ],
@@ -952,11 +1184,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       return CircleAvatar(
         radius: size / 2,
         backgroundColor: onPrimary.withOpacity(0.16),
-        child: Icon(
-          Icons.person_rounded,
-          color: onPrimary,
-          size: size * 0.55,
-        ),
+        child: Icon(Icons.person_rounded, color: onPrimary, size: size * 0.55),
       );
     }
 
@@ -1036,24 +1264,30 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Widget _buildResumoCards(bool isMobile) {
-    final turmaCard = _buildTurmaResumoCard();
-    final graduacaoCard = _buildGraduacaoResumoCard();
+    final cards = <Widget>[
+      if (_areaConfig.mostrarAcademiaTurma) _buildTurmaResumoCard(),
+      if (_areaConfig.mostrarGraduacaoAtual) _buildGraduacaoResumoCard(),
+    ];
+
+    if (cards.isEmpty) return const SizedBox.shrink();
 
     if (isMobile) {
       return Column(
         children: [
-          turmaCard,
-          const SizedBox(height: 10),
-          graduacaoCard,
+          for (int i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            cards[i],
+          ],
         ],
       );
     }
 
     return Row(
       children: [
-        Expanded(child: turmaCard),
-        const SizedBox(width: 10),
-        Expanded(child: graduacaoCard),
+        for (int i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: cards[i]),
+        ],
       ],
     );
   }
@@ -1069,7 +1303,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     if (horarios.isNotEmpty) {
       final primeiro = horarios.first;
       subtitle =
-      '${primeiro['dia_nome'] ?? primeiro['dia'] ?? ''} • ${primeiro['horario_inicio'] ?? ''} às ${primeiro['horario_fim'] ?? ''}';
+          '${primeiro['dia_nome'] ?? primeiro['dia'] ?? ''} • ${primeiro['horario_inicio'] ?? ''} às ${primeiro['horario_fim'] ?? ''}';
     }
 
     return Material(
@@ -1151,15 +1385,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       ),
       child: logo.isNotEmpty
           ? ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Image.network(
-          logo,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
-            return Icon(Icons.school_rounded, color: color, size: 30);
-          },
-        ),
-      )
+              borderRadius: BorderRadius.circular(18),
+              child: Image.network(
+                logo,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  return Icon(Icons.school_rounded, color: color, size: 30);
+                },
+              ),
+            )
           : Icon(Icons.school_rounded, color: color, size: 30),
     );
   }
@@ -1224,10 +1458,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             SizedBox(
               width: 74,
               height: 52,
-              child: SvgPicture.string(
-                _cordaSvg!,
-                fit: BoxFit.contain,
-              ),
+              child: SvgPicture.string(_cordaSvg!, fit: BoxFit.contain),
             ),
           ],
         ],
@@ -1282,35 +1513,41 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     final t = context.uai;
 
     final cards = [
-      _DashboardCardData(
-        icon: Icons.person_search_rounded,
-        title: 'Informações do aluno',
-        subtitle: 'Ver seus dados cadastrais',
-        color: t.info,
-        onTap: _abrirInfoAluno,
-      ),
-      _DashboardCardData(
-        icon: Icons.edit_note_rounded,
-        title: 'Solicitar alterações',
-        subtitle: 'Pedir correção dos dados',
-        color: t.associacao,
-        onTap: _abrirSolicitarAlteracoes,
-      ),
-      _DashboardCardData(
-        icon: Icons.fact_check_rounded,
-        title: 'Frequência',
-        subtitle: 'Acompanhar presenças',
-        color: t.success,
-        onTap: _abrirFrequencia,
-      ),
-      _DashboardCardData(
-        icon: Icons.card_membership_rounded,
-        title: 'Certificados',
-        subtitle: 'Eventos e certificados',
-        color: t.warning,
-        onTap: _abrirCertificados,
-      ),
+      if (_areaConfig.mostrarDadosBasicos)
+        _DashboardCardData(
+          icon: Icons.person_search_rounded,
+          title: 'Informações do aluno',
+          subtitle: 'Ver seus dados cadastrais',
+          color: t.info,
+          onTap: _abrirInfoAluno,
+        ),
+      if (_areaConfig.mostrarSolicitacaoAlteracao)
+        _DashboardCardData(
+          icon: Icons.edit_note_rounded,
+          title: 'Solicitar alterações',
+          subtitle: 'Pedir correção dos dados',
+          color: t.associacao,
+          onTap: _abrirSolicitarAlteracoes,
+        ),
+      if (_areaConfig.mostrarFrequencia)
+        _DashboardCardData(
+          icon: Icons.fact_check_rounded,
+          title: 'Frequência',
+          subtitle: 'Acompanhar presenças',
+          color: t.success,
+          onTap: _abrirFrequencia,
+        ),
+      if (_areaConfig.mostrarCertificados)
+        _DashboardCardData(
+          icon: Icons.card_membership_rounded,
+          title: 'Certificados',
+          subtitle: 'Eventos e certificados',
+          color: t.warning,
+          onTap: _abrirCertificados,
+        ),
     ];
+
+    if (cards.isEmpty) return const SizedBox.shrink();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1339,10 +1576,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           children: cards.map((card) {
             return SizedBox(
               width: cardWidth,
-              child: _buildDashboardActionCard(
-                card,
-                compact: compact,
-              ),
+              child: _buildDashboardActionCard(card, compact: compact),
             );
           }).toList(),
         );
@@ -1351,9 +1585,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Widget _buildDashboardActionCard(
-      _DashboardCardData card, {
-        bool compact = false,
-      }) {
+    _DashboardCardData card, {
+    bool compact = false,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(card.color, t.card);
 
@@ -1366,18 +1600,13 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           _rastreioService.registrarClique(
             nome: 'card_${card.title.toLowerCase().replaceAll(' ', '_')}',
             origem: 'area_aluno_dashboard',
-            metadata: {
-              'titulo': card.title,
-              'subtitulo': card.subtitle,
-            },
+            metadata: {'titulo': card.title, 'subtitulo': card.subtitle},
           );
           card.onTap();
         },
         borderRadius: BorderRadius.circular(22),
         child: Container(
-          constraints: BoxConstraints(
-            minHeight: compact ? 124 : 132,
-          ),
+          constraints: BoxConstraints(minHeight: compact ? 124 : 132),
           padding: EdgeInsets.all(compact ? 12 : 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
@@ -1386,75 +1615,31 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           ),
           child: compact
               ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        accent.withOpacity(0.10),
-                        t.cardAlt,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(card.icon, color: accent, size: 25),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: accent,
-                    size: 22,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                card.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13.2,
-                  height: 1.12,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                card.subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 11.2,
-                  height: 1.20,
-                ),
-              ),
-            ],
-          )
-              : Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Color.alphaBlend(
-                    accent.withOpacity(0.10),
-                    t.cardAlt,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(card.icon, color: accent, size: 28),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: Color.alphaBlend(
+                              accent.withOpacity(0.10),
+                              t.cardAlt,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(card.icon, color: accent, size: 25),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: accent,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Text(
                       card.title,
                       maxLines: 2,
@@ -1462,31 +1647,71 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                       style: TextStyle(
                         color: t.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 13.5,
+                        fontSize: 13.2,
                         height: 1.12,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Text(
                       card.subtitle,
-                      maxLines: 3,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: t.textSecondary,
-                        fontSize: 11.5,
+                        fontSize: 11.2,
                         height: 1.20,
                       ),
                     ),
                   ],
+                )
+              : Row(
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: Color.alphaBlend(
+                          accent.withOpacity(0.10),
+                          t.cardAlt,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(card.icon, color: accent, size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            card.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                              height: 1.12,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            card.subtitle,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontSize: 11.5,
+                              height: 1.20,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: accent, size: 22),
+                  ],
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: accent,
-                size: 22,
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -1495,6 +1720,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   Widget _buildAvisoSomenteLeitura() {
     final t = context.uai;
     final accent = _ensureVisible(t.info, t.card);
+    final texto = _areaConfig.mostrarSolicitacaoAlteracao
+        ? 'Esta área é somente leitura. Para alterar informações, use o card '
+              '“Solicitar alterações”. A coordenação analisará antes de atualizar o cadastro oficial.'
+        : 'Esta área é somente leitura. A coordenação controla quais informações ficam disponíveis para consulta.';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1510,8 +1739,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Esta área é somente leitura. Para alterar informações, use o card '
-                  '“Solicitar alterações”. A coordenação analisará antes de atualizar o cadastro oficial.',
+              texto,
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w500,
@@ -1525,13 +1753,124 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     );
   }
 
+  Widget _buildGoogleAccessCard() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.card);
+    final jaVinculado = _areaConfig.googleVinculado;
+    final email = _areaConfig.googleEmailMascarado;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withOpacity(0.16)),
+        boxShadow: t.softShadow,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 620;
+          final content = Column(
+            crossAxisAlignment: compact
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Proteja seu acesso',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                jaVinculado
+                    ? 'Este perfil já possui uma conta Google vinculada${email.isNotEmpty ? ' ($email)' : ''}. Entre com essa conta para liberar o acesso completo.'
+                    : 'Vincule uma conta Google do aluno ou responsável para liberar o acesso completo à Área do Aluno.',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 12.5,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (_areaConfig.exigeGoogleParaCompleto) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Algumas informações estão disponíveis apenas com conta vinculada.',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ],
+          );
+
+          final button = FilledButton.icon(
+            onPressed: _vinculandoGoogle ? null : _vincularContaGoogle,
+            icon: _vinculandoGoogle
+                ? const SizedBox(
+                    width: 17,
+                    height: 17,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.g_mobiledata_rounded),
+            label: Text(
+              _vinculandoGoogle
+                  ? 'Conectando...'
+                  : jaVinculado
+                  ? 'Entrar com Google'
+                  : 'Vincular conta Google',
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: _readableOn(accent),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.buttonRadius),
+              ),
+            ),
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.verified_user_rounded, color: accent),
+                    const SizedBox(width: 10),
+                    Expanded(child: content),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                button,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Icon(Icons.verified_user_rounded, color: accent, size: 34),
+              const SizedBox(width: 13),
+              Expanded(child: content),
+              const SizedBox(width: 14),
+              button,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _abrirInfoTurma() {
     _rastreioService.registrarClique(
       nome: 'abrir_informacoes_turma',
       origem: 'area_aluno_dashboard',
-      metadata: {
-        'turma': widget.aluno['turma']?.toString() ?? '',
-      },
+      metadata: {'turma': widget.aluno['turma']?.toString() ?? ''},
     );
 
     final turma = _turmaInfo;
@@ -1539,7 +1878,8 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     if (turma.isEmpty) {
       _mostrarAviso(
         titulo: 'Informações da turma',
-        mensagem: 'As informações completas da turma ainda não foram encontradas.',
+        mensagem:
+            'As informações completas da turma ainda não foram encontradas.',
         icon: Icons.school_rounded,
         color: context.uai.info,
       );
@@ -1599,10 +1939,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                       color: t.success,
                       children: horarios.isEmpty
                           ? [
-                        _buildEmptyText(
-                          'Nenhum horário cadastrado para esta turma.',
-                        ),
-                      ]
+                              _buildEmptyText(
+                                'Nenhum horário cadastrado para esta turma.',
+                              ),
+                            ]
                           : horarios.map(_buildHorarioTile).toList(),
                     ),
                     if (_safeText(turma['observacoes'], '').isNotEmpty) ...[
@@ -1627,7 +1967,6 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Widget _buildTurmaModalHeader(Map<String, dynamic> turma, Color color) {
-    final t = context.uai;
     final logo = turma['logo_url']?.toString() ?? '';
     final onColor = _readableOn(color);
 
@@ -1652,19 +1991,19 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             ),
             child: logo.isNotEmpty
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.network(
-                logo,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
-                  return Icon(
-                    Icons.school_rounded,
-                    color: onColor,
-                    size: 36,
-                  );
-                },
-              ),
-            )
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.network(
+                      logo,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return Icon(
+                          Icons.school_rounded,
+                          color: onColor,
+                          size: 36,
+                        );
+                      },
+                    ),
+                  )
                 : Icon(Icons.school_rounded, color: onColor, size: 36),
           ),
           const SizedBox(width: 13),
@@ -1827,10 +2166,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
     return Text(
       text,
-      style: TextStyle(
-        color: t.textSecondary,
-        fontStyle: FontStyle.italic,
-      ),
+      style: TextStyle(color: t.textSecondary, fontStyle: FontStyle.italic),
     );
   }
 
@@ -1849,6 +2185,41 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
   void _showAlunoInfoSheet() {
     final t = context.uai;
+    final rows = <Widget>[
+      _infoRow('Nome', _nome),
+      if (_apelido.isNotEmpty) _infoRow('Apelido', _apelido),
+      _infoRow('Status', _status),
+      if (_areaConfig.mostrarGraduacaoAtual) _infoRow('Graduação', _graduacao),
+      if (_areaConfig.mostrarAcademiaTurma) ...[
+        _infoRow('Turma', _safeText(widget.aluno['turma'], 'Não informada')),
+        _infoRow(
+          'Academia',
+          _safeText(widget.aluno['academia'], 'Não informada'),
+        ),
+      ],
+      if (_safeText(widget.aluno['cidade'], '').isNotEmpty)
+        _infoRow('Cidade', _safeText(widget.aluno['cidade'], 'Não informada')),
+      if (_safeText(widget.aluno['endereco'], '').isNotEmpty)
+        _infoRow(
+          'Endereço',
+          _safeText(widget.aluno['endereco'], 'Não informado'),
+        ),
+      if (_safeText(widget.aluno['contato_aluno'], '').isNotEmpty)
+        _infoRow(
+          'Contato',
+          _safeText(widget.aluno['contato_aluno'], 'Não informado'),
+        ),
+      if (_safeText(widget.aluno['nome_responsavel'], '').isNotEmpty)
+        _infoRow(
+          'Responsável',
+          _safeText(widget.aluno['nome_responsavel'], 'Não informado'),
+        ),
+      if (_safeText(widget.aluno['contato_responsavel'], '').isNotEmpty)
+        _infoRow(
+          'Contato resp.',
+          _safeText(widget.aluno['contato_responsavel'], 'Não informado'),
+        ),
+    ];
 
     showModalBottomSheet<void>(
       context: context,
@@ -1888,15 +2259,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     color: t.info,
                   ),
                   const SizedBox(height: 14),
-                  _infoRow('Nome', _nome),
-                  _infoRow('Apelido', _apelido),
-                  _infoRow('Status', _status),
-                  _infoRow('Graduação', _graduacao),
-                  _infoRow('Turma', _safeText(widget.aluno['turma'], 'Não informada')),
-                  _infoRow('Academia', _safeText(widget.aluno['academia'], 'Não informada')),
-                  _infoRow('Cidade', _safeText(widget.aluno['cidade'], 'Não informada')),
-                  _infoRow('Contato', _safeText(widget.aluno['contato_aluno'], 'Não informado')),
-                  _infoRow('Responsável', _safeText(widget.aluno['nome_responsavel'], 'Não informado')),
+                  ...rows,
                 ],
               ),
             ),
@@ -2006,10 +2369,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               Icon(icon, color: accent),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  titulo,
-                  style: TextStyle(color: t.textPrimary),
-                ),
+                child: Text(titulo, style: TextStyle(color: t.textPrimary)),
               ),
             ],
           ),
@@ -2022,10 +2382,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'ENTENDI',
-                style: TextStyle(
-                  color: accent,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: TextStyle(color: accent, fontWeight: FontWeight.w900),
               ),
             ),
           ],
@@ -2058,9 +2415,9 @@ class _AreaAlunoMenuItem {
   final bool selecionado;
 
   const _AreaAlunoMenuItem(
-      this.label,
-      this.icon,
-      this.onTap, {
-        this.selecionado = false,
-      });
+    this.label,
+    this.icon,
+    this.onTap, {
+    this.selecionado = false,
+  });
 }

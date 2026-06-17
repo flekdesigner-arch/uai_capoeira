@@ -65,8 +65,11 @@ import 'package:uai_capoeira/core/services/atualizacao_dialog_service.dart';
 import 'package:uai_capoeira/core/services/atualizacao_direta_service.dart';
 import 'package:uai_capoeira/modules/alunos/services/mensagem_aniversario_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart'
-as area_aluno_dashboard;
+    as area_aluno_dashboard;
+import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
+import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/shared/widgets/em_desenvolvimento_screen.dart';
 import 'package:uai_capoeira/shared/widgets/update_gate.dart';
 import 'package:uai_capoeira/shared/screens/notificacoes/notificacoes_screen.dart';
@@ -110,8 +113,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // =====================================================
   if (message.notification != null) {
     print(
-        '✅ Mensagem com notification detectada. '
-            'Android/Firebase já exibirá automaticamente. Evitando duplicidade.'
+      '✅ Mensagem com notification detectada. '
+      'Android/Firebase já exibirá automaticamente. Evitando duplicidade.',
     );
     return;
   }
@@ -123,10 +126,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // aí mostramos manualmente pelo flutter_local_notifications.
   // =====================================================
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   const AndroidInitializationSettings androidSettings =
-  AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('@mipmap/ic_launcher');
 
   const InitializationSettings initSettings = InitializationSettings(
     android: androidSettings,
@@ -134,8 +137,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   await flutterLocalNotificationsPlugin.initialize(initSettings);
 
-  const AndroidNotificationDetails androidDetails =
-  AndroidNotificationDetails(
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
     'background_channel',
     'Notificações',
     channelDescription: 'Notificações em segundo plano do UAI Capoeira',
@@ -153,13 +155,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   final String title =
       message.data['title']?.toString() ??
-          message.data['titulo']?.toString() ??
-          'UAI CAPOEIRA';
+      message.data['titulo']?.toString() ??
+      'UAI CAPOEIRA';
 
   final String body =
       message.data['body']?.toString() ??
-          message.data['mensagem']?.toString() ??
-          'Nova notificação';
+      message.data['mensagem']?.toString() ??
+      'Nova notificação';
 
   await flutterLocalNotificationsPlugin.show(
     message.hashCode,
@@ -208,7 +210,9 @@ Future<void> main() async {
       print('   UID: ${currentUser.uid}');
       print('   Email verificado: ${currentUser.emailVerified}');
     } else {
-      print('ℹ️ Nenhuma sessão detectada imediatamente. Splash vai aguardar o Auth.');
+      print(
+        'ℹ️ Nenhuma sessão detectada imediatamente. Splash vai aguardar o Auth.',
+      );
     }
 
     print('📦 Configurando Firestore...');
@@ -257,7 +261,9 @@ Future<void> main() async {
     }
 
     if (!kIsWeb) {
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
     }
 
     print('🌍 Configurando locale...');
@@ -285,11 +291,7 @@ class ErrorApp extends StatelessWidget {
   final Object error;
   final StackTrace stack;
 
-  const ErrorApp({
-    super.key,
-    required this.error,
-    required this.stack,
-  });
+  const ErrorApp({super.key, required this.error, required this.stack});
 
   @override
   Widget build(BuildContext context) {
@@ -401,10 +403,7 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('pt', 'BR'),
-            Locale('en', 'US'),
-          ],
+          supportedLocales: const [Locale('pt', 'BR'), Locale('en', 'US')],
           locale: const Locale('pt', 'BR'),
 
           // =====================================================
@@ -420,16 +419,12 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
           // =====================================================
           home: kIsWeb
               ? PwaEntradaInteligente()
-              : const UpdateGate(
-            ignorarWeb: true,
-            child: SplashAuthScreen(),
-          ),
+              : const UpdateGate(ignorarWeb: true, child: SplashAuthScreen()),
         );
       },
     );
   }
 }
-
 
 // =====================================================
 // 🌐 ENTRADA INTELIGENTE DO PWA
@@ -457,10 +452,9 @@ class _PwaEntradaInteligenteState extends State<PwaEntradaInteligente> {
     if (user != null) return user;
 
     try {
-      user = await FirebaseAuth.instance
-          .idTokenChanges()
-          .first
-          .timeout(Duration(seconds: 2));
+      user = await FirebaseAuth.instance.idTokenChanges().first.timeout(
+        Duration(seconds: 2),
+      );
     } on TimeoutException {
       user = FirebaseAuth.instance.currentUser;
     } catch (_) {
@@ -480,14 +474,62 @@ class _PwaEntradaInteligenteState extends State<PwaEntradaInteligente> {
 
       if (user != null) {
         debugPrint('✅ PWA: sessão Firebase restaurada para ${user.email}');
+        final podeAbrirGestao = await UserService.hasAccess(user.uid);
+
+        if (!mounted) return;
+
+        if (podeAbrirGestao) {
+          setState(() => _destino = AuthCheck());
+          return;
+        }
+
+        setState(() => _mensagem = 'Verificando Ãrea do Aluno...');
+
+        try {
+          final googleService = AreaAlunoGoogleService();
+          final alunos = await googleService.buscarAlunosVinculados();
+
+          if (!mounted) return;
+
+          if (alunos.length == 1) {
+            final acesso = await googleService.prepararAcessoAreaAluno(
+              alunos.first,
+            );
+
+            if (!mounted) return;
+
+            if (acesso != null) {
+              setState(() {
+                _destino = area_aluno_dashboard.AreaAlunoDashboardScreen(
+                  aluno: Map<String, dynamic>.from(acesso['aluno'] as Map),
+                  config: Map<String, dynamic>.from(acesso['config'] as Map),
+                  authPayload: Map<String, dynamic>.from(
+                    acesso['authPayload'] as Map,
+                  ),
+                );
+              });
+              return;
+            }
+          }
+
+          if (alunos.length > 1) {
+            setState(() {
+              _destino = EscolherAlunoVinculadoScreen(alunos: alunos);
+            });
+            return;
+          }
+        } catch (e) {
+          debugPrint('âš ï¸ PWA: erro ao verificar aluno vinculado: $e');
+        }
+
         setState(() => _destino = AuthCheck());
         return;
       }
 
       setState(() => _mensagem = 'Verificando Área do Aluno...');
 
-      final sessaoAluno =
-      await AreaAlunoSessionService().restaurarSessaoRevalidando();
+      final sessaoAluno = await AreaAlunoSessionService()
+          .restaurarSessaoRevalidando();
 
       if (!mounted) return;
 
@@ -576,7 +618,6 @@ class _PwaEntradaInteligenteState extends State<PwaEntradaInteligente> {
   }
 }
 
-
 // =====================================================
 // 🎂 WIDGET DO BOTÃO DE ANIVERSARIANTE COM CONTADOR
 // =====================================================
@@ -600,10 +641,10 @@ class AniversariantesTab extends StatelessWidget {
     return StreamBuilder<bool>(
       stream: user != null
           ? firestore
-          .collection('academias')
-          .where('professores_ids', arrayContains: user.uid)
-          .snapshots()
-          .map((snapshot) => snapshot.docs.isNotEmpty)
+                .collection('academias')
+                .where('professores_ids', arrayContains: user.uid)
+                .snapshots()
+                .map((snapshot) => snapshot.docs.isNotEmpty)
           : Stream.value(false),
       builder: (context, snapshot) {
         final bool temVinculo = snapshot.data ?? false;
@@ -639,7 +680,9 @@ class AniversariantesTab extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.cake,
-                      color: isSelected ? context.uai.primary : context.uai.textMuted,
+                      color: isSelected
+                          ? context.uai.primary
+                          : context.uai.textMuted,
                       size: 24,
                     ),
                     if (birthdayCount > 0)
@@ -651,7 +694,10 @@ class AniversariantesTab extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: context.uai.error,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: context.uai.surface, width: 1.5),
+                            border: Border.all(
+                              color: context.uai.surface,
+                              width: 1.5,
+                            ),
                           ),
                           constraints: BoxConstraints(
                             minWidth: 18,
@@ -677,8 +723,12 @@ class AniversariantesTab extends StatelessWidget {
                     'ANIVERSÁRIOS',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isSelected ? context.uai.primary : context.uai.textMuted,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected
+                          ? context.uai.primary
+                          : context.uai.textMuted,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -760,9 +810,7 @@ class _MainScreenState extends State<MainScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificacoesScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const NotificacoesScreen()),
                 );
               },
             ),
@@ -777,10 +825,7 @@ class _MainScreenState extends State<MainScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: t.surface, width: 1.5),
                   ),
-                  constraints: BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
+                  constraints: BoxConstraints(minWidth: 18, minHeight: 18),
                   child: Center(
                     child: Text(
                       unreadCount > 9 ? '9+' : '$unreadCount',
@@ -828,7 +873,9 @@ class _MainScreenState extends State<MainScreen> {
       // Garante a sincronização depois do login/sessão restaurada.
       await notificationService.syncTokenForCurrentUser();
 
-      debugPrint('✅ Notificações inicializadas e token sincronizado para: ${user.email}');
+      debugPrint(
+        '✅ Notificações inicializadas e token sincronizado para: ${user.email}',
+      );
     } catch (e) {
       debugPrint('❌ Erro ao inicializar/sincronizar notificações: $e');
     }
@@ -852,9 +899,7 @@ class _MainScreenState extends State<MainScreen> {
 
     if (currentUser == null) {
       return const Scaffold(
-        body: Center(
-          child: Text('Usuário não autenticado'),
-        ),
+        body: Center(child: Text('Usuário não autenticado')),
       );
     }
 
@@ -899,7 +944,8 @@ class _MainScreenState extends State<MainScreen> {
         },
       ),
       appBar: AppBar(
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? t.primary,
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ?? t.primary,
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
@@ -936,9 +982,7 @@ class _MainScreenState extends State<MainScreen> {
                   children: [
                     Icon(
                       Icons.home,
-                      color: _selectedIndex == 0
-                          ? t.primary
-                          : t.textMuted,
+                      color: _selectedIndex == 0 ? t.primary : t.textMuted,
                       size: 24,
                     ),
                     SizedBox(height: 2),
@@ -947,9 +991,7 @@ class _MainScreenState extends State<MainScreen> {
                         'INÍCIO',
                         style: TextStyle(
                           fontSize: 11,
-                          color: _selectedIndex == 0
-                              ? t.primary
-                              : t.textMuted,
+                          color: _selectedIndex == 0 ? t.primary : t.textMuted,
                           fontWeight: _selectedIndex == 0
                               ? FontWeight.bold
                               : FontWeight.normal,
