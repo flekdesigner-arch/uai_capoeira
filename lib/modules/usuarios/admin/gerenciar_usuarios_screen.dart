@@ -6,15 +6,25 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/editar_usuario_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/usuario_detalhe_screen.dart';
 import 'package:uai_capoeira/modules/auth/screens/aprovar_usuario_screen.dart';
+import 'usuario_admin_access.dart';
 
 class GerenciarUsuariosScreen extends StatefulWidget {
   const GerenciarUsuariosScreen({super.key});
 
   @override
-  State<GerenciarUsuariosScreen> createState() => _GerenciarUsuariosScreenState();
+  State<GerenciarUsuariosScreen> createState() =>
+      _GerenciarUsuariosScreenState();
 }
 
 class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
+  late Future<UsuarioAdminAccess> _accessFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _accessFuture = carregarAcessoGestaoUsuarios();
+  }
+
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -22,7 +32,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -73,17 +84,22 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     return null;
   }
 
-
   List<QueryDocumentSnapshot> _usuariosList = [];
   int _pendentesCount = 0;
 
-  void _showDeleteConfirmation(BuildContext context, String docId, String nome) {
+  void _showDeleteConfirmation(
+    BuildContext context,
+    String docId,
+    String nome,
+  ) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Confirmar Exclusão'),
-          content: Text("Você tem certeza que deseja excluir o usuário \"$nome\"?\n\nEsta ação é permanente e não pode ser desfeita."),
+          content: Text(
+            "Você tem certeza que deseja excluir o usuário \"$nome\"?\n\nEsta ação é permanente e não pode ser desfeita.",
+          ),
           actions: <Widget>[
             TextButton(
               child: Text('Cancelar'),
@@ -93,7 +109,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               style: TextButton.styleFrom(foregroundColor: context.uai.error),
               child: const Text('Excluir'),
               onPressed: () {
-                FirebaseFirestore.instance.collection('usuarios').doc(docId).delete();
+                FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(docId)
+                    .delete();
                 Navigator.of(context).pop();
               },
             ),
@@ -104,7 +123,11 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   }
 
   // Função para mostrar usuários pendentes
-  void _showPendingUsersDialog(BuildContext context, List<QueryDocumentSnapshot> pendentes) {
+  void _showPendingUsersDialog(
+    BuildContext context,
+    List<QueryDocumentSnapshot> pendentes,
+    bool canApprove,
+  ) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -143,7 +166,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                       ),
                       Spacer(),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: context.uai.card,
                           borderRadius: BorderRadius.circular(12),
@@ -163,120 +189,154 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 // Lista de usuários pendentes
                 Expanded(
                   child: pendentes.isEmpty
-                      ? const Center(
-                    child: Text('Nenhum usuário pendente'),
-                  )
+                      ? const Center(child: Text('Nenhum usuário pendente'))
                       : ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: pendentes.length,
-                    itemBuilder: (context, index) {
-                      final usuario = pendentes[index];
-                      final data = usuario.data() as Map<String, dynamic>;
-                      final nome = data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
-                      final email = data['email'] ?? 'Email não informado';
-                      final tipo = data['tipo'] ?? 'não definido';
-                      final fotoUrl = _fotoUrlFromData(data);
+                          padding: const EdgeInsets.all(8),
+                          itemCount: pendentes.length,
+                          itemBuilder: (context, index) {
+                            final usuario = pendentes[index];
+                            final data = usuario.data() as Map<String, dynamic>;
+                            final nome =
+                                data['nome_completo'] ??
+                                data['name'] ??
+                                'Nome não informado';
+                            final email =
+                                data['email'] ?? 'Email não informado';
+                            final tipo = data['tipo'] ?? 'não definido';
+                            final fotoUrl = _fotoUrlFromData(data);
 
-                      return Card(
-                        elevation: 2,
-                        margin: EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: context.uai.warning.withOpacity(0.16),
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            child: fotoUrl != null && fotoUrl.toString().isNotEmpty
-                                ? ClipRRect(
-                              borderRadius: BorderRadius.circular(25),
-                              child: CachedNetworkImage(
-                                imageUrl: fotoUrl.toString(),
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => CircularProgressIndicator(),
-                                errorWidget: (context, url, error) =>
-                                    Icon(Icons.person, color: context.uai.warning),
-                              ),
-                            )
-                                : Center(
-                              child: Text(
-                                nome.substring(0, 1).toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: context.uai.warning,
-                                ),
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            nome,
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(email, style: TextStyle(fontSize: 12)),
-                              SizedBox(height: 4),
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: context.uai.warning.withOpacity(0.16),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  tipo.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: context.uai.warning,
+                            return Card(
+                              elevation: 2,
+                              margin: EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                leading: Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: context.uai.warning.withOpacity(
+                                      0.16,
+                                    ),
+                                    borderRadius: BorderRadius.circular(25),
                                   ),
+                                  child:
+                                      fotoUrl != null &&
+                                          fotoUrl.toString().isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            25,
+                                          ),
+                                          child: CachedNetworkImage(
+                                            imageUrl: fotoUrl.toString(),
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) =>
+                                                CircularProgressIndicator(),
+                                            errorWidget:
+                                                (context, url, error) => Icon(
+                                                  Icons.person,
+                                                  color: context.uai.warning,
+                                                ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            nome.substring(0, 1).toUpperCase(),
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: context.uai.warning,
+                                            ),
+                                          ),
+                                        ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.check_circle, color: context.uai.success),
-                                onPressed: () {
-                                  Navigator.of(context).pop(); // Fecha o diálogo
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => AprovarUsuarioScreen(
-                                        userId: usuario.id,
-                                        userData: data,
-                                        adminData: {}, // Você precisará passar os dados do admin
+                                title: Text(
+                                  nome,
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(email, style: TextStyle(fontSize: 12)),
+                                    SizedBox(height: 4),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: context.uai.warning.withOpacity(
+                                          0.16,
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        tipo.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: context.uai.warning,
+                                        ),
                                       ),
                                     ),
-                                  );
-                                },
-                                tooltip: 'Aprovar',
+                                  ],
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.check_circle,
+                                        color: context.uai.success,
+                                      ),
+                                      onPressed: () {
+                                        if (!canApprove) return;
+                                        Navigator.of(
+                                          context,
+                                        ).pop(); // Fecha o diálogo
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                AprovarUsuarioScreen(
+                                                  userId: usuario.id,
+                                                  userData: data,
+                                                  adminData:
+                                                      {}, // Você precisará passar os dados do admin
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Aprovar',
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.cancel,
+                                        color: context.uai.error,
+                                      ),
+                                      onPressed: () {
+                                        if (!canApprove) return;
+                                        _showRejectConfirmation(
+                                          context,
+                                          usuario.id,
+                                          nome,
+                                        );
+                                      },
+                                      tooltip: 'Rejeitar',
+                                    ),
+                                  ],
+                                ),
                               ),
-                              IconButton(
-                                icon: Icon(Icons.cancel, color: context.uai.error),
-                                onPressed: () {
-                                  _showRejectConfirmation(context, usuario.id, nome);
-                                },
-                                tooltip: 'Rejeitar',
-                              ),
-
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
 
                 // Botão fechar
                 Container(
                   padding: EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: context.uai.textMuted, width: 0.5)),
+                    border: Border(
+                      top: BorderSide(color: context.uai.textMuted, width: 0.5),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -297,13 +357,19 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   }
 
   // Função para confirmar rejeição
-  void _showRejectConfirmation(BuildContext context, String userId, String nome) {
+  void _showRejectConfirmation(
+    BuildContext context,
+    String userId,
+    String nome,
+  ) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Rejeitar Usuário'),
-          content: Text("Deseja realmente rejeitar o usuário \"$nome\"?\n\nO usuário será removido do sistema."),
+          content: Text(
+            "Deseja realmente rejeitar o usuário \"$nome\"?\n\nO usuário será removido do sistema.",
+          ),
           actions: <Widget>[
             TextButton(
               child: Text('Cancelar'),
@@ -318,7 +384,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
                 try {
                   // Excluir o usuário do Firestore
-                  await FirebaseFirestore.instance.collection('usuarios').doc(userId).delete();
+                  await FirebaseFirestore.instance
+                      .collection('usuarios')
+                      .doc(userId)
+                      .delete();
 
                   // Mostrar mensagem de sucesso
                   if (mounted) {
@@ -383,7 +452,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               itemBuilder: (context, index) {
                 final usuario = inactiveUsers[index];
                 final data = usuario.data() as Map<String, dynamic>;
-                final nome = data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
+                final nome =
+                    data['nome_completo'] ??
+                    data['name'] ??
+                    'Nome não informado';
                 final email = data['email'] ?? 'Email não informado';
                 final statusConta = data['status_conta'] ?? '';
                 final fotoUrl = _fotoUrlFromData(data);
@@ -400,24 +472,25 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                       ),
                       child: fotoUrl != null && fotoUrl.toString().isNotEmpty
                           ? ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: CachedNetworkImage(
-                          imageUrl: fotoUrl.toString(),
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => CircularProgressIndicator(),
-                          errorWidget: (context, url, error) =>
-                              Icon(Icons.person, color: context.uai.card),
-                        ),
-                      )
+                              borderRadius: BorderRadius.circular(20),
+                              child: CachedNetworkImage(
+                                imageUrl: fotoUrl.toString(),
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) =>
+                                    CircularProgressIndicator(),
+                                errorWidget: (context, url, error) =>
+                                    Icon(Icons.person, color: context.uai.card),
+                              ),
+                            )
                           : Center(
-                        child: Text(
-                          nome.substring(0, 1).toUpperCase(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _getStatusColor(statusConta),
-                          ),
-                        ),
-                      ),
+                              child: Text(
+                                nome.substring(0, 1).toUpperCase(),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _getStatusColor(statusConta),
+                                ),
+                              ),
+                            ),
                     ),
                     title: Text(
                       nome,
@@ -425,7 +498,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                     ),
                     subtitle: Text(email),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: _getStatusColor(statusConta).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
@@ -444,7 +520,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => UsuarioDetalheScreen(userId: usuario.id),
+                          builder: (context) =>
+                              UsuarioDetalheScreen(userId: usuario.id),
                         ),
                       );
                     },
@@ -480,21 +557,46 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<UsuarioAdminAccess>(
+      future: _accessFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return buildLoadingGestaoUsuarios(context);
+        }
+
+        final access = snapshot.data;
+        if (snapshot.hasError || access == null || !access.liberado) {
+          return buildAcessoNegadoGestaoUsuarios(context);
+        }
+
+        return _buildConteudoAutorizado(context, access);
+      },
+    );
+  }
+
+  Widget _buildConteudoAutorizado(
+    BuildContext context,
+    UsuarioAdminAccess access,
+  ) {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: Text(
-          'Usuários',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: Text('Usuários', style: TextStyle(fontWeight: FontWeight.w900)),
         centerTitle: true,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         actions: [
-          _buildPendingActionButton(),
+          _buildPendingActionButton(access.adminMaster),
           IconButton(
             icon: Icon(Icons.people_outline_rounded),
             onPressed: () => _showInactiveUsersDialog(context),
@@ -504,8 +606,15 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'fab_add_usuario',
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text(
           'Novo',
@@ -514,7 +623,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const EditarUsuarioScreen()),
+            MaterialPageRoute(
+              builder: (context) => const EditarUsuarioScreen(),
+            ),
           );
         },
       ),
@@ -533,7 +644,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           final adminPesoPermissao = adminData['peso_permissao'] ?? 0;
           final adminTipo = adminData['tipo'] ?? '';
           final bool isAdmin =
-              adminPesoPermissao >= 90 || adminTipo == 'admin' || adminTipo == 'administrador';
+              adminPesoPermissao >= 90 ||
+              adminTipo == 'admin' ||
+              adminTipo == 'administrador';
+          final podeAdministrarAlvosCriticos = access.adminMaster && isAdmin;
 
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -549,7 +663,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 return _buildEmptyState(
                   icon: Icons.people_outline_rounded,
                   title: 'Nenhum usuário encontrado',
-                  subtitle: 'Quando houver usuários cadastrados, eles aparecerão aqui.',
+                  subtitle:
+                      'Quando houver usuários cadastrados, eles aparecerão aqui.',
                 );
               }
 
@@ -558,14 +673,16 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
               final pendentes = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data['status_conta'] == 'pendente' || data['aprovado_em'] == null;
+                return data['status_conta'] == 'pendente' ||
+                    data['aprovado_em'] == null;
               }).toList();
 
               _pendentesCount = pendentes.length;
 
               final aprovados = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data['status_conta'] == 'ativa' && data['aprovado_em'] != null;
+                return data['status_conta'] == 'ativa' &&
+                    data['aprovado_em'] != null;
               }).toList();
 
               final outros = usuarios.where((doc) {
@@ -578,7 +695,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
 
               final bloqueados = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                final status = data['status_conta']?.toString().toLowerCase() ?? '';
+                final status =
+                    data['status_conta']?.toString().toLowerCase() ?? '';
                 return status == 'bloqueada' || status == 'inativa';
               }).length;
 
@@ -615,6 +733,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                 _buildQuickActionsRow(
                                   pendentes: pendentes,
                                   compact: isCompact,
+                                  canApprove: podeAdministrarAlvosCriticos,
                                 ),
                                 SizedBox(height: 16),
                                 if (aprovados.isNotEmpty)
@@ -628,7 +747,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                   _buildUserGrid(
                                     usuarios: aprovados,
                                     isWide: isWide,
-                                    isAdmin: isAdmin,
+                                    isAdmin: podeAdministrarAlvosCriticos,
                                     adminData: adminData,
                                   ),
                                 if (outros.isNotEmpty) ...[
@@ -642,7 +761,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                   _buildUserGrid(
                                     usuarios: outros,
                                     isWide: isWide,
-                                    isAdmin: isAdmin,
+                                    isAdmin: podeAdministrarAlvosCriticos,
                                     adminData: adminData,
                                   ),
                                 ],
@@ -650,7 +769,8 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                   _buildEmptyState(
                                     icon: Icons.verified_user_outlined,
                                     title: 'Nenhum usuário aprovado',
-                                    subtitle: 'Usuários pendentes ficam no botão de notificações.',
+                                    subtitle:
+                                        'Usuários pendentes ficam no botão de notificações.',
                                   ),
                               ],
                             ),
@@ -668,7 +788,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     );
   }
 
-  Widget _buildPendingActionButton() {
+  Widget _buildPendingActionButton(bool canApprove) {
     return Stack(
       children: [
         IconButton(
@@ -679,17 +799,20 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 .where('status_conta', isEqualTo: 'pendente')
                 .get()
                 .then((snapshot) {
-              if (mounted) _showPendingUsersDialog(context, snapshot.docs);
-            }).catchError((error) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Erro ao carregar pendentes: $error'),
-                    backgroundColor: context.uai.error,
-                  ),
-                );
-              }
-            });
+                  if (mounted) {
+                    _showPendingUsersDialog(context, snapshot.docs, canApprove);
+                  }
+                })
+                .catchError((error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erro ao carregar pendentes: $error'),
+                        backgroundColor: context.uai.error,
+                      ),
+                    );
+                  }
+                });
           },
           tooltip: 'Usuários pendentes',
         ),
@@ -755,8 +878,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Gerenciar Usuários',
@@ -788,22 +912,30 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                   _buildHeroChip(Icons.people_alt_rounded, '$total usuários'),
                   _buildHeroChip(Icons.verified_rounded, '$ativos ativos'),
                   if (pendentes > 0)
-                    _buildHeroChip(Icons.pending_actions_rounded, '$pendentes pendentes'),
+                    _buildHeroChip(
+                      Icons.pending_actions_rounded,
+                      '$pendentes pendentes',
+                    ),
                   if (bloqueados > 0)
-                    _buildHeroChip(Icons.block_rounded, '$bloqueados bloqueados'),
+                    _buildHeroChip(
+                      Icons.block_rounded,
+                      '$bloqueados bloqueados',
+                    ),
                 ],
               ),
             ],
           );
 
           if (narrow) {
-            return Column(
-              children: [icon, SizedBox(height: 12), text],
-            );
+            return Column(children: [icon, SizedBox(height: 12), text]);
           }
 
           return Row(
-            children: [icon, SizedBox(width: 16), Expanded(child: text)],
+            children: [
+              icon,
+              SizedBox(width: 16),
+              Expanded(child: text),
+            ],
           );
         },
       ),
@@ -841,6 +973,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   Widget _buildQuickActionsRow({
     required List<QueryDocumentSnapshot> pendentes,
     required bool compact,
+    required bool canApprove,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -849,9 +982,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           _buildActionCard(
             icon: Icons.pending_actions_rounded,
             title: 'Pendentes',
-            subtitle: pendentes.isEmpty ? 'Nenhum aguardando' : '${pendentes.length} aguardando aprovação',
+            subtitle: pendentes.isEmpty
+                ? 'Nenhum aguardando'
+                : '${pendentes.length} aguardando aprovação',
             color: context.uai.warning,
-            onTap: () => _showPendingUsersDialog(context, pendentes),
+            onTap: () =>
+                _showPendingUsersDialog(context, pendentes, canApprove),
           ),
           _buildActionCard(
             icon: Icons.people_outline_rounded,
@@ -867,7 +1003,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             color: context.uai.success,
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const EditarUsuarioScreen()),
+              MaterialPageRoute(
+                builder: (context) => const EditarUsuarioScreen(),
+              ),
             ),
           ),
         ];
@@ -875,10 +1013,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         if (!wide) {
           return Column(
             children: actions
-                .map((w) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: w,
-            ))
+                .map(
+                  (w) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: w,
+                  ),
+                )
                 .toList(),
           );
         }
@@ -980,14 +1120,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       return Column(
         children: usuarios
             .map(
-              (usuario) => _buildUserCard(
-            context,
-            usuario,
-            false,
-            isAdmin,
-            adminData,
-          ),
-        )
+              (usuario) =>
+                  _buildUserCard(context, usuario, false, isAdmin, adminData),
+            )
             .toList(),
       );
     }
@@ -998,13 +1133,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       children: usuarios.map((usuario) {
         return SizedBox(
           width: 370,
-          child: _buildUserCard(
-            context,
-            usuario,
-            false,
-            isAdmin,
-            adminData,
-          ),
+          child: _buildUserCard(context, usuario, false, isAdmin, adminData),
         );
       }).toList(),
     );
@@ -1063,12 +1192,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
   }
 
   Widget _buildUserCard(
-      BuildContext context,
-      QueryDocumentSnapshot usuario,
-      bool isPendente,
-      bool isAdmin,
-      Map<String, dynamic> adminData,
-      ) {
+    BuildContext context,
+    QueryDocumentSnapshot usuario,
+    bool isPendente,
+    bool isAdmin,
+    Map<String, dynamic> adminData,
+  ) {
     final data = usuario.data() as Map<String, dynamic>;
     final userId = usuario.id;
     final nome = data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
@@ -1080,7 +1209,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     final tipo = data['tipo'] ?? '';
     final bool podeExcluir = isAdmin && pesoPermissao < 90;
     final tipoColor = _ensureVisible(_getTipoColor(tipo), context.uai.card);
-    final statusColor = _ensureVisible(_getStatusColor(statusConta), context.uai.card);
+    final statusColor = _ensureVisible(
+      _getStatusColor(statusConta),
+      context.uai.card,
+    );
     final inicial = nome.toString().trim().isNotEmpty
         ? nome.toString().trim().substring(0, 1).toUpperCase()
         : '?';
@@ -1108,7 +1240,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => UsuarioDetalheScreen(userId: userId)),
+                MaterialPageRoute(
+                  builder: (context) => UsuarioDetalheScreen(userId: userId),
+                ),
               );
             },
             child: Padding(
@@ -1154,13 +1288,18 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                           runSpacing: 6,
                           children: [
                             _buildMiniBadge(
-                              label: tipo.toString().isEmpty ? 'TIPO' : tipo.toString().toUpperCase(),
+                              label: tipo.toString().isEmpty
+                                  ? 'TIPO'
+                                  : tipo.toString().toUpperCase(),
                               color: tipoColor,
                               icon: Icons.badge_rounded,
                             ),
                             _buildMiniBadge(
                               label: 'PESO $pesoPermissao',
-                              color: _ensureVisible(context.uai.info, context.uai.card),
+                              color: _ensureVisible(
+                                context.uai.info,
+                                context.uai.card,
+                              ),
                               icon: Icons.security_rounded,
                             ),
                             if (statusConta != 'ativa')
@@ -1172,7 +1311,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                             if (aprovadoEm != null)
                               _buildMiniBadge(
                                 label: 'APROVADO',
-                                color: _ensureVisible(context.uai.success, context.uai.card),
+                                color: _ensureVisible(
+                                  context.uai.success,
+                                  context.uai.card,
+                                ),
                                 icon: Icons.verified_rounded,
                               ),
                           ],
@@ -1185,17 +1327,24 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                       tooltip: 'Ações',
                       color: context.uai.card,
                       iconColor: context.uai.textMuted,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       onSelected: (value) {
                         if (value == 'editar') {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => EditarUsuarioScreen(userId: userId),
+                              builder: (context) =>
+                                  EditarUsuarioScreen(userId: userId),
                             ),
                           );
                         } else if (value == 'excluir') {
-                          _showDeleteConfirmation(context, userId, nome.toString());
+                          _showDeleteConfirmation(
+                            context,
+                            userId,
+                            nome.toString(),
+                          );
                         }
                       },
                       itemBuilder: (context) => [
@@ -1203,9 +1352,18 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                           value: 'editar',
                           child: Row(
                             children: [
-                              Icon(Icons.edit_rounded, size: 18, color: context.uai.textSecondary),
+                              Icon(
+                                Icons.edit_rounded,
+                                size: 18,
+                                color: context.uai.textSecondary,
+                              ),
                               const SizedBox(width: 8),
-                              Text('Editar', style: TextStyle(color: context.uai.textPrimary)),
+                              Text(
+                                'Editar',
+                                style: TextStyle(
+                                  color: context.uai.textPrimary,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1213,16 +1371,26 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                           value: 'excluir',
                           child: Row(
                             children: [
-                              Icon(Icons.delete_forever_rounded, size: 18, color: context.uai.error),
+                              Icon(
+                                Icons.delete_forever_rounded,
+                                size: 18,
+                                color: context.uai.error,
+                              ),
                               const SizedBox(width: 8),
-                              Text('Excluir', style: TextStyle(color: context.uai.error)),
+                              Text(
+                                'Excluir',
+                                style: TextStyle(color: context.uai.error),
+                              ),
                             ],
                           ),
                         ),
                       ],
                     )
                   else
-                    Icon(Icons.chevron_right_rounded, color: context.uai.textMuted),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: context.uai.textMuted,
+                    ),
                 ],
               ),
             ),
@@ -1239,7 +1407,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     required double size,
     required String inicial,
   }) {
-    final avatarBg = Color.alphaBlend(color.withOpacity(0.12), context.uai.cardAlt);
+    final avatarBg = Color.alphaBlend(
+      color.withOpacity(0.12),
+      context.uai.cardAlt,
+    );
 
     return Container(
       width: size,
@@ -1252,41 +1423,41 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       child: ClipOval(
         child: fotoUrl != null && fotoUrl.trim().isNotEmpty
             ? CachedNetworkImage(
-          imageUrl: fotoUrl.trim(),
-          fit: BoxFit.cover,
-          width: size,
-          height: size,
-          placeholder: (context, url) => Center(
-            child: SizedBox(
-              width: size * 0.34,
-              height: size * 0.34,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: color,
-              ),
-            ),
-          ),
-          errorWidget: (context, url, error) => Center(
-            child: Text(
-              inicial,
-              style: TextStyle(
-                fontSize: size * 0.36,
-                fontWeight: FontWeight.w900,
-                color: color,
-              ),
-            ),
-          ),
-        )
+                imageUrl: fotoUrl.trim(),
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                placeholder: (context, url) => Center(
+                  child: SizedBox(
+                    width: size * 0.34,
+                    height: size * 0.34,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: color,
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Center(
+                  child: Text(
+                    inicial,
+                    style: TextStyle(
+                      fontSize: size * 0.36,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
+                  ),
+                ),
+              )
             : Center(
-          child: Text(
-            inicial,
-            style: TextStyle(
-              fontSize: size * 0.36,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
-        ),
+                child: Text(
+                  inicial,
+                  style: TextStyle(
+                    fontSize: size * 0.36,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ),
       ),
     );
   }

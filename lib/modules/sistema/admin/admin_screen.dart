@@ -1,8 +1,11 @@
-﻿// lib/modules/sistema/admin/admin_screen.dart
+// lib/modules/sistema/admin/admin_screen.dart
 
 import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/core/permissions/permission_catalog.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/modules/graduacoes/admin/gerenciar_graduacoes_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/gerenciar_usuarios_screen.dart';
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_triagem_screen.dart';
@@ -18,10 +21,37 @@ import 'package:uai_capoeira/modules/site/admin/gerenciar_logo_screen.dart';
 import 'package:uai_capoeira/modules/certificados/screens/certificado_preview_teste_screen.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/admin/controle_atualizacoes_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/indicadores_ausencia_screen.dart';
+import 'package:uai_capoeira/modules/sistema/firebase_saude/admin/firebase_saude_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/modo_troll_screen.dart';
 
-class AdminScreen extends StatelessWidget {
+class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
+
+  @override
+  State<AdminScreen> createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  final PermissaoService _permissaoService = PermissaoService();
+  late Future<_AdminPermissionState> _permissionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _permissionFuture = _carregarPermissoes();
+  }
+
+  Future<_AdminPermissionState> _carregarPermissoes() async {
+    final results = await Future.wait<dynamic>([
+      _permissaoService.usuarioAtualEhAdmin(),
+      _permissaoService.getTodasPermissoes(),
+    ]);
+
+    return _AdminPermissionState(
+      adminMaster: results[0] == true,
+      permissions: Map<String, bool>.from(results[1] as Map<String, bool>),
+    );
+  }
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -30,7 +60,8 @@ class AdminScreen extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -43,17 +74,69 @@ class AdminScreen extends StatelessWidget {
   }
 
   Color _softFill(Color color, Color base, [double opacity = 0.11]) {
-    return Color.alphaBlend(color.withOpacity(opacity), base);
+    return Color.alphaBlend(color.withValues(alpha: opacity), base);
   }
 
-  void _abrirTela(BuildContext context, Widget tela) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => tela),
+  bool _temPermissao(_AdminPermissionState access, List<String> permissions) {
+    for (final permission in permissions) {
+      if (access.permissions[permission] == true) return true;
+
+      for (final definition in PermissionCatalog.all) {
+        if (definition.key != permission &&
+            !definition.aliases.contains(permission)) {
+          continue;
+        }
+
+        for (final linkedKey in definition.linkedKeys) {
+          if (access.permissions[linkedKey] == true) return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  bool _podeVerCard(_AdminCardData item, _AdminPermissionState access) {
+    if (access.adminMaster) return true;
+    if (item.critical && item.adminOnly) return false;
+    if (item.adminOnly) return false;
+    if (item.permissions.isEmpty) return false;
+    return _temPermissao(access, item.permissions);
+  }
+
+  bool _podeAbrirMigracoes(_AdminPermissionState access) {
+    return access.adminMaster ||
+        _temPermissao(access, const ['pode_executar_migracoes']);
+  }
+
+  void _mostrarAcessoNegado(BuildContext context, [_AdminCardData? item]) {
+    final mensagem =
+        item?.deniedMessage ??
+        'Você não tem permissão para acessar este módulo.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
     );
   }
 
-  void _abrirMigracoes(BuildContext context) {
+  void _abrirTelaProtegida(
+    BuildContext context,
+    _AdminCardData item,
+    _AdminPermissionState access,
+  ) {
+    if (!_podeVerCard(item, access)) {
+      _mostrarAcessoNegado(context, item);
+      return;
+    }
+
+    Navigator.push(context, MaterialPageRoute(builder: (_) => item.tela));
+  }
+
+  void _abrirMigracoes(BuildContext context, _AdminPermissionState access) {
+    if (!_podeAbrirMigracoes(access)) {
+      _mostrarAcessoNegado(context);
+      return;
+    }
+
     final t = context.uai;
 
     final migrations = <_MigrationItem>[
@@ -63,6 +146,8 @@ class AdminScreen extends StatelessWidget {
         subtitle: 'Importar ou corrigir dados antigos dos alunos',
         color: t.info,
         tela: MigracaoTriagemScreen(),
+        permissions: const ['pode_migrar_alunos'],
+        adminOnly: true,
       ),
       _MigrationItem(
         icon: Icons.workspace_premium_rounded,
@@ -70,6 +155,8 @@ class AdminScreen extends StatelessWidget {
         subtitle: 'Importar graduações e faixas antigas',
         color: t.warning,
         tela: const MigracaoGraduacoesScreen(),
+        permissions: const ['pode_migrar_graduacoes'],
+        adminOnly: true,
       ),
       _MigrationItem(
         icon: Icons.history_edu_rounded,
@@ -77,6 +164,8 @@ class AdminScreen extends StatelessWidget {
         subtitle: 'Importar histórico de chamadas e presenças',
         color: t.associacao,
         tela: MigracaoChamadasScreen(),
+        permissions: const ['pode_migrar_chamadas'],
+        adminOnly: true,
       ),
       _MigrationItem(
         icon: Icons.event_available_rounded,
@@ -84,6 +173,8 @@ class AdminScreen extends StatelessWidget {
         subtitle: 'Importar eventos antigos do sistema',
         color: t.success,
         tela: MigracaoEventosScreen(),
+        permissions: const ['pode_migrar_eventos'],
+        adminOnly: true,
       ),
       _MigrationItem(
         icon: Icons.emoji_events_rounded,
@@ -91,8 +182,13 @@ class AdminScreen extends StatelessWidget {
         subtitle: 'Importar participantes e vínculos de eventos',
         color: t.warning,
         tela: MigracaoParticipacoesScreen(),
+        permissions: const ['pode_migrar_participacoes'],
+        adminOnly: true,
       ),
     ];
+    final visibleMigrations = migrations
+        .where((item) => _podeVerCard(item.asCardData(), access))
+        .toList(growable: false);
 
     showModalBottomSheet<void>(
       context: context,
@@ -133,13 +229,14 @@ class AdminScreen extends StatelessWidget {
                         height: 48,
                         decoration: BoxDecoration(
                           color: _softFill(accent, t.cardAlt, 0.13),
-                          borderRadius: BorderRadius.circular(t.buttonRadius + 1),
-                          border: Border.all(color: accent.withOpacity(0.16)),
+                          borderRadius: BorderRadius.circular(
+                            t.buttonRadius + 1,
+                          ),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.16),
+                          ),
                         ),
-                        child: Icon(
-                          Icons.sync_alt_rounded,
-                          color: accent,
-                        ),
+                        child: Icon(Icons.sync_alt_rounded, color: accent),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -180,23 +277,22 @@ class AdminScreen extends StatelessWidget {
                   ),
                 ),
                 Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-                    itemCount: migrations.length,
-                    itemBuilder: (context, index) {
-                      final item = migrations[index];
+                  child: visibleMigrations.isEmpty
+                      ? _buildEmptyMigrationState(sheetContext)
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                          itemCount: visibleMigrations.length,
+                          itemBuilder: (context, index) {
+                            final item = visibleMigrations[index];
 
-                      return _buildMigrationTile(
-                        context: sheetContext,
-                        icon: item.icon,
-                        title: item.title,
-                        subtitle: item.subtitle,
-                        color: item.color,
-                        tela: item.tela,
-                      );
-                    },
-                  ),
+                            return _buildMigrationTile(
+                              context: sheetContext,
+                              item: item,
+                              access: access,
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -208,14 +304,11 @@ class AdminScreen extends StatelessWidget {
 
   Widget _buildMigrationTile({
     required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required Widget tela,
+    required _MigrationItem item,
+    required _AdminPermissionState access,
   }) {
     final t = context.uai;
-    final visibleColor = _ensureVisible(color, t.card);
+    final visibleColor = _ensureVisible(item.color, t.card);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
@@ -225,17 +318,25 @@ class AdminScreen extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
+            final cardData = item.asCardData();
+            if (!_podeVerCard(cardData, access)) {
+              _mostrarAcessoNegado(context, cardData);
+              return;
+            }
             Navigator.pop(context);
-            _abrirTela(context, tela);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => item.tela),
+            );
           },
           borderRadius: BorderRadius.circular(t.cardRadius - 6),
-          splashColor: visibleColor.withOpacity(0.12),
-          highlightColor: visibleColor.withOpacity(0.06),
+          splashColor: visibleColor.withValues(alpha: 0.12),
+          highlightColor: visibleColor.withValues(alpha: 0.06),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius - 6),
-              border: Border.all(color: visibleColor.withOpacity(0.14)),
+              border: Border.all(color: visibleColor.withValues(alpha: 0.14)),
             ),
             child: Row(
               children: [
@@ -245,9 +346,11 @@ class AdminScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: _softFill(visibleColor, t.cardAlt, 0.14),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: visibleColor.withOpacity(0.12)),
+                    border: Border.all(
+                      color: visibleColor.withValues(alpha: 0.12),
+                    ),
                   ),
-                  child: Icon(icon, color: visibleColor, size: 22),
+                  child: Icon(item.icon, color: visibleColor, size: 22),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -255,7 +358,7 @@ class AdminScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        item.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -266,7 +369,7 @@ class AdminScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        subtitle,
+                        item.subtitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -289,9 +392,286 @@ class AdminScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildEmptyMigrationState(BuildContext context) {
+    final t = context.uai;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline_rounded, color: t.textMuted, size: 42),
+          const SizedBox(height: 10),
+          Text(
+            'Nenhuma migração disponível.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Solicite ao administrador a liberação das permissões necessárias.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingScaffold(BuildContext context) {
+    final t = context.uai;
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        title: const Text(
+          'Painel Administrativo',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        ),
+      ),
+      body: Center(child: CircularProgressIndicator(color: t.primary)),
+    );
+  }
+
+  Widget _buildErrorScaffold(BuildContext context) {
+    final t = context.uai;
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        title: const Text(
+          'Painel Administrativo',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline_rounded, color: t.error, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                'Não foi possível carregar suas permissões.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _permissionFuture = _carregarPermissoes();
+                  });
+                },
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyAdminState(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: _sectionDecoration(context),
+      child: Column(
+        children: [
+          Icon(Icons.lock_outline_rounded, color: t.textMuted, size: 46),
+          const SizedBox(height: 10),
+          Text(
+            'Você não possui módulos administrativos liberados.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Solicite ao administrador a liberação das permissões necessárias.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<_AdminCardData> _siteCards(UaiThemeTokens t) {
+    return [
+      _AdminCardData(
+        icon: Icons.web_rounded,
+        title: 'Gerenciar Site',
+        subtitle: 'Regimento, biografia, graduações e inscrição',
+        color: t.associacao,
+        tela: const GerenciarSiteScreen(),
+        permissions: const ['pode_gerenciar_site'],
+      ),
+      _AdminCardData(
+        icon: Icons.image_rounded,
+        title: 'Logo do Site',
+        subtitle: 'Troque a logo da página inicial',
+        color: t.inscricoes,
+        tela: const GerenciarLogoScreen(),
+        permissions: const ['pode_gerenciar_logo_site'],
+      ),
+    ];
+  }
+
+  List<_AdminCardData> _appCards(UaiThemeTokens t) {
+    return [
+      _AdminCardData(
+        icon: Icons.manage_accounts_rounded,
+        title: 'Gerenciar Usuários',
+        subtitle: 'Usuários, cargos e permissões do sistema',
+        color: t.primary,
+        tela: GerenciarUsuariosScreen(),
+        permissions: const ['pode_gerenciar_usuarios'],
+        critical: true,
+      ),
+      _AdminCardData(
+        icon: Icons.health_and_safety_rounded,
+        title: 'Saúde Firebase',
+        subtitle: 'Banco, storage, funções, uso e integridade',
+        color: t.info,
+        tela: const FirebaseSaudeScreen(),
+        permissions: const ['pode_saude_firebase'],
+        critical: true,
+        adminOnly: true,
+      ),
+      _AdminCardData(
+        icon: Icons.system_update_alt_rounded,
+        title: 'Controle de Atualizações',
+        subtitle: 'Upload de APK, versões, histórico e obrigatoriedade',
+        color: t.success,
+        tela: const ControleAtualizacoesScreen(),
+        permissions: const ['pode_controle_atualizacoes'],
+        critical: true,
+        adminOnly: true,
+      ),
+      _AdminCardData(
+        icon: Icons.rule_rounded,
+        title: 'Indicadores de Ausência',
+        subtitle: 'Configure dias e cores do alerta de frequência',
+        color: t.info,
+        tela: const IndicadoresAusenciaScreen(),
+        permissions: const ['pode_configurar_indicadores_ausencia'],
+      ),
+      _AdminCardData(
+        icon: Icons.psychology_alt_rounded,
+        title: 'Brincadeiras da Chamada',
+        subtitle: 'Telepatia e chamada inversa com controle seguro',
+        color: t.warning,
+        tela: const ModoTrollScreen(),
+        permissions: const ['pode_configurar_chamada'],
+      ),
+      _AdminCardData(
+        icon: Icons.workspace_premium_rounded,
+        title: 'Gerenciar Graduações',
+        subtitle: 'Crie, edite e organize as graduações do app',
+        color: t.warning,
+        tela: GerenciarGraduacoesScreen(),
+        permissions: const ['pode_gerenciar_graduacoes'],
+      ),
+      _AdminCardData(
+        icon: Icons.business_rounded,
+        title: 'Gerenciar Academias',
+        subtitle: 'Academias, núcleos, turmas e horários',
+        color: t.info,
+        tela: GerenciarAcademiasScreen(),
+        permissions: const ['pode_gerenciar_academias'],
+      ),
+      _AdminCardData(
+        icon: Icons.event_rounded,
+        title: 'Gerenciar Eventos',
+        subtitle: 'Cadastre, edite e acompanhe eventos',
+        color: t.eventos,
+        tela: const GerenciarEventosScreen(),
+        permissions: const [
+          'pode_ver_eventos',
+          'pode_acessar_eventos',
+          'pode_criar_evento',
+          'pode_editar_evento',
+          'pode_gerenciar_participantes_evento',
+        ],
+      ),
+      _AdminCardData(
+        icon: Icons.emoji_events_rounded,
+        title: 'Gerenciar Participações',
+        subtitle: 'Participações, pagamentos e certificados',
+        color: t.warning,
+        tela: const GerenciarParticipacoesScreen(),
+        permissions: const [
+          'pode_gerenciar_participantes_evento',
+          'pode_adicionar_participante_evento',
+          'pode_editar_participacao_evento',
+          'pode_remover_participante_evento',
+          'pode_concluir_participacao_evento',
+        ],
+      ),
+      _AdminCardData(
+        icon: Icons.history_edu_rounded,
+        title: 'Configurar Certificados',
+        subtitle: 'Templates, prévias e geração automática por SVG',
+        color: t.inscricoes,
+        tela: const CertificadoPreviewTesteScreen(),
+        permissions: const ['pode_configurar_certificados'],
+      ),
+    ];
+  }
+
+  _AdminCardData _migrationLauncherCard(UaiThemeTokens t) {
+    return _AdminCardData(
+      icon: Icons.sync_alt_rounded,
+      title: 'Ferramentas de Migração',
+      subtitle: 'Importações e correções de dados antigos',
+      color: t.primary,
+      tela: const SizedBox.shrink(),
+      permissions: const ['pode_executar_migracoes'],
+      critical: true,
+      adminOnly: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<_AdminPermissionState>(
+      future: _permissionFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingScaffold(context);
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return _buildErrorScaffold(context);
+        }
+
+        return _buildAdminScaffold(context, snapshot.data!);
+      },
+    );
+  }
+
+  Widget _buildAdminScaffold(
+    BuildContext context,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
+    final siteCards = _siteCards(t);
+    final appCards = _appCards(t);
+    final migrationLauncher = _migrationLauncherCard(t);
+    final visibleCount = [
+      ...siteCards,
+      ...appCards,
+      migrationLauncher,
+    ].where((item) => _podeVerCard(item, access)).length;
 
     return Scaffold(
       backgroundColor: t.background,
@@ -301,11 +681,12 @@ class AdminScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         actions: [
-          IconButton(
-            tooltip: 'Migrações',
-            onPressed: () => _abrirMigracoes(context),
-            icon: const Icon(Icons.sync_alt_rounded),
-          ),
+          if (_podeAbrirMigracoes(access))
+            IconButton(
+              tooltip: 'Migrações',
+              onPressed: () => _abrirMigracoes(context, access),
+              icon: const Icon(Icons.sync_alt_rounded),
+            ),
         ],
       ),
       body: LayoutBuilder(
@@ -321,8 +702,12 @@ class AdminScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildHeaderResumo(context),
+                      _buildHeaderResumo(context, access),
                       const SizedBox(height: 16),
+                      if (visibleCount == 0) ...[
+                        _buildEmptyAdminState(context),
+                        const SizedBox(height: 14),
+                      ],
                       _buildSection(
                         context: context,
                         icon: Icons.public_rounded,
@@ -332,9 +717,11 @@ class AdminScreen extends StatelessWidget {
                           _AdminCardData(
                             icon: Icons.web_rounded,
                             title: 'Gerenciar Site',
-                            subtitle: 'Regimento, biografia, graduações e inscrição',
+                            subtitle:
+                                'Regimento, biografia, graduações e inscrição',
                             color: t.associacao,
                             tela: const GerenciarSiteScreen(),
+                            permissions: const ['pode_gerenciar_site'],
                           ),
                           _AdminCardData(
                             icon: Icons.image_rounded,
@@ -342,50 +729,81 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Troque a logo da página inicial',
                             color: t.inscricoes,
                             tela: const GerenciarLogoScreen(),
+                            permissions: const ['pode_gerenciar_logo_site'],
                           ),
                         ],
+                        access: access,
                       ),
                       const SizedBox(height: 14),
                       _buildSection(
                         context: context,
                         icon: Icons.phone_android_rounded,
                         title: 'Gerenciamento do App',
-                        subtitle: 'Usuários, eventos, academias e dados internos.',
+                        subtitle:
+                            'Usuários, eventos, academias e dados internos.',
                         children: [
                           _AdminCardData(
                             icon: Icons.manage_accounts_rounded,
                             title: 'Gerenciar Usuários',
-                            subtitle: 'Usuários, cargos e permissões do sistema',
+                            subtitle:
+                                'Usuários, cargos e permissões do sistema',
                             color: t.primary,
                             tela: GerenciarUsuariosScreen(),
+                            permissions: const ['pode_gerenciar_usuarios'],
+                            critical: true,
+                            deniedMessage:
+                                'Você não tem permissão para gerenciar usuários.',
+                          ),
+                          _AdminCardData(
+                            icon: Icons.health_and_safety_rounded,
+                            title: 'Saúde Firebase',
+                            subtitle:
+                                'Banco, storage, funções, uso e integridade',
+                            color: t.info,
+                            tela: const FirebaseSaudeScreen(),
+                            permissions: const ['pode_saude_firebase'],
+                            critical: true,
+                            adminOnly: true,
                           ),
                           _AdminCardData(
                             icon: Icons.system_update_alt_rounded,
                             title: 'Controle de Atualizações',
-                            subtitle: 'Upload de APK, versões, histórico e obrigatoriedade',
+                            subtitle:
+                                'Upload de APK, versões, histórico e obrigatoriedade',
                             color: t.success,
                             tela: const ControleAtualizacoesScreen(),
+                            permissions: const ['pode_controle_atualizacoes'],
+                            critical: true,
+                            adminOnly: true,
                           ),
                           _AdminCardData(
                             icon: Icons.rule_rounded,
                             title: 'Indicadores de Ausência',
-                            subtitle: 'Configure dias e cores do alerta de frequência',
+                            subtitle:
+                                'Configure dias e cores do alerta de frequência',
                             color: t.info,
                             tela: const IndicadoresAusenciaScreen(),
+                            permissions: const [
+                              'pode_configurar_indicadores_ausencia',
+                            ],
                           ),
                           _AdminCardData(
                             icon: Icons.psychology_alt_rounded,
                             title: 'Brincadeiras da Chamada',
-                            subtitle: 'Telepatia e chamada inversa com controle seguro',
+                            subtitle:
+                                'Telepatia e chamada inversa com controle seguro',
                             color: t.warning,
                             tela: const ModoTrollScreen(),
+                            permissions: const ['pode_configurar_chamada'],
                           ),
                           _AdminCardData(
                             icon: Icons.workspace_premium_rounded,
                             title: 'Gerenciar Graduações',
-                            subtitle: 'Crie, edite e organize as graduações do app',
+                            subtitle:
+                                'Crie, edite e organize as graduações do app',
                             color: t.warning,
                             tela: GerenciarGraduacoesScreen(),
+                            permissions: const ['pode_gerenciar_graduacoes'],
                           ),
                           _AdminCardData(
                             icon: Icons.business_rounded,
@@ -393,6 +811,7 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Academias, núcleos, turmas e horários',
                             color: t.info,
                             tela: GerenciarAcademiasScreen(),
+                            permissions: const ['pode_gerenciar_academias'],
                           ),
                           _AdminCardData(
                             icon: Icons.event_rounded,
@@ -400,25 +819,48 @@ class AdminScreen extends StatelessWidget {
                             subtitle: 'Cadastre, edite e acompanhe eventos',
                             color: t.eventos,
                             tela: const GerenciarEventosScreen(),
+                            permissions: const [
+                              'pode_ver_eventos',
+                              'pode_acessar_eventos',
+                              'pode_criar_evento',
+                              'pode_editar_evento',
+                              'pode_gerenciar_participantes_evento',
+                            ],
                           ),
                           _AdminCardData(
                             icon: Icons.emoji_events_rounded,
                             title: 'Gerenciar Participações',
-                            subtitle: 'Participações, pagamentos e certificados',
+                            subtitle:
+                                'Participações, pagamentos e certificados',
                             color: t.warning,
                             tela: const GerenciarParticipacoesScreen(),
+                            permissions: const [
+                              'pode_gerenciar_participantes_evento',
+                              'pode_adicionar_participante_evento',
+                              'pode_editar_participacao_evento',
+                              'pode_remover_participante_evento',
+                              'pode_concluir_participacao_evento',
+                            ],
                           ),
                           _AdminCardData(
                             icon: Icons.history_edu_rounded,
                             title: 'Configurar Certificados',
-                            subtitle: 'Templates, prévias e geração automática por SVG',
+                            subtitle:
+                                'Templates, prévias e geração automática por SVG',
                             color: t.inscricoes,
                             tela: const CertificadoPreviewTesteScreen(),
+                            permissions: const ['pode_configurar_certificados'],
                           ),
                         ],
+                        access: access,
                       ),
                       const SizedBox(height: 14),
-                      _buildMigrationButton(context),
+                      if (_podeVerCard(migrationLauncher, access))
+                        _buildMigrationButton(
+                          context,
+                          migrationLauncher,
+                          access,
+                        ),
                     ],
                   ),
                 ),
@@ -430,7 +872,10 @@ class AdminScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderResumo(BuildContext context) {
+  Widget _buildHeaderResumo(
+    BuildContext context,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -449,9 +894,9 @@ class AdminScreen extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(t.cardRadius - 2),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withValues(alpha: 0.16)),
             ),
             child: Icon(
               Icons.admin_panel_settings_rounded,
@@ -461,8 +906,9 @@ class AdminScreen extends StatelessWidget {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Admin Uai Capoeira',
@@ -479,7 +925,7 @@ class AdminScreen extends StatelessWidget {
                 'Site, app, eventos, usuários, academias e migrações em um só lugar.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withValues(alpha: 0.82),
                   fontSize: 13,
                   height: 1.32,
                   fontWeight: FontWeight.w600,
@@ -494,7 +940,9 @@ class AdminScreen extends StatelessWidget {
                   _whiteChip(
                     context: context,
                     icon: Icons.security_rounded,
-                    label: 'Admin',
+                    label: access.adminMaster
+                        ? 'Acesso completo'
+                        : 'Acesso personalizado',
                   ),
                   _whiteChip(
                     context: context,
@@ -512,13 +960,7 @@ class AdminScreen extends StatelessWidget {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -539,8 +981,13 @@ class AdminScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required List<_AdminCardData> children,
+    required _AdminPermissionState access,
   }) {
-    final t = context.uai;
+    final visibleChildren = children
+        .where((item) => _podeVerCard(item, access))
+        .toList(growable: false);
+
+    if (visibleChildren.isEmpty) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.all(15),
@@ -562,14 +1009,11 @@ class AdminScreen extends StatelessWidget {
 
               if (!useTwoColumns) {
                 return Column(
-                  children: children.map((item) {
+                  children: visibleChildren.map((item) {
                     return _buildAdminCard(
                       context: context,
-                      icon: item.icon,
-                      title: item.title,
-                      subtitle: item.subtitle,
-                      color: item.color,
-                      tela: item.tela,
+                      item: item,
+                      access: access,
                     );
                   }).toList(),
                 );
@@ -580,16 +1024,13 @@ class AdminScreen extends StatelessWidget {
               return Wrap(
                 spacing: spacing,
                 runSpacing: spacing,
-                children: children.map((item) {
+                children: visibleChildren.map((item) {
                   return SizedBox(
                     width: itemWidth,
                     child: _buildAdminCard(
                       context: context,
-                      icon: item.icon,
-                      title: item.title,
-                      subtitle: item.subtitle,
-                      color: item.color,
-                      tela: item.tela,
+                      item: item,
+                      access: access,
                     ),
                   );
                 }).toList(),
@@ -618,7 +1059,7 @@ class AdminScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: _softFill(accent, t.cardAlt, 0.12),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: accent.withOpacity(0.12)),
+            border: Border.all(color: accent.withValues(alpha: 0.12)),
           ),
           child: Icon(icon, color: accent),
         ),
@@ -656,14 +1097,11 @@ class AdminScreen extends StatelessWidget {
 
   Widget _buildAdminCard({
     required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required Widget tela,
+    required _AdminCardData item,
+    required _AdminPermissionState access,
   }) {
     final t = context.uai;
-    final visibleColor = _ensureVisible(color, t.card);
+    final visibleColor = _ensureVisible(item.color, t.card);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -672,16 +1110,16 @@ class AdminScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(t.cardRadius - 6),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _abrirTela(context, tela),
+          onTap: () => _abrirTelaProtegida(context, item, access),
           borderRadius: BorderRadius.circular(t.cardRadius - 6),
-          splashColor: visibleColor.withOpacity(0.12),
-          highlightColor: visibleColor.withOpacity(0.06),
+          splashColor: visibleColor.withValues(alpha: 0.12),
+          highlightColor: visibleColor.withValues(alpha: 0.06),
           child: Container(
             constraints: const BoxConstraints(minHeight: 82),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius - 6),
-              border: Border.all(color: visibleColor.withOpacity(0.12)),
+              border: Border.all(color: visibleColor.withValues(alpha: 0.12)),
               boxShadow: t.softShadow,
             ),
             child: Row(
@@ -692,9 +1130,11 @@ class AdminScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: _softFill(visibleColor, t.cardAlt, 0.13),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: visibleColor.withOpacity(0.12)),
+                    border: Border.all(
+                      color: visibleColor.withValues(alpha: 0.12),
+                    ),
                   ),
-                  child: Icon(icon, size: 25, color: visibleColor),
+                  child: Icon(item.icon, size: 25, color: visibleColor),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -703,7 +1143,7 @@ class AdminScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        item.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -714,7 +1154,7 @@ class AdminScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        subtitle,
+                        item.subtitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -737,7 +1177,11 @@ class AdminScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMigrationButton(BuildContext context) {
+  Widget _buildMigrationButton(
+    BuildContext context,
+    _AdminCardData item,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.card);
 
@@ -746,15 +1190,21 @@ class AdminScreen extends StatelessWidget {
       borderRadius: BorderRadius.circular(t.cardRadius - 6),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _abrirMigracoes(context),
+        onTap: () {
+          if (!_podeVerCard(item, access)) {
+            _mostrarAcessoNegado(context, item);
+            return;
+          }
+          _abrirMigracoes(context, access);
+        },
         borderRadius: BorderRadius.circular(t.cardRadius - 6),
-        splashColor: accent.withOpacity(0.10),
-        highlightColor: accent.withOpacity(0.04),
+        splashColor: accent.withValues(alpha: 0.10),
+        highlightColor: accent.withValues(alpha: 0.04),
         child: Container(
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius - 6),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withValues(alpha: 0.14)),
             boxShadow: t.softShadow,
           ),
           child: Row(
@@ -765,7 +1215,7 @@ class AdminScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: _softFill(accent, t.cardAlt, 0.12),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: accent.withOpacity(0.12)),
+                  border: Border.all(color: accent.withValues(alpha: 0.12)),
                 ),
                 child: Icon(Icons.sync_alt_rounded, color: accent),
               ),
@@ -799,9 +1249,9 @@ class AdminScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withValues(alpha: 0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -839,6 +1289,10 @@ class _AdminCardData {
   final String subtitle;
   final Color color;
   final Widget tela;
+  final List<String> permissions;
+  final bool critical;
+  final bool adminOnly;
+  final String? deniedMessage;
 
   const _AdminCardData({
     required this.icon,
@@ -846,6 +1300,10 @@ class _AdminCardData {
     required this.subtitle,
     required this.color,
     required this.tela,
+    this.permissions = const [],
+    this.critical = false,
+    this.adminOnly = false,
+    this.deniedMessage,
   });
 }
 
@@ -855,6 +1313,8 @@ class _MigrationItem {
   final String subtitle;
   final Color color;
   final Widget tela;
+  final List<String> permissions;
+  final bool adminOnly;
 
   const _MigrationItem({
     required this.icon,
@@ -862,5 +1322,30 @@ class _MigrationItem {
     required this.subtitle,
     required this.color,
     required this.tela,
+    required this.permissions,
+    this.adminOnly = true,
+  });
+
+  _AdminCardData asCardData() {
+    return _AdminCardData(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      color: color,
+      tela: tela,
+      permissions: permissions,
+      critical: true,
+      adminOnly: adminOnly,
+    );
+  }
+}
+
+class _AdminPermissionState {
+  final bool adminMaster;
+  final Map<String, bool> permissions;
+
+  const _AdminPermissionState({
+    required this.adminMaster,
+    required this.permissions,
   });
 }

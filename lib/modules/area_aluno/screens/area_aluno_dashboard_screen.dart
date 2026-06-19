@@ -403,34 +403,106 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     );
   }
 
-  void _abrirTelaMenuAluno(Widget tela) {
+  void _abrirTelaMenuAluno({required String titulo, required Widget tela}) {
     Navigator.pop(context);
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => _blindarTelaPublicaAreaAluno(tela)),
+      MaterialPageRoute(
+        builder: (_) =>
+            _buildTelaPublicaAreaAlunoShell(titulo: titulo, tela: tela),
+      ),
     );
   }
 
-  Widget _blindarTelaPublicaAreaAluno(Widget tela) {
+  Widget _buildTelaPublicaAreaAlunoShell({
+    required String titulo,
+    required Widget tela,
+  }) {
     final t = context.uai;
+    final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
+    final appBarFg = _readableOn(appBarBg);
 
     // Algumas telas públicas do site foram feitas para abrir dentro da
     // LandingPage, que já fornece Material/Scaffold/DefaultTextStyle.
     // Quando abrimos essas mesmas telas direto pela Área do Aluno,
-    // precisamos blindar o conteúdo para não herdar/faltar estilo e
-    // evitar aqueles sublinhados amarelos do Flutter.
-    return Material(
-      color: t.background,
-      child: DefaultTextStyle.merge(
-        style: TextStyle(
-          color: t.textPrimary,
-          decoration: TextDecoration.none,
-          decorationColor: Colors.transparent,
+    // precisamos fornecer o shell da Área do Aluno sem alterar a landing.
+    return Scaffold(
+      backgroundColor: t.background,
+      drawer: Drawer(
+        backgroundColor: t.surface,
+        width: MediaQuery.of(context).size.width.clamp(280.0, 330.0),
+        child: _buildDrawerMenu(emTelaInterna: true),
+      ),
+      appBar: AppBar(
+        title: Text(
+          titulo,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        child: IconTheme.merge(
-          data: IconThemeData(color: t.textPrimary),
-          child: tela,
+        centerTitle: true,
+        backgroundColor: appBarBg,
+        foregroundColor: appBarFg,
+        iconTheme: IconThemeData(color: appBarFg),
+        elevation: 0,
+        leading: IconButton(
+          tooltip: 'Voltar',
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          Builder(
+            builder: (context) => IconButton(
+              tooltip: 'Abrir menu',
+              icon: const Icon(Icons.menu_rounded),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Tooltip(
+              message: 'Escolher tema',
+              child: Material(
+                color: appBarFg.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: _abrirSelecionarTemaPublico,
+                  borderRadius: BorderRadius.circular(13),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(
+                        color: appBarFg.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.palette_rounded,
+                      color: appBarFg,
+                      size: 21,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Material(
+        color: t.background,
+        child: DefaultTextStyle.merge(
+          style: TextStyle(
+            color: t.textPrimary,
+            decoration: TextDecoration.none,
+            decorationColor: Colors.transparent,
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(color: t.textPrimary),
+            child: tela,
+          ),
         ),
       ),
     );
@@ -729,7 +801,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     );
   }
 
-  Widget _buildDrawerMenu() {
+  Widget _buildDrawerMenu({bool emTelaInterna = false}) {
     final t = context.uai;
 
     final itens = [
@@ -742,19 +814,29 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         );
       }),
       _AreaAlunoMenuItem('Regimento Interno', Icons.description_rounded, () {
-        _abrirTelaMenuAluno(const RegimentoScreen());
+        _abrirTelaMenuAluno(
+          titulo: 'Regimento Interno',
+          tela: const RegimentoScreen(),
+        );
       }),
       _AreaAlunoMenuItem('Biografia', Icons.auto_stories_rounded, () {
-        _abrirTelaMenuAluno(const BiografiaScreen());
+        _abrirTelaMenuAluno(titulo: 'Biografia', tela: const BiografiaScreen());
       }),
       _AreaAlunoMenuItem('Graduações', Icons.emoji_events_rounded, () {
-        _abrirTelaMenuAluno(const GraduacoesScreen());
+        _abrirTelaMenuAluno(
+          titulo: 'Graduações',
+          tela: const GraduacoesScreen(),
+        );
       }),
       _AreaAlunoMenuItem('Área do Aluno', Icons.school_rounded, () {
         Navigator.pop(context);
+        if (emTelaInterna) Navigator.pop(context);
       }, selecionado: true),
       _AreaAlunoMenuItem('Portfólio', Icons.photo_library_rounded, () {
-        _abrirTelaMenuAluno(const PortfolioWebScreen());
+        _abrirTelaMenuAluno(
+          titulo: 'Portfólio',
+          tela: const PortfolioWebScreen(),
+        );
       }),
     ];
 

@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_catalog.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'editar_usuario_screen.dart';
+import 'usuario_admin_access.dart';
+import 'usuario_permissoes_screen.dart';
 
 class UsuarioDetalheScreen extends StatefulWidget {
   final String userId;
@@ -16,6 +19,14 @@ class UsuarioDetalheScreen extends StatefulWidget {
 }
 
 class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
+  late Future<UsuarioAdminAccess> _accessFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _accessFuture = carregarAcessoGestaoUsuarios();
+  }
+
   // 🔥 LOGS PARA ACOMPANHAR
   void _log(String mensagem, {dynamic dados}) {
     debugPrint('🔍 [UsuarioDetalhe] $mensagem');
@@ -117,10 +128,10 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
   }
 
   void _showSnack(
-      String mensagem,
-      Color color, {
-        IconData icon = Icons.info_outline_rounded,
-      }) {
+    String mensagem,
+    Color color, {
+    IconData icon = Icons.info_outline_rounded,
+  }) {
     final onColor = _readableOn(color);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -135,10 +146,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             Expanded(
               child: Text(
                 mensagem,
-                style: TextStyle(
-                  color: onColor,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(color: onColor, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -167,7 +175,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         return;
       }
 
-      final caminho = 'usuarios/${widget.userId}/permissoes_usuario/configuracoes';
+      final caminho =
+          'usuarios/${widget.userId}/permissoes_usuario/configuracoes';
       _log('Caminho completo:', dados: caminho);
 
       final docRef = FirebaseFirestore.instance
@@ -200,7 +209,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
       _log('Testando permissão de escrita...');
       try {
-        await docRef.set({'diagnostico_timestamp': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+        await docRef.set({
+          'diagnostico_timestamp': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
         _log('✅ Permissão de escrita OK!');
         await docRef.update({'diagnostico_timestamp': FieldValue.delete()});
       } catch (e) {
@@ -212,7 +223,22 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
   }
 
   // 🔥 MÉTODO DE SALVAR PERMISSÕES
-  Future<void> _salvarPermissoes(BuildContext context, Map<String, bool> permissoes) async {
+  Future<void> _salvarPermissoes(
+    BuildContext context,
+    Map<String, bool> permissoes,
+  ) async {
+    final access = await carregarAcessoGestaoUsuarios();
+    if (!access.liberado) {
+      if (context.mounted) {
+        _showSnack(
+          'Você não tem permissão para gerenciar usuários.',
+          context.uai.error,
+          icon: Icons.lock_outline_rounded,
+        );
+      }
+      return;
+    }
+
     _log('SALVANDO PERMISSÕES');
     _log('Permissões a salvar:', dados: permissoes);
 
@@ -250,6 +276,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
   // 🔥 MÉTODO DE CARREGAR PERMISSÕES
   Future<Map<String, bool>> _carregarPermissoes() async {
+    final access = await carregarAcessoGestaoUsuarios();
+    if (!access.liberado) return {};
+
     _log('CARREGANDO PERMISSÕES');
 
     try {
@@ -264,7 +293,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       if (doc.exists) {
         final dados = doc.data()!;
         _log('✅ Documento encontrado!');
-        return dados.map((key, value) => MapEntry(key, value as bool? ?? false));
+        return dados.map(
+          (key, value) => MapEntry(key, value as bool? ?? false),
+        );
       } else {
         _log('⚠️ Documento NÃO encontrado - retornando mapa vazio');
         return {};
@@ -281,398 +312,36 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
   // - "chave" é a chave nova/padronizada.
   // - "aliases" mantém compatibilidade com chaves antigas que já existem no app/banco.
   // - Ao marcar/desmarcar uma permissão, a tela salva a chave nova e também os aliases.
-  // - Isso evita quebrar telas antigas enquanto a refatoração avança arquivo por arquivo.
-  final List<Map<String, dynamic>> _permissoesList = [
-    // ===== VISIBILIDADE / TELAS =====
-    {
-      'titulo': 'Acessar eventos',
-      'descricao': 'Mostra o menu Eventos e permite abrir a tela de eventos.',
-      'chave': 'pode_acessar_eventos',
-      'aliases': ['podeAcessarEventos', 'pode_ver_eventos'],
-      'icone': Icons.event_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-    {
-      'titulo': 'Acessar inscrições',
-      'descricao': 'Mostra o menu Inscrições no app.',
-      'chave': 'pode_acessar_inscricoes',
-      'aliases': ['podeAcessarInscricoes'],
-      'icone': Icons.app_registration_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-    {
-      'titulo': 'Acessar uniformes',
-      'descricao': 'Mostra o menu Uniformes no app.',
-      'chave': 'pode_acessar_uniformes',
-      'aliases': ['podeAcessarUniformes'],
-      'icone': Icons.shopping_bag_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-    {
-      'titulo': 'Acessar associação',
-      'descricao': 'Mostra o menu Associação no app.',
-      'chave': 'pode_acessar_associacao',
-      'aliases': ['podeAcessarAssociacao'],
-      'icone': Icons.people_outline_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-    {
-      'titulo': 'Mostrar alunos na barra lateral',
-      'descricao': 'Mostra o menu Alunos na barra lateral do app. Não substitui a permissão de ver alunos.',
-      'chave': 'pode_mostrar_alunos_drawer',
-      'aliases': ['podeMostrarAlunosDrawer'],
-      'icone': Icons.menu_open_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-
-    {
-      'titulo': 'Acessar rifas',
-      'descricao': 'Mostra o menu Rifas no app.',
-      'chave': 'pode_acessar_rifas',
-      'aliases': ['podeAcessarRifas'],
-      'icone': Icons.confirmation_number_rounded,
-      'categoria': 'VISIBILIDADE',
-    },
-
-    // ===== EVENTOS — GERAL =====
-    {
-      'titulo': 'Ver eventos',
-      'descricao': 'Permite visualizar a lista de eventos.',
-      'chave': 'pode_ver_eventos',
-      'aliases': ['podeAcessarEventos', 'pode_acessar_eventos'],
-      'icone': Icons.visibility_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-    {
-      'titulo': 'Ver eventos em andamento',
-      'descricao': 'Permite abrir eventos em andamento.',
-      'chave': 'pode_ver_eventos_andamento',
-      'aliases': [],
-      'icone': Icons.pending_actions_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-    {
-      'titulo': 'Criar evento',
-      'descricao': 'Permite criar novos eventos.',
-      'chave': 'pode_criar_evento',
-      'aliases': [],
-      'icone': Icons.add_circle_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-    {
-      'titulo': 'Editar evento',
-      'descricao': 'Permite editar dados de eventos existentes.',
-      'chave': 'pode_editar_evento',
-      'aliases': [],
-      'icone': Icons.edit_calendar_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-    {
-      'titulo': 'Excluir evento',
-      'descricao': 'Permite excluir eventos.',
-      'chave': 'pode_excluir_evento',
-      'aliases': [],
-      'icone': Icons.delete_forever_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-    {
-      'titulo': 'Finalizar evento',
-      'descricao': 'Permite finalizar evento em andamento.',
-      'chave': 'pode_finalizar_evento',
-      'aliases': [],
-      'icone': Icons.check_circle_rounded,
-      'categoria': 'EVENTOS — GERAL',
-    },
-
-    // ===== EVENTOS — PARTICIPANTES =====
-    {
-      'titulo': 'Gerenciar participantes',
-      'descricao': 'Permite abrir o módulo de participantes do evento.',
-      'chave': 'pode_gerenciar_participantes_evento',
-      'aliases': ['pode_gerenciar_participantes'],
-      'icone': Icons.groups_rounded,
-      'categoria': 'EVENTOS — PARTICIPANTES',
-    },
-    {
-      'titulo': 'Adicionar participante',
-      'descricao': 'Permite adicionar alunos ao evento.',
-      'chave': 'pode_adicionar_participante_evento',
-      'aliases': ['pode_adcionar_aluno_a_eventos', 'pode_adicionar_aluno_a_eventos'],
-      'icone': Icons.person_add_alt_1_rounded,
-      'categoria': 'EVENTOS — PARTICIPANTES',
-    },
-    {
-      'titulo': 'Editar participação',
-      'descricao': 'Permite editar dados de participação do aluno no evento.',
-      'chave': 'pode_editar_participacao_evento',
-      'aliases': ['pode_editar_participante_evento'],
-      'icone': Icons.manage_accounts_rounded,
-      'categoria': 'EVENTOS — PARTICIPANTES',
-    },
-    {
-      'titulo': 'Remover participante',
-      'descricao': 'Permite remover alunos do evento.',
-      'chave': 'pode_remover_participante_evento',
-      'aliases': ['pode_remover_alunos_de_eventos'],
-      'icone': Icons.person_remove_rounded,
-      'categoria': 'EVENTOS — PARTICIPANTES',
-    },
-    {
-      'titulo': 'Concluir participação',
-      'descricao': 'Permite marcar/concluir participação do aluno no evento.',
-      'chave': 'pode_concluir_participacao_evento',
-      'aliases': [],
-      'icone': Icons.done_all_rounded,
-      'categoria': 'EVENTOS — PARTICIPANTES',
-    },
-
-    // ===== EVENTOS — PAGAMENTOS =====
-    {
-      'titulo': 'Registrar pagamento',
-      'descricao': 'Permite lançar pagamentos na participação do aluno.',
-      'chave': 'pode_registrar_pagamento_evento',
-      'aliases': ['pode_registrar_pagamento'],
-      'icone': Icons.add_card_rounded,
-      'categoria': 'EVENTOS — PAGAMENTOS',
-    },
-    {
-      'titulo': 'Editar pagamento',
-      'descricao': 'Permite corrigir valor, forma, status e observações de pagamentos já lançados.',
-      'chave': 'pode_editar_pagamento_evento',
-      'aliases': ['pode_editar_pagamento'],
-      'icone': Icons.edit_note_rounded,
-      'categoria': 'EVENTOS — PAGAMENTOS',
-    },
-    {
-      'titulo': 'Excluir pagamento',
-      'descricao': 'Permite apagar pagamentos e recalcular o saldo da participação.',
-      'chave': 'pode_excluir_pagamento_evento',
-      'aliases': ['pode_excluir_pagamento'],
-      'icone': Icons.delete_sweep_rounded,
-      'categoria': 'EVENTOS — PAGAMENTOS',
-    },
-
-    // ===== EVENTOS — FINANCEIRO / MÓDULOS =====
-    {
-      'titulo': 'Gerenciar gastos',
-      'descricao': 'Permite adicionar, editar e excluir gastos do evento.',
-      'chave': 'pode_gerenciar_gastos_evento',
-      'aliases': ['pode_gerenciar_financeiro', 'pode_gerenciar_taxas'],
-      'icone': Icons.payments_rounded,
-      'categoria': 'EVENTOS — FINANCEIRO',
-    },
-    {
-      'titulo': 'Gerenciar patrocinadores',
-      'descricao': 'Permite gerenciar patrocinadores e apoios do evento.',
-      'chave': 'pode_gerenciar_patrocinadores_evento',
-      'aliases': ['pode_gerenciar_patrocinadores'],
-      'icone': Icons.handshake_rounded,
-      'categoria': 'EVENTOS — FINANCEIRO',
-    },
-    {
-      'titulo': 'Gerenciar camisas',
-      'descricao': 'Permite gerenciar camisas, pagamentos e entregas.',
-      'chave': 'pode_gerenciar_camisas_evento',
-      'aliases': ['pode_gerenciar_camisas'],
-      'icone': Icons.checkroom_rounded,
-      'categoria': 'EVENTOS — FINANCEIRO',
-    },
-    {
-      'titulo': 'Ver relatórios do evento',
-      'descricao': 'Permite abrir relatórios financeiros e listas do evento.',
-      'chave': 'pode_ver_relatorio_evento',
-      'aliases': ['pode_ver_relatorios'],
-      'icone': Icons.assessment_rounded,
-      'categoria': 'EVENTOS — FINANCEIRO',
-    },
-    {
-      'titulo': 'Gerar certificados',
-      'descricao': 'Permite gerar certificados do evento.',
-      'chave': 'pode_gerar_certificados_evento',
-      'aliases': ['pode_gerar_certificados'],
-      'icone': Icons.card_membership_rounded,
-      'categoria': 'EVENTOS — FINANCEIRO',
-    },
-
-    // ===== ALUNOS =====
-    {
-      'titulo': 'Adicionar aluno',
-      'descricao': 'Permite adicionar novos alunos.',
-      'chave': 'pode_adicionar_aluno',
-      'aliases': [],
-      'icone': Icons.person_add_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Visualizar alunos',
-      'descricao': 'Permite ver lista de alunos.',
-      'chave': 'pode_visualizar_alunos',
-      'aliases': [],
-      'icone': Icons.visibility_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Editar aluno',
-      'descricao': 'Permite editar informações de alunos.',
-      'chave': 'pode_editar_aluno',
-      'aliases': [],
-      'icone': Icons.edit_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Excluir aluno',
-      'descricao': 'Permite excluir alunos.',
-      'chave': 'pode_excluir_aluno',
-      'aliases': [],
-      'icone': Icons.delete_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Desativar aluno',
-      'descricao': 'Permite tornar alunos inativos.',
-      'chave': 'pode_desativar_aluno',
-      'aliases': [],
-      'icone': Icons.person_off_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Ativar aluno',
-      'descricao': 'Permite reativar alunos inativos.',
-      'chave': 'pode_ativar_alunos',
-      'aliases': [],
-      'icone': Icons.person_add_alt_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Mudar turma',
-      'descricao': 'Permite transferir alunos entre turmas.',
-      'chave': 'pode_mudar_turma',
-      'aliases': [],
-      'icone': Icons.switch_account_rounded,
-      'categoria': 'ALUNOS',
-    },
-    {
-      'titulo': 'Ver resumo da turma',
-      'descricao': 'Libera o card “Resumo da turma” com estatísticas e relatórios dos alunos da turma.',
-      'chave': 'pode_visualizar_relatorios',
-      'aliases': ['pode_visualizar_relatorios_turma'],
-      'icone': Icons.summarize_rounded,
-      'categoria': 'ALUNOS',
-    },
-
-    // ===== CHAMADA / AVALIAÇÕES =====
-    {
-      'titulo': 'Fazer chamada',
-      'descricao': 'Permite registrar chamada.',
-      'chave': 'pode_fazer_chamada',
-      'aliases': [],
-      'icone': Icons.checklist_rounded,
-      'categoria': 'CHAMADA E AVALIAÇÕES',
-    },
-    {
-      'titulo': 'Editar chamada',
-      'descricao': 'Permite editar chamadas.',
-      'chave': 'pode_editar_chamada',
-      'aliases': [],
-      'icone': Icons.edit_calendar_rounded,
-      'categoria': 'CHAMADA E AVALIAÇÕES',
-    },
-    {
-      'titulo': 'Ver lista de chamada',
-      'descricao': 'Permite ver histórico de chamadas.',
-      'chave': 'pode_ver_lista_de_chamada',
-      'aliases': [],
-      'icone': Icons.list_alt_rounded,
-      'categoria': 'CHAMADA E AVALIAÇÕES',
-    },
-    {
-      'titulo': 'Avaliar aluno',
-      'descricao': 'Permite avaliar comportamento, disciplina e evolução.',
-      'chave': 'pode_avaliar_aluno',
-      'aliases': [],
-      'icone': Icons.star_rate_rounded,
-      'categoria': 'CHAMADA E AVALIAÇÕES',
-    },
-
-    // ===== USUÁRIOS =====
-    {
-      'titulo': 'Gerenciar usuários',
-      'descricao': 'Permite gerenciar usuários e permissões.',
-      'chave': 'pode_gerenciar_usuarios',
-      'aliases': [],
-      'icone': Icons.people_rounded,
-      'categoria': 'USUÁRIOS',
-    },
-
-    // ===== UNIFORMES =====
-    {
-      'titulo': 'Editar vendas',
-      'descricao': 'Permite editar vendas de uniformes.',
-      'chave': 'pode_editar_venda',
-      'aliases': [],
-      'icone': Icons.edit_rounded,
-      'categoria': 'UNIFORMES',
-    },
-    {
-      'titulo': 'Excluir vendas',
-      'descricao': 'Permite excluir vendas de uniformes.',
-      'chave': 'pode_excluir_venda',
-      'aliases': [],
-      'icone': Icons.delete_forever_rounded,
-      'categoria': 'UNIFORMES',
-    },
-    {
-      'titulo': 'Editar pedidos',
-      'descricao': 'Permite editar pedidos.',
-      'chave': 'pode_editar_pedido',
-      'aliases': [],
-      'icone': Icons.edit_note_rounded,
-      'categoria': 'UNIFORMES',
-    },
-    {
-      'titulo': 'Excluir pedidos',
-      'descricao': 'Permite excluir pedidos.',
-      'chave': 'pode_excluir_pedido',
-      'aliases': [],
-      'icone': Icons.delete_sweep_rounded,
-      'categoria': 'UNIFORMES',
-    },
-    {
-      'titulo': 'Gerenciar estoque',
-      'descricao': 'Permite gerenciar estoque.',
-      'chave': 'pode_gerenciar_estoque',
-      'aliases': [],
-      'icone': Icons.inventory_rounded,
-      'categoria': 'UNIFORMES',
-    },
-  ];
+  List<Map<String, dynamic>> get _permissoesList => PermissionCatalog.allAsMaps;
 
   List<String> _chavesVinculadas(Map<String, dynamic> permissao) {
     final chave = permissao['chave']?.toString() ?? '';
     final aliasesRaw = permissao['aliases'];
 
     final aliases = aliasesRaw is List
-        ? aliasesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        ? aliasesRaw
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList()
         : <String>[];
 
-    return {
-      if (chave.isNotEmpty) chave,
-      ...aliases,
-    }.toList();
+    return {if (chave.isNotEmpty) chave, ...aliases}.toList();
   }
 
   bool _permissaoMarcada(
-      Map<String, dynamic> permissao,
-      Map<String, bool> permissoesTemp,
-      ) {
-    return _chavesVinculadas(permissao).any((chave) => permissoesTemp[chave] == true);
+    Map<String, dynamic> permissao,
+    Map<String, bool> permissoesTemp,
+  ) {
+    return _chavesVinculadas(
+      permissao,
+    ).any((chave) => permissoesTemp[chave] == true);
   }
 
   void _setPermissaoMarcada(
-      Map<String, dynamic> permissao,
-      bool valor,
-      Map<String, bool> permissoesTemp,
-      ) {
+    Map<String, dynamic> permissao,
+    bool valor,
+    Map<String, bool> permissoesTemp,
+  ) {
     for (final chave in _chavesVinculadas(permissao)) {
       permissoesTemp[chave] = valor;
     }
@@ -696,17 +365,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     }
 
     // Lista de categorias ordenadas
-    final List<String> categorias = [
-      'VISIBILIDADE',
-      'ALUNOS',
-      'CHAMADA E AVALIAÇÕES',
-      'EVENTOS — GERAL',
-      'EVENTOS — PARTICIPANTES',
-      'EVENTOS — PAGAMENTOS',
-      'EVENTOS — FINANCEIRO',
-      'USUÁRIOS',
-      'UNIFORMES',
-    ];
+    final List<String> categorias = PermissionCatalog.categoriesForUserDetails;
 
     return showDialog(
       context: context,
@@ -714,9 +373,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       builder: (BuildContext context) {
         final t = context.uai;
         final onPrimary = _readableOn(t.primary);
-        final Map<String, bool> permissoesTemp = {
-          ...permissoesAtuais,
-        };
+        final Map<String, bool> permissoesTemp = {...permissoesAtuais};
 
         for (final p in _permissoesList) {
           final marcado = _permissaoMarcada(p, permissoesTemp);
@@ -774,16 +431,24 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: GridView.builder(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: MediaQuery.of(context).size.width < 760 ? 1 : 2,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: MediaQuery.of(context).size.width < 760 ? 1.45 : 0.92,
-                            ),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount:
+                                      MediaQuery.of(context).size.width < 760
+                                      ? 1
+                                      : 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio:
+                                      MediaQuery.of(context).size.width < 760
+                                      ? 1.45
+                                      : 0.92,
+                                ),
                             itemCount: categorias.length,
                             itemBuilder: (context, index) {
                               final categoria = categorias[index];
-                              final permissoesDaCategoria = permissoesPorCategoria[categoria] ?? [];
+                              final permissoesDaCategoria =
+                                  permissoesPorCategoria[categoria] ?? [];
 
                               return _buildCategoriaCard(
                                 categoria: categoria,
@@ -791,11 +456,19 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                                 permissoesTemp: permissoesTemp,
                                 onChanged: (chave, valor) {
                                   setState(() {
-                                    final permissao = permissoesDaCategoria.firstWhere(
+                                    final permissao = permissoesDaCategoria
+                                        .firstWhere(
                                           (p) => p['chave'] == chave,
-                                      orElse: () => {'chave': chave, 'aliases': []},
+                                          orElse: () => {
+                                            'chave': chave,
+                                            'aliases': [],
+                                          },
+                                        );
+                                    _setPermissaoMarcada(
+                                      permissao,
+                                      valor,
+                                      permissoesTemp,
                                     );
-                                    _setPermissaoMarcada(permissao, valor, permissoesTemp);
                                   });
                                 },
                               );
@@ -822,7 +495,10 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                             ElevatedButton(
                               onPressed: () async {
                                 Navigator.pop(context);
-                                await _salvarPermissoes(context, permissoesTemp);
+                                await _salvarPermissoes(
+                                  context,
+                                  permissoesTemp,
+                                );
                               },
                               child: Text('Salvar Permissões'),
                             ),
@@ -850,28 +526,40 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     final t = context.uai;
 
     Color getCorCategoria(String categoria) {
-      if (categoria == 'VISIBILIDADE') return t.associacao;
-      if (categoria == 'ALUNOS') return t.uniformes;
+      if (categoria == PermissionCatalog.categoryVisibility)
+        return t.associacao;
+      if (categoria == PermissionCatalog.categoryStudents) return t.uniformes;
       if (categoria.contains('CHAMADA')) return t.warning;
       if (categoria.contains('GERAL')) return t.inscricoes;
       if (categoria.contains('PARTICIPANTES')) return t.info;
       if (categoria.contains('PAGAMENTOS')) return t.warning;
       if (categoria.contains('FINANCEIRO')) return t.success;
-      if (categoria == 'USUÁRIOS') return t.error;
-      if (categoria == 'UNIFORMES') return t.accent;
+      if (categoria == PermissionCatalog.categoryUsers) return t.error;
+      if (categoria == PermissionCatalog.categoryUniforms) return t.accent;
+      if (categoria == PermissionCatalog.categorySystemAdmin) return t.primary;
       return t.primary;
     }
 
     IconData getIconCategoria(String categoria) {
-      if (categoria == 'VISIBILIDADE') return Icons.visibility_rounded;
+      if (categoria == PermissionCatalog.categoryVisibility) {
+        return Icons.visibility_rounded;
+      }
       if (categoria.contains('GERAL')) return Icons.event_rounded;
       if (categoria.contains('PARTICIPANTES')) return Icons.groups_rounded;
       if (categoria.contains('PAGAMENTOS')) return Icons.add_card_rounded;
       if (categoria.contains('FINANCEIRO')) return Icons.payments_rounded;
-      if (categoria == 'ALUNOS') return Icons.people_rounded;
+      if (categoria == PermissionCatalog.categoryStudents)
+        return Icons.people_rounded;
       if (categoria.contains('CHAMADA')) return Icons.fact_check_rounded;
-      if (categoria == 'USUÁRIOS') return Icons.admin_panel_settings_rounded;
-      if (categoria == 'UNIFORMES') return Icons.shopping_bag_rounded;
+      if (categoria == PermissionCatalog.categoryUsers) {
+        return Icons.admin_panel_settings_rounded;
+      }
+      if (categoria == PermissionCatalog.categoryUniforms) {
+        return Icons.shopping_bag_rounded;
+      }
+      if (categoria == PermissionCatalog.categorySystemAdmin) {
+        return Icons.admin_panel_settings_rounded;
+      }
       return Icons.category_rounded;
     }
 
@@ -926,9 +614,14 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 child: Column(
                   children: permissoes.map((permissao) {
                     final chave = permissao['chave'].toString();
-                    final marcado = _permissaoMarcada(permissao, permissoesTemp);
+                    final marcado = _permissaoMarcada(
+                      permissao,
+                      permissoesTemp,
+                    );
                     final descricao = permissao['descricao']?.toString() ?? '';
-                    final icon = permissao['icone'] as IconData? ?? Icons.security_rounded;
+                    final icon =
+                        permissao['icone'] as IconData? ??
+                        Icons.security_rounded;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -936,7 +629,10 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                         onTap: () => onChanged(chave, !marcado),
                         borderRadius: BorderRadius.circular(t.buttonRadius),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: marcado
                                 ? corCategoria.withOpacity(0.13)
@@ -974,9 +670,12 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                                       style: TextStyle(
                                         fontSize: 11.4,
                                         height: 1.12,
-                                        fontWeight:
-                                        marcado ? FontWeight.w800 : FontWeight.w600,
-                                        color: marcado ? corCategoria : t.textPrimary,
+                                        fontWeight: marcado
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: marcado
+                                            ? corCategoria
+                                            : t.textPrimary,
                                       ),
                                     ),
                                     if (descricao.isNotEmpty) ...[
@@ -1012,28 +711,33 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
   String _getNomeCategoriaAmigavel(String categoria) {
     switch (categoria) {
-      case 'VISIBILIDADE':
+      case PermissionCatalog.categoryVisibility:
         return 'Telas / Acesso';
-      case 'EVENTOS — GERAL':
+      case PermissionCatalog.categoryEventsGeneral:
         return 'Eventos — Geral';
-      case 'EVENTOS — PARTICIPANTES':
+      case PermissionCatalog.categoryEventsParticipants:
         return 'Eventos — Participantes';
-      case 'EVENTOS — PAGAMENTOS':
+      case PermissionCatalog.categoryEventsPayments:
         return 'Eventos — Pagamentos';
-      case 'EVENTOS — FINANCEIRO':
+      case PermissionCatalog.categoryEventsFinancial:
         return 'Eventos — Financeiro';
-      case 'CHAMADA E AVALIAÇÕES':
+      case PermissionCatalog.categoryAttendance:
         return 'Chamada / Avaliações';
-      case 'USUÁRIOS':
+      case PermissionCatalog.categoryUsers:
         return 'Usuários';
-      case 'UNIFORMES':
+      case PermissionCatalog.categoryUniforms:
         return 'Uniformes';
+      case PermissionCatalog.categorySystemAdmin:
+        return 'Sistema / Admin';
       default:
         return categoria.replaceAll('AÇÕES - ', '');
     }
   }
 
-  void _mostrarDialogDocumentoNaoEncontrado(BuildContext context, String caminho) {
+  void _mostrarDialogDocumentoNaoEncontrado(
+    BuildContext context,
+    String caminho,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1042,8 +746,13 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('DOCUMENTO NÃO ENCONTRADO!',
-                style: TextStyle(fontWeight: FontWeight.bold, color: context.uai.error)),
+            Text(
+              'DOCUMENTO NÃO ENCONTRADO!',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: context.uai.error,
+              ),
+            ),
             const SizedBox(height: 16),
             Text('Caminho: $caminho'),
             SizedBox(height: 8),
@@ -1075,7 +784,11 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
-  void _mostrarDialogDiagnostico(BuildContext context, DocumentSnapshot doc, Map<String, dynamic>? dados) {
+  void _mostrarDialogDiagnostico(
+    BuildContext context,
+    DocumentSnapshot doc,
+    Map<String, dynamic>? dados,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1085,45 +798,64 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('DOCUMENTO ENCONTRADO!',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: context.uai.success)),
+              Text(
+                'DOCUMENTO ENCONTRADO!',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: context.uai.success,
+                ),
+              ),
               const SizedBox(height: 16),
-              Text('Caminho: usuarios/${widget.userId}/permissoes_usuario/configuracoes'),
+              Text(
+                'Caminho: usuarios/${widget.userId}/permissoes_usuario/configuracoes',
+              ),
               const SizedBox(height: 8),
               Text('Existe: ${doc.exists}'),
               const SizedBox(height: 16),
-              const Text('DADOS SALVOS:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'DADOS SALVOS:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 8),
-              ...?dados?.entries.map((e) =>
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${e.key}:',
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: e.value == true ? context.uai.success.withOpacity(0.16) : context.uai.error.withOpacity(0.16),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            e.value.toString(),
-                            style: TextStyle(
-                              color: e.value == true ? context.uai.success : context.uai.error,
-                              fontWeight: FontWeight.bold,
+              ...?dados?.entries
+                  .map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${e.key}:',
+                              style: TextStyle(fontWeight: FontWeight.w500),
                             ),
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: e.value == true
+                                  ? context.uai.success.withOpacity(0.16)
+                                  : context.uai.error.withOpacity(0.16),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              e.value.toString(),
+                              style: TextStyle(
+                                color: e.value == true
+                                    ? context.uai.success
+                                    : context.uai.error,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
-              ).toList(),
+                  .toList(),
             ],
           ),
         ),
@@ -1146,6 +878,24 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<UsuarioAdminAccess>(
+      future: _accessFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return buildLoadingGestaoUsuarios(context);
+        }
+
+        final access = snapshot.data;
+        if (snapshot.hasError || access == null || !access.liberado) {
+          return buildAcessoNegadoGestaoUsuarios(context);
+        }
+
+        return _buildConteudoAutorizado(context);
+      },
+    );
+  }
+
+  Widget _buildConteudoAutorizado(BuildContext context) {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -1154,8 +904,15 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         actions: [
           IconButton(
@@ -1169,7 +926,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => EditarUsuarioScreen(userId: widget.userId),
+                  builder: (context) =>
+                      EditarUsuarioScreen(userId: widget.userId),
                 ),
               );
             },
@@ -1197,7 +955,10 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
               data['nome_completo'] ?? data['name'] ?? 'Nome não informado';
           final email = data['email'] ?? 'Email não informado';
           final tipo = data['tipo'] ?? 'Tipo não informado';
-          final pesoPermissao = data['peso_permissao'] ?? 0;
+          final pesoPermissaoRaw = data['peso_permissao'];
+          final pesoPermissao = pesoPermissaoRaw is int
+              ? pesoPermissaoRaw
+              : int.tryParse(pesoPermissaoRaw?.toString() ?? '') ?? 0;
           final statusConta = data['status_conta'] ?? 'pendente';
           final contato = data['contato'] ?? 'Contato não informado';
           final dataCadastro = data['data_cadastro'] as Timestamp?;
@@ -1234,7 +995,14 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                           compact: compact,
                         ),
                         const SizedBox(height: 14),
-                        _buildActionStrip(compact),
+                        _buildActionStrip(
+                          compact,
+                          nome: nomeCompleto.toString(),
+                          email: email.toString(),
+                          tipo: tipo.toString(),
+                          statusConta: statusConta.toString(),
+                          pesoPermissao: pesoPermissao,
+                        ),
                         const SizedBox(height: 14),
                         if (wide)
                           Row(
@@ -1325,7 +1093,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     final t = context.uai;
     final tipoColor = _getTipoColor(tipo);
     final statusColor = _getStatusColor(status);
-    final inicial = nome.trim().isNotEmpty ? nome.trim().substring(0, 1).toUpperCase() : '?';
+    final inicial = nome.trim().isNotEmpty
+        ? nome.trim().substring(0, 1).toUpperCase()
+        : '?';
     final onPrimary = _onHeroGradient();
 
     return Container(
@@ -1351,38 +1121,39 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
               borderRadius: BorderRadius.circular(compact ? 30 : 38),
               child: fotoUrl != null && fotoUrl.isNotEmpty
                   ? CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Center(
-                  child: CircularProgressIndicator(color: onPrimary),
-                ),
-                errorWidget: (context, url, error) => Center(
-                  child: Text(
-                    inicial,
-                    style: TextStyle(
-                      color: onPrimary,
-                      fontSize: 38,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              )
+                      imageUrl: fotoUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Center(
+                        child: CircularProgressIndicator(color: onPrimary),
+                      ),
+                      errorWidget: (context, url, error) => Center(
+                        child: Text(
+                          inicial,
+                          style: TextStyle(
+                            color: onPrimary,
+                            fontSize: 38,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    )
                   : Center(
-                child: Text(
-                  inicial,
-                  style: TextStyle(
-                    color: onPrimary,
-                    fontSize: 38,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
+                      child: Text(
+                        inicial,
+                        style: TextStyle(
+                          color: onPrimary,
+                          fontSize: 38,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
             ),
           );
 
           final info = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 nome,
@@ -1419,9 +1190,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [avatar, SizedBox(height: 14), info],
-            );
+            return Column(children: [avatar, SizedBox(height: 14), info]);
           }
 
           return Row(
@@ -1475,7 +1244,14 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
-  Widget _buildActionStrip(bool compact) {
+  Widget _buildActionStrip(
+    bool compact, {
+    required String nome,
+    required String email,
+    required String tipo,
+    required String statusConta,
+    required int pesoPermissao,
+  }) {
     final t = context.uai;
 
     return LayoutBuilder(
@@ -1483,15 +1259,38 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         final tiny = constraints.maxWidth < 420;
 
         final permissions = ElevatedButton.icon(
-          onPressed: () => _mostrarDialogPermissoes(context),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UsuarioPermissoesScreen(
+                  userId: widget.userId,
+                  nome: nome,
+                  email: email,
+                  tipo: tipo,
+                  statusConta: statusConta,
+                  pesoPermissao: pesoPermissao,
+                ),
+              ),
+            );
+          },
           icon: Icon(Icons.security_rounded),
           label: Text('PERMISSÕES'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-            foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+            backgroundColor:
+                Theme.of(context).appBarTheme.backgroundColor ??
+                context.uai.primary,
+            foregroundColor:
+                Theme.of(context).appBarTheme.foregroundColor ??
+                _readableOn(
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                      context.uai.primary,
+                ),
             padding: const EdgeInsets.symmetric(vertical: 13),
             textStyle: const TextStyle(fontWeight: FontWeight.w900),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
 
@@ -1500,7 +1299,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => EditarUsuarioScreen(userId: widget.userId),
+                builder: (context) =>
+                    EditarUsuarioScreen(userId: widget.userId),
               ),
             );
           },
@@ -1511,7 +1311,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             side: BorderSide(color: t.border),
             padding: const EdgeInsets.symmetric(vertical: 13),
             textStyle: const TextStyle(fontWeight: FontWeight.w900),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
 
@@ -1524,7 +1326,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             side: BorderSide(color: t.info.withOpacity(0.25)),
             padding: const EdgeInsets.symmetric(vertical: 13),
             textStyle: const TextStyle(fontWeight: FontWeight.w900),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
 
@@ -1592,10 +1396,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
-  Widget _buildAccessCard({
-    required String tipo,
-    required int peso,
-  }) {
+  Widget _buildAccessCard({required String tipo, required int peso}) {
     final isAdmin = peso >= 90;
     final color = isAdmin ? context.uai.error : context.uai.info;
 
@@ -1610,10 +1411,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  color.withOpacity(0.08),
-                  color.withOpacity(0.14),
-                ],
+                colors: [color.withOpacity(0.08), color.withOpacity(0.14)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -1633,7 +1431,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isAdmin ? 'Acesso administrativo' : 'Permissão personalizada',
+                        isAdmin
+                            ? 'Acesso administrativo'
+                            : 'Permissão personalizada',
                         style: TextStyle(
                           color: color,
                           fontSize: 15,
@@ -1672,10 +1472,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
-  Widget _buildContactCard({
-    required String contato,
-    required String email,
-  }) {
+  Widget _buildContactCard({required String contato, required String email}) {
     return _premiumCard(
       title: 'Contato',
       icon: Icons.contact_phone_rounded,
@@ -1701,12 +1498,24 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       color: context.uai.warning,
       child: Column(
         children: [
-          _infoLine(Icons.calendar_today_rounded, 'Data de cadastro', _formatTimestamp(dataCadastro)),
+          _infoLine(
+            Icons.calendar_today_rounded,
+            'Data de cadastro',
+            _formatTimestamp(dataCadastro),
+          ),
           Divider(height: 20, color: context.uai.border),
-          _infoLine(Icons.update_rounded, 'Última atualização', _formatTimestamp(ultimaAtualizacao)),
+          _infoLine(
+            Icons.update_rounded,
+            'Última atualização',
+            _formatTimestamp(ultimaAtualizacao),
+          ),
           if (aprovadoEm != null) ...[
             Divider(height: 20, color: context.uai.border),
-            _infoLine(Icons.verified_rounded, 'Aprovado em', _formatTimestamp(aprovadoEm)),
+            _infoLine(
+              Icons.verified_rounded,
+              'Aprovado em',
+              _formatTimestamp(aprovadoEm),
+            ),
           ],
         ],
       ),
@@ -1726,8 +1535,13 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           if (aprovadoPorNome != null)
             _infoLine(Icons.person_rounded, 'Aprovado por', aprovadoPorNome),
           if (aprovadoPor != null) ...[
-            if (aprovadoPorNome != null) Divider(height: 20, color: context.uai.border),
-            _infoLine(Icons.fingerprint_rounded, 'ID do aprovador', '${aprovadoPor.substring(0, aprovadoPor.length > 8 ? 8 : aprovadoPor.length)}...'),
+            if (aprovadoPorNome != null)
+              Divider(height: 20, color: context.uai.border),
+            _infoLine(
+              Icons.fingerprint_rounded,
+              'ID do aprovador',
+              '${aprovadoPor.substring(0, aprovadoPor.length > 8 ? 8 : aprovadoPor.length)}...',
+            ),
           ],
         ],
       ),
@@ -1833,7 +1647,13 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(color: context.uai.textSecondary, fontSize: 11.5)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontSize: 11.5,
+                ),
+              ),
               SizedBox(height: 2),
               Text(
                 value,
@@ -1890,7 +1710,11 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.person_off_rounded, size: 62, color: context.uai.textMuted),
+            Icon(
+              Icons.person_off_rounded,
+              size: 62,
+              color: context.uai.textMuted,
+            ),
             SizedBox(height: 12),
             Text(
               'Usuário não encontrado',
@@ -1906,17 +1730,19 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
-  Widget _buildStatusInfo(String title, String value, Color color, IconData icon) {
+  Widget _buildStatusInfo(
+    String title,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
     return Column(
       children: [
         Icon(icon, color: color, size: 32),
         SizedBox(height: 8),
         Text(
           title,
-          style: TextStyle(
-            fontSize: 12,
-            color: context.uai.textSecondary,
-          ),
+          style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
         ),
         SizedBox(height: 4),
         Container(
@@ -1928,10 +1754,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           ),
           child: Text(
             value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
           ),
         ),
       ],

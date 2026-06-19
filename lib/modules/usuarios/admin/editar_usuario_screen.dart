@@ -3,14 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
+import 'usuario_admin_access.dart';
 
 class EditarUsuarioScreen extends StatefulWidget {
   final String? userId;
 
-  const EditarUsuarioScreen({
-    super.key,
-    this.userId,
-  });
+  const EditarUsuarioScreen({super.key, this.userId});
 
   @override
   _EditarUsuarioScreenState createState() => _EditarUsuarioScreenState();
@@ -24,7 +22,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -35,7 +34,6 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
-
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -50,28 +48,28 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       'nomeCompleto': 'Aluno',
       'peso': 10,
       'descricao': 'Acesso básico ao conteúdo',
-      'icone': Icons.person
+      'icone': Icons.person,
     },
     {
       'tipo': 'monitor',
       'nomeCompleto': 'Monitor',
       'peso': 30,
       'descricao': 'Pode auxiliar alunos',
-      'icone': Icons.supervised_user_circle
+      'icone': Icons.supervised_user_circle,
     },
     {
       'tipo': 'professor',
       'nomeCompleto': 'Professor',
       'peso': 50,
       'descricao': 'Cadastra alunos e agenda aulas',
-      'icone': Icons.school
+      'icone': Icons.school,
     },
     {
       'tipo': 'administrador',
       'nomeCompleto': 'Administrador',
       'peso': 100,
       'descricao': 'Acesso total ao sistema',
-      'icone': Icons.admin_panel_settings
+      'icone': Icons.admin_panel_settings,
     },
   ];
 
@@ -83,16 +81,27 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
   String? _aprovadoPorNome;
   DateTime? _aprovadoEm;
   bool _isAdmin = false;
+  bool _alvoAdminMaster = false;
   Map<String, dynamic> _currentUserData = {};
+  late Future<UsuarioAdminAccess> _accessFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentUserData();
-    _loadUserData();
+    _accessFuture = _inicializarAcesso();
   }
 
-  Future<void> _loadCurrentUserData() async {
+  Future<UsuarioAdminAccess> _inicializarAcesso() async {
+    final access = await carregarAcessoGestaoUsuarios();
+    if (!access.liberado) return access;
+
+    _isAdmin = access.adminMaster;
+    await _loadCurrentUserData(access);
+    await _loadUserData();
+    return access;
+  }
+
+  Future<void> _loadCurrentUserData(UsuarioAdminAccess access) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       try {
@@ -104,9 +113,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         if (doc.exists) {
           setState(() {
             _currentUserData = doc.data()!;
-            _isAdmin = (_currentUserData['peso_permissao'] ?? 0) >= 90 ||
-                (_currentUserData['tipo'] ?? '') == 'admin' ||
-                (_currentUserData['tipo'] ?? '') == 'administrador';
+            _isAdmin = access.adminMaster;
           });
         }
       } catch (e) {
@@ -135,6 +142,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           _selectedTipo = data['tipo'] ?? 'aluno';
           _pesoPermissao = data['peso_permissao'] ?? 10;
           _selectedStatus = data['status_conta'] ?? 'pendente';
+          _alvoAdminMaster = _usuarioEhAdminMaster(data);
           _aprovado = data['aprovado_em'] != null;
           _aprovadoPorNome = data['aprovado_por_nome'];
           _aprovadoEm = (data['aprovado_em'] as Timestamp?)?.toDate();
@@ -147,6 +155,17 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     }
   }
 
+  bool _usuarioEhAdminMaster(Map<String, dynamic> data) {
+    final tipo = (data['tipo'] ?? '').toString().trim().toLowerCase();
+    final rawPeso = data['peso_permissao'];
+    final peso = rawPeso is int
+        ? rawPeso
+        : rawPeso is num
+        ? rawPeso.toInt()
+        : int.tryParse(rawPeso?.toString() ?? '') ?? 0;
+    return peso >= 90 || tipo == 'admin' || tipo == 'administrador';
+  }
+
   Future<void> _aprovarUsuario() async {
     final result = await showDialog<bool>(
       context: context,
@@ -154,7 +173,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         title: Text('Aprovar Usuário'),
         content: Text(
           'Deseja aprovar este usuário e ativar sua conta? '
-              'Ele receberá acesso ao sistema conforme o tipo selecionado.',
+          'Ele receberá acesso ao sistema conforme o tipo selecionado.',
         ),
         actions: [
           TextButton(
@@ -163,7 +182,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: context.uai.success),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.uai.success,
+            ),
             child: const Text('Aprovar'),
           ),
         ],
@@ -176,6 +197,17 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
   }
 
   Future<void> _salvarUsuario({bool aprovar = false}) async {
+    final access = await carregarAcessoGestaoUsuarios();
+    if (!access.liberado) {
+      _mostrarErro('Você não tem permissão para gerenciar usuários.');
+      return;
+    }
+
+    if (_alvoAdminMaster && !access.adminMaster) {
+      _mostrarErro('Apenas admin master pode alterar outro admin master.');
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -188,7 +220,13 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     };
 
     // Campos que só admin pode editar
-    if (_isAdmin) {
+    if (access.adminMaster) {
+      if (_selectedTipo.toLowerCase() == 'admin' ||
+          _selectedTipo.toLowerCase() == 'administrador' ||
+          _pesoPermissao >= 90) {
+        // Permitido somente pelo bypass admin master validado acima.
+      }
+
       dadosUpdate['tipo'] = _selectedTipo;
       dadosUpdate['peso_permissao'] = _pesoPermissao;
       dadosUpdate['status_conta'] = _selectedStatus;
@@ -200,7 +238,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       // Se estiver aprovando
       if (aprovar) {
         dadosUpdate['aprovado_por'] = FirebaseAuth.instance.currentUser?.uid;
-        dadosUpdate['aprovado_por_nome'] = _currentUserData['nome_completo'] ?? 'Administrador';
+        dadosUpdate['aprovado_por_nome'] =
+            _currentUserData['nome_completo'] ?? 'Administrador';
         dadosUpdate['aprovado_em'] = agora;
         dadosUpdate['status_conta'] = 'ativa';
       }
@@ -216,10 +255,11 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
       if (widget.userId == null) {
         // Criar novo usuário
-        final newUser = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: 'senha123', // Senha padrão
-        );
+        final newUser = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: 'senha123', // Senha padrão
+            );
 
         final newUserId = newUser.user!.uid;
         dadosUpdate['data_cadastro'] = agora;
@@ -317,9 +357,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             .collection('usuarios')
             .doc(widget.userId)
             .update({
-          'ultimo_reset_senha': FieldValue.serverTimestamp(),
-          'reset_solicitado_por': FirebaseAuth.instance.currentUser?.uid,
-        });
+              'ultimo_reset_senha': FieldValue.serverTimestamp(),
+              'reset_solicitado_por': FirebaseAuth.instance.currentUser?.uid,
+            });
       }
     } catch (e) {
       String mensagemErro = 'Erro ao enviar email';
@@ -368,7 +408,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
   void _updatePesoFromTipo(String tipo) {
     final tipoObj = _tiposUsuarios.firstWhere(
-          (t) => t['tipo'] == tipo,
+      (t) => t['tipo'] == tipo,
       orElse: () => _tiposUsuarios[0],
     );
     setState(() {
@@ -409,6 +449,31 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<UsuarioAdminAccess>(
+      future: _accessFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return buildLoadingGestaoUsuarios(context);
+        }
+
+        final access = snapshot.data;
+        if (snapshot.hasError || access == null || !access.liberado) {
+          return buildAcessoNegadoGestaoUsuarios(context);
+        }
+
+        if (_alvoAdminMaster && !access.adminMaster) {
+          return buildAcessoNegadoGestaoUsuarios(context);
+        }
+
+        return _buildConteudoAutorizado(context, access);
+      },
+    );
+  }
+
+  Widget _buildConteudoAutorizado(
+    BuildContext context,
+    UsuarioAdminAccess access,
+  ) {
     if (_carregando) {
       return Scaffold(
         backgroundColor: context.uai.background,
@@ -449,8 +514,15 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         actions: [
           if (!_aprovado && _isAdmin && widget.userId != null)
@@ -497,10 +569,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              flex: 5,
-                              child: _buildDadosPessoaisCard(),
-                            ),
+                            Expanded(flex: 5, child: _buildDadosPessoaisCard()),
                             const SizedBox(width: 14),
                             Expanded(
                               flex: 4,
@@ -538,10 +607,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     );
   }
 
-  Widget _buildEditorHero({
-    required bool isNovo,
-    required bool compact,
-  }) {
+  Widget _buildEditorHero({required bool isNovo, required bool compact}) {
     final cor = _getTipoColor(_selectedTipo);
 
     return Container(
@@ -570,15 +636,18 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
               border: Border.all(color: context.uai.card.withOpacity(0.16)),
             ),
             child: Icon(
-              isNovo ? Icons.person_add_alt_1_rounded : Icons.manage_accounts_rounded,
+              isNovo
+                  ? Icons.person_add_alt_1_rounded
+                  : Icons.manage_accounts_rounded,
               color: context.uai.textPrimary,
               size: 36,
             ),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 isNovo ? 'Cadastrar usuário' : 'Editar usuário',
@@ -618,9 +687,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [icon, SizedBox(height: 12), text],
-            );
+            return Column(children: [icon, SizedBox(height: 12), text]);
           }
 
           return Row(
@@ -636,7 +703,10 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                   borderRadius: BorderRadius.circular(19),
                   border: Border.all(color: context.uai.card.withOpacity(0.14)),
                 ),
-                child: Icon(Icons.admin_panel_settings_rounded, color: context.uai.card),
+                child: Icon(
+                  Icons.admin_panel_settings_rounded,
+                  color: context.uai.card,
+                ),
               ),
             ],
           );
@@ -698,7 +768,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 SizedBox(height: 2),
                 Text(
                   'Aprovado por: $_aprovadoPorNome'
-                      '${_aprovadoEm != null ? ' • ${_aprovadoEm!.toLocal().toString().substring(0, 16)}' : ''}',
+                  '${_aprovadoEm != null ? ' • ${_aprovadoEm!.toLocal().toString().substring(0, 16)}' : ''}',
                   style: TextStyle(
                     color: context.uai.success,
                     fontSize: 12,
@@ -726,7 +796,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             label: 'Nome completo',
             icon: Icons.person_rounded,
             validator: (value) =>
-            value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
+                value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
           ),
           SizedBox(height: 12),
           _buildTextField(
@@ -736,13 +806,16 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             keyboardType: TextInputType.emailAddress,
             suffixIcon: _isAdmin && widget.userId != null
                 ? IconButton(
-              icon: Icon(Icons.vpn_key_rounded, color: context.uai.primary),
-              onPressed: _resetarSenha,
-              tooltip: 'Enviar redefinição de senha',
-            )
+                    icon: Icon(
+                      Icons.vpn_key_rounded,
+                      color: context.uai.primary,
+                    ),
+                    onPressed: _resetarSenha,
+                    tooltip: 'Enviar redefinição de senha',
+                  )
                 : null,
             validator: (value) =>
-            value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
+                value?.trim().isEmpty ?? true ? 'Campo obrigatório' : null,
           ),
           SizedBox(height: 12),
           _buildTextField(
@@ -940,7 +1013,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 side: BorderSide(color: context.uai.border),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 textStyle: TextStyle(fontWeight: FontWeight.w900),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             );
 
@@ -948,18 +1023,30 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
               onPressed: _carregando ? null : () => _salvarUsuario(),
               icon: _carregando
                   ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
-              )
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                    )
                   : Icon(Icons.save_rounded),
               label: Text(_carregando ? 'SALVANDO...' : 'SALVAR'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                backgroundColor:
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                    context.uai.primary,
+                foregroundColor:
+                    Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             );
 
@@ -1049,7 +1136,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 ),
               ),
               Icon(
-                isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                isSelected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
                 color: isSelected ? cor : context.uai.textMuted,
                 size: 18,
               ),
@@ -1062,7 +1151,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
   Widget _buildTipoResumo() {
     final tipoAtual = _tiposUsuarios.firstWhere(
-          (t) => t['tipo'] == _selectedTipo,
+      (t) => t['tipo'] == _selectedTipo,
       orElse: () => _tiposUsuarios[0],
     );
 
@@ -1102,8 +1191,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       selected: isSelected,
       onSelected: _isAdmin
           ? (selected) {
-        if (selected) setState(() => _selectedStatus = status);
-      }
+              if (selected) setState(() => _selectedStatus = status);
+            }
           : null,
       selectedColor: color.withOpacity(0.16),
       backgroundColor: context.uai.border,
@@ -1123,8 +1212,6 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
     );
   }
-
-
 
   @override
   void dispose() {

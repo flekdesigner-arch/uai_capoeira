@@ -26,9 +26,11 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/app_update_admin_service.dart';
+import 'package:uai_capoeira/modules/sistema/atualizacoes/services/atualizacoes_callable_client.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/local_publish_automation_models.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_apk_file_loader_factory.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_platform_service.dart';
@@ -46,9 +48,13 @@ class ControleAtualizacoesScreen extends StatefulWidget {
 
 class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     with SingleTickerProviderStateMixin {
+  static const String _permissaoControleAtualizacoes =
+      'pode_controle_atualizacoes';
+
   final AppUpdateAdminService _service = AppUpdateAdminService();
+  final PermissaoService _permissaoService = PermissaoService();
   final LocalPublishPlatformInfo _platformInfo =
-  const LocalPublishPlatformService().getInfo();
+      const LocalPublishPlatformService().getInfo();
   final StringBuffer _automationLogBuffer = StringBuffer();
 
   late final TabController _tabController;
@@ -58,12 +64,15 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   String _automationLogText = '';
 
   final TextEditingController _versaoController = TextEditingController();
-  final TextEditingController _buildController = TextEditingController(text: '1');
+  final TextEditingController _buildController = TextEditingController(
+    text: '1',
+  );
   final TextEditingController _tituloController = TextEditingController();
   final TextEditingController _resumoController = TextEditingController();
   final TextEditingController _melhoriasController = TextEditingController();
   final TextEditingController _correcoesController = TextEditingController();
-  final TextEditingController _implementacoesController = TextEditingController();
+  final TextEditingController _implementacoesController =
+      TextEditingController();
   final TextEditingController _removidosController = TextEditingController();
   final TextEditingController _observacoesController = TextEditingController();
 
@@ -71,6 +80,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   bool _salvando = false;
   bool _enviandoApk = false;
   bool _notificando = false;
+  bool _verificandoAcesso = true;
+  bool _acessoPermitido = false;
   double _uploadProgress = 0;
   String? _statusUpload;
   AppVersionModel? _rascunhoAtual;
@@ -83,7 +94,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       available: _platformInfo.canRunLocalAutomation,
       platformLabel: _platformInfo.platformLabel,
     );
-    _preencherProximaVersaoSugerida();
+    _verificarAcesso();
   }
 
   @override
@@ -101,6 +112,46 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     super.dispose();
   }
 
+  Future<bool> _usuarioPodeAcessarControleAtualizacoes() async {
+    if (await _permissaoService.usuarioAtualEhAdmin()) return true;
+    return _permissaoService.temPermissao(_permissaoControleAtualizacoes);
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _usuarioPodeAcessarControleAtualizacoes();
+
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoPermitido = permitido;
+    });
+
+    if (permitido) {
+      await _preencherProximaVersaoSugerida();
+    }
+  }
+
+  Future<bool> _revalidarAcessoParaAcao() async {
+    final permitido = await _usuarioPodeAcessarControleAtualizacoes();
+
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() {
+        _acessoPermitido = false;
+        _verificandoAcesso = false;
+      });
+
+      _snack(
+        'Você não tem permissão para acessar o Controle de Atualizações.',
+        color: context.uai.error,
+      );
+    }
+
+    return permitido;
+  }
+
   Future<void> _preencherProximaVersaoSugerida() async {
     try {
       final config = await _service.getConfigApp();
@@ -111,13 +162,15 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
       _versaoController.text = proxima;
       _tituloController.text = 'Versão $proxima disponível';
-      _resumoController.text = 'Melhorias no sistema de atualização e notificações.';
+      _resumoController.text =
+          'Melhorias no sistema de atualização e notificações.';
     } catch (_) {
       if (!mounted) return;
 
       _versaoController.text = '2.0.61';
       _tituloController.text = 'Versão 2.0.61 disponível';
-      _resumoController.text = 'Melhorias no sistema de atualização e notificações.';
+      _resumoController.text =
+          'Melhorias no sistema de atualização e notificações.';
     }
   }
 
@@ -128,7 +181,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.25) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -162,17 +216,13 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       SnackBar(
         content: Text(
           message,
-          style: TextStyle(
-            color: _readableOn(bg),
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: _readableOn(bg), fontWeight: FontWeight.w800),
         ),
         backgroundColor: bg,
         behavior: SnackBarBehavior.floating,
       ),
     );
   }
-
 
   Future<void> _garantirFirestoreOnline({
     bool registrarLogAutomacao = false,
@@ -182,9 +232,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         _addAutomationLog('Ativando conexão do Firestore...');
       }
 
-      await FirebaseFirestore.instance
-          .enableNetwork()
-          .timeout(const Duration(seconds: 10));
+      await FirebaseFirestore.instance.enableNetwork().timeout(
+        const Duration(seconds: 10),
+      );
 
       await Future.delayed(const Duration(milliseconds: 350));
 
@@ -193,7 +243,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       }
     } catch (e) {
       if (registrarLogAutomacao) {
-        _addAutomationLog('Aviso: não foi possível confirmar Firestore online: $e');
+        _addAutomationLog(
+          'Aviso: não foi possível confirmar Firestore online: $e',
+        );
       }
 
       // Não bloqueia aqui. A tentativa real de salvar/publicar ainda vai
@@ -215,10 +267,13 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     return raw;
   }
 
-
-  Future<AppVersionModel?> _salvarRascunhoInterno({bool mostrarSnack = true}) async {
+  Future<AppVersionModel?> _salvarRascunhoInterno({
+    bool mostrarSnack = true,
+  }) async {
     final t = context.uai;
     final versao = _versaoController.text.trim();
+
+    if (!await _revalidarAcessoParaAcao()) return null;
 
     if (!AppVersionModel.versaoValida(versao)) {
       _snack('Use uma versão válida, exemplo: 2.0.61', color: t.error);
@@ -257,12 +312,17 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   Future<void> _salvarRascunho() async {
     if (_salvando) return;
 
+    final t = context.uai;
+
     setState(() => _salvando = true);
 
     try {
       await _salvarRascunhoInterno();
     } catch (e) {
-      _snack('Erro ao salvar rascunho: ${_erroAmigavelAtualizacao(e)}', color: context.uai.error);
+      _snack(
+        'Erro ao salvar rascunho: ${_erroAmigavelAtualizacao(e)}',
+        color: t.error,
+      );
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -274,9 +334,13 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     final t = context.uai;
     final versao = _versaoController.text.trim();
 
+    if (!await _revalidarAcessoParaAcao()) return;
+
     if (!AppVersionModel.versaoValida(versao)) {
-      _snack('Informe a versão antes de enviar o APK. Ex: 2.0.61',
-          color: t.error);
+      _snack(
+        'Informe a versão antes de enviar o APK. Ex: 2.0.61',
+        color: t.error,
+      );
       return;
     }
 
@@ -325,6 +389,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       await _salvarRascunhoInterno(mostrarSnack: false);
 
       if (!mounted) return;
+      if (!await _revalidarAcessoParaAcao()) return;
 
       setState(() {
         _statusUpload = 'Preparando upload...';
@@ -339,7 +404,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           setState(() {
             _uploadProgress = progress;
             _statusUpload =
-            'Enviando APK... ${(progress * 100).toStringAsFixed(0)}%';
+                'Enviando APK... ${(progress * 100).toStringAsFixed(0)}%';
           });
         },
       );
@@ -376,15 +441,12 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           ),
           title: Text(
             'Nome do APK diferente',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             'Você selecionou:\n$nomeSelecionado\n\n'
-                'O nome esperado para esta versão é:\n$nomeEsperado\n\n'
-                'Pode continuar. O sistema salva no Storage com o nome correto.',
+            'O nome esperado para esta versão é:\n$nomeEsperado\n\n'
+            'Pode continuar. O sistema salva no Storage com o nome correto.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -406,8 +468,6 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       },
     );
   }
-
-
 
   void _addAutomationLog(String line) {
     if (line.trim().isEmpty) return;
@@ -446,16 +506,13 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           ),
           title: Text(
             'Fazer tudo automaticamente?',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             'Essa ação vai salvar o rascunho da versão $versao, publicar o PWA, '
-                'gerar o APK, enviar o APK para o Storage e publicar a versão.\n\n'
-                'A notificação para os usuários NÃO será enviada automaticamente. '
-                'Depois de testar o APK, você pode notificar manualmente pelo botão da tela.',
+            'gerar o APK, enviar o APK para o Storage e publicar a versão.\n\n'
+            'A notificação para os usuários NÃO será enviada automaticamente. '
+            'Depois de testar o APK, você pode notificar manualmente pelo botão da tela.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -484,6 +541,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     final t = context.uai;
     final versao = _versaoController.text.trim();
 
+    if (!await _revalidarAcessoParaAcao()) return;
+
     if (!_platformInfo.canRunLocalAutomation) {
       _snack(
         'Automação disponível apenas no Windows Desktop.',
@@ -505,15 +564,16 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     setState(() {
       _automationRunning = true;
       _salvando = true;
-      _automationState = LocalPublishAutomationState.initial(
-        available: _platformInfo.canRunLocalAutomation,
-        platformLabel: _platformInfo.platformLabel,
-      ).copyWith(
-        running: true,
-        startedAt: DateTime.now(),
-        clearError: true,
-        clearFinalApkPath: true,
-      );
+      _automationState =
+          LocalPublishAutomationState.initial(
+            available: _platformInfo.canRunLocalAutomation,
+            platformLabel: _platformInfo.platformLabel,
+          ).copyWith(
+            running: true,
+            startedAt: DateTime.now(),
+            clearError: true,
+            clearFinalApkPath: true,
+          );
     });
 
     try {
@@ -542,7 +602,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
       final config = LocalPublishRunnerConfig(
         projectDir: r'C:\Dev\projects\uai_capoeira',
-        scriptPath: r'C:\Dev\projects\uai_capoeira\tools\deploy_pwa_e_gerar_apk_uai.ps1',
+        scriptPath:
+            r'C:\Dev\projects\uai_capoeira\tools\deploy_pwa_e_gerar_apk_uai.ps1',
         version: versao,
       );
 
@@ -613,6 +674,12 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         'APK lido com sucesso: ${apkResult.fileName} (${apkResult.sizeFormatted})',
       );
 
+      if (!await _revalidarAcessoParaAcao()) {
+        throw Exception(
+          'Você não tem permissão para acessar o Controle de Atualizações.',
+        );
+      }
+
       final model = await _service.uploadApkBytes(
         versao: versao,
         bytes: apkResult.bytes!,
@@ -622,7 +689,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           setState(() {
             _uploadProgress = progress;
             _statusUpload =
-            'Enviando APK... ${(progress * 100).toStringAsFixed(0)}%';
+                'Enviando APK... ${(progress * 100).toStringAsFixed(0)}%';
           });
         },
       );
@@ -650,6 +717,12 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           status: LocalPublishStepStatus.running,
         );
       });
+
+      if (!await _revalidarAcessoParaAcao()) {
+        throw Exception(
+          'Você não tem permissão para acessar o Controle de Atualizações.',
+        );
+      }
 
       final published = await _service.publicarVersao(
         versionId: AppVersionModel.gerarVersionId(versao),
@@ -680,16 +753,17 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         _automationRunning = false;
         _automationState = _automationState
             ?.updateStep(
-          stepId: 'notify_users',
-          status: LocalPublishStepStatus.skipped,
-          log: 'Notificação manual. Nenhum usuário foi notificado automaticamente.',
-        )
+              stepId: 'notify_users',
+              status: LocalPublishStepStatus.skipped,
+              log:
+                  'Notificação manual. Nenhum usuário foi notificado automaticamente.',
+            )
             .copyWith(
-          running: false,
-          finalApkPath: apkPath,
-          finishedAt: DateTime.now(),
-          clearError: true,
-        );
+              running: false,
+              finalApkPath: apkPath,
+              finishedAt: DateTime.now(),
+              clearError: true,
+            );
       });
 
       _snack(
@@ -720,7 +794,6 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     }
   }
 
-
   Future<void> _notificarUsuariosNovaVersao({
     required String versao,
     required bool obrigatoria,
@@ -731,6 +804,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
     final t = context.uai;
     final versaoLimpa = versao.trim();
+
+    if (!await _revalidarAcessoParaAcao()) return;
 
     if (!AppVersionModel.versaoValida(versaoLimpa)) {
       _snack('Não foi possível notificar: versão inválida.', color: t.error);
@@ -744,14 +819,12 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
     if (confirmar != true) return;
 
+    if (!await _revalidarAcessoParaAcao()) return;
+
     setState(() => _notificando = true);
 
     try {
-      final callable = FirebaseFunctions.instanceFor(
-        region: 'us-central1',
-      ).httpsCallable('notifyNewAppVersion');
-
-      final result = await callable.call<Map<String, dynamic>>({
+      final data = await callNotifyNewAppVersion({
         'versao': versaoLimpa,
         'obrigatoria': obrigatoria,
         'titulo': titulo.trim().isNotEmpty
@@ -764,8 +837,6 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
             : 'Atualize o UAI Capoeira para receber as melhorias e correções.',
       });
 
-      final data = Map<String, dynamic>.from(result.data);
-
       final successCount = data['successCount'] ?? 0;
       final failureCount = data['failureCount'] ?? 0;
       final tokensEncontrados = data['tokensEncontrados'] ?? 0;
@@ -777,10 +848,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         color: t.success,
       );
     } on FirebaseFunctionsException catch (e) {
-      _snack(
-        'Erro na função: ${e.message ?? e.code}',
-        color: t.error,
-      );
+      _snack('Erro na função: ${e.message ?? e.code}', color: t.error);
+    } on AtualizacoesCallableException catch (e) {
+      _snack('Erro ao notificar usuários: ${e.message}', color: t.error);
     } catch (e) {
       _snack('Erro ao notificar usuários: $e', color: t.error);
     } finally {
@@ -805,10 +875,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           ),
           title: Text(
             'Notificar usuários?',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             obrigatoria
@@ -843,6 +910,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     final versao = _versaoController.text.trim();
     final versionId = AppVersionModel.gerarVersionId(versao);
 
+    if (!await _revalidarAcessoParaAcao()) return;
+
     if (versionId.isEmpty) {
       _snack('Informe uma versão válida.', color: t.error);
       return;
@@ -855,6 +924,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
     try {
       await _salvarRascunhoInterno(mostrarSnack: false);
+
+      if (!await _revalidarAcessoParaAcao()) return;
 
       final model = await _service.publicarVersao(
         versionId: versionId,
@@ -896,10 +967,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
             _obrigatoria
                 ? 'Publicar atualização obrigatória?'
                 : 'Publicar atualização opcional?',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             _obrigatoria
@@ -950,6 +1018,14 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return _buildLoadingAcesso();
+    }
+
+    if (!_acessoPermitido) {
+      return _buildAcessoNegado();
+    }
+
     final t = context.uai;
 
     return Scaffold(
@@ -988,7 +1064,10 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
               ),
               tabs: const [
                 Tab(icon: Icon(Icons.dashboard_rounded), text: 'Atual'),
-                Tab(icon: Icon(Icons.rocket_launch_rounded), text: 'Nova versão'),
+                Tab(
+                  icon: Icon(Icons.rocket_launch_rounded),
+                  text: 'Nova versão',
+                ),
                 Tab(icon: Icon(Icons.history_rounded), text: 'Histórico'),
               ],
             ),
@@ -1006,6 +1085,78 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     );
   }
 
+  Widget _buildLoadingAcesso() {
+    final t = context.uai;
+
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Controle de Atualizações',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: Center(child: CircularProgressIndicator(color: t.primary)),
+    );
+  }
+
+  Widget _buildAcessoNegado() {
+    final t = context.uai;
+
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Controle de Atualizações',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 460),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline_rounded, color: t.error, size: 52),
+                const SizedBox(height: 12),
+                Text(
+                  'Você não tem permissão para acessar o Controle de Atualizações.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: Navigator.of(context).canPop()
+                      ? () => Navigator.of(context).pop()
+                      : null,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('Voltar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAbaAtual(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _service.watchConfigApp(),
@@ -1014,11 +1165,11 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
 
         final versaoAtual = (data['versao_atual'] ?? 'Não definida').toString();
         final obrigatoria = data['atualizacao_obrigatoria'] == true;
-        final minima =
-        (data['versao_minima_obrigatoria'] ?? 'Não definida').toString();
+        final minima = (data['versao_minima_obrigatoria'] ?? 'Não definida')
+            .toString();
         final apkPath = (data['apk_path'] ?? '').toString();
-        final titulo =
-        (data['titulo_atualizacao'] ?? 'Nova versão disponível').toString();
+        final titulo = (data['titulo_atualizacao'] ?? 'Nova versão disponível')
+            .toString();
         final mensagem = (data['mensagem_atualizacao'] ?? '').toString();
 
         return _page(
@@ -1055,7 +1206,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                         : Icons.lock_open_rounded,
                     label: 'Status',
                     value: obrigatoria ? 'Obrigatória' : 'Opcional',
-                    color: obrigatoria ? context.uai.warning : context.uai.success,
+                    color: obrigatoria
+                        ? context.uai.warning
+                        : context.uai.success,
                   ),
                   _metricCard(
                     icon: Icons.verified_user_rounded,
@@ -1077,7 +1230,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                   children: [
                     for (final card in cards)
                       SizedBox(
-                        width: isWide ? (constraints.maxWidth - 10) / 2 : double.infinity,
+                        width: isWide
+                            ? (constraints.maxWidth - 10) / 2
+                            : double.infinity,
                         child: card,
                       ),
                   ],
@@ -1089,7 +1244,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
               icon: Icons.auto_awesome_rounded,
               title: 'Próxima etapa do laboratório',
               text:
-              'A publicação já atualiza configuracoes/app e cria histórico em versoes_app. Depois vamos ligar o botão de notificar usuários sobre a nova versão.',
+                  'A publicação já atualiza configuracoes/app e cria histórico em versoes_app. Depois vamos ligar o botão de notificar usuários sobre a nova versão.',
               color: context.uai.info,
             ),
           ],
@@ -1098,7 +1253,6 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     );
   }
 
-
   Widget _notificationPanel({
     required String versao,
     required bool obrigatoria,
@@ -1106,10 +1260,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     required String mensagem,
   }) {
     final t = context.uai;
-    final color = _ensureVisible(
-      obrigatoria ? t.warning : t.primary,
-      t.card,
-    );
+    final color = _ensureVisible(obrigatoria ? t.warning : t.primary, t.card);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1134,10 +1285,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                   border: Border.all(color: color.withOpacity(0.12)),
                 ),
-                child: Icon(
-                  Icons.notifications_active_rounded,
-                  color: color,
-                ),
+                child: Icon(Icons.notifications_active_rounded, color: color),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -1171,20 +1319,20 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
             onPressed: _notificando
                 ? null
                 : () => _notificarUsuariosNovaVersao(
-              versao: versao,
-              obrigatoria: obrigatoria,
-              titulo: titulo,
-              mensagem: mensagem,
-            ),
+                    versao: versao,
+                    obrigatoria: obrigatoria,
+                    titulo: titulo,
+                    mensagem: mensagem,
+                  ),
             icon: _notificando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _readableOn(color),
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _readableOn(color),
+                    ),
+                  )
                 : const Icon(Icons.send_rounded),
             label: Text(_notificando ? 'Enviando...' : 'Notificar usuários'),
             style: ElevatedButton.styleFrom(
@@ -1201,11 +1349,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           if (narrow) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                info,
-                const SizedBox(height: 12),
-                button,
-              ],
+              children: [info, const SizedBox(height: 12), button],
             );
           }
 
@@ -1517,7 +1661,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
               _textField(
                 controller: _resumoController,
                 label: 'Resumo para o usuário',
-                hint: 'Ex: Melhorias nas notificações e controle de atualização.',
+                hint:
+                    'Ex: Melhorias nas notificações e controle de atualização.',
                 icon: Icons.short_text_rounded,
                 maxLines: 3,
               ),
@@ -1585,7 +1730,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                 icon: Icons.drive_file_rename_outline_rounded,
                 title: 'Renomeação automática',
                 text:
-                'Pode selecionar app-release.apk. O sistema salva no Storage como ${AppVersionModel.gerarNomeArquivo(versaoDigitada)}.',
+                    'Pode selecionar app-release.apk. O sistema salva no Storage como ${AppVersionModel.gerarNomeArquivo(versaoDigitada)}.',
                 color: t.info,
               ),
               if (_statusUpload != null) ...[
@@ -1621,13 +1766,15 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                 const SizedBox(height: 14),
                 LocalPublishAutomationPanel(
                   platformInfo: _platformInfo,
-                  state: _automationState ??
+                  state:
+                      _automationState ??
                       LocalPublishAutomationState.initial(
                         available: _platformInfo.canRunLocalAutomation,
                         platformLabel: _platformInfo.platformLabel,
                       ),
                   logText: _automationLogText,
-                  canStart: !_automationRunning &&
+                  canStart:
+                      !_automationRunning &&
                       !_salvando &&
                       !_enviandoApk &&
                       !_notificando,
@@ -1784,10 +1931,10 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           onPressed: _salvando ? null : _salvarRascunho,
           icon: _salvando
               ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.save_rounded),
           label: const Text('Salvar rascunho'),
         );
@@ -1796,10 +1943,10 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           onPressed: _enviandoApk ? null : _selecionarEEnviarApk,
           icon: _enviandoApk
               ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.upload_file_rounded),
           label: const Text('Enviar APK'),
         );
@@ -1871,7 +2018,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                 icon: Icons.history_rounded,
                 title: 'Nenhuma versão cadastrada',
                 text:
-                'Crie a primeira versão na aba Nova versão para iniciar o laboratório.',
+                    'Crie a primeira versão na aba Nova versão para iniciar o laboratório.',
                 color: t.info,
               ),
             ],
@@ -2128,10 +2275,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       keyboardType: keyboardType,
       maxLines: maxLines,
       onChanged: onChanged,
-      style: TextStyle(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w700,
-      ),
+      style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -2168,8 +2312,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     final criado = version.criadoEm == null
         ? 'Sem data'
         : '${version.criadoEm!.day.toString().padLeft(2, '0')}/'
-        '${version.criadoEm!.month.toString().padLeft(2, '0')}/'
-        '${version.criadoEm!.year}';
+              '${version.criadoEm!.month.toString().padLeft(2, '0')}/'
+              '${version.criadoEm!.year}';
 
     return Material(
       color: t.card,

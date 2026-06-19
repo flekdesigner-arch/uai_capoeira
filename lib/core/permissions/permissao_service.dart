@@ -42,18 +42,27 @@ class PermissaoService {
   static const String chaveFinalizarEvento = 'pode_finalizar_evento';
 
   // Eventos - participantes.
-  static const String chaveGerenciarParticipantesEvento = 'pode_gerenciar_participantes_evento';
-  static const String chaveAdicionarParticipanteEvento = 'pode_adicionar_participante_evento';
-  static const String chaveEditarParticipanteEvento = 'pode_editar_participante_evento';
-  static const String chaveRemoverParticipanteEvento = 'pode_remover_participante_evento';
-  static const String chaveConcluirParticipacaoEvento = 'pode_concluir_participacao_evento';
+  static const String chaveGerenciarParticipantesEvento =
+      'pode_gerenciar_participantes_evento';
+  static const String chaveAdicionarParticipanteEvento =
+      'pode_adicionar_participante_evento';
+  static const String chaveEditarParticipanteEvento =
+      'pode_editar_participante_evento';
+  static const String chaveRemoverParticipanteEvento =
+      'pode_remover_participante_evento';
+  static const String chaveConcluirParticipacaoEvento =
+      'pode_concluir_participacao_evento';
 
   // Eventos - financeiro/módulos.
-  static const String chaveGerenciarCamisasEvento = 'pode_gerenciar_camisas_evento';
-  static const String chaveGerenciarPatrocinadoresEvento = 'pode_gerenciar_patrocinadores_evento';
-  static const String chaveGerenciarGastosEvento = 'pode_gerenciar_gastos_evento';
+  static const String chaveGerenciarCamisasEvento =
+      'pode_gerenciar_camisas_evento';
+  static const String chaveGerenciarPatrocinadoresEvento =
+      'pode_gerenciar_patrocinadores_evento';
+  static const String chaveGerenciarGastosEvento =
+      'pode_gerenciar_gastos_evento';
   static const String chaveVerRelatorioEvento = 'pode_ver_relatorio_evento';
-  static const String chaveGerarCertificadosEvento = 'pode_gerar_certificados_evento';
+  static const String chaveGerarCertificadosEvento =
+      'pode_gerar_certificados_evento';
 
   /// Aliases/compatibilidade.
   ///
@@ -61,30 +70,16 @@ class PermissaoService {
   /// por telas antigas. Assim você pode evoluir o sistema sem perder permissões
   /// já salvas no Firestore.
   static const Map<String, List<String>> _aliasesPermissoes = {
-    chaveAcessarEventos: [
-      'pode_acessar_eventos',
-      'pode_ver_eventos',
-    ],
-    chaveMostrarAlunosDrawer: [
-      'podeMostrarAlunosDrawer',
-    ],
-    chaveVerEventos: [
-      chaveAcessarEventos,
-      'pode_acessar_eventos',
-    ],
+    chaveAcessarEventos: ['pode_acessar_eventos', 'pode_ver_eventos'],
+    chaveMostrarAlunosDrawer: ['podeMostrarAlunosDrawer'],
+    chaveVerEventos: [chaveAcessarEventos, 'pode_acessar_eventos'],
     chaveVerEventosAndamento: [
       'pode_acessar_eventos_andamento',
       'pode_gerenciar_eventos_andamento',
     ],
-    chaveCriarEvento: [
-      'pode_cadastrar_evento',
-    ],
-    chaveEditarEvento: [
-      'pode_alterar_evento',
-    ],
-    chaveFinalizarEvento: [
-      'pode_concluir_evento',
-    ],
+    chaveCriarEvento: ['pode_cadastrar_evento'],
+    chaveEditarEvento: ['pode_alterar_evento'],
+    chaveFinalizarEvento: ['pode_concluir_evento'],
 
     chaveGerenciarParticipantesEvento: [
       'pode_gerenciar_participantes',
@@ -204,7 +199,9 @@ class PermissaoService {
     return true;
   }
 
-  Future<Map<String, bool>> verificarMultiplasPermissoes(List<String> permissoes) async {
+  Future<Map<String, bool>> verificarMultiplasPermissoes(
+    List<String> permissoes,
+  ) async {
     final resultado = <String, bool>{};
     for (final permissao in permissoes) {
       resultado[permissao] = await temPermissao(permissao);
@@ -252,7 +249,9 @@ class PermissaoService {
     return isAdmin;
   }
 
-  Future<bool> usuarioAtualPodeGerenciarComPeso({int minPeso = pesoMinimoGestaoEvento}) async {
+  Future<bool> usuarioAtualPodeGerenciarComPeso({
+    int minPeso = pesoMinimoGestaoEvento,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) return false;
 
@@ -342,7 +341,9 @@ class PermissaoService {
     return false;
   }
 
-  Map<String, bool> _expandirPermissoesComAliases(Map<String, bool> permissoes) {
+  Map<String, bool> _expandirPermissoesComAliases(
+    Map<String, bool> permissoes,
+  ) {
     final resultado = Map<String, bool>.from(permissoes);
 
     for (final entry in _aliasesPermissoes.entries) {
@@ -538,7 +539,8 @@ class PermissaoService {
       },
       {
         'titulo': 'Gerenciar camisas',
-        'descricao': 'Permite cadastrar, editar, entregar e marcar pagamento de camisas',
+        'descricao':
+            'Permite cadastrar, editar, entregar e marcar pagamento de camisas',
         'chave': chaveGerenciarCamisasEvento,
         'categoria': 'EVENTOS — FINANCEIRO',
         'icone': Icons.checkroom_rounded,
@@ -610,13 +612,17 @@ class PermissaoService {
     return await _podeGerenciarComPermissaoEvento(chaveVerEventosAndamento);
   }
 
-  Future<bool> podeCriarEvento() => _podeGerenciarComPermissaoEvento(chaveCriarEvento);
+  Future<bool> podeCriarEvento() =>
+      _podeGerenciarComPermissaoEvento(chaveCriarEvento);
 
-  Future<bool> podeEditarEvento() => _podeGerenciarComPermissaoEvento(chaveEditarEvento);
+  Future<bool> podeEditarEvento() =>
+      _podeGerenciarComPermissaoEvento(chaveEditarEvento);
 
-  Future<bool> podeExcluirEvento() => _podeGerenciarComPermissaoEvento(chaveExcluirEvento);
+  Future<bool> podeExcluirEvento() =>
+      _podeGerenciarComPermissaoEvento(chaveExcluirEvento);
 
-  Future<bool> podeFinalizarEvento() => _podeGerenciarComPermissaoEvento(chaveFinalizarEvento);
+  Future<bool> podeFinalizarEvento() =>
+      _podeGerenciarComPermissaoEvento(chaveFinalizarEvento);
 
   Future<bool> podeGerenciarParticipantesEvento() {
     return _podeGerenciarComPermissaoEvento(chaveGerenciarParticipantesEvento);
@@ -675,13 +681,16 @@ class PermissaoService {
       'podeEditarEvento': await podeEditarEvento(),
       'podeExcluirEvento': await podeExcluirEvento(),
       'podeFinalizarEvento': await podeFinalizarEvento(),
-      'podeGerenciarParticipantesEvento': await podeGerenciarParticipantesEvento(),
-      'podeAdicionarParticipanteEvento': await podeAdicionarParticipanteEvento(),
+      'podeGerenciarParticipantesEvento':
+          await podeGerenciarParticipantesEvento(),
+      'podeAdicionarParticipanteEvento':
+          await podeAdicionarParticipanteEvento(),
       'podeEditarParticipanteEvento': await podeEditarParticipanteEvento(),
       'podeRemoverParticipanteEvento': await podeRemoverParticipanteEvento(),
       'podeConcluirParticipacaoEvento': await podeConcluirParticipacaoEvento(),
       'podeGerenciarCamisasEvento': await podeGerenciarCamisasEvento(),
-      'podeGerenciarPatrocinadoresEvento': await podeGerenciarPatrocinadoresEvento(),
+      'podeGerenciarPatrocinadoresEvento':
+          await podeGerenciarPatrocinadoresEvento(),
       'podeGerenciarGastosEvento': await podeGerenciarGastosEvento(),
       'podeGerenciarFinanceiroEvento': await podeGerenciarFinanceiroEvento(),
       'podeVerRelatorioEvento': await podeVerRelatorioEvento(),
@@ -691,11 +700,13 @@ class PermissaoService {
 
   // ==================== COMPATIBILIDADE COM NOMES ANTIGOS ====================
 
-  Future<bool> podeGerenciarParticipantes() => podeGerenciarParticipantesEvento();
+  Future<bool> podeGerenciarParticipantes() =>
+      podeGerenciarParticipantesEvento();
 
   Future<bool> podeGerenciarFinanceiro() => podeGerenciarFinanceiroEvento();
 
-  Future<bool> podeGerenciarPatrocinadores() => podeGerenciarPatrocinadoresEvento();
+  Future<bool> podeGerenciarPatrocinadores() =>
+      podeGerenciarPatrocinadoresEvento();
 
   Future<bool> podeGerenciarCamisas() => podeGerenciarCamisasEvento();
 

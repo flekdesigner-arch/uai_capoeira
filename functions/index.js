@@ -3736,3 +3736,752 @@ exports.notifyNewAppVersion = onCall(
     }
 );
 
+
+// ============================================
+// PAINEL ADMIN: SAÚDE FIREBASE
+// ============================================
+const FIREBASE_SAUDE_MAX_DOC_LIMIT = 50;
+const FIREBASE_SAUDE_COUNT_LIMIT = 5000;
+
+const FIREBASE_SAUDE_COLECOES = {
+    alunos: {
+        descricao: 'Cadastro de alunos e vínculos acadêmicos',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'updated_at', 'criado_em'],
+    },
+    usuarios: {
+        descricao: 'Usuários administrativos e permissões',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'ultimo_login', 'criado_em'],
+    },
+    turmas: {
+        descricao: 'Turmas, horários e vínculos com academias',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'criado_em'],
+    },
+    academias: {
+        descricao: 'Academias, núcleos e responsáveis',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'criado_em'],
+    },
+    chamadas: {
+        descricao: 'Registros de chamadas e frequência',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['data_chamada', 'criado_em', 'atualizado_em'],
+    },
+    eventos: {
+        descricao: 'Eventos cadastrados no app',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['data_evento', 'atualizado_em', 'criado_em'],
+    },
+    participacoes_eventos: {
+        descricao: 'Participações, pagamentos e certificados de eventos',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'criado_em'],
+    },
+    graduacoes: {
+        descricao: 'Graduações e faixas',
+        risco: 'baixo',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'criado_em'],
+    },
+    configuracoes: {
+        descricao: 'Configurações internas do sistema',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'ultima_atualizacao'],
+    },
+    estatisticas_acessos: {
+        descricao: 'Estatísticas internas de acesso',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['ultima_atividade', 'ultima_atualizacao', 'criado_em'],
+    },
+    area_aluno_logs_acesso: {
+        descricao: 'Logs de acesso da Área do Aluno',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['data_acesso', 'criado_em'],
+    },
+    area_aluno_logs_erro: {
+        descricao: 'Logs de erro da Área do Aluno',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['tentativa_em', 'criado_em'],
+    },
+    area_aluno_google_logs: {
+        descricao: 'Logs de vínculo e login Google da Área do Aluno',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['criado_em', 'timestamp'],
+    },
+    area_aluno_solicitacoes_alteracao: {
+        descricao: 'Solicitações de alteração cadastral de alunos',
+        risco: 'alto',
+        podeVisualizarDetalhes: true,
+        camposData: ['atualizado_em', 'criado_em'],
+    },
+    atualizacoes_app: {
+        descricao: 'Histórico e versões publicadas do app',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['publicado_em', 'criado_em', 'atualizado_em'],
+    },
+    notificacoes: {
+        descricao: 'Notificações internas para usuários',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['criado_em', 'enviado_em'],
+    },
+    aniversariantes_logs: {
+        descricao: 'Logs de notificações de aniversariantes',
+        risco: 'baixo',
+        podeVisualizarDetalhes: true,
+        camposData: ['criado_em', 'data'],
+    },
+    firebase_saude_logs: {
+        descricao: 'Auditoria de acesso ao painel Saúde Firebase',
+        risco: 'medio',
+        podeVisualizarDetalhes: true,
+        camposData: ['criado_em'],
+    },
+};
+
+const FIREBASE_SAUDE_STORAGE_PREFIXOS = [
+    'alunos/',
+    'site/',
+    'logos/',
+    'certificados/',
+    'atualizacoes/',
+    'comprovantes/',
+    'eventos/',
+];
+
+const FIREBASE_SAUDE_FUNCTIONS_MANUAIS = [
+    ['obterResumoSaudeFirebase', 'Resumo geral do Firestore, Storage, Functions e integridade'],
+    ['listarColecoesFirebaseSaude', 'Lista controlada de coleções principais'],
+    ['listarDocumentosColecaoFirebaseSaude', 'Explorador paginado de documentos sanitizados'],
+    ['obterDocumentoFirebaseSaude', 'Detalhe sanitizado de documento permitido'],
+    ['listarArquivosStorageFirebaseSaude', 'Lista controlada de prefixos seguros do Storage'],
+    ['listarFunctionsFirebaseSaude', 'Lista informativa de Cloud Functions importantes'],
+    ['notifyNewAppVersion', 'Notificação administrativa de nova versão do app'],
+    ['validarAcessoGoogleAreaAluno', 'Validação de acesso Google para Área do Aluno'],
+    ['vincularGoogleAreaAluno', 'Vínculo Google controlado da Área do Aluno'],
+    ['criarSolicitacaoAlteracaoAreaAluno', 'Solicitação segura de alteração cadastral'],
+    ['processarChamada', 'Processamento de chamada e frequência'],
+];
+
+function firebaseSaudeToIso(value) {
+    if (!value) return null;
+
+    try {
+        if (value.toDate) return value.toDate().toISOString();
+        if (value instanceof Date) return value.toISOString();
+        if (typeof value === 'string') return value;
+    } catch (error) {
+        console.warn('Erro ao converter data do painel Saúde Firebase:', error);
+    }
+
+    return null;
+}
+
+function firebaseSaudeInt(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function firebaseSaudeDocIdSeguro(value) {
+    const text = String(value || '').trim();
+    if (!text || text.includes('/') || text.length > 180) return '';
+    return text;
+}
+
+async function validarAdminFirebaseSaude(request) {
+    if (!request.auth || !request.auth.uid) {
+        throw new HttpsError('unauthenticated', 'Você precisa estar logado.');
+    }
+
+    const uid = request.auth.uid;
+    const userDoc = await db.collection('usuarios').doc(uid).get();
+
+    if (!userDoc.exists) {
+        throw new HttpsError('permission-denied', 'Usuário administrativo não encontrado.');
+    }
+
+    const data = userDoc.data() || {};
+    const status = String(data.status_conta || '').trim().toLowerCase();
+    const tipo = String(data.tipo || '').trim().toLowerCase();
+    const peso = firebaseSaudeInt(data.peso_permissao);
+    const adminReal = status === 'ativa' && (
+        peso >= 90 ||
+        tipo === 'admin' ||
+        tipo === 'administrador'
+    );
+
+    if (!adminReal) {
+        throw new HttpsError('permission-denied', 'Apenas admin/master com conta ativa pode acessar este painel.');
+    }
+
+    return {
+        uid,
+        email: request.auth.token?.email || data.email || '',
+        nome: data.nome_completo || data.nome || '',
+        peso,
+        tipo,
+    };
+}
+
+async function registrarLogFirebaseSaude(adminAtual, evento, detalhes = {}) {
+    try {
+        await db.collection('firebase_saude_logs').add({
+            evento,
+            uid: adminAtual.uid,
+            email: adminAtual.email || '',
+            nome: adminAtual.nome || '',
+            detalhes: sanitizarFirebaseSaude(detalhes),
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (error) {
+        console.error('Erro ao registrar log Saúde Firebase:', error);
+    }
+}
+
+function campoSensivelFirebaseSaude(key) {
+    const lower = String(key || '').toLowerCase();
+    return lower.includes('token') ||
+        lower.includes('password') ||
+        lower.includes('senha') ||
+        lower.includes('secret') ||
+        lower.includes('key') ||
+        lower.includes('cpf') ||
+        lower.includes('rg') ||
+        lower.includes('endereco') ||
+        lower.includes('pagamento') ||
+        lower.includes('cartao') ||
+        lower.includes('telefone') ||
+        lower.includes('contato') ||
+        lower.includes('fcm');
+}
+
+function mascararValorFirebaseSaude(key, value) {
+    const lower = String(key || '').toLowerCase();
+    const text = String(value || '');
+
+    if (!text) return '';
+    if (lower.includes('telefone') || lower.includes('contato')) {
+        const digits = text.replace(/\D/g, '');
+        return digits.length >= 4 ? `***${digits.slice(-4)}` : '[oculto]';
+    }
+    if (lower.includes('email')) {
+        const [user, domain] = text.split('@');
+        if (!user || !domain) return '[email oculto]';
+        return `${user.slice(0, 2)}***@${domain}`;
+    }
+    return '[oculto]';
+}
+
+function sanitizarFirebaseSaude(value, parentKey = '') {
+    if (value === null || value === undefined) return value;
+
+    if (value.toDate) return firebaseSaudeToIso(value);
+    if (value instanceof Date) return value.toISOString();
+
+    if (campoSensivelFirebaseSaude(parentKey)) {
+        return mascararValorFirebaseSaude(parentKey, value);
+    }
+
+    if (Array.isArray(value)) {
+        return value.slice(0, 30).map(item => sanitizarFirebaseSaude(item, parentKey));
+    }
+
+    if (typeof value === 'object') {
+        const out = {};
+        for (const [key, child] of Object.entries(value)) {
+            if (campoSensivelFirebaseSaude(key)) {
+                out[key] = mascararValorFirebaseSaude(key, child);
+            } else {
+                out[key] = sanitizarFirebaseSaude(child, key);
+            }
+        }
+        return out;
+    }
+
+    if (typeof value === 'string' && String(parentKey).toLowerCase().includes('email')) {
+        return mascararValorFirebaseSaude(parentKey, value);
+    }
+
+    return value;
+}
+
+async function contarColecaoFirebaseSaude(nome, queryBuilder) {
+    try {
+        const baseQuery = queryBuilder ? queryBuilder(db.collection(nome)) : db.collection(nome);
+        const snap = await baseQuery.count().get();
+        return snap.data().count || 0;
+    } catch (error) {
+        console.warn(`Count indisponível para ${nome}, usando fallback limitado:`, error.message || error);
+        try {
+            const snap = await db.collection(nome).limit(FIREBASE_SAUDE_COUNT_LIMIT).get();
+            return snap.size;
+        } catch (innerError) {
+            console.warn(`Falha ao contar ${nome}:`, innerError.message || innerError);
+            return 0;
+        }
+    }
+}
+
+async function ultimaAtualizacaoColecaoFirebaseSaude(nome, campos = []) {
+    for (const campo of campos) {
+        try {
+            const snap = await db
+                .collection(nome)
+                .orderBy(campo, 'desc')
+                .limit(1)
+                .get();
+
+            if (!snap.empty) {
+                const data = snap.docs[0].data() || {};
+                const iso = firebaseSaudeToIso(data[campo]);
+                if (iso) return iso;
+            }
+        } catch (error) {
+            // Campo sem índice ou ausente: tenta o próximo campo conhecido.
+        }
+    }
+
+    return null;
+}
+
+async function configAppFirebaseSaude() {
+    const candidates = [
+        ['configuracoes', 'app'],
+        ['configuracoes', 'atualizacoes_app'],
+        ['atualizacoes_app', 'config'],
+    ];
+
+    for (const [collection, docId] of candidates) {
+        const doc = await db.collection(collection).doc(docId).get();
+        if (doc.exists) return doc.data() || {};
+    }
+
+    return {};
+}
+
+async function diagnosticosFirebaseSaude() {
+    const diagnosticos = [];
+
+    const alunosAtivosSnap = await db
+        .collection('alunos')
+        .where('status', '==', 'ativo')
+        .limit(500)
+        .get()
+        .catch(() => null);
+
+    if (alunosAtivosSnap) {
+        const semTurma = [];
+        const semGraduacao = [];
+        const semFoto = [];
+        alunosAtivosSnap.forEach(doc => {
+            const data = doc.data() || {};
+            if (!data.turma_id && !data.turma) semTurma.push({ id: doc.id, nome: data.nome || '' });
+            if (!data.graduacao_id && !data.graduacao) semGraduacao.push({ id: doc.id, nome: data.nome || '' });
+            if (!data.foto_url && !data.foto && !data.imagem) semFoto.push({ id: doc.id, nome: data.nome || '' });
+        });
+
+        diagnosticos.push({
+            titulo: 'Alunos ativos sem turma',
+            descricao: 'Alunos ativos sem turma_id/turma preenchido.',
+            quantidade: semTurma.length,
+            nivel: semTurma.length ? 'medio' : 'info',
+            exemplos: semTurma.slice(0, 8),
+        });
+        diagnosticos.push({
+            titulo: 'Alunos ativos sem graduação',
+            descricao: 'Alunos ativos sem graduação ou graduação_id.',
+            quantidade: semGraduacao.length,
+            nivel: semGraduacao.length ? 'medio' : 'info',
+            exemplos: semGraduacao.slice(0, 8),
+        });
+        diagnosticos.push({
+            titulo: 'Alunos ativos sem foto',
+            descricao: 'Alunos ativos sem campo de foto conhecido.',
+            quantidade: semFoto.length,
+            nivel: semFoto.length ? 'baixo' : 'info',
+            exemplos: semFoto.slice(0, 8),
+        });
+    }
+
+    const usuariosAtivosSnap = await db
+        .collection('usuarios')
+        .where('status_conta', '==', 'ativa')
+        .limit(500)
+        .get()
+        .catch(() => null);
+
+    if (usuariosAtivosSnap) {
+        const semPerfil = [];
+        usuariosAtivosSnap.forEach(doc => {
+            const data = doc.data() || {};
+            if (!data.tipo && firebaseSaudeInt(data.peso_permissao) <= 0) {
+                semPerfil.push({ id: doc.id, email: mascararValorFirebaseSaude('email', data.email || '') });
+            }
+        });
+        diagnosticos.push({
+            titulo: 'Usuários ativos sem perfil',
+            descricao: 'Usuários ativos sem tipo e sem peso_permissao útil.',
+            quantidade: semPerfil.length,
+            nivel: semPerfil.length ? 'alto' : 'info',
+            exemplos: semPerfil.slice(0, 8),
+        });
+    }
+
+    const turmasSnap = await db.collection('turmas').limit(500).get().catch(() => null);
+    if (turmasSnap) {
+        const semAcademia = [];
+        turmasSnap.forEach(doc => {
+            const data = doc.data() || {};
+            if (!data.academia_id && !data.academia) semAcademia.push({ id: doc.id, nome: data.nome || '' });
+        });
+        diagnosticos.push({
+            titulo: 'Turmas sem academia',
+            descricao: 'Turmas sem academia_id/academia preenchido.',
+            quantidade: semAcademia.length,
+            nivel: semAcademia.length ? 'medio' : 'info',
+            exemplos: semAcademia.slice(0, 8),
+        });
+    }
+
+    const eventosSnap = await db.collection('eventos').limit(500).get().catch(() => null);
+    if (eventosSnap) {
+        const semData = [];
+        eventosSnap.forEach(doc => {
+            const data = doc.data() || {};
+            if (!data.data_evento && !data.data && !data.inicio_em) {
+                semData.push({ id: doc.id, nome: data.nome || data.titulo || '' });
+            }
+        });
+        diagnosticos.push({
+            titulo: 'Eventos sem data',
+            descricao: 'Eventos sem campos de data conhecidos.',
+            quantidade: semData.length,
+            nivel: semData.length ? 'medio' : 'info',
+            exemplos: semData.slice(0, 8),
+        });
+    }
+
+    const logsErro = await contarColecaoFirebaseSaude('area_aluno_logs_erro');
+    diagnosticos.push({
+        titulo: 'Logs de erro da Área do Aluno',
+        descricao: 'Total contado na coleção de erros da Área do Aluno.',
+        quantidade: logsErro,
+        nivel: logsErro ? 'baixo' : 'info',
+        exemplos: [],
+    });
+
+    return diagnosticos;
+}
+
+async function resumoStorageFirebaseSaude() {
+    const bucket = storage.bucket(bucketName);
+    let quantidade = 0;
+    let tamanho = 0;
+
+    for (const prefix of FIREBASE_SAUDE_STORAGE_PREFIXOS) {
+        try {
+            const [files] = await bucket.getFiles({
+                prefix,
+                maxResults: 100,
+                autoPaginate: false,
+            });
+            quantidade += files.length;
+            for (const file of files) {
+                tamanho += firebaseSaudeInt(file.metadata?.size);
+            }
+        } catch (error) {
+            console.warn(`Falha ao resumir storage em ${prefix}:`, error.message || error);
+        }
+    }
+
+    return { quantidade, tamanho };
+}
+
+exports.obterResumoSaudeFirebase = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        await registrarLogFirebaseSaude(adminAtual, 'abriu_painel');
+
+        const [
+            usuariosTotal,
+            usuariosAtivos,
+            usuariosInativos,
+            alunosTotal,
+            alunosAtivos,
+            alunosInativos,
+            turmasTotal,
+            eventosTotal,
+            participacoesTotal,
+            logsRecentes,
+            solicitacoesPendentes,
+            storageResumo,
+            configApp,
+            diagnosticos,
+        ] = await Promise.all([
+            contarColecaoFirebaseSaude('usuarios'),
+            contarColecaoFirebaseSaude('usuarios', q => q.where('status_conta', '==', 'ativa')),
+            contarColecaoFirebaseSaude('usuarios', q => q.where('status_conta', 'in', ['inativa', 'bloqueada', 'pendente'])),
+            contarColecaoFirebaseSaude('alunos'),
+            contarColecaoFirebaseSaude('alunos', q => q.where('status', '==', 'ativo')),
+            contarColecaoFirebaseSaude('alunos', q => q.where('status', 'in', ['inativo', 'bloqueado'])),
+            contarColecaoFirebaseSaude('turmas'),
+            contarColecaoFirebaseSaude('eventos'),
+            contarColecaoFirebaseSaude('participacoes_eventos'),
+            contarColecaoFirebaseSaude('firebase_saude_logs'),
+            contarColecaoFirebaseSaude('area_aluno_solicitacoes_alteracao', q => q.where('status', '==', 'pendente')),
+            resumoStorageFirebaseSaude(),
+            configAppFirebaseSaude(),
+            diagnosticosFirebaseSaude(),
+        ]);
+
+        return {
+            timestamp: new Date().toISOString(),
+            statusGeral: diagnosticos.some(item => item.quantidade > 0 && item.nivel === 'alto')
+                ? 'atenção'
+                : 'operacional',
+            projeto: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
+            contadores: {
+                usuarios_total: usuariosTotal,
+                usuarios_ativos: usuariosAtivos,
+                usuarios_inativos: usuariosInativos,
+                alunos_total: alunosTotal,
+                alunos_ativos: alunosAtivos,
+                alunos_inativos: alunosInativos,
+                turmas_total: turmasTotal,
+                eventos_total: eventosTotal,
+                participacoes_total: participacoesTotal,
+                logs_recentes: logsRecentes,
+                solicitacoes_pendentes: solicitacoesPendentes,
+                storage_arquivos_mapeados: storageResumo.quantidade,
+                storage_tamanho_aproximado: storageResumo.tamanho,
+            },
+            configuracoes: {
+                appConfigEncontrada: Object.keys(configApp).length > 0,
+                storagePrefixosPermitidos: FIREBASE_SAUDE_STORAGE_PREFIXOS,
+                colecoesPermitidas: Object.keys(FIREBASE_SAUDE_COLECOES),
+            },
+            atualizacoes: {
+                versaoAtual: configApp.versao_atual || configApp.versaoAtual || configApp.versao || '',
+                versaoMinima: configApp.versao_minima || configApp.versaoMinima || '',
+                obrigatoria: configApp.atualizacao_obrigatoria === true || configApp.obrigatoria === true,
+                ultimaAtualizacao: firebaseSaudeToIso(
+                    configApp.ultima_atualizacao ||
+                    configApp.atualizado_em ||
+                    configApp.publicado_em
+                ),
+            },
+            usoCustos: {
+                status: 'não conectado ao Cloud Monitoring ainda',
+                orientacao: 'Configure Google Cloud Monitoring/Billing para métricas reais de leituras, escritas, tráfego e custos.',
+                metricasReaisDisponiveis: false,
+            },
+            diagnosticos: diagnosticos.map(item => sanitizarFirebaseSaude(item)),
+        };
+    }
+);
+
+exports.listarColecoesFirebaseSaude = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        await registrarLogFirebaseSaude(adminAtual, 'listou_colecoes');
+
+        const colecoes = [];
+        for (const [nome, config] of Object.entries(FIREBASE_SAUDE_COLECOES)) {
+            const [quantidade, ultimaAtualizacao] = await Promise.all([
+                contarColecaoFirebaseSaude(nome),
+                ultimaAtualizacaoColecaoFirebaseSaude(nome, config.camposData),
+            ]);
+
+            colecoes.push({
+                nome,
+                descricao: config.descricao,
+                quantidade,
+                ultimaAtualizacao,
+                risco: config.risco,
+                podeVisualizarDetalhes: config.podeVisualizarDetalhes === true,
+            });
+        }
+
+        return { colecoes };
+    }
+);
+
+exports.listarDocumentosColecaoFirebaseSaude = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        const payload = request.data || {};
+        const colecao = String(payload.colecao || '').trim();
+        const config = FIREBASE_SAUDE_COLECOES[colecao];
+
+        if (!config || config.podeVisualizarDetalhes !== true) {
+            throw new HttpsError('invalid-argument', 'Coleção não permitida no explorador controlado.');
+        }
+
+        const limit = Math.min(Math.max(firebaseSaudeInt(payload.limit) || 25, 1), FIREBASE_SAUDE_MAX_DOC_LIMIT);
+        const startAfter = firebaseSaudeDocIdSeguro(payload.startAfter);
+        const filtro = String(payload.filtro || '').trim().toLowerCase().slice(0, 80);
+
+        await registrarLogFirebaseSaude(adminAtual, 'listou_colecao', { colecao, limit, filtro: filtro ? '[informado]' : '' });
+
+        let query = db.collection(colecao).orderBy(admin.firestore.FieldPath.documentId()).limit(limit + 1);
+        if (startAfter) query = query.startAfter(startAfter);
+
+        const snap = await query.get();
+        let docs = snap.docs.map(doc => ({
+            id: doc.id,
+            dados: sanitizarFirebaseSaude(doc.data() || {}),
+        }));
+
+        if (filtro) {
+            docs = docs.filter(doc => {
+                const haystack = `${doc.id} ${JSON.stringify(doc.dados)}`.toLowerCase();
+                return haystack.includes(filtro);
+            });
+        }
+
+        const hasMore = docs.length > limit;
+        const pageDocs = docs.slice(0, limit);
+
+        return {
+            documentos: pageDocs,
+            nextPageToken: pageDocs.length ? pageDocs[pageDocs.length - 1].id : null,
+            hasMore,
+        };
+    }
+);
+
+exports.obterDocumentoFirebaseSaude = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        const payload = request.data || {};
+        const colecao = String(payload.colecao || '').trim();
+        const docId = firebaseSaudeDocIdSeguro(payload.docId);
+        const config = FIREBASE_SAUDE_COLECOES[colecao];
+
+        if (!config || config.podeVisualizarDetalhes !== true || !docId) {
+            throw new HttpsError('invalid-argument', 'Documento não permitido no explorador controlado.');
+        }
+
+        await registrarLogFirebaseSaude(adminAtual, 'visualizou_documento', { colecao, docId });
+
+        const doc = await db.collection(colecao).doc(docId).get();
+        if (!doc.exists) {
+            throw new HttpsError('not-found', 'Documento não encontrado.');
+        }
+
+        return {
+            id: doc.id,
+            dados: sanitizarFirebaseSaude(doc.data() || {}),
+        };
+    }
+);
+
+exports.listarArquivosStorageFirebaseSaude = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        const payload = request.data || {};
+        const requestedPrefix = String(payload.prefixo || '').trim();
+        const prefixos = requestedPrefix
+            ? FIREBASE_SAUDE_STORAGE_PREFIXOS.filter(prefix => prefix === requestedPrefix)
+            : FIREBASE_SAUDE_STORAGE_PREFIXOS;
+
+        if (requestedPrefix && prefixos.length === 0) {
+            throw new HttpsError('invalid-argument', 'Prefixo de Storage não permitido.');
+        }
+
+        const limit = Math.min(Math.max(firebaseSaudeInt(payload.limit) || 40, 1), 100);
+        const bucket = storage.bucket(bucketName);
+        const arquivos = [];
+
+        await registrarLogFirebaseSaude(adminAtual, 'listou_storage', {
+            prefixo: requestedPrefix || 'todos',
+            limit,
+        });
+
+        for (const prefix of prefixos) {
+            if (arquivos.length >= limit) break;
+
+            const [files] = await bucket.getFiles({
+                prefix,
+                maxResults: Math.max(1, limit - arquivos.length),
+                autoPaginate: false,
+            });
+
+            for (const file of files) {
+                const metadata = file.metadata || {};
+                arquivos.push({
+                    nome: file.name.split('/').filter(Boolean).pop() || file.name,
+                    path: file.name,
+                    tamanho: firebaseSaudeInt(metadata.size),
+                    contentType: metadata.contentType || '',
+                    updated: metadata.updated || null,
+                    prefixo: prefix,
+                    pasta: file.name.endsWith('/'),
+                });
+            }
+        }
+
+        return { arquivos };
+    }
+);
+
+exports.listarFunctionsFirebaseSaude = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminFirebaseSaude(request);
+        await registrarLogFirebaseSaude(adminAtual, 'listou_functions');
+
+        return {
+            functions: FIREBASE_SAUDE_FUNCTIONS_MANUAIS.map(([nome, descricao]) => ({
+                nome,
+                descricao,
+                status: 'lista manual backend',
+            })),
+        };
+    }
+);
+
