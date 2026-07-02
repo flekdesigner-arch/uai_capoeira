@@ -49,10 +49,7 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
             .doc('campeonato')
             .collection('grupos_convidados')
             .doc(_editandoId)
-            .update({
-          ...dados,
-          'atualizado_em': FieldValue.serverTimestamp(),
-        });
+            .update({...dados, 'atualizado_em': FieldValue.serverTimestamp()});
         _mostrarMensagem('Grupo atualizado!', Colors.green);
       } else {
         // Criar novo
@@ -140,9 +137,9 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
   }
 
   void _mostrarMensagem(String msg, Color cor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: cor),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: cor));
   }
 
   @override
@@ -210,12 +207,18 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
                         onPressed: _isLoading ? null : _salvarGrupo,
                         icon: _isLoading
                             ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                            : Icon(_editandoId == null ? Icons.add : Icons.save),
-                        label: Text(_editandoId == null ? 'ADICIONAR' : 'SALVAR'),
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                _editandoId == null ? Icons.add : Icons.save,
+                              ),
+                        label: Text(
+                          _editandoId == null ? 'ADICIONAR' : 'SALVAR',
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.amber.shade900,
                           foregroundColor: Colors.white,
@@ -251,11 +254,18 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.group_off, size: 80, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.group_off,
+                          size: 80,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: 16),
                         const Text(
                           'Nenhum grupo cadastrado',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -280,11 +290,15 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
                       color: ativo ? Colors.white : Colors.grey.shade100,
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: ativo ? Colors.amber.shade100 : Colors.grey.shade300,
+                          backgroundColor: ativo
+                              ? Colors.amber.shade100
+                              : Colors.grey.shade300,
                           child: Text(
                             data['nome']?[0] ?? '?',
                             style: TextStyle(
-                              color: ativo ? Colors.amber.shade900 : Colors.grey.shade600,
+                              color: ativo
+                                  ? Colors.amber.shade900
+                                  : Colors.grey.shade600,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -292,16 +306,24 @@ class _GruposConvidadosScreenState extends State<GruposConvidadosScreen> {
                         title: Text(
                           data['nome'] ?? '',
                           style: TextStyle(
-                            decoration: ativo ? null : TextDecoration.lineThrough,
+                            decoration: ativo
+                                ? null
+                                : TextDecoration.lineThrough,
                           ),
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (data['contato']?.isNotEmpty ?? false)
-                              Text('📞 ${data['contato']}', style: const TextStyle(fontSize: 11)),
+                              Text(
+                                '📞 ${data['contato']}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
                             if (data['observacoes']?.isNotEmpty ?? false)
-                              Text('📝 ${data['observacoes']}', style: const TextStyle(fontSize: 11)),
+                              Text(
+                                '📝 ${data['observacoes']}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
                           ],
                         ),
                         trailing: Row(

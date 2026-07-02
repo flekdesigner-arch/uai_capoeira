@@ -1,4 +1,4 @@
-﻿// lib/screens/eventos/patrocinadores_evento_screen.dart
+// lib/screens/eventos/patrocinadores_evento_screen.dart
 
 import 'dart:io';
 
@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 
 class PatrocinadoresEventoScreen extends StatefulWidget {
@@ -36,7 +37,8 @@ class _PatrocinadoresEventoScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -91,7 +93,6 @@ class _PatrocinadoresEventoScreenState
     );
   }
 
-
   final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _contatoController = TextEditingController();
   final TextEditingController _valorController = TextEditingController();
@@ -112,8 +113,10 @@ class _PatrocinadoresEventoScreenState
 
   String _filtroStatus = 'TODOS';
 
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
 
   @override
@@ -211,7 +214,9 @@ class _PatrocinadoresEventoScreenState
     try {
       final String fileName =
           'patrocinadores/${widget.eventoId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+      final Reference storageRef = FirebaseStorage.instance.ref().child(
+        fileName,
+      );
 
       final UploadTask uploadTask = storageRef.putFile(_imagemSelecionada!);
       final TaskSnapshot snapshot = await uploadTask;
@@ -247,9 +252,9 @@ class _PatrocinadoresEventoScreenState
   }
 
   Future<void> _selecionarDataPrevista(
-      BuildContext dialogContext,
-      void Function(void Function()) setDialogState,
-      ) async {
+    BuildContext dialogContext,
+    void Function(void Function()) setDialogState,
+  ) async {
     final DateTime? picked = await showDatePicker(
       context: dialogContext,
       initialDate: _dataPrevista ?? DateTime.now(),
@@ -258,7 +263,9 @@ class _PatrocinadoresEventoScreenState
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(primary: context.uai.warning),
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: context.uai.warning),
           ),
           child: child!,
         );
@@ -272,9 +279,9 @@ class _PatrocinadoresEventoScreenState
   }
 
   Future<void> _selecionarDataRealizada(
-      BuildContext dialogContext,
-      void Function(void Function()) setDialogState,
-      ) async {
+    BuildContext dialogContext,
+    void Function(void Function()) setDialogState,
+  ) async {
     final DateTime? picked = await showDatePicker(
       context: dialogContext,
       initialDate: _dataRealizada ?? DateTime.now(),
@@ -283,7 +290,9 @@ class _PatrocinadoresEventoScreenState
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(primary: context.uai.success),
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: context.uai.success),
           ),
           child: child!,
         );
@@ -326,8 +335,10 @@ class _PatrocinadoresEventoScreenState
           return Dialog(
             backgroundColor: context.uai.card,
             surfaceTintColor: Colors.transparent,
-            insetPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
             ),
@@ -376,12 +387,14 @@ class _PatrocinadoresEventoScreenState
                                   hint: '0,00',
                                 ),
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                               );
 
-                              final logoField = _buildLogoPicker(setDialogState);
+                              final logoField = _buildLogoPicker(
+                                setDialogState,
+                              );
 
                               if (narrow) {
                                 return Column(
@@ -585,7 +598,11 @@ class _PatrocinadoresEventoScreenState
             ),
             if (_imagemSelecionada != null)
               IconButton(
-                icon: Icon(Icons.close_rounded, size: 17, color: context.uai.error),
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 17,
+                  color: context.uai.error,
+                ),
                 onPressed: () {
                   _removerImagem();
                   setDialogState(() {});
@@ -663,18 +680,18 @@ class _PatrocinadoresEventoScreenState
               onPressed: _salvando
                   ? null
                   : () async {
-                Navigator.pop(dialogContext);
-                await _adicionarPatrocinador();
-              },
+                      Navigator.pop(dialogContext);
+                      await _adicionarPatrocinador();
+                    },
               icon: _salvando
                   ? SizedBox(
-                width: 17,
-                height: 17,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _onWarning(),
-                ),
-              )
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _onWarning(),
+                      ),
+                    )
                   : Icon(Icons.add_rounded),
               label: Text(_salvando ? 'SALVANDO...' : 'ADICIONAR'),
               style: ElevatedButton.styleFrom(
@@ -689,7 +706,9 @@ class _PatrocinadoresEventoScreenState
   }
 
   Future<void> _adicionarPatrocinador() async {
-    if (!_podeGerenciarPatrocinadores) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_patrocinadores_evento',
+    )) {
       _mostrarSemPermissao(
         'Você não tem permissão para adicionar patrocinadores.',
       );
@@ -723,30 +742,34 @@ class _PatrocinadoresEventoScreenState
     String status = 'PENDENTE';
     if (_dataRealizada != null) {
       status = 'PAGO';
-    } else if (_dataPrevista != null && _dataPrevista!.isBefore(DateTime.now())) {
+    } else if (_dataPrevista != null &&
+        _dataPrevista!.isBefore(DateTime.now())) {
       status = 'ATRASADO';
     }
 
     try {
-      final docRef =
-      await FirebaseFirestore.instance.collection('patrocinadores_eventos').add({
-        'evento_id': widget.eventoId,
-        'evento_nome': widget.eventoNome,
-        'nome': _nomeController.text.trim(),
-        'contato': _contatoController.text.trim(),
-        'valor': valor,
-        'valor_pago': _dataRealizada != null ? valor : 0,
-        'logo_url': imagemUrl,
-        'observacoes': _observacoesController.text.trim(),
-        'status': status,
-        'data_prevista':
-        _dataPrevista != null ? Timestamp.fromDate(_dataPrevista!) : null,
-        'data_realizada':
-        _dataRealizada != null ? Timestamp.fromDate(_dataRealizada!) : null,
-        'data_registro': FieldValue.serverTimestamp(),
-        'saldo_inicial': _dataRealizada != null ? valor : 0,
-        'saldo_disponivel': _dataRealizada != null ? valor : 0,
-      });
+      final docRef = await FirebaseFirestore.instance
+          .collection('patrocinadores_eventos')
+          .add({
+            'evento_id': widget.eventoId,
+            'evento_nome': widget.eventoNome,
+            'nome': _nomeController.text.trim(),
+            'contato': _contatoController.text.trim(),
+            'valor': valor,
+            'valor_pago': _dataRealizada != null ? valor : 0,
+            'logo_url': imagemUrl,
+            'observacoes': _observacoesController.text.trim(),
+            'status': status,
+            'data_prevista': _dataPrevista != null
+                ? Timestamp.fromDate(_dataPrevista!)
+                : null,
+            'data_realizada': _dataRealizada != null
+                ? Timestamp.fromDate(_dataRealizada!)
+                : null,
+            'data_registro': FieldValue.serverTimestamp(),
+            'saldo_inicial': _dataRealizada != null ? valor : 0,
+            'saldo_disponivel': _dataRealizada != null ? valor : 0,
+          });
 
       if (_dataRealizada != null && valor > 0) {
         await docRef.collection('pagamentos').add({
@@ -797,11 +820,13 @@ class _PatrocinadoresEventoScreenState
   }
 
   Future<void> _registrarPagamento(
-      String patrocinadorId,
-      double valor,
-      String nome,
-      ) async {
-    if (!_podeGerenciarPatrocinadores) {
+    String patrocinadorId,
+    double valor,
+    String nome,
+  ) async {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_patrocinadores_evento',
+    )) {
       _mostrarSemPermissao(
         'Você não tem permissão para registrar contribuição.',
       );
@@ -832,8 +857,9 @@ class _PatrocinadoresEventoScreenState
                     label: 'Valor (R\$)',
                     icon: Icons.attach_money,
                   ),
-                  keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 InkWell(
@@ -918,14 +944,11 @@ class _PatrocinadoresEventoScreenState
           'data_realizada': Timestamp.fromDate(dataPagamento),
         });
 
-        transaction.set(
-          patrocinadorRef.collection('pagamentos').doc(),
-          {
-            'valor': valorPago,
-            'data': Timestamp.fromDate(dataPagamento),
-            'observacao': 'Registro manual',
-          },
-        );
+        transaction.set(patrocinadorRef.collection('pagamentos').doc(), {
+          'valor': valorPago,
+          'data': Timestamp.fromDate(dataPagamento),
+          'observacao': 'Registro manual',
+        });
       });
 
       if (mounted) {
@@ -954,12 +977,16 @@ class _PatrocinadoresEventoScreenState
   }
 
   Future<void> _excluirPatrocinador(
-      String patrocinadorId,
-      String? logoUrl,
-      String nome,
-      ) async {
-    if (!_podeGerenciarPatrocinadores) {
-      _mostrarSemPermissao('Você não tem permissão para excluir patrocinadores.');
+    String patrocinadorId,
+    String? logoUrl,
+    String nome,
+  ) async {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_patrocinadores_evento',
+    )) {
+      _mostrarSemPermissao(
+        'Você não tem permissão para excluir patrocinadores.',
+      );
       return;
     }
 
@@ -1056,7 +1083,11 @@ class _PatrocinadoresEventoScreenState
     final List<Map<String, dynamic>> opcoes = [
       {'label': 'TODOS', 'icon': Icons.list, 'color': context.uai.textMuted},
       {'label': 'PAGO', 'icon': Icons.paid, 'color': context.uai.success},
-      {'label': 'PENDENTE', 'icon': Icons.pending, 'color': context.uai.warning},
+      {
+        'label': 'PENDENTE',
+        'icon': Icons.pending,
+        'color': context.uai.warning,
+      },
       {'label': 'ATRASADO', 'icon': Icons.warning, 'color': context.uai.error},
     ];
 
@@ -1078,7 +1109,9 @@ class _PatrocinadoresEventoScreenState
                   Icon(
                     opcao['icon'] as IconData,
                     size: 16,
-                    color: isSelected ? _readableOn(color) : _ensureVisible(color, context.uai.background),
+                    color: isSelected
+                        ? _readableOn(color)
+                        : _ensureVisible(color, context.uai.background),
                   ),
                   const SizedBox(width: 4),
                   Text(opcao['label'].toString()),
@@ -1091,7 +1124,9 @@ class _PatrocinadoresEventoScreenState
               selectedColor: color,
               checkmarkColor: _readableOn(color),
               labelStyle: TextStyle(
-                color: isSelected ? _readableOn(color) : context.uai.textPrimary,
+                color: isSelected
+                    ? _readableOn(color)
+                    : context.uai.textPrimary,
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
               ),
@@ -1269,7 +1304,9 @@ class _PatrocinadoresEventoScreenState
       );
     }
 
-    final color = _podeGerenciarPatrocinadores ? context.uai.success : context.uai.warning;
+    final color = _podeGerenciarPatrocinadores
+        ? context.uai.success
+        : context.uai.warning;
 
     return Container(
       margin: EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -1346,8 +1383,7 @@ class _PatrocinadoresEventoScreenState
                 ),
               ),
               Container(
-                padding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
                   color: context.uai.warning.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
@@ -1367,7 +1403,11 @@ class _PatrocinadoresEventoScreenState
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildStatusIndicator('Pagos', pagos, context.uai.success),
-              _buildStatusIndicator('Pendentes', pendentes, context.uai.warning),
+              _buildStatusIndicator(
+                'Pendentes',
+                pendentes,
+                context.uai.warning,
+              ),
               _buildStatusIndicator('Atrasados', atrasados, context.uai.error),
             ],
           ),
@@ -1375,7 +1415,11 @@ class _PatrocinadoresEventoScreenState
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildValorResumo('Previsto', totalPrevisto, context.uai.textPrimary),
+              _buildValorResumo(
+                'Previsto',
+                totalPrevisto,
+                context.uai.textPrimary,
+              ),
               _buildValorResumo('Recebido', totalPago, context.uai.success),
             ],
           ),
@@ -1386,10 +1430,14 @@ class _PatrocinadoresEventoScreenState
 
   Widget _buildValorResumo(String label, double value, Color color) {
     return Column(
-      crossAxisAlignment:
-      label == 'Recebido' ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: label == 'Recebido'
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: context.uai.textMuted)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: context.uai.textMuted),
+        ),
         Text(
           _realFormat.format(value),
           style: TextStyle(
@@ -1415,8 +1463,11 @@ class _PatrocinadoresEventoScreenState
                 color: context.uai.warning.withOpacity(0.08),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.handshake_rounded,
-                  size: 62, color: context.uai.warning.withOpacity(0.24)),
+              child: Icon(
+                Icons.handshake_rounded,
+                size: 62,
+                color: context.uai.warning.withOpacity(0.24),
+              ),
             ),
             SizedBox(height: 16),
             Text(
@@ -1435,10 +1486,7 @@ class _PatrocinadoresEventoScreenState
               _podeGerenciarPatrocinadores
                   ? 'Clique no botão + para adicionar.'
                   : 'Quando houver patrocinadores, eles aparecerão aqui.',
-              style: TextStyle(
-                fontSize: 14,
-                color: context.uai.textMuted,
-              ),
+              style: TextStyle(fontSize: 14, color: context.uai.textMuted),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1454,7 +1502,11 @@ class _PatrocinadoresEventoScreenState
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 50, color: context.uai.error.withOpacity(0.45)),
+            Icon(
+              Icons.error_outline,
+              size: 50,
+              color: context.uai.error.withOpacity(0.45),
+            ),
             SizedBox(height: 12),
             Text(
               'Erro: $error',
@@ -1488,10 +1540,7 @@ class _PatrocinadoresEventoScreenState
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(
-          color: corStatus.withOpacity(0.24),
-          width: 1,
-        ),
+        side: BorderSide(color: corStatus.withOpacity(0.24), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1636,17 +1685,15 @@ class _PatrocinadoresEventoScreenState
       ),
       child: logoUrl != null && logoUrl.isNotEmpty
           ? ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          logoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Icon(Icons.business, color: corStatus),
-            );
-          },
-        ),
-      )
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                logoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Center(child: Icon(Icons.business, color: corStatus));
+                },
+              ),
+            )
           : Center(child: Icon(Icons.business, color: corStatus)),
     );
   }
@@ -1667,10 +1714,7 @@ class _PatrocinadoresEventoScreenState
         children: [
           Icon(icon, size: 10, color: color),
           const SizedBox(width: 2),
-          Text(
-            label,
-            style: TextStyle(fontSize: 10, color: color),
-          ),
+          Text(label, style: TextStyle(fontSize: 10, color: color)),
         ],
       ),
     );
@@ -1678,10 +1722,14 @@ class _PatrocinadoresEventoScreenState
 
   Widget _valueColumn(String label, String value, Color? color) {
     return Column(
-      crossAxisAlignment:
-      label == 'Recebido' ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: label == 'Recebido'
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 10, color: context.uai.textMuted)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, color: context.uai.textMuted),
+        ),
         Text(
           value,
           style: TextStyle(
@@ -1696,6 +1744,22 @@ class _PatrocinadoresEventoScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (_carregandoPermissoes) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Patrocinadores do evento',
+      );
+    }
+
+    if (!_podeGerenciarPatrocinadores) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Patrocinadores do evento',
+        message:
+            'Você não tem permissão para gerenciar patrocinadores do evento.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -1778,12 +1842,12 @@ class _PatrocinadoresEventoScreenState
                 child: docs.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    return _buildPatrocinadorCard(docs[index]);
-                  },
-                ),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          return _buildPatrocinadorCard(docs[index]);
+                        },
+                      ),
               ),
             ],
           );
@@ -1791,11 +1855,11 @@ class _PatrocinadoresEventoScreenState
       ),
       floatingActionButton: _podeGerenciarPatrocinadores
           ? FloatingActionButton(
-        onPressed: _abrirDialogAdicionar,
-        backgroundColor: context.uai.warning,
-        foregroundColor: _onWarning(),
-        child: const Icon(Icons.add_rounded),
-      )
+              onPressed: _abrirDialogAdicionar,
+              backgroundColor: context.uai.warning,
+              foregroundColor: _onWarning(),
+              child: const Icon(Icons.add_rounded),
+            )
           : null,
     );
   }
@@ -1822,10 +1886,7 @@ class _PatrocinadoresEventoScreenState
         SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: context.uai.textSecondary,
-          ),
+          style: TextStyle(fontSize: 11, color: context.uai.textSecondary),
         ),
       ],
     );
@@ -1840,4 +1901,3 @@ class _PatrocinadoresEventoScreenState
     super.dispose();
   }
 }
-

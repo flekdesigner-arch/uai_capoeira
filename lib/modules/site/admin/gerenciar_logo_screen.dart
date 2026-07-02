@@ -1,5 +1,6 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/site/services/logo_service.dart';
 
@@ -12,15 +13,18 @@ class GerenciarLogoScreen extends StatefulWidget {
 
 class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
   final LogoService _logoService = LogoService();
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
   final TextEditingController _urlController = TextEditingController();
 
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _carregando = true;
   bool _salvando = false;
 
   @override
   void initState() {
     super.initState();
-    _carregarUrl();
+    _verificarAcesso();
   }
 
   @override
@@ -36,7 +40,8 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -50,7 +55,42 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
 
   Color _onPrimary() => _readableOn(context.uai.primary);
 
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_logo_site',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _carregarUrl();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_logo_site',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _mostrarSnackBar(
+        'Você não tem permissão para gerenciar a logo do site.',
+        isErro: true,
+      );
+    }
+
+    return permitido;
+  }
+
   Future<void> _carregarUrl() async {
+    if (!await _revalidarAcesso()) return;
+
     if (mounted) {
       setState(() => _carregando = true);
     }
@@ -79,10 +119,16 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
   }
 
   Future<void> _salvar() async {
+    if (!await _revalidarAcesso()) return;
+
     final novaUrl = _urlController.text.trim();
 
     if (novaUrl.isEmpty) {
-      _mostrarSnackBar('Por favor, insira uma URL.', isErro: true, isWarning: true);
+      _mostrarSnackBar(
+        'Por favor, insira uma URL.',
+        isErro: true,
+        isWarning: true,
+      );
       return;
     }
 
@@ -98,10 +144,13 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
     if (mounted) setState(() => _salvando = true);
 
     try {
-      await FirebaseFirestore.instance.collection('configuracoes').doc('logo').set({
-        'url': novaUrl,
-        'ultima_atualizacao': FieldValue.serverTimestamp(),
-      });
+      await FirebaseFirestore.instance
+          .collection('configuracoes')
+          .doc('logo')
+          .set({
+            'url': novaUrl,
+            'ultima_atualizacao': FieldValue.serverTimestamp(),
+          });
 
       _logoService.limparCache();
 
@@ -119,30 +168,23 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
   }
 
   void _mostrarSnackBar(
-      String mensagem, {
-        bool isErro = false,
-        bool isWarning = false,
-      }) {
+    String mensagem, {
+    bool isErro = false,
+    bool isWarning = false,
+  }) {
     final t = context.uai;
-    final bg = isErro
-        ? (isWarning ? t.warning : t.error)
-        : t.success;
+    final bg = isErro ? (isWarning ? t.warning : t.error) : t.success;
     final fg = _readableOn(bg);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           mensagem,
-          style: TextStyle(
-            color: fg,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: fg, fontWeight: FontWeight.w800),
         ),
         backgroundColor: bg,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
@@ -151,7 +193,11 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
     final url = _urlController.text.trim();
 
     if (url.isEmpty) {
-      _mostrarSnackBar('Digite uma URL para pré-visualizar.', isErro: true, isWarning: true);
+      _mostrarSnackBar(
+        'Digite uma URL para pré-visualizar.',
+        isErro: true,
+        isWarning: true,
+      );
       return;
     }
 
@@ -219,7 +265,11 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.broken_image_rounded, color: errorColor, size: 54),
+                      Icon(
+                        Icons.broken_image_rounded,
+                        color: errorColor,
+                        size: 54,
+                      ),
                       const SizedBox(height: 10),
                       Text(
                         'Não foi possível carregar a imagem.',
@@ -265,6 +315,21 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Gerenciar Logo do Site',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gerenciar Logo do Site',
+        message: 'Você não tem permissão para gerenciar a logo do site.',
+      );
+    }
+
     final t = context.uai;
 
     if (_carregando) {
@@ -344,16 +409,13 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.image_rounded,
-              color: onPrimary,
-              size: 34,
-            ),
+            child: Icon(Icons.image_rounded, color: onPrimary, size: 34),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Logo do Site',
@@ -383,21 +445,21 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
                 runSpacing: 8,
                 children: [
                   _whiteChip(icon: Icons.link_rounded, label: 'URL pública'),
-                  _whiteChip(icon: Icons.preview_rounded, label: 'Pré-visualização'),
-                  _whiteChip(icon: Icons.cached_rounded, label: 'Cache atualizado'),
+                  _whiteChip(
+                    icon: Icons.preview_rounded,
+                    label: 'Pré-visualização',
+                  ),
+                  _whiteChip(
+                    icon: Icons.cached_rounded,
+                    label: 'Cache atualizado',
+                  ),
                 ],
               ),
             ],
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -412,10 +474,7 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final onPrimary = _onPrimary();
 
     return Container(
@@ -465,9 +524,7 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
               borderRadius: BorderRadius.circular(t.cardRadius - 6),
               border: Border.all(color: t.border),
             ),
-            child: Center(
-              child: _logoService.buildLogo(height: 150),
-            ),
+            child: Center(child: _logoService.buildLogo(height: 150)),
           ),
         ],
       ),
@@ -485,7 +542,8 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
           _sectionHeader(
             icon: Icons.link_rounded,
             title: 'URL da logo',
-            subtitle: 'Insira o link direto de uma imagem PNG, JPG, WEBP ou SVG.',
+            subtitle:
+                'Insira o link direto de uma imagem PNG, JPG, WEBP ou SVG.',
             color: t.primary,
           ),
           const SizedBox(height: 16),
@@ -576,9 +634,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
                 const SizedBox(height: 6),
                 Text(
                   '• Use imagens com fundo transparente, de preferência PNG.\n'
-                      '• Tamanho recomendado: 500x500px ou maior.\n'
-                      '• A URL precisa ser pública para carregar no site.\n'
-                      '• Após salvar, o cache da logo será limpo automaticamente.',
+                  '• Tamanho recomendado: 500x500px ou maior.\n'
+                  '• A URL precisa ser pública para carregar no site.\n'
+                  '• Após salvar, o cache da logo será limpo automaticamente.',
                   style: TextStyle(
                     color: t.textSecondary,
                     fontSize: 12.5,
@@ -681,13 +739,13 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
           onPressed: _salvando ? null : _salvar,
           icon: _salvando
               ? SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              color: onPrimary,
-              strokeWidth: 2,
-            ),
-          )
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    color: onPrimary,
+                    strokeWidth: 2,
+                  ),
+                )
               : const Icon(Icons.save_rounded),
           label: Text(_salvando ? 'SALVANDO...' : 'SALVAR LOGO'),
           style: ElevatedButton.styleFrom(

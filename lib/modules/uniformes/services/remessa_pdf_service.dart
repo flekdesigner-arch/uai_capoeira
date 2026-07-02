@@ -44,9 +44,13 @@ class RemessaPdfService {
   // PDF RESUMIDO (CONFECÇÃO)
   // ────────────────────────────────────────────────────────────
   static Future<void> gerarPdfResumido(
-      String remessaId, Map<String, dynamic> remessaData) async {
+    String remessaId,
+    Map<String, dynamic> remessaData,
+  ) async {
     final logo = await _carregarLogo();
-    final fornecedorNome = await _getFornecedorNome(remessaData['fornecedor_id']);
+    final fornecedorNome = await _getFornecedorNome(
+      remessaData['fornecedor_id'],
+    );
 
     final pedidosSnapshot = await FirebaseFirestore.instance
         .collection('pedidos_uniformes')
@@ -62,12 +66,17 @@ class RemessaPdfService {
       for (var item in pedido['itens'] ?? []) {
         final chave =
             '${item['nome'] ?? 'Item'}_${item['tamanho'] ?? 'Unico'}_${item['cor'] ?? 'N/A'}';
-        itemsAgrupados.putIfAbsent(chave, () => {
-          'nome': item['nome'] ?? 'Item',
-          'tamanho': item['tamanho'] ?? 'Unico',
-          'cor': item['cor']?.toString().isNotEmpty == true ? item['cor'].toString() : '---',
-          'quantidade': 0,
-        });
+        itemsAgrupados.putIfAbsent(
+          chave,
+          () => {
+            'nome': item['nome'] ?? 'Item',
+            'tamanho': item['tamanho'] ?? 'Unico',
+            'cor': item['cor']?.toString().isNotEmpty == true
+                ? item['cor'].toString()
+                : '---',
+            'quantidade': 0,
+          },
+        );
         final qtd = (item['quantidade'] ?? 0) as int;
         itemsAgrupados[chave]!['quantidade'] += qtd;
         totalPecas += qtd;
@@ -75,8 +84,9 @@ class RemessaPdfService {
     }
 
     final dataPrevisao = remessaData['data_prevista'] != null
-        ? DateFormat('dd/MM/yyyy')
-        .format((remessaData['data_prevista'] as Timestamp).toDate())
+        ? DateFormat(
+            'dd/MM/yyyy',
+          ).format((remessaData['data_prevista'] as Timestamp).toDate())
         : 'Não definida';
 
     final lista = itemsAgrupados.values.toList()
@@ -86,28 +96,42 @@ class RemessaPdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         build: (ctx) => [
-          _cabecalho(logo, 'PEDIDO PARA CONFECÇÃO', remessaData, fornecedor: fornecedorNome),
+          _cabecalho(
+            logo,
+            'PEDIDO PARA CONFECÇÃO',
+            remessaData,
+            fornecedor: fornecedorNome,
+          ),
           pw.SizedBox(height: 6),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Previsão de entrega: $dataPrevisao',
-                  style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
-              pw.Text('Total de peças: $totalPecas',
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
+              pw.Text(
+                'Previsão de entrega: $dataPrevisao',
+                style: pw.TextStyle(fontSize: 10, color: textoEscuro),
+              ),
+              pw.Text(
+                'Total de peças: $totalPecas',
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: textoEscuro,
+                ),
+              ),
             ],
           ),
           pw.SizedBox(height: 12),
           _tabelaEstilizada(
             headers: ['Item', 'Tamanho', 'Cor', 'Qtd.'],
             dados: lista
-                .map((e) => [
-              e['nome'].toString(),
-              e['tamanho'].toString(),
-              e['cor'].toString(),
-              e['quantidade'].toString(),
-            ])
+                .map(
+                  (e) => [
+                    e['nome'].toString(),
+                    e['tamanho'].toString(),
+                    e['cor'].toString(),
+                    e['quantidade'].toString(),
+                  ],
+                )
                 .toList(),
           ),
           pw.SizedBox(height: 20),
@@ -123,9 +147,13 @@ class RemessaPdfService {
   // PDF COMPLETO (ASSOCIAÇÃO)
   // ────────────────────────────────────────────────────────────
   static Future<void> gerarPdfCompleto(
-      String remessaId, Map<String, dynamic> remessaData) async {
+    String remessaId,
+    Map<String, dynamic> remessaData,
+  ) async {
     final logo = await _carregarLogo();
-    final fornecedorNome = await _getFornecedorNome(remessaData['fornecedor_id']);
+    final fornecedorNome = await _getFornecedorNome(
+      remessaData['fornecedor_id'],
+    );
     final numberFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
     final pedidosSnapshot = await FirebaseFirestore.instance
@@ -142,10 +170,14 @@ class RemessaPdfService {
     for (var doc in pedidosSnapshot.docs) {
       final pedido = doc.data();
       final bool tipoEstoque = pedido['tipo_estoque'] == true;
-      final String dono = tipoEstoque ? 'Estoque' : (pedido['aluno_nome'] ?? '---');
+      final String dono = tipoEstoque
+          ? 'Estoque'
+          : (pedido['aluno_nome'] ?? '---');
       final String pedidoId = pedido['id_pedido'] ?? '';
       final String status = _statusFormatado(pedido['status']);
-      final String statusPgto = _statusPgtoFormatado(pedido['status_pagamento']);
+      final String statusPgto = _statusPgtoFormatado(
+        pedido['status_pagamento'],
+      );
       final double valorTotalPedido = (pedido['valor_total'] ?? 0).toDouble();
       final double valorPagoPedido = (pedido['valor_pago'] ?? 0).toDouble();
       totalGeral += valorTotalPedido;
@@ -155,7 +187,9 @@ class RemessaPdfService {
       for (var item in itens) {
         final nome = item['nome'] ?? 'Item';
         final tamanho = item['tamanho'] ?? 'Unico';
-        final cor = item['cor']?.toString().isNotEmpty == true ? item['cor'].toString() : '---';
+        final cor = item['cor']?.toString().isNotEmpty == true
+            ? item['cor'].toString()
+            : '---';
         final qtd = item['quantidade'] ?? 0;
         final precoUnit = (item['preco_unitario'] ?? 0).toDouble();
         final subtotal = qtd * precoUnit;
@@ -179,7 +213,12 @@ class RemessaPdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         build: (ctx) => [
-          _cabecalho(logo, 'RELATÓRIO COMPLETO', remessaData, fornecedor: fornecedorNome),
+          _cabecalho(
+            logo,
+            'RELATÓRIO COMPLETO',
+            remessaData,
+            fornecedor: fornecedorNome,
+          ),
           pw.SizedBox(height: 10),
           pw.Container(
             padding: pw.EdgeInsets.all(10),
@@ -193,21 +232,34 @@ class RemessaPdfService {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Total de pedidos: $totalPedidos',
-                        style: pw.TextStyle(fontSize: 10, color: textoEscuro)),
-                    pw.Text('Valor total: ${numberFormat.format(totalGeral)}',
-                        style: pw.TextStyle(
-                            fontSize: 10, fontWeight: pw.FontWeight.bold, color: textoEscuro)),
+                    pw.Text(
+                      'Total de pedidos: $totalPedidos',
+                      style: pw.TextStyle(fontSize: 10, color: textoEscuro),
+                    ),
+                    pw.Text(
+                      'Valor total: ${numberFormat.format(totalGeral)}',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        color: textoEscuro,
+                      ),
+                    ),
                   ],
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('Total pago: ${numberFormat.format(totalPago)}',
-                        style: pw.TextStyle(fontSize: 10, color: verdePagamento)),
                     pw.Text(
-                        'Pendente: ${numberFormat.format(totalGeral - totalPago)}',
-                        style: pw.TextStyle(fontSize: 10, color: vermelhoPendente)),
+                      'Total pago: ${numberFormat.format(totalPago)}',
+                      style: pw.TextStyle(fontSize: 10, color: verdePagamento),
+                    ),
+                    pw.Text(
+                      'Pendente: ${numberFormat.format(totalGeral - totalPago)}',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: vermelhoPendente,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -216,8 +268,16 @@ class RemessaPdfService {
           pw.SizedBox(height: 16),
           _tabelaEstilizada(
             headers: [
-              'Pedido', 'Aluno', 'Item', 'Tam.', 'Cor', 'Qtd.', 'V. Unit.',
-              'Subtotal', 'Status', 'Pgto.'
+              'Pedido',
+              'Aluno',
+              'Item',
+              'Tam.',
+              'Cor',
+              'Qtd.',
+              'V. Unit.',
+              'Subtotal',
+              'Status',
+              'Pgto.',
             ],
             dados: rows,
             largurasEspeciais: true, // ativa layout otimizado
@@ -233,19 +293,17 @@ class RemessaPdfService {
 
   // ═══════════════ CABEÇALHO ═══════════════
   static pw.Widget _cabecalho(
-      pw.MemoryImage? logo,
-      String titulo,
-      Map<String, dynamic> remessaData, {
-        String? fornecedor,
-      }) {
+    pw.MemoryImage? logo,
+    String titulo,
+    Map<String, dynamic> remessaData, {
+    String? fornecedor,
+  }) {
     final String? observacoes = remessaData['observacoes']?.toString();
 
     return pw.Container(
       padding: pw.EdgeInsets.only(bottom: 8),
       decoration: pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: verdeEscuro, width: 2),
-        ),
+        border: pw.Border(bottom: pw.BorderSide(color: verdeEscuro, width: 2)),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -259,12 +317,14 @@ class RemessaPdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(titulo,
-                    style: pw.TextStyle(
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold,
-                      color: verdeEscuro,
-                    )),
+                pw.Text(
+                  titulo,
+                  style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                    color: verdeEscuro,
+                  ),
+                ),
                 pw.SizedBox(height: 2),
                 pw.Text(
                   'Remessa: ${remessaData['nome'] ?? '---'}',
@@ -325,7 +385,10 @@ class RemessaPdfService {
     );
   }
 
-  static pw.Widget _tabelaLarga(List<String> headers, List<List<String>> dados) {
+  static pw.Widget _tabelaLarga(
+    List<String> headers,
+    List<List<String>> dados,
+  ) {
     return pw.Table.fromTextArray(
       headerStyle: pw.TextStyle(
         fontWeight: pw.FontWeight.bold,
@@ -343,16 +406,16 @@ class RemessaPdfService {
       headers: headers,
       data: dados,
       columnWidths: {
-        0: pw.FixedColumnWidth(55),  // Pedido (quebra se necessário)
-        1: pw.FlexColumnWidth(2),    // Aluno (ajusta ao maior nome)
-        2: pw.FlexColumnWidth(3),    // Item (quebra para baixo)
-        3: pw.FixedColumnWidth(30),  // Tam.
-        4: pw.FixedColumnWidth(40),  // Cor
-        5: pw.FixedColumnWidth(25),  // Qtd.
-        6: pw.FixedColumnWidth(50),  // V. Unit.
-        7: pw.FixedColumnWidth(55),  // Subtotal
-        8: pw.FixedColumnWidth(45),  // Status
-        9: pw.FixedColumnWidth(45),  // Pgto.
+        0: pw.FixedColumnWidth(55), // Pedido (quebra se necessário)
+        1: pw.FlexColumnWidth(2), // Aluno (ajusta ao maior nome)
+        2: pw.FlexColumnWidth(3), // Item (quebra para baixo)
+        3: pw.FixedColumnWidth(30), // Tam.
+        4: pw.FixedColumnWidth(40), // Cor
+        5: pw.FixedColumnWidth(25), // Qtd.
+        6: pw.FixedColumnWidth(50), // V. Unit.
+        7: pw.FixedColumnWidth(55), // Subtotal
+        8: pw.FixedColumnWidth(45), // Status
+        9: pw.FixedColumnWidth(45), // Pgto.
       },
       cellPadding: pw.EdgeInsets.symmetric(horizontal: 2, vertical: 3),
     );
@@ -381,19 +444,27 @@ class RemessaPdfService {
 
   static String _statusFormatado(dynamic status) {
     switch (status) {
-      case 'pendente': return 'Pendente';
-      case 'em_confeccao': return 'Em confecção';
-      case 'finalizado': return 'Finalizado';
-      default: return status?.toString() ?? '---';
+      case 'pendente':
+        return 'Pendente';
+      case 'em_confeccao':
+        return 'Em confecção';
+      case 'finalizado':
+        return 'Finalizado';
+      default:
+        return status?.toString() ?? '---';
     }
   }
 
   static String _statusPgtoFormatado(dynamic status) {
     switch (status) {
-      case 'pago': return 'Pago';
-      case 'pendente': return 'Pendente';
-      case 'parcial': return 'Parcial';
-      default: return status?.toString() ?? '---';
+      case 'pago':
+        return 'Pago';
+      case 'pendente':
+        return 'Pendente';
+      case 'parcial':
+        return 'Parcial';
+      default:
+        return status?.toString() ?? '---';
     }
   }
 }

@@ -18,13 +18,7 @@
 
 import 'package:flutter/foundation.dart';
 
-enum LocalPublishStepStatus {
-  pending,
-  running,
-  success,
-  error,
-  skipped,
-}
+enum LocalPublishStepStatus { pending, running, success, error, skipped }
 
 extension LocalPublishStepStatusX on LocalPublishStepStatus {
   String get label {
@@ -156,7 +150,8 @@ class LocalPublishStep {
       LocalPublishStep(
         id: 'notify_users',
         title: 'Notificar usuários',
-        description: 'Notificação manual. Após testar, use o botão manual para avisar os usuários.',
+        description:
+            'Notificação manual. Após testar, use o botão manual para avisar os usuários.',
       ),
     ];
   }
@@ -216,9 +211,12 @@ class LocalPublishAutomationState {
       available: available ?? this.available,
       running: running ?? this.running,
       platformLabel: platformLabel ?? this.platformLabel,
-      currentStepId:
-      clearCurrentStep ? null : currentStepId ?? this.currentStepId,
-      finalApkPath: clearFinalApkPath ? null : finalApkPath ?? this.finalApkPath,
+      currentStepId: clearCurrentStep
+          ? null
+          : currentStepId ?? this.currentStepId,
+      finalApkPath: clearFinalApkPath
+          ? null
+          : finalApkPath ?? this.finalApkPath,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
       steps: steps ?? this.steps,
       startedAt: startedAt ?? this.startedAt,

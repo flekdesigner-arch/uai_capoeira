@@ -72,7 +72,7 @@ class LocalPublishPlatformService {
         canRunLocalAutomation: false,
         platformLabel: 'PWA / Web',
         blockedReason:
-        'Automação local indisponível no PWA. Navegadores não podem executar PowerShell, Flutter build ou Firebase deploy.',
+            'Automação local indisponível no PWA. Navegadores não podem executar PowerShell, Flutter build ou Firebase deploy.',
       );
     }
 
@@ -95,7 +95,7 @@ class LocalPublishPlatformService {
         canRunLocalAutomation: false,
         platformLabel: 'APK Android',
         blockedReason:
-        'Automação local indisponível no APK. O Android não pode executar scripts PowerShell nem gerar builds do próprio app.',
+            'Automação local indisponível no APK. O Android não pode executar scripts PowerShell nem gerar builds do próprio app.',
       );
     }
 
@@ -106,8 +106,7 @@ class LocalPublishPlatformService {
         isWindowsDesktop: false,
         canRunLocalAutomation: false,
         platformLabel: 'iOS',
-        blockedReason:
-        'Automação local liberada apenas no Windows Desktop.',
+        blockedReason: 'Automação local liberada apenas no Windows Desktop.',
       );
     }
 
@@ -119,7 +118,7 @@ class LocalPublishPlatformService {
         canRunLocalAutomation: false,
         platformLabel: 'macOS',
         blockedReason:
-        'Automação local configurada para PowerShell no Windows Desktop.',
+            'Automação local configurada para PowerShell no Windows Desktop.',
       );
     }
 
@@ -131,7 +130,7 @@ class LocalPublishPlatformService {
         canRunLocalAutomation: false,
         platformLabel: 'Linux',
         blockedReason:
-        'Automação local configurada para PowerShell no Windows Desktop.',
+            'Automação local configurada para PowerShell no Windows Desktop.',
       );
     }
 

@@ -1,8 +1,9 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_chamadas_service.dart';
 import 'package:uai_capoeira/shared/widgets/progress_dialog.dart';
 
@@ -14,11 +15,14 @@ class MigracaoChamadasScreen extends StatefulWidget {
 }
 
 class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
   final MigracaoChamadasService _service = MigracaoChamadasService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   List<Map<String, dynamic>> _dadosJson = [];
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isLoading = false;
   bool _arquivoCarregado = false;
   Map<String, dynamic>? _estatisticas;
@@ -34,7 +38,53 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _mostrarSnackBar(
+        'Você não tem permissão para executar migrações.',
+        Colors.red,
+      );
+    }
+
+    return permitido;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Migração de Chamadas',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Migração de Chamadas',
+        message: 'Você não tem permissão para executar migrações.',
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('📋 Migração de Chamadas'),
@@ -76,19 +126,21 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
-                    ..._arquivos.map((arquivo) => Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 2),
-                      child: Text('• $arquivo'),
-                    )),
+                    ..._arquivos.map(
+                      (arquivo) => Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 2),
+                        child: Text('• $arquivo'),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     const Text(
                       '• 🔥 O sistema VINCULA pelo NOME DO ALUNO!\n'
-                          '• Busca automaticamente: aluno_id, turma_id, turma_nome, academia\n'
-                          '• Processar em 3 etapas:\n'
-                          '  1️⃣ Criar registros individuais (log_presenca_alunos)\n'
-                          '  2️⃣ Atualizar contadores dos alunos\n'
-                          '  3️⃣ Agrupar chamadas por data/turma\n'
-                          '• O processo é atômico (tudo ou nada)',
+                      '• Busca automaticamente: aluno_id, turma_id, turma_nome, academia\n'
+                      '• Processar em 3 etapas:\n'
+                      '  1️⃣ Criar registros individuais (log_presenca_alunos)\n'
+                      '  2️⃣ Atualizar contadores dos alunos\n'
+                      '  3️⃣ Agrupar chamadas por data/turma\n'
+                      '• O processo é atômico (tudo ou nada)',
                       style: TextStyle(fontSize: 14, height: 1.5),
                     ),
                   ],
@@ -103,18 +155,24 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: _arquivoCarregado ? Colors.green.shade400 : Colors.purple.shade200,
+                  color: _arquivoCarregado
+                      ? Colors.green.shade400
+                      : Colors.purple.shade200,
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(12),
-                color: _arquivoCarregado ? Colors.green.shade50 : Colors.purple.shade50,
+                color: _arquivoCarregado
+                    ? Colors.green.shade50
+                    : Colors.purple.shade50,
               ),
               child: Column(
                 children: [
                   Icon(
                     _arquivoCarregado ? Icons.check_circle : Icons.folder_copy,
                     size: 60,
-                    color: _arquivoCarregado ? Colors.green.shade700 : Colors.purple.shade900,
+                    color: _arquivoCarregado
+                        ? Colors.green.shade700
+                        : Colors.purple.shade900,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -122,37 +180,43 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
                         ? '✅ ${_arquivosCarregados.length} arquivos carregados!'
                         : '📄 ${_arquivos.length} arquivos disponíveis',
                     style: TextStyle(
-                      color: _arquivoCarregado ? Colors.green.shade700 : Colors.purple.shade900,
+                      color: _arquivoCarregado
+                          ? Colors.green.shade700
+                          : Colors.purple.shade900,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
                   if (_arquivoCarregado) ...[
                     const SizedBox(height: 8),
-                    ..._arquivosCarregados.map((arquivo) => Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        '✅ $arquivo',
-                        style: TextStyle(
-                          color: Colors.green.shade600,
-                          fontSize: 12,
+                    ..._arquivosCarregados.map(
+                      (arquivo) => Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          '✅ $arquivo',
+                          style: TextStyle(
+                            color: Colors.green.shade600,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    )),
+                    ),
                   ],
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _carregarArquivos,
                     icon: _isLoading
                         ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : Icon(_arquivoCarregado ? Icons.refresh : Icons.download),
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            _arquivoCarregado ? Icons.refresh : Icons.download,
+                          ),
                     label: Text(
                       _isLoading
                           ? 'CARREGANDO...'
@@ -161,7 +225,9 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
                           : 'CARREGAR ARQUIVOS',
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _arquivoCarregado ? Colors.green.shade700 : Colors.purple.shade900,
+                      backgroundColor: _arquivoCarregado
+                          ? Colors.green.shade700
+                          : Colors.purple.shade900,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
@@ -247,13 +313,13 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
                           onPressed: _isLoading ? null : _iniciarMigracao,
                           icon: _isLoading
                               ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : const Icon(Icons.play_arrow),
                           label: Text(
                             _isLoading ? 'PROCESSANDO...' : 'INICIAR MIGRAÇÃO',
@@ -281,23 +347,18 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
   }
 
   Widget _buildEstatisticaRow(
-      String label,
-      String valor,
-      IconData icon,
-      Color cor,
-      ) {
+    String label,
+    String valor,
+    IconData icon,
+    Color cor,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Icon(icon, size: 18, color: cor),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
           Text(
             valor,
             style: TextStyle(
@@ -313,6 +374,8 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
 
   // 🔥 FUNÇÃO PARA CARREGAR ARQUIVOS
   Future<void> _carregarArquivos() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() {
       _isLoading = true;
       _arquivosCarregados.clear();
@@ -329,12 +392,16 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
           debugPrint('📂 Tentando carregar: $arquivo');
 
           final String jsonString = await rootBundle.loadString(arquivo);
-          debugPrint('✅ Arquivo lido, tamanho: ${jsonString.length} caracteres');
+          debugPrint(
+            '✅ Arquivo lido, tamanho: ${jsonString.length} caracteres',
+          );
 
           final List<dynamic> jsonData = json.decode(jsonString);
           debugPrint('✅ JSON decodificado, ${jsonData.length} registros');
 
-          final dadosArquivo = jsonData.map((item) => item as Map<String, dynamic>).toList();
+          final dadosArquivo = jsonData
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
 
           todosDados.addAll(dadosArquivo);
           _arquivosCarregados.add(arquivo);
@@ -348,7 +415,6 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
             debugPrint('   Data: ${dadosArquivo.first['data_formatada']}');
             debugPrint('   Status: ${dadosArquivo.first['presente']}');
           }
-
         } catch (e, stacktrace) {
           debugPrint('❌ Erro CRÍTICO ao carregar $arquivo: $e');
           debugPrint('📚 Stacktrace: $stacktrace');
@@ -356,7 +422,9 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
       }
 
       if (todosDados.isEmpty) {
-        throw Exception('Nenhum arquivo pôde ser carregado! Verifique os logs acima.');
+        throw Exception(
+          'Nenhum arquivo pôde ser carregado! Verifique os logs acima.',
+        );
       }
 
       debugPrint('📊 TOTAL DE REGISTROS ANTES DO FILTRO: ${todosDados.length}');
@@ -386,7 +454,6 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
         '✅ ${_arquivosCarregados.length} arquivos carregados! Total: ${_dadosJson.length} registros',
         Colors.green,
       );
-
     } catch (e, stacktrace) {
       debugPrint('❌ ERRO FATAL NO CARREGAMENTO: $e');
       debugPrint('📚 Stacktrace: $stacktrace');
@@ -396,10 +463,7 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
         _arquivoCarregado = false;
       });
 
-      _mostrarSnackBar(
-        '❌ Erro ao carregar arquivos: $e',
-        Colors.red,
-      );
+      _mostrarSnackBar('❌ Erro ao carregar arquivos: $e', Colors.red);
     }
   }
 
@@ -424,7 +488,11 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
 
     // Mostrar os primeiros 10 nomes como amostra
     debugPrint('📝 Amostra dos primeiros 10 alunos:');
-    for (int i = 0; i < (nomesAlunos.length > 10 ? 10 : nomesAlunos.length); i++) {
+    for (
+      int i = 0;
+      i < (nomesAlunos.length > 10 ? 10 : nomesAlunos.length);
+      i++
+    ) {
       debugPrint('   ${i + 1}. ${nomesAlunos[i]}');
     }
 
@@ -435,7 +503,9 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
 
     for (int i = 0; i < nomesAlunos.length; i += 10) {
       final lote = nomesAlunos.skip(i).take(10).toList();
-      debugPrint('📦 Processando lote ${i ~/ 10 + 1}/${(nomesAlunos.length / 10).ceil()}');
+      debugPrint(
+        '📦 Processando lote ${i ~/ 10 + 1}/${(nomesAlunos.length / 10).ceil()}',
+      );
 
       try {
         final querySnapshot = await _firestore
@@ -461,8 +531,12 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
         }
 
         // Verificar alunos não encontrados neste lote
-        final encontrados = querySnapshot.docs.map((d) => d.data()['nome']?.toString()).toSet();
-        final naoEncontrados = lote.where((nome) => !encontrados.contains(nome)).toList();
+        final encontrados = querySnapshot.docs
+            .map((d) => d.data()['nome']?.toString())
+            .toSet();
+        final naoEncontrados = lote
+            .where((nome) => !encontrados.contains(nome))
+            .toList();
 
         if (naoEncontrados.isNotEmpty) {
           debugPrint('   ⚠️ Alunos NÃO encontrados neste lote:');
@@ -470,7 +544,6 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
             debugPrint('      • $nome');
           }
         }
-
       } catch (e, stacktrace) {
         debugPrint('❌ Erro ao buscar lote: $e');
         debugPrint('📚 Stacktrace: $stacktrace');
@@ -537,6 +610,8 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
   }
 
   Future<void> _iniciarMigracao() async {
+    if (!await _revalidarAcesso()) return;
+
     final user = _auth.currentUser;
     if (user == null) {
       _mostrarSnackBar('❌ Usuário não autenticado!', Colors.red);
@@ -589,7 +664,6 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
 
       if (context.mounted) Navigator.pop(context);
       _mostrarResultadoDialog(resultado);
-
     } catch (e, stacktrace) {
       debugPrint('❌ ERRO NA MIGRAÇÃO: $e');
       debugPrint('📚 Stacktrace: $stacktrace');
@@ -603,9 +677,7 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Icon(
@@ -645,20 +717,26 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
                   '⏱️ Tempo total: ${resultado['tempoExecucao']}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                if (resultado['erros'] != null && resultado['erros'].length > 0) ...[
+                if (resultado['erros'] != null &&
+                    resultado['erros'].length > 0) ...[
                   const SizedBox(height: 12),
                   const Text(
                     '❌ Erros encontrados:',
-                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  ...resultado['erros'].map<Widget>((erro) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '• $erro',
-                      style: const TextStyle(fontSize: 12, color: Colors.red),
+                  ...resultado['erros'].map<Widget>(
+                    (erro) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '• $erro',
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ],
             ),
@@ -682,18 +760,10 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
         children: [
           Icon(Icons.fiber_manual_record, size: 12, color: cor),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
           Text(
             '$valor/$total',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: cor,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, color: cor),
           ),
         ],
       ),

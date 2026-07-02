@@ -10,7 +10,9 @@ class UserService {
     String? contato,
     bool isGoogleLogin = false,
   }) async {
-    final docRef = FirebaseFirestore.instance.collection('usuarios').doc(user.uid);
+    final docRef = FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid);
     final docSnapshot = await docRef.get();
 
     final agora = FieldValue.serverTimestamp();

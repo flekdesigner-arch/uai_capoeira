@@ -31,8 +31,8 @@ class VendaCard extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -155,11 +155,17 @@ class VendaCard extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    Text('Status: ',
-                        style: TextStyle(color: context.uai.textMuted)),
-                    Text(pagText,
-                        style: TextStyle(
-                            color: pagColor, fontWeight: FontWeight.w500)),
+                    Text(
+                      'Status: ',
+                      style: TextStyle(color: context.uai.textMuted),
+                    ),
+                    Text(
+                      pagText,
+                      style: TextStyle(
+                        color: pagColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -190,13 +196,10 @@ class VendaCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (podeEditar)
-                        Icon(Icons.edit,
-                            size: 12, color: context.uai.info),
-                      if (podeEditar && podeExcluir)
-                        const SizedBox(width: 4),
+                        Icon(Icons.edit, size: 12, color: context.uai.info),
+                      if (podeEditar && podeExcluir) const SizedBox(width: 4),
                       if (podeExcluir)
-                        Icon(Icons.delete,
-                            size: 12, color: context.uai.error),
+                        Icon(Icons.delete, size: 12, color: context.uai.error),
                     ],
                   ),
               ],

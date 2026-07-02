@@ -42,7 +42,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   Color _onPrimary() => _readableOn(context.uai.primary);
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -64,20 +65,13 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   Timer? _confettiTimer;
   bool _mostrarConfetes = false;
 
-  final List<String> _filtrosRapidos = [
-    'Todos',
-    'Hoje',
-    '7 dias',
-    'Mês atual',
-  ];
+  final List<String> _filtrosRapidos = ['Todos', 'Hoje', '7 dias', 'Mês atual'];
 
   @override
   void initState() {
     super.initState();
     _today = _normalizarData(DateTime.now());
-    _confettiController = ConfettiController(
-      duration: Duration(seconds: 3),
-    );
+    _confettiController = ConfettiController(duration: Duration(seconds: 3));
   }
 
   @override
@@ -195,27 +189,27 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO'])
         .snapshots()
         .map((snapshot) {
-      final docs = snapshot.docs.where((doc) {
-        final data = doc.data();
-        return _parseDataNascimento(data['data_nascimento']) != null;
-      }).toList();
+          final docs = snapshot.docs.where((doc) {
+            final data = doc.data();
+            return _parseDataNascimento(data['data_nascimento']) != null;
+          }).toList();
 
-      docs.sort((a, b) {
-        final aDate = _parseDataNascimento(a.data()['data_nascimento']);
-        final bDate = _parseDataNascimento(b.data()['data_nascimento']);
+          docs.sort((a, b) {
+            final aDate = _parseDataNascimento(a.data()['data_nascimento']);
+            final bDate = _parseDataNascimento(b.data()['data_nascimento']);
 
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return 1;
-        if (bDate == null) return -1;
+            if (aDate == null && bDate == null) return 0;
+            if (aDate == null) return 1;
+            if (bDate == null) return -1;
 
-        final da = _calcularDiasAteAniversario(aDate);
-        final db = _calcularDiasAteAniversario(bDate);
+            final da = _calcularDiasAteAniversario(aDate);
+            final db = _calcularDiasAteAniversario(bDate);
 
-        return da.compareTo(db);
-      });
+            return da.compareTo(db);
+          });
 
-      return docs;
-    });
+          return docs;
+        });
   }
 
   // =====================================================
@@ -258,74 +252,71 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _aplicarBusca(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
     return alunos.where(_matchesSearch).toList();
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterTodayBirthdays(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
       return _isAniversarioHoje(birthDate);
-    }).toList()
-      ..sort((a, b) {
-        final nomeA = a.data()['nome']?.toString() ?? '';
-        final nomeB = b.data()['nome']?.toString() ?? '';
-        return nomeA.compareTo(nomeB);
-      });
+    }).toList()..sort((a, b) {
+      final nomeA = a.data()['nome']?.toString() ?? '';
+      final nomeB = b.data()['nome']?.toString() ?? '';
+      return nomeA.compareTo(nomeB);
+    });
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterWeekBirthdays(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
 
       final dias = _calcularDiasAteAniversario(birthDate);
       return dias > 0 && dias <= 7;
-    }).toList()
-      ..sort((a, b) {
-        final dateA = _parseDataNascimento(a.data()['data_nascimento']);
-        final dateB = _parseDataNascimento(b.data()['data_nascimento']);
-        if (dateA == null || dateB == null) return 0;
+    }).toList()..sort((a, b) {
+      final dateA = _parseDataNascimento(a.data()['data_nascimento']);
+      final dateB = _parseDataNascimento(b.data()['data_nascimento']);
+      if (dateA == null || dateB == null) return 0;
 
-        final diasA = _calcularDiasAteAniversario(dateA);
-        final diasB = _calcularDiasAteAniversario(dateB);
+      final diasA = _calcularDiasAteAniversario(dateA);
+      final diasB = _calcularDiasAteAniversario(dateB);
 
-        return diasA.compareTo(diasB);
-      });
+      return diasA.compareTo(diasB);
+    });
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterMonthBirthdays(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      int month,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+    int month,
+  ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
       return birthDate.month == month;
-    }).toList()
-      ..sort((a, b) {
-        final dateA = _parseDataNascimento(a.data()['data_nascimento']);
-        final dateB = _parseDataNascimento(b.data()['data_nascimento']);
-        if (dateA == null || dateB == null) return 0;
-        return dateA.day.compareTo(dateB.day);
-      });
+    }).toList()..sort((a, b) {
+      final dateA = _parseDataNascimento(a.data()['data_nascimento']);
+      final dateB = _parseDataNascimento(b.data()['data_nascimento']);
+      if (dateA == null || dateB == null) return 0;
+      return dateA.day.compareTo(dateB.day);
+    });
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterCurrentMonth(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
     return _filterMonthBirthdays(alunos, DateTime.now().month);
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _getListaFiltroRapido(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
     switch (_filtroRapido) {
       case 'Hoje':
         return _filterTodayBirthdays(alunos);
@@ -340,11 +331,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Map<int, int> _contarPorMes(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-      ) {
-    final counts = <int, int>{
-      for (int i = 1; i <= 12; i++) i: 0,
-    };
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
+    final counts = <int, int>{for (int i = 1; i <= 12; i++) i: 0};
 
     for (final doc in alunos) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
@@ -361,9 +350,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   Future<void> _verificarPermissaoEAbrirPerfil(
-      BuildContext context,
-      String alunoId,
-      ) async {
+    BuildContext context,
+    String alunoId,
+  ) async {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
@@ -380,8 +369,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           .get();
 
       final permissoes = permissoesDoc.data() ?? {};
-      final podeVisualizarAlunos =
-          permissoes['pode_visualizar_alunos'] == true;
+      final podeVisualizarAlunos = permissoes['pode_visualizar_alunos'] == true;
 
       final userDoc = await FirebaseFirestore.instance
           .collection('usuarios')
@@ -405,7 +393,11 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         ),
       );
     } catch (e) {
-      _mostrarSnackBar(context, 'Erro ao verificar permissão', context.uai.error);
+      _mostrarSnackBar(
+        context,
+        'Erro ao verificar permissão',
+        context.uai.error,
+      );
     }
   }
 
@@ -475,10 +467,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   void _abrirArteAniversario(
-      BuildContext context,
-      Map<String, dynamic> aluno,
-      String alunoId,
-      ) {
+    BuildContext context,
+    Map<String, dynamic> aluno,
+    String alunoId,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -496,9 +488,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   void _mostrarDialogAniversario(
-      BuildContext context,
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final aluno = doc.data();
     final alunoId = doc.id;
     final nome = aluno['nome']?.toString() ?? 'Aniversariante';
@@ -819,9 +811,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Widget _buildMainView(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosOriginais,
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosFiltradosBusca,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosOriginais,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosFiltradosBusca,
+  ) {
     final todayBirthdays = _filterTodayBirthdays(alunosFiltradosBusca);
     final weeklyBirthdays = _filterWeekBirthdays(alunosFiltradosBusca);
     final monthBirthdays = _filterCurrentMonth(alunosFiltradosBusca);
@@ -844,30 +836,26 @@ class _AniversariantesPageState extends State<AniversariantesPage>
             semana: weeklyBirthdays.length,
             mes: monthBirthdays.length,
           ),
-          SliverToBoxAdapter(
-            child: _buildFiltersOnly(),
-          ),
+          SliverToBoxAdapter(child: _buildFiltersOnly()),
           if (_filtroRapido != 'Todos')
             SliverToBoxAdapter(
               child: _buildFilteredListHeader(listaFiltro.length),
             ),
           if (_filtroRapido != 'Todos')
             SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final doc = listaFiltro[index];
-                  final birthDate =
-                  _parseDataNascimento(doc.data()['data_nascimento']);
-                  if (birthDate == null) return SizedBox.shrink();
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final doc = listaFiltro[index];
+                final birthDate = _parseDataNascimento(
+                  doc.data()['data_nascimento'],
+                );
+                if (birthDate == null) return SizedBox.shrink();
 
-                  return _buildBirthdayCard(
-                    doc,
-                    birthDate,
-                    isHoje: _isAniversarioHoje(birthDate),
-                  );
-                },
-                childCount: listaFiltro.length,
-              ),
+                return _buildBirthdayCard(
+                  doc,
+                  birthDate,
+                  isHoje: _isAniversarioHoje(birthDate),
+                );
+              }, childCount: listaFiltro.length),
             )
           else ...[
             if (todayBirthdays.isNotEmpty)
@@ -882,21 +870,15 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               ),
             if (todayBirthdays.isNotEmpty)
               SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    final doc = todayBirthdays[index];
-                    final birthDate =
-                    _parseDataNascimento(doc.data()['data_nascimento']);
-                    if (birthDate == null) return SizedBox.shrink();
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final doc = todayBirthdays[index];
+                  final birthDate = _parseDataNascimento(
+                    doc.data()['data_nascimento'],
+                  );
+                  if (birthDate == null) return SizedBox.shrink();
 
-                    return _buildBirthdayCard(
-                      doc,
-                      birthDate,
-                      isHoje: true,
-                    );
-                  },
-                  childCount: todayBirthdays.length,
-                ),
+                  return _buildBirthdayCard(doc, birthDate, isHoje: true);
+                }, childCount: todayBirthdays.length),
               ),
             if (weeklyBirthdays.isNotEmpty)
               SliverToBoxAdapter(
@@ -910,25 +892,17 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               ),
             if (weeklyBirthdays.isNotEmpty)
               SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    final doc = weeklyBirthdays[index];
-                    final birthDate =
-                    _parseDataNascimento(doc.data()['data_nascimento']);
-                    if (birthDate == null) return SizedBox.shrink();
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final doc = weeklyBirthdays[index];
+                  final birthDate = _parseDataNascimento(
+                    doc.data()['data_nascimento'],
+                  );
+                  if (birthDate == null) return SizedBox.shrink();
 
-                    return _buildBirthdayCard(
-                      doc,
-                      birthDate,
-                      isHoje: false,
-                    );
-                  },
-                  childCount: weeklyBirthdays.length,
-                ),
+                  return _buildBirthdayCard(doc, birthDate, isHoje: false);
+                }, childCount: weeklyBirthdays.length),
               ),
-            SliverToBoxAdapter(
-              child: _buildMonthGridSection(monthCounts),
-            ),
+            SliverToBoxAdapter(child: _buildMonthGridSection(monthCounts)),
           ],
           SliverToBoxAdapter(child: SizedBox(height: 28)),
         ],
@@ -969,11 +943,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: onPrimary.withOpacity(0.12)),
                     ),
-                    child: Icon(
-                      Icons.cake_rounded,
-                      color: onPrimary,
-                      size: 25,
-                    ),
+                    child: Icon(Icons.cake_rounded, color: onPrimary, size: 25),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1251,11 +1221,11 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Widget _buildBirthdayCard(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      DateTime birthDate, {
-        bool isMonthView = false,
-        bool isHoje = false,
-      }) {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    DateTime birthDate, {
+    bool isMonthView = false,
+    bool isHoje = false,
+  }) {
     final t = context.uai;
     final aluno = doc.data();
     final alunoId = doc.id;
@@ -1279,17 +1249,16 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     final Color cardBg = isHoje
         ? Color.alphaBlend(visibleAccent.withOpacity(0.15), t.card)
         : t.card;
-    final Color borderColor = isHoje ? visibleAccent.withOpacity(0.72) : t.border;
+    final Color borderColor = isHoje
+        ? visibleAccent.withOpacity(0.72)
+        : t.border;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(
-          color: borderColor,
-          width: isHoje ? 1.45 : 1,
-        ),
+        border: Border.all(color: borderColor, width: isHoje ? 1.45 : 1),
         boxShadow: isHoje ? t.cardShadow : t.softShadow,
       ),
       child: Material(
@@ -1326,7 +1295,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                             color: visibleAccent,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _readableOn(visibleAccent).withOpacity(0.95),
+                              color: _readableOn(
+                                visibleAccent,
+                              ).withOpacity(0.95),
                               width: 2,
                             ),
                           ),
@@ -1412,11 +1383,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     children: [
                       IconButton(
                         tooltip: 'Criar arte',
-                        onPressed: () => _abrirArteAniversario(
-                          context,
-                          aluno,
-                          alunoId,
-                        ),
+                        onPressed: () =>
+                            _abrirArteAniversario(context, aluno, alunoId),
                         icon: Icon(
                           Icons.auto_awesome_rounded,
                           color: visibleAccent,
@@ -1433,10 +1401,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     ],
                   )
                 else
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: t.textMuted,
-                  ),
+                  Icon(Icons.chevron_right_rounded, color: t.textMuted),
               ],
             ),
           ),
@@ -1502,19 +1467,19 @@ class _AniversariantesPageState extends State<AniversariantesPage>
       child: ClipOval(
         child: fotoUrl != null && fotoUrl.isNotEmpty
             ? CachedNetworkImage(
-          imageUrl: fotoUrl,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            color: context.uai.cardAlt,
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: context.uai.primary,
-              ),
-            ),
-          ),
-          errorWidget: (context, url, error) => _avatarFallback(inicial),
-        )
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  color: context.uai.cardAlt,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: context.uai.primary,
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => _avatarFallback(inicial),
+              )
             : _avatarFallback(inicial),
       ),
     );
@@ -1541,10 +1506,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   Widget _buildMonthView(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
-      int month,
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> allAlunos,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
+    int month,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> allAlunos,
+  ) {
     final nomeMes = _getMonthName(month);
 
     return Column(
@@ -1584,7 +1549,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                       decoration: BoxDecoration(
                         color: _onPrimary().withOpacity(0.15),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _onPrimary().withOpacity(0.14)),
+                        border: Border.all(
+                          color: _onPrimary().withOpacity(0.14),
+                        ),
                       ),
                       child: Icon(
                         Icons.arrow_back_rounded,
@@ -1618,12 +1585,13 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   ),
                 ),
                 Container(
-                  padding:
-                  EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: _onPrimary().withOpacity(0.16),
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: context.uai.card.withOpacity(0.16)),
+                    border: Border.all(
+                      color: context.uai.card.withOpacity(0.16),
+                    ),
                   ),
                   child: Text(
                     '${monthlyBirthdays.length}',
@@ -1642,26 +1610,27 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           child: monthlyBirthdays.isEmpty
               ? _buildEmptyMonthState(month)
               : RefreshIndicator(
-            color: context.uai.primary,
-            onRefresh: () async => setState(() {}),
-            child: ListView.builder(
-              padding: EdgeInsets.fromLTRB(0, 12, 0, 24),
-              itemCount: monthlyBirthdays.length,
-              itemBuilder: (context, index) {
-                final doc = monthlyBirthdays[index];
-                final birthDate =
-                _parseDataNascimento(doc.data()['data_nascimento']);
-                if (birthDate == null) return SizedBox.shrink();
+                  color: context.uai.primary,
+                  onRefresh: () async => setState(() {}),
+                  child: ListView.builder(
+                    padding: EdgeInsets.fromLTRB(0, 12, 0, 24),
+                    itemCount: monthlyBirthdays.length,
+                    itemBuilder: (context, index) {
+                      final doc = monthlyBirthdays[index];
+                      final birthDate = _parseDataNascimento(
+                        doc.data()['data_nascimento'],
+                      );
+                      if (birthDate == null) return SizedBox.shrink();
 
-                return _buildBirthdayCard(
-                  doc,
-                  birthDate,
-                  isMonthView: true,
-                  isHoje: _isAniversarioHoje(birthDate),
-                );
-              },
-            ),
-          ),
+                      return _buildBirthdayCard(
+                        doc,
+                        birthDate,
+                        isMonthView: true,
+                        isHoje: _isAniversarioHoje(birthDate),
+                      );
+                    },
+                  ),
+                ),
         ),
       ],
     );
@@ -1789,7 +1758,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                 right: 7,
                 top: 7,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: hasBirthdays || isCurrentMonth
                         ? accent.withOpacity(0.16)
@@ -1853,8 +1825,11 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded,
-                size: 70, color: context.uai.error.withOpacity(0.55)),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 70,
+              color: context.uai.error.withOpacity(0.55),
+            ),
             SizedBox(height: 14),
             Text(
               'Erro ao carregar aniversariantes',
@@ -1878,9 +1853,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         Container(
           height: 120,
           width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: context.uai.primaryGradient,
-          ),
+          decoration: BoxDecoration(gradient: context.uai.primaryGradient),
           child: SafeArea(
             child: Center(
               child: Row(

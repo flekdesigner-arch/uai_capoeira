@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/campeonato_model.dart';
@@ -21,7 +21,8 @@ class GestaoCampeonatoScreen extends StatefulWidget {
   State<GestaoCampeonatoScreen> createState() => _GestaoCampeonatoScreenState();
 }
 
-class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with SingleTickerProviderStateMixin {
+class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late CampeonatoService _campeonatoService;
   late PermissaoService _permissaoService;
@@ -49,9 +50,14 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
   }
 
   Future<void> _verificarPermissoes() async {
-    _podeGerenciarInscricoes = await _permissaoService.temPermissao('pode_gerenciar_inscricoes') ?? false;
-    _podeGerenciarFinanceiro = await _permissaoService.temPermissao('pode_gerenciar_financeiro') ?? false;
-    _podeGerenciarChaves = await _permissaoService.temPermissao('pode_gerenciar_chaves') ?? false;
+    _podeGerenciarInscricoes =
+        await _permissaoService.temPermissao('pode_gerenciar_inscricoes') ??
+        false;
+    _podeGerenciarFinanceiro =
+        await _permissaoService.temPermissao('pode_gerenciar_financeiro') ??
+        false;
+    _podeGerenciarChaves =
+        await _permissaoService.temPermissao('pode_gerenciar_chaves') ?? false;
 
     if (mounted) setState(() {});
   }
@@ -62,7 +68,9 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
 
     try {
       // 🔥 BUSCAR CAMPEONATO
-      final campeonato = await _campeonatoService.getCampeonato(widget.campeonatoId);
+      final campeonato = await _campeonatoService.getCampeonato(
+        widget.campeonatoId,
+      );
 
       // 🔥 BUSCAR CONFIGURAÇÕES PARA PEGAR A TAXA CORRETA
       final configDoc = await FirebaseFirestore.instance
@@ -85,7 +93,9 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
       }
 
       // 🔥 BUSCAR ESTATÍSTICAS (JÁ VEM COM A TAXA CORRETA DO SERVIÇO MODIFICADO)
-      final estatisticas = await _campeonatoService.getEstatisticas(widget.campeonatoId);
+      final estatisticas = await _campeonatoService.getEstatisticas(
+        widget.campeonatoId,
+      );
 
       if (mounted) {
         setState(() {
@@ -161,13 +171,13 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(
-        controller: _tabController,
-        children: [
-          _buildVisaoGeral(),
-          _buildInscricoesTab(),
-          _buildCompeticaoTab(),
-        ],
-      ),
+              controller: _tabController,
+              children: [
+                _buildVisaoGeral(),
+                _buildInscricoesTab(),
+                _buildCompeticaoTab(),
+              ],
+            ),
     );
   }
 
@@ -224,7 +234,11 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
               color: Colors.amber.shade100,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.emoji_events, size: 40, color: Colors.amber),
+            child: const Icon(
+              Icons.emoji_events,
+              size: 40,
+              color: Colors.amber,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -233,15 +247,15 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
               children: [
                 Text(
                   _campeonato!.dataFormatada,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.amber.shade900,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.amber.shade900),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _campeonato!.local,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 Text(
                   _campeonato!.cidade,
@@ -351,10 +365,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
           ),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
         ],
       ),
@@ -388,7 +399,8 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
               Column(
                 children: porGrupo.entries.map((entry) {
                   final total = _estatisticas['total'] ?? 1;
-                  final percentual = (entry.value / total * 100).toStringAsFixed(1);
+                  final percentual = (entry.value / total * 100)
+                      .toStringAsFixed(1);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
@@ -413,7 +425,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                               ),
                               Container(
                                 height: 8,
-                                width: MediaQuery.of(context).size.width * 0.4 * (entry.value / total),
+                                width:
+                                    MediaQuery.of(context).size.width *
+                                    0.4 *
+                                    (entry.value / total),
                                 decoration: BoxDecoration(
                                   color: Colors.amber.shade700,
                                   borderRadius: BorderRadius.circular(4),
@@ -425,7 +440,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                         const SizedBox(width: 8),
                         Text(
                           '${entry.value} ($percentual%)',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -439,8 +457,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
   }
 
   Widget _buildCategoriasCard() {
-    final porCategoria = _estatisticas['por_categoria'] as Map<String, int>? ?? {};
-    final pagosPorCategoria = _estatisticas['pagos_por_categoria'] as Map<String, int>? ?? {};
+    final porCategoria =
+        _estatisticas['por_categoria'] as Map<String, int>? ?? {};
+    final pagosPorCategoria =
+        _estatisticas['pagos_por_categoria'] as Map<String, int>? ?? {};
 
     if (porCategoria.isEmpty) {
       return const SizedBox();
@@ -479,7 +499,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -495,7 +518,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -543,7 +569,9 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                 Expanded(
                   child: _buildFinanceiroItem(
                     label: 'Taxa',
-                    value: _formatarMoeda(taxaParaExibir), // 👈 USA A TAXA CORRETA
+                    value: _formatarMoeda(
+                      taxaParaExibir,
+                    ), // 👈 USA A TAXA CORRETA
                     color: Colors.blue,
                   ),
                 ),
@@ -628,7 +656,8 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
 
   // ==================== TAB 3: COMPETIÇÃO ====================
   Widget _buildCompeticaoTab() {
-    final porCategoria = _estatisticas['por_categoria'] as Map<String, int>? ?? {};
+    final porCategoria =
+        _estatisticas['por_categoria'] as Map<String, int>? ?? {};
 
     if (porCategoria.isEmpty) {
       return Center(
@@ -665,7 +694,9 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
 
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: InkWell(
               onTap: () {
                 final tempCategoria = CategoriaCampeonato(
@@ -711,7 +742,10 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -726,10 +760,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen> with Si
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Icon(
-                      Icons.chevron_right,
-                      color: Colors.amber,
-                    ),
+                    const Icon(Icons.chevron_right, color: Colors.amber),
                   ],
                 ),
               ),

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -48,8 +48,10 @@ class _UniformesScreenState extends State<UniformesScreen>
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
   final UsuarioService _usuarioService = UsuarioService();
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -68,8 +70,8 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -103,8 +105,9 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _verificarPermissoes() async {
-    final temPermissao =
-    await _permissaoService.temPermissao('podeAcessarUniformes');
+    final temPermissao = await _permissaoService.temPermissao(
+      'podeAcessarUniformes',
+    );
     if (!temPermissao && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -264,10 +267,7 @@ class _UniformesScreenState extends State<UniformesScreen>
       body: Column(
         children: [
           _buildSearchBar(),
-          ResumoCards(
-            realFormat: _realFormat,
-            onNovaVenda: _abrirNovaVenda,
-          ),
+          ResumoCards(realFormat: _realFormat, onNovaVenda: _abrirNovaVenda),
           const SizedBox(height: 8),
           Expanded(
             child: TabBarView(
@@ -313,12 +313,12 @@ class _UniformesScreenState extends State<UniformesScreen>
           prefixIcon: Icon(Icons.search, color: context.uai.textMuted),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-            icon: Icon(Icons.clear, color: context.uai.textMuted),
-            onPressed: () {
-              _searchController.clear();
-              setState(() => _searchQuery = '');
-            },
-          )
+                  icon: Icon(Icons.clear, color: context.uai.textMuted),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
               : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(context.uai.inputRadius),
@@ -330,8 +330,7 @@ class _UniformesScreenState extends State<UniformesScreen>
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(context.uai.inputRadius),
-            borderSide:
-            BorderSide(color: context.uai.primary, width: 1.4),
+            borderSide: BorderSide(color: context.uai.primary, width: 1.4),
           ),
           filled: true,
           fillColor: context.uai.cardAlt,
@@ -377,22 +376,30 @@ class _UniformesScreenState extends State<UniformesScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inventory_2_outlined,
-                    size: 80, color: context.uai.textMuted),
+                Icon(
+                  Icons.inventory_2_outlined,
+                  size: 80,
+                  color: context.uai.textMuted,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Nenhum item no estoque',
                   style: TextStyle(
-                      fontSize: 16, color: context.uai.textSecondary),
+                    fontSize: 16,
+                    color: context.uai.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: _abrirAdicionarEstoque,
-                  icon: Icon(Icons.add,
-                      color: _readableOn(context.uai.primary)),
-                  label: Text('ADICIONAR ITEM',
-                      style:
-                      TextStyle(color: _readableOn(context.uai.primary))),
+                  icon: Icon(
+                    Icons.add,
+                    color: _readableOn(context.uai.primary),
+                  ),
+                  label: Text(
+                    'ADICIONAR ITEM',
+                    style: TextStyle(color: _readableOn(context.uai.primary)),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.uai.primary,
                   ),
@@ -451,7 +458,9 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _excluirCategoriaEstoque(
-      String categoriaId, Map<String, dynamic> data) async {
+    String categoriaId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final variacoes = await FirebaseFirestore.instance
           .collection('uniformes_estoque')
@@ -522,13 +531,18 @@ class _UniformesScreenState extends State<UniformesScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.shopping_cart_outlined,
-                    size: 80, color: context.uai.textMuted),
+                Icon(
+                  Icons.shopping_cart_outlined,
+                  size: 80,
+                  color: context.uai.textMuted,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Nenhuma venda registrada',
                   style: TextStyle(
-                      fontSize: 16, color: context.uai.textSecondary),
+                    fontSize: 16,
+                    color: context.uai.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -538,9 +552,9 @@ class _UniformesScreenState extends State<UniformesScreen>
         if (_searchQuery.isNotEmpty) {
           vendas = vendas.where((doc) {
             var data = doc.data() as Map<String, dynamic>;
-            return (data['aluno_nome'] ?? '')
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase());
+            return (data['aluno_nome'] ?? '').toLowerCase().contains(
+              _searchQuery.toLowerCase(),
+            );
           }).toList();
         }
 
@@ -595,16 +609,23 @@ class _UniformesScreenState extends State<UniformesScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.check_circle_outline,
-                    size: 80, color: context.uai.success),
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 80,
+                  color: context.uai.success,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Nenhuma pendência!',
                   style: TextStyle(
-                      fontSize: 16, color: context.uai.textSecondary),
+                    fontSize: 16,
+                    color: context.uai.textSecondary,
+                  ),
                 ),
-                Text('Todas as vendas estão pagas',
-                    style: TextStyle(color: context.uai.textMuted)),
+                Text(
+                  'Todas as vendas estão pagas',
+                  style: TextStyle(color: context.uai.textMuted),
+                ),
               ],
             ),
           );
@@ -614,7 +635,8 @@ class _UniformesScreenState extends State<UniformesScreen>
         for (var doc in vendasPendentes) {
           var data = doc.data() as Map<String, dynamic>;
           totalPendente +=
-              (data['valor_total'] ?? 0).toDouble() - (data['valor_pago'] ?? 0).toDouble();
+              (data['valor_total'] ?? 0).toDouble() -
+              (data['valor_pago'] ?? 0).toDouble();
         }
 
         return Column(
@@ -624,10 +646,8 @@ class _UniformesScreenState extends State<UniformesScreen>
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: context.uai.card,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(
-                    color: context.uai.error.withOpacity(0.2)),
+                borderRadius: BorderRadius.circular(context.uai.cardRadius),
+                border: Border.all(color: context.uai.error.withOpacity(0.2)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -638,7 +658,9 @@ class _UniformesScreenState extends State<UniformesScreen>
                       Text(
                         'TOTAL PENDENTE',
                         style: TextStyle(
-                            fontSize: 12, color: context.uai.textSecondary),
+                          fontSize: 12,
+                          color: context.uai.textSecondary,
+                        ),
                       ),
                       Text(
                         _realFormat.format(totalPendente),
@@ -709,22 +731,30 @@ class _UniformesScreenState extends State<UniformesScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.shopping_cart_outlined,
-                    size: 80, color: context.uai.textMuted),
+                Icon(
+                  Icons.shopping_cart_outlined,
+                  size: 80,
+                  color: context.uai.textMuted,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Nenhum pedido de encomenda',
                   style: TextStyle(
-                      fontSize: 16, color: context.uai.textSecondary),
+                    fontSize: 16,
+                    color: context.uai.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: _abrirNovoPedido,
-                  icon: Icon(Icons.add,
-                      color: _readableOn(context.uai.primary)),
-                  label: Text('NOVO PEDIDO',
-                      style: TextStyle(
-                          color: _readableOn(context.uai.primary))),
+                  icon: Icon(
+                    Icons.add,
+                    color: _readableOn(context.uai.primary),
+                  ),
+                  label: Text(
+                    'NOVO PEDIDO',
+                    style: TextStyle(color: _readableOn(context.uai.primary)),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.uai.primary,
                   ),
@@ -737,12 +767,12 @@ class _UniformesScreenState extends State<UniformesScreen>
         if (_searchQuery.isNotEmpty) {
           pedidos = pedidos.where((doc) {
             var data = doc.data() as Map<String, dynamic>;
-            return (data['aluno_nome'] ?? '')
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()) ||
-                (data['id_pedido'] ?? '')
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase());
+            return (data['aluno_nome'] ?? '').toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ) ||
+                (data['id_pedido'] ?? '').toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                );
           }).toList();
         }
 
@@ -796,22 +826,30 @@ class _UniformesScreenState extends State<UniformesScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.local_shipping_outlined,
-                    size: 80, color: context.uai.textMuted),
+                Icon(
+                  Icons.local_shipping_outlined,
+                  size: 80,
+                  color: context.uai.textMuted,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Nenhuma remessa cadastrada',
                   style: TextStyle(
-                      fontSize: 16, color: context.uai.textSecondary),
+                    fontSize: 16,
+                    color: context.uai.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: _abrirNovaRemessa,
-                  icon: Icon(Icons.add,
-                      color: _readableOn(context.uai.primary)),
-                  label: Text('NOVA REMESSA',
-                      style: TextStyle(
-                          color: _readableOn(context.uai.primary))),
+                  icon: Icon(
+                    Icons.add,
+                    color: _readableOn(context.uai.primary),
+                  ),
+                  label: Text(
+                    'NOVA REMESSA',
+                    style: TextStyle(color: _readableOn(context.uai.primary)),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.uai.primary,
                   ),
@@ -824,9 +862,9 @@ class _UniformesScreenState extends State<UniformesScreen>
         if (_searchQuery.isNotEmpty) {
           remessas = remessas.where((doc) {
             var data = doc.data() as Map<String, dynamic>;
-            return (data['nome'] ?? '')
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase());
+            return (data['nome'] ?? '').toLowerCase().contains(
+              _searchQuery.toLowerCase(),
+            );
           }).toList();
         }
 
@@ -885,8 +923,7 @@ class _UniformesScreenState extends State<UniformesScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            AdicionarEstoqueScreen(itemId: docId, itemData: data),
+        builder: (_) => AdicionarEstoqueScreen(itemId: docId, itemData: data),
       ),
     );
     if (result == true && mounted) setState(() {});
@@ -904,20 +941,22 @@ class _UniformesScreenState extends State<UniformesScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RemessaFormScreen(
-            remessaId: remessaId, remessaData: data),
+        builder: (_) =>
+            RemessaFormScreen(remessaId: remessaId, remessaData: data),
       ),
     );
     if (result == true) setState(() {});
   }
 
   void _abrirDetalhesRemessa(
-      String remessaId, Map<String, dynamic> data) async {
+    String remessaId,
+    Map<String, dynamic> data,
+  ) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RemessaDetalhesScreen(
-            remessaId: remessaId, remessaData: data),
+        builder: (_) =>
+            RemessaDetalhesScreen(remessaId: remessaId, remessaData: data),
       ),
     );
     setState(() {});
@@ -933,12 +972,14 @@ class _UniformesScreenState extends State<UniformesScreen>
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('🗑️ Excluir Remessa',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          '🗑️ Excluir Remessa',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
           qtdPedidos > 0
               ? 'Esta remessa possui $qtdPedidos pedido(s) vinculado(s). '
-              'Ao excluir a remessa, todos esses pedidos também serão excluídos permanentemente. Deseja continuar?'
+                    'Ao excluir a remessa, todos esses pedidos também serão excluídos permanentemente. Deseja continuar?'
               : 'Tem certeza que deseja excluir esta remessa?',
           style: TextStyle(color: context.uai.textSecondary),
         ),
@@ -998,7 +1039,9 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   // ==================== REGRAS DE REMESSA ↔ PEDIDOS ====================
   Future<void> _alterarStatusRemessa(
-      String remessaId, String novoStatus) async {
+    String remessaId,
+    String novoStatus,
+  ) async {
     if (novoStatus == 'em_confeccao') {
       final pedidos = await FirebaseFirestore.instance
           .collection('pedidos_uniformes')
@@ -1033,8 +1076,10 @@ class _UniformesScreenState extends State<UniformesScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Ação não permitida',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          'Ação não permitida',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
           'Todos os pedidos vinculados devem estar finalizados e pagos antes de finalizar/excluir a remessa.',
           style: TextStyle(color: context.uai.textSecondary),
@@ -1061,9 +1106,9 @@ class _UniformesScreenState extends State<UniformesScreen>
             .collection('uniformes_estoque')
             .doc(docId)
             .update({
-          'quantidade': novaQuantidade,
-          'ultima_atualizacao': FieldValue.serverTimestamp(),
-        });
+              'quantidade': novaQuantidade,
+              'ultima_atualizacao': FieldValue.serverTimestamp(),
+            });
         await _uniformesService.registrarMovimentacao(
           itemId: docId,
           itemNome: data['nome'],
@@ -1110,9 +1155,9 @@ class _UniformesScreenState extends State<UniformesScreen>
             .collection('uniformes_estoque')
             .doc(docId)
             .update({
-          'quantidade': novaQuantidade,
-          'ultima_atualizacao': FieldValue.serverTimestamp(),
-        });
+              'quantidade': novaQuantidade,
+              'ultima_atualizacao': FieldValue.serverTimestamp(),
+            });
         await _uniformesService.registrarMovimentacao(
           itemId: docId,
           itemNome: data['nome'],
@@ -1125,8 +1170,7 @@ class _UniformesScreenState extends State<UniformesScreen>
             SnackBar(
               content: Text(
                 '✅ Saída de $quantidade unidade(s) registrada!',
-                style:
-                TextStyle(color: _readableOn(context.uai.warning)),
+                style: TextStyle(color: _readableOn(context.uai.warning)),
               ),
               backgroundColor: context.uai.warning,
             ),
@@ -1156,7 +1200,9 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _excluirItemEstoque(
-      String docId, Map<String, dynamic> data) async {
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await FirebaseFirestore.instance
           .collection('uniformes_estoque')
@@ -1191,7 +1237,10 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   // ==================== PAGAMENTOS ====================
   void _registrarPagamento(
-      String docId, Map<String, dynamic> data, double valorRestante) {
+    String docId,
+    Map<String, dynamic> data,
+    double valorRestante,
+  ) {
     if (valorRestante <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1224,8 +1273,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 SnackBar(
                   content: Text(
                     '✅ Pagamento de ${_realFormat.format(valor)} registrado!',
-                    style: TextStyle(
-                        color: _readableOn(context.uai.success)),
+                    style: TextStyle(color: _readableOn(context.uai.success)),
                   ),
                   backgroundColor: context.uai.success,
                 ),
@@ -1237,8 +1285,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 SnackBar(
                   content: Text(
                     '❌ Erro ao registrar pagamento: $e',
-                    style: TextStyle(
-                        color: _readableOn(context.uai.error)),
+                    style: TextStyle(color: _readableOn(context.uai.error)),
                   ),
                   backgroundColor: context.uai.error,
                 ),
@@ -1251,7 +1298,9 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _registrarPagamentoPedido(
-      String docId, Map<String, dynamic> data) async {
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     double total = (data['valor_total'] ?? 0).toDouble();
     double pago = (data['valor_pago'] ?? 0).toDouble();
     double restante = total - pago;
@@ -1287,8 +1336,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 SnackBar(
                   content: Text(
                     '✅ Pagamento de ${_realFormat.format(valor)} registrado!',
-                    style: TextStyle(
-                        color: _readableOn(context.uai.success)),
+                    style: TextStyle(color: _readableOn(context.uai.success)),
                   ),
                   backgroundColor: context.uai.success,
                 ),
@@ -1300,8 +1348,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 SnackBar(
                   content: Text(
                     '❌ Erro ao registrar pagamento: $e',
-                    style: TextStyle(
-                        color: _readableOn(context.uai.error)),
+                    style: TextStyle(color: _readableOn(context.uai.error)),
                   ),
                   backgroundColor: context.uai.error,
                 ),
@@ -1320,8 +1367,9 @@ class _UniformesScreenState extends State<UniformesScreen>
       isScrollControlled: true,
       backgroundColor: context.uai.surface,
       shape: RoundedRectangleBorder(
-        borderRadius:
-        BorderRadius.vertical(top: Radius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(context.uai.cardRadius),
+        ),
       ),
       builder: (_) => DetalhesVendaBottomSheet(
         docId: docId,
@@ -1351,8 +1399,7 @@ class _UniformesScreenState extends State<UniformesScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            EditarVendaScreen(vendaId: docId, vendaData: data),
+        builder: (_) => EditarVendaScreen(vendaId: docId, vendaData: data),
       ),
     );
     if (result == true && mounted) {
@@ -1373,12 +1420,14 @@ class _UniformesScreenState extends State<UniformesScreen>
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('🗑️ Confirmar Exclusão',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          '🗑️ Confirmar Exclusão',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
           'Tem certeza que deseja excluir esta venda?\n\n'
-              'Aluno: ${data['aluno_nome']}\n'
-              'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
+          'Aluno: ${data['aluno_nome']}\n'
+          'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -1433,8 +1482,7 @@ class _UniformesScreenState extends State<UniformesScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            EditarPedidoScreen(pedidoId: docId, pedidoData: data),
+        builder: (_) => EditarPedidoScreen(pedidoId: docId, pedidoData: data),
       ),
     );
     if (result == true && mounted) {
@@ -1455,13 +1503,15 @@ class _UniformesScreenState extends State<UniformesScreen>
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('🗑️ Confirmar Exclusão',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          '🗑️ Confirmar Exclusão',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
           'Tem certeza que deseja excluir este pedido?\n\n'
-              'Pedido: ${data['id_pedido'] ?? 'N/I'}\n'
-              'Aluno: ${data['aluno_nome']}\n'
-              'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
+          'Pedido: ${data['id_pedido'] ?? 'N/I'}\n'
+          'Aluno: ${data['aluno_nome']}\n'
+          'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -1522,7 +1572,9 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   // ==================== STATUS DE PEDIDOS ====================
   Future<void> _marcarPedidoComoConfeccao(
-      String docId, Map<String, dynamic> data) async {
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'em_confeccao');
       if (mounted) {
@@ -1552,7 +1604,9 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _marcarPedidoComoFinalizado(
-      String docId, Map<String, dynamic> data) async {
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'finalizado');
       if (mounted) {
@@ -1621,8 +1675,8 @@ class _CategoriaEstoqueExpansivelState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -1679,11 +1733,13 @@ class _CategoriaEstoqueExpansivelState
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Excluir categoria',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          'Excluir categoria',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
           'Tem certeza que deseja excluir a categoria "${widget.categoriaData['nome']}"?\n\n'
-              'Todos os itens vinculados (variações) também serão excluídos permanentemente.',
+          'Todos os itens vinculados (variações) também serão excluídos permanentemente.',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -1739,26 +1795,35 @@ class _CategoriaEstoqueExpansivelState
               ),
               child: fotoUrl != null && fotoUrl.isNotEmpty
                   ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                    imageUrl: fotoUrl, fit: BoxFit.cover),
-              )
-                  : Icon(_getCategoriaIcon(categoria),
-                  color: _ensureVisible(corCat, cardBg)),
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: fotoUrl,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  : Icon(
+                      _getCategoriaIcon(categoria),
+                      color: _ensureVisible(corCat, cardBg),
+                    ),
             ),
             title: Row(
               children: [
                 Expanded(
-                  child: Text(nome,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: context.uai.textPrimary)),
+                  child: Text(
+                    nome,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: context.uai.textPrimary,
+                    ),
+                  ),
                 ),
                 if (widget.onExcluirCategoria != null)
                   IconButton(
-                    icon: Icon(Icons.delete,
-                        color: _ensureVisible(context.uai.error, cardBg),
-                        size: 20),
+                    icon: Icon(
+                      Icons.delete,
+                      color: _ensureVisible(context.uai.error, cardBg),
+                      size: 20,
+                    ),
                     onPressed: _confirmarExclusaoCategoria,
                     tooltip: 'Excluir categoria',
                     padding: EdgeInsets.zero,
@@ -1766,8 +1831,10 @@ class _CategoriaEstoqueExpansivelState
                   ),
               ],
             ),
-            subtitle: Text(categoria,
-                style: TextStyle(color: context.uai.textSecondary)),
+            subtitle: Text(
+              categoria,
+              style: TextStyle(color: context.uai.textSecondary),
+            ),
             onExpansionChanged: (expanded) {
               setState(() => _expanded = expanded);
             },
@@ -1782,14 +1849,18 @@ class _CategoriaEstoqueExpansivelState
                   builder: (context, snapshot) {
                     if (!snapshot.hasData)
                       return Center(
-                          child: CircularProgressIndicator(
-                              color: context.uai.primary));
+                        child: CircularProgressIndicator(
+                          color: context.uai.primary,
+                        ),
+                      );
                     final variacoes = snapshot.data!.docs;
                     if (variacoes.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Text('Nenhuma variação disponível',
-                            style: TextStyle(color: context.uai.textMuted)),
+                        child: Text(
+                          'Nenhuma variação disponível',
+                          style: TextStyle(color: context.uai.textMuted),
+                        ),
                       );
                     }
                     return Column(

@@ -1,10 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/modules/eventos/models/participacao_model.dart';
 import 'package:uai_capoeira/modules/uniformes/models/pagamento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
@@ -28,9 +29,9 @@ class DetalheParticipacaoScreen extends StatefulWidget {
   });
 
   @override
-  State<DetalheParticipacaoScreen> createState() => _DetalheParticipacaoScreenState();
+  State<DetalheParticipacaoScreen> createState() =>
+      _DetalheParticipacaoScreenState();
 }
-
 
 class _PermissaoDetalheChip {
   final String label;
@@ -45,10 +46,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   final ParticipacaoService _participacaoService = ParticipacaoService();
   final PagamentoService _pagamentoService = PagamentoService();
   final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
   final GraduacaoService _graduacaoService = GraduacaoService();
 
   bool _isLoading = false;
   bool _carregandoPermissoes = true;
+  bool _acessoNegado = false;
   bool _podeFinalizar = false;
   bool _podeEditarCamisa = false;
   bool _podeEditarGraduacao = false;
@@ -83,8 +88,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -144,7 +149,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       return _participacao.valorCamisa;
     }
 
-    final rawValores = _dadosEvento!['valoresPorTipoCamisa'] ??
+    final rawValores =
+        _dadosEvento!['valoresPorTipoCamisa'] ??
         _dadosEvento!['valores_por_tipo_camisa'] ??
         _dadosEvento!['valoresTipoCamisa'] ??
         _dadosEvento!['valores_tipo_camisa'];
@@ -229,10 +235,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   void _showSnackTema(
-      String mensagem, {
-        required Color background,
-        IconData? icon,
-      }) {
+    String mensagem, {
+    required Color background,
+    IconData? icon,
+  }) {
     if (!mounted) return;
 
     final fg = _readableOn(background);
@@ -248,10 +254,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             Expanded(
               child: Text(
                 mensagem,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(color: fg, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -263,15 +266,36 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
   }
 
-
   @override
   void initState() {
     super.initState();
     _inicializarParticipacao();
-    _carregarDados();
-    _verificarPermissoes();
-    _verificarPatrocinio();
-    _carregarDadosAluno();
+    _inicializarComPermissao();
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    final podeAcessar = await _accessGuard.canAny([
+      'pode_ver_detalhe_participacao_evento',
+      'pode_gerenciar_participantes_evento',
+    ]);
+
+    if (!mounted) return;
+
+    if (!podeAcessar) {
+      setState(() {
+        _acessoNegado = true;
+        _carregandoPermissoes = false;
+      });
+      return;
+    }
+
+    await _verificarPermissoes();
+    if (!mounted || _acessoNegado) return;
+    await Future.wait([
+      _carregarDados(),
+      _verificarPatrocinio(),
+      _carregarDadosAluno(),
+    ]);
   }
 
   void _inicializarParticipacao() {
@@ -289,7 +313,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       graduacao: widget.participacao['graduacao'] as String?,
       graduacaoId: widget.participacao['graduacao_id'] as String?,
       tamanhoCamisa: widget.participacao['tamanho_camisa'] as String?,
-      modelagemCamisa: widget.participacao['modelagem_camisa']?.toString() ?? 'NORMAL',
+      modelagemCamisa:
+          widget.participacao['modelagem_camisa']?.toString() ?? 'NORMAL',
       tipoCamisa: widget.participacao['tipo_camisa']?.toString() ?? 'MANGA',
       linkCertificado: widget.participacao['link_certificado'] as String?,
       presente: widget.participacao['presente'] ?? false,
@@ -389,7 +414,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
 
       // 🔥 1º - Carrega a participação ATUALIZADA do Firestore
-      final participacaoAtualizada = await _participacaoService.buscarPorId(widget.participacaoId);
+      final participacaoAtualizada = await _participacaoService.buscarPorId(
+        widget.participacaoId,
+      );
 
       if (participacaoAtualizada != null) {
         setState(() {
@@ -399,7 +426,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           );
           _linkCertificadoServidor =
               _extrairLinkCertificado(participacaoAtualizada) ??
-                  _linkCertificadoServidor;
+              _linkCertificadoServidor;
         });
 
         debugPrint('📊 Participação carregada:');
@@ -439,7 +466,6 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       // 🔥 Limpa o cache do aluno para forçar recarregar
       _cacheAluno.remove(_participacao.alunoId);
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar dados: $e');
     } finally {
@@ -484,29 +510,27 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
     try {
       final permissoes = await Future.wait<bool>([
-        _permissaoService.temQualquerPermissao([
+        _permissaoService.temQualquerPermissaoDireta([
           'pode_concluir_participacao_evento',
           'pode_finalizar_participacao',
         ]),
-        _permissaoService.temQualquerPermissao([
-          'pode_editar_participacao_evento',
-          'pode_editar_participante_evento',
-          'pode_editar_participante',
+        _permissaoService.temQualquerPermissaoDireta([
+          'pode_editar_camisa_participacao_evento',
+          'pode_editar_camisa_evento',
         ]),
-        _permissaoService.temQualquerPermissao([
+        _permissaoService.temQualquerPermissaoDireta([
+          'pode_editar_graduacao_participacao_evento',
           'pode_editar_graduacao_evento',
-          'pode_editar_participacao_evento',
-          'pode_editar_participante_evento',
         ]),
-        _permissaoService.temQualquerPermissao([
+        _permissaoService.temQualquerPermissaoDireta([
           'pode_registrar_pagamento_evento',
           'pode_registrar_pagamento',
         ]),
-        _permissaoService.temQualquerPermissao([
+        _permissaoService.temQualquerPermissaoDireta([
           'pode_editar_pagamento_evento',
           'pode_editar_pagamento',
         ]),
-        _permissaoService.temQualquerPermissao([
+        _permissaoService.temQualquerPermissaoDireta([
           'pode_excluir_pagamento_evento',
           'pode_excluir_pagamento',
         ]),
@@ -583,9 +607,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   // 🔥 PARSER DE DATA BRASILEIRA (copiado do modal)
   DateTime _parseDataBrasileira(String dataStr) {
     final meses = {
-      'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
-      'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
-      'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+      'janeiro': 1,
+      'fevereiro': 2,
+      'março': 3,
+      'abril': 4,
+      'maio': 5,
+      'junho': 6,
+      'julho': 7,
+      'agosto': 8,
+      'setembro': 9,
+      'outubro': 10,
+      'novembro': 11,
+      'dezembro': 12,
     };
 
     final parts = dataStr.toLowerCase().split(' ');
@@ -619,7 +652,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
     // 🔥 PRIORIDADE 1: Calcular pela data de nascimento (MAIS IMPORTANTE!)
     if (_dadosAluno?['data_nascimento'] != null) {
-      debugPrint('📅 data_nascimento encontrado: ${_dadosAluno?['data_nascimento']}');
+      debugPrint(
+        '📅 data_nascimento encontrado: ${_dadosAluno?['data_nascimento']}',
+      );
       final dataNascimento = _converterData(_dadosAluno?['data_nascimento']);
 
       if (dataNascimento != null) {
@@ -639,7 +674,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
     // 🔥 PRIORIDADE 2: Se não tem data, usa o tipo_publico do aluno (FALLBACK)
     if (_dadosAluno?['tipo_publico'] != null) {
-      debugPrint('⚠️ USANDO FALLBACK - tipo_publico: ${_dadosAluno?['tipo_publico']}');
+      debugPrint(
+        '⚠️ USANDO FALLBACK - tipo_publico: ${_dadosAluno?['tipo_publico']}',
+      );
       return _dadosAluno!['tipo_publico'];
     }
 
@@ -666,7 +703,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       return true;
     }
 
-    debugPrint('❌ Ainda não pode ir para ADULTO (nível $nivelAtual, idade $idade)');
+    debugPrint(
+      '❌ Ainda não pode ir para ADULTO (nível $nivelAtual, idade $idade)',
+    );
     return false;
   }
 
@@ -682,17 +721,22 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     debugPrint('📊 Graduação ID: $graduacaoAtualId');
 
     // 🔥 CASO 1: Aluno SEM graduação
-    if (nivelAtual == null || nivelAtual == 0 ||
-        graduacaoAtual == null || graduacaoAtual == 'SEM GRADUÇÃO') {
-
+    if (nivelAtual == null ||
+        nivelAtual == 0 ||
+        graduacaoAtual == null ||
+        graduacaoAtual == 'SEM GRADUÇÃO') {
       debugPrint('📌 CASO 1: Aluno SEM graduação');
 
       final String categoria = _determinarCategoriaPorIdade();
       debugPrint('📌 Categoria determinada: $categoria');
 
       // Busca TODAS as graduações da categoria
-      final todasGraduacoes = await _graduacaoService.buscarGraduacoesPorTipo(categoria);
-      debugPrint('📚 Total de graduações $categoria: ${todasGraduacoes.length}');
+      final todasGraduacoes = await _graduacaoService.buscarGraduacoesPorTipo(
+        categoria,
+      );
+      debugPrint(
+        '📚 Total de graduações $categoria: ${todasGraduacoes.length}',
+      );
 
       if (todasGraduacoes.isEmpty) {
         debugPrint('❌ NENHUMA graduação encontrada para $categoria!');
@@ -702,7 +746,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       // Filtra por idade mínima (se tiver data)
       if (_dadosAluno?['data_nascimento'] != null) {
         final dataNascimento = _converterData(_dadosAluno?['data_nascimento']);
-        final idade = dataNascimento != null ? _calcularIdade(dataNascimento) : 0;
+        final idade = dataNascimento != null
+            ? _calcularIdade(dataNascimento)
+            : 0;
 
         final viaveis = todasGraduacoes.where((grad) {
           final idadeMinima = grad['idade_minima'] ?? 0;
@@ -731,7 +777,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       graduacaoAtualObj = await _graduacaoService.buscarPorId(graduacaoAtualId);
     }
 
-    final String tipoAtual = graduacaoAtualObj?['tipo_publico'] ??
+    final String tipoAtual =
+        graduacaoAtualObj?['tipo_publico'] ??
         (graduacaoAtual?.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
 
     debugPrint('📌 Tipo da graduação atual: $tipoAtual');
@@ -740,11 +787,21 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     final todasGraduacoes = await _graduacaoService.buscarTodasGraduacoes();
 
     // Separa por categoria
-    final graduacoesInfantis = todasGraduacoes.where((g) => g['tipo_publico'] == 'INFANTIL').toList();
-    final graduacoesAdultas = todasGraduacoes.where((g) => g['tipo_publico'] == 'ADULTO').toList();
+    final graduacoesInfantis = todasGraduacoes
+        .where((g) => g['tipo_publico'] == 'INFANTIL')
+        .toList();
+    final graduacoesAdultas = todasGraduacoes
+        .where((g) => g['tipo_publico'] == 'ADULTO')
+        .toList();
 
-    graduacoesInfantis.sort((a, b) => (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0));
-    graduacoesAdultas.sort((a, b) => (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0));
+    graduacoesInfantis.sort(
+      (a, b) =>
+          (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0),
+    );
+    graduacoesAdultas.sort(
+      (a, b) =>
+          (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0),
+    );
 
     List<Map<String, dynamic>> resultados = [];
 
@@ -753,8 +810,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       debugPrint('📌 Aluno INFANTIL');
 
       // 1. Próximas graduações INFANTIS
-      final proximasInfantis = graduacoesInfantis.where((g) =>
-      (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0)).toList();
+      final proximasInfantis = graduacoesInfantis
+          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .toList();
       resultados.addAll(proximasInfantis);
       debugPrint('   • Próximas INFANTIS: ${proximasInfantis.length}');
 
@@ -782,8 +840,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     // 🔥 SE É ADULTO ATUALMENTE
     else {
       debugPrint('📌 Aluno ADULTO - só pode ir para níveis maiores');
-      final proximasAdultas = graduacoesAdultas.where((g) =>
-      (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0)).toList();
+      final proximasAdultas = graduacoesAdultas
+          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .toList();
       resultados.addAll(proximasAdultas);
       debugPrint('   • Próximas ADULTAS: ${proximasAdultas.length}');
     }
@@ -804,8 +863,15 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _registrarPagamento() async {
-    if (!_podeRegistrarPagamento) {
-      _mostrarSemPermissao('Você não tem permissão para registrar pagamentos.');
+    final podeRegistrar = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_registrar_pagamento_evento',
+        'pode_registrar_pagamento',
+      ],
+      message: 'Você não tem permissão para registrar pagamentos.',
+    );
+    if (!podeRegistrar) {
       return;
     }
 
@@ -820,6 +886,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
 
     if (result != null) {
+      if (result['formaPagamento'] == 'PATROCÍNIO') {
+        final podeMarcarPatrocinio = await _accessGuard.revalidateAnyDirect(
+          context,
+          permissions: const [
+            'pode_marcar_patrocinio_evento',
+            'pode_marcar_patrocinio',
+          ],
+          message: 'Você não tem permissão para marcar patrocínio.',
+        );
+        if (!podeMarcarPatrocinio) return;
+      }
+
       setState(() => _isLoading = true);
 
       try {
@@ -862,7 +940,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       dataPagamento: DateTime.now(),
       observacoes: result['observacoes'],
       registroPor: FirebaseAuth.instance.currentUser?.uid ?? '',
-      registroPorNome: FirebaseAuth.instance.currentUser?.displayName ?? 'Usuário',
+      registroPorNome:
+          FirebaseAuth.instance.currentUser?.displayName ?? 'Usuário',
       anexo: result['anexo'],
       status: 'confirmado',
       parcela: result['parcela'],
@@ -878,9 +957,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     final novoTotalPago = _participacao.totalPago + pagamento.valor;
 
     setState(() {
-      _participacao = _participacao.copyWith(
-        totalPago: novoTotalPago,
-      );
+      _participacao = _participacao.copyWith(totalPago: novoTotalPago);
       _totalPago = novoTotalPago;
       _saldo = _participacao.valorTotal - novoTotalPago;
     });
@@ -902,7 +979,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
   }
 
-  Future<void> _registrarPagamentoComPatrocinio(Map<String, dynamic> result) async {
+  Future<void> _registrarPagamentoComPatrocinio(
+    Map<String, dynamic> result,
+  ) async {
     final pagamento = PagamentoModel(
       id: '',
       valor: result['valor'],
@@ -910,7 +989,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       dataPagamento: DateTime.now(),
       observacoes: 'Coberto por patrocínio: ${result['observacoes']}',
       registroPor: FirebaseAuth.instance.currentUser?.uid ?? '',
-      registroPorNome: FirebaseAuth.instance.currentUser?.displayName ?? 'Usuário',
+      registroPorNome:
+          FirebaseAuth.instance.currentUser?.displayName ?? 'Usuário',
       status: 'confirmado',
     );
 
@@ -924,9 +1004,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     final novoTotalPago = _participacao.totalPago + pagamento.valor;
 
     setState(() {
-      _participacao = _participacao.copyWith(
-        totalPago: novoTotalPago,
-      );
+      _participacao = _participacao.copyWith(totalPago: novoTotalPago);
       _totalPago = novoTotalPago;
       _saldo = _participacao.valorTotal - novoTotalPago;
     });
@@ -960,9 +1038,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         'atualizado_em': FieldValue.serverTimestamp(),
       });
 
-      await patrocinadorDoc.reference
-          .collection('usos')
-          .add({
+      await patrocinadorDoc.reference.collection('usos').add({
         'participacao_id': widget.participacaoId,
         'aluno_nome': _participacao.alunoNome,
         'valor': result['valor'],
@@ -997,10 +1073,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         .collection('participacoes_eventos_em_andamento')
         .doc(widget.participacaoId)
         .update({
-      'total_pago': totalConfirmado,
-      'status': novoStatus,
-      'atualizado_em': FieldValue.serverTimestamp(),
-    });
+          'total_pago': totalConfirmado,
+          'status': novoStatus,
+          'atualizado_em': FieldValue.serverTimestamp(),
+        });
 
     if (mounted) {
       setState(() {
@@ -1047,7 +1123,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           });
 
           final saldoAtual =
-              (patrocinador.data()['saldo_disponivel'] as num?)?.toDouble() ?? 0;
+              (patrocinador.data()['saldo_disponivel'] as num?)?.toDouble() ??
+              0;
 
           await patrocinador.reference.update({
             'saldo_disponivel': saldoAtual - diferenca,
@@ -1060,7 +1137,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
   }
 
-  Future<void> _removerUsoPatrocinioDoPagamento(PagamentoModel pagamento) async {
+  Future<void> _removerUsoPatrocinioDoPagamento(
+    PagamentoModel pagamento,
+  ) async {
     final forma = pagamento.formaPagamento.toUpperCase();
 
     if (forma != 'PATROCÍNIO' && forma != 'PATROCINIO') return;
@@ -1083,7 +1162,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           await uso.reference.delete();
 
           final saldoAtual =
-              (patrocinador.data()['saldo_disponivel'] as num?)?.toDouble() ?? 0;
+              (patrocinador.data()['saldo_disponivel'] as num?)?.toDouble() ??
+              0;
 
           await patrocinador.reference.update({
             'saldo_disponivel': saldoAtual + pagamento.valor,
@@ -1097,13 +1177,22 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _editarPagamento(PagamentoModel pagamento) async {
-    if (!_podeEditarPagamento) {
-      _mostrarSemPermissao('Você não tem permissão para editar pagamentos.');
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_editar_pagamento_evento',
+        'pode_editar_pagamento',
+      ],
+      message: 'Você não tem permissão para editar pagamentos.',
+    );
+    if (!permitido) {
       return;
     }
 
     if (_participacao.estaFinalizado) {
-      _mostrarSemPermissao('Participação finalizada não permite editar pagamentos.');
+      _mostrarSemPermissao(
+        'Participação finalizada não permite editar pagamentos.',
+      );
       return;
     }
 
@@ -1129,11 +1218,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           'PATROCÍNIO',
         ];
 
-        final statuses = <String>[
-          'confirmado',
-          'pendente',
-          'cancelado',
-        ];
+        final statuses = <String>['confirmado', 'pendente', 'cancelado'];
 
         if (!formas.contains(formaSelecionada)) {
           formas.add(formaSelecionada);
@@ -1153,7 +1238,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   children: [
                     TextField(
                       controller: valorController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'Valor',
                         border: OutlineInputBorder(),
@@ -1169,10 +1256,12 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                         prefixIcon: Icon(Icons.payment_rounded),
                       ),
                       items: formas
-                          .map((forma) => DropdownMenuItem(
-                        value: forma,
-                        child: Text(forma),
-                      ))
+                          .map(
+                            (forma) => DropdownMenuItem(
+                              value: forma,
+                              child: Text(forma),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) {
                         if (value == null) return;
@@ -1188,10 +1277,12 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                         prefixIcon: Icon(Icons.verified_rounded),
                       ),
                       items: statuses
-                          .map((status) => DropdownMenuItem(
-                        value: status,
-                        child: Text(status.toUpperCase()),
-                      ))
+                          .map(
+                            (status) => DropdownMenuItem(
+                              value: status,
+                              child: Text(status.toUpperCase()),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) {
                         if (value == null) return;
@@ -1218,13 +1309,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
-                    final valor = double.tryParse(
-                      valorController.text
-                          .trim()
-                          .replaceAll('R\$', '')
-                          .replaceAll('.', '')
-                          .replaceAll(',', '.'),
-                    ) ??
+                    final valor =
+                        double.tryParse(
+                          valorController.text
+                              .trim()
+                              .replaceAll('R\$', '')
+                              .replaceAll('.', '')
+                              .replaceAll(',', '.'),
+                        ) ??
                         0;
 
                     if (valor <= 0) {
@@ -1318,13 +1410,22 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _excluirPagamento(PagamentoModel pagamento) async {
-    if (!_podeExcluirPagamento) {
-      _mostrarSemPermissao('Você não tem permissão para excluir pagamentos.');
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_excluir_pagamento_evento',
+        'pode_excluir_pagamento',
+      ],
+      message: 'Você não tem permissão para excluir pagamentos.',
+    );
+    if (!permitido) {
       return;
     }
 
     if (_participacao.estaFinalizado) {
-      _mostrarSemPermissao('Participação finalizada não permite excluir pagamentos.');
+      _mostrarSemPermissao(
+        'Participação finalizada não permite excluir pagamentos.',
+      );
       return;
     }
 
@@ -1334,7 +1435,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         title: const Text('Excluir pagamento'),
         content: Text(
           'Deseja excluir o pagamento de ${_formatarMoeda(pagamento.valor)}?\\n\\n'
-              'O total pago e o status da participação serão recalculados.',
+          'O total pago e o status da participação serão recalculados.',
         ),
         actions: [
           TextButton(
@@ -1406,11 +1507,13 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       if (_saldo > 100) sugestoes.add(100.0);
       if (_saldo > 150) sugestoes.add(150.0);
 
-      if (_participacao.valorCamisa > 0 && _participacao.valorCamisa <= _saldo) {
+      if (_participacao.valorCamisa > 0 &&
+          _participacao.valorCamisa <= _saldo) {
         sugestoes.add(_participacao.valorCamisa);
       }
 
-      if (_participacao.valorInscricao > 0 && _participacao.valorInscricao <= _saldo) {
+      if (_participacao.valorInscricao > 0 &&
+          _participacao.valorInscricao <= _saldo) {
         sugestoes.add(_participacao.valorInscricao);
       }
     }
@@ -1419,8 +1522,15 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _editarCamisa() async {
-    if (!_podeEditarCamisa) {
-      _mostrarSemPermissao('Você não tem permissão para editar camisa.');
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_editar_camisa_participacao_evento',
+        'pode_editar_camisa_evento',
+      ],
+      message: 'Você não tem permissão para editar camisa.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -1465,10 +1575,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
 
     final tamanhosDisponiveis = lerListaEvento(
-      chaves: const [
-        'tamanhosDisponiveis',
-        'tamanhos_disponiveis',
-      ],
+      chaves: const ['tamanhosDisponiveis', 'tamanhos_disponiveis'],
       fallback: const [
         '1A',
         '2A',
@@ -1494,10 +1601,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         'modelagensDisponiveis',
         'modelagens_disponiveis',
       ],
-      fallback: const [
-        'NORMAL',
-        'BABY_LOOK',
-      ],
+      fallback: const ['NORMAL', 'BABY_LOOK'],
     );
 
     final tiposDisponiveis = lerListaEvento(
@@ -1507,11 +1611,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         'tiposDisponiveis',
         'tipos_disponiveis',
       ],
-      fallback: const [
-        'MANGA',
-        'MANGA_LONGA',
-        'REGATA',
-      ],
+      fallback: const ['MANGA', 'MANGA_LONGA', 'REGATA'],
     );
 
     debugPrint('📏 Tamanhos disponíveis processados: $tamanhosDisponiveis');
@@ -1536,14 +1636,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       try {
         final novoTamanho = result['tamanho']?.toString();
-        final novaModelagem = (result['modelagem_camisa'] ??
-            result['modelagemCamisa'] ??
-            'NORMAL')
-            .toString();
-        final novoTipo = (result['tipo_camisa'] ??
-            result['tipoCamisa'] ??
-            'MANGA')
-            .toString();
+        final novaModelagem =
+            (result['modelagem_camisa'] ??
+                    result['modelagemCamisa'] ??
+                    'NORMAL')
+                .toString();
+        final novoTipo =
+            (result['tipo_camisa'] ?? result['tipoCamisa'] ?? 'MANGA')
+                .toString();
         final entregue = result['entregue'] == true;
         final novoValorCamisa = _valorCamisaEventoPorTipo(novoTipo);
 
@@ -1591,8 +1691,15 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _editarGraduacao() async {
-    if (!_podeEditarGraduacao) {
-      _mostrarSemPermissao('Você não tem permissão para editar graduação.');
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_editar_graduacao_participacao_evento',
+        'pode_editar_graduacao_evento',
+      ],
+      message: 'Você não tem permissão para editar graduação.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -1634,7 +1741,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('✅ Graduação atualizada para: ${graduacao['nome_graduacao']}'),
+                content: Text(
+                  '✅ Graduação atualizada para: ${graduacao['nome_graduacao']}',
+                ),
                 backgroundColor: Colors.green,
               ),
             );
@@ -1656,6 +1765,16 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Future<void> _finalizarParticipacao() async {
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_concluir_participacao_evento',
+        'pode_finalizar_participacao',
+      ],
+      message: 'Você não tem permissão para concluir participação.',
+    );
+    if (!permitido) return;
+
     if (!_podeFinalizarAgora()) return;
 
     final confirm = await showDialog<bool>(
@@ -1728,9 +1847,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('FINALIZAR'),
           ),
         ],
@@ -1885,13 +2002,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           throw Exception('Não foi possível abrir o app do WhatsApp');
         }
       } catch (appError) {
-        final webUrl = Uri.parse('https://web.whatsapp.com/send?phone=$cleanedPhone' +
-            (mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''));
-
-        await launchUrl(
-          webUrl,
-          mode: LaunchMode.externalApplication,
+        final webUrl = Uri.parse(
+          'https://web.whatsapp.com/send?phone=$cleanedPhone' +
+              (mensagem != null && mensagem.isNotEmpty
+                  ? '&text=${Uri.encodeComponent(mensagem)}'
+                  : ''),
         );
+
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
       if (mounted) {
@@ -1914,7 +2032,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       children: [
         Expanded(
           child: _buildWhatsAppButton(
-            label: 'WhatsApp\nAluno',  // 🔥 COM QUEBRA DE LINHA
+            label: 'WhatsApp\nAluno', // 🔥 COM QUEBRA DE LINHA
             onPressed: contatoAluno.isNotEmpty
                 ? () => _abrirWhatsApp(contatoAluno)
                 : null,
@@ -1924,8 +2042,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildWhatsAppButton(
-            label: 'WhatsApp\nResponsável',  // 🔥 COM QUEBRA DE LINHA
-            onPressed: contatoResponsavel != null && contatoResponsavel.isNotEmpty
+            label: 'WhatsApp\nResponsável', // 🔥 COM QUEBRA DE LINHA
+            onPressed:
+                contatoResponsavel != null && contatoResponsavel.isNotEmpty
                 ? () => _abrirWhatsApp(contatoResponsavel)
                 : null,
             color: Colors.teal,
@@ -1959,23 +2078,23 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-            child: Column(  // 🔥 MUDEI DE ROW PARA COLUMN
+            child: Column(
+              // 🔥 MUDEI DE ROW PARA COLUMN
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildWhatsAppIcon(
-                  enabled: onPressed != null,
-                  color: color,
-                ),
+                _buildWhatsAppIcon(enabled: onPressed != null, color: color),
                 const SizedBox(height: 8),
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: onPressed != null ? Colors.black87 : Colors.grey.shade400,
+                    color: onPressed != null
+                        ? Colors.black87
+                        : Colors.grey.shade400,
                   ),
                   textAlign: TextAlign.center,
-                  maxLines: 2,  // 🔥 PERMITE 2 LINHAS
+                  maxLines: 2, // 🔥 PERMITE 2 LINHAS
                 ),
               ],
             ),
@@ -2004,13 +2123,13 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
               : null,
           child: fotoUrl == null || fotoUrl.isEmpty
               ? Text(
-            inicial,
-            style: TextStyle(
-              fontSize: 32,
-              color: context.uai.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          )
+                  inicial,
+                  style: TextStyle(
+                    fontSize: 32,
+                    color: context.uai.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                )
               : null,
         );
       },
@@ -2021,6 +2140,22 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   Widget build(BuildContext context) {
     final t = context.uai;
     final certificado = _certificadoAtual();
+
+    if (_carregandoPermissoes) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Detalhe da participação',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Detalhe da participação',
+        message:
+            'Você não tem permissão para acessar o detalhe da participação.',
+      );
+    }
 
     return Scaffold(
       backgroundColor: t.background,
@@ -2051,57 +2186,63 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       body: _isLoading
           ? _buildLoadingTema()
           : RefreshIndicator(
-        onRefresh: _recarregarTudo,
-        color: t.primary,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontal = constraints.maxWidth < 620 ? 14.0 : 22.0;
+              onRefresh: _recarregarTudo,
+              color: t.primary,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final horizontal = constraints.maxWidth < 620 ? 14.0 : 22.0;
 
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 30),
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 980),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildAlunoHeaderTema(),
-                        const SizedBox(height: 14),
-                        _buildContatosRapidosTema(),
-                        const SizedBox(height: 14),
-                        _buildResumoFinanceiroTema(),
-                        const SizedBox(height: 14),
-                        _buildPagamentosSectionTema(),
-                        if (_podeRegistrarPagamento &&
-                            !_participacao.estaFinalizado &&
-                            _saldo > 0) ...[
-                          const SizedBox(height: 12),
-                          _buildNovoPagamentoButtonTema(),
-                        ],
-                        const SizedBox(height: 14),
-                        _buildCamisaSectionTema(),
-                        if (_participacao.isBatizado) ...[
-                          const SizedBox(height: 14),
-                          _buildGraduacaoSectionTema(),
-                        ],
-                        const SizedBox(height: 14),
-                        _buildCertificadoHibridoCardTema(certificado),
-                        const SizedBox(height: 14),
-                        if (_podeFinalizarAgora()) _buildFinalizarButtonTema(),
-                        if (!_participacao.estaFinalizado &&
-                            !_podeFinalizarAgora())
-                          _buildAvisoAguardandoEventoTema(),
-                      ],
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontal,
+                      16,
+                      horizontal,
+                      30,
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                    children: [
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 980),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildAlunoHeaderTema(),
+                              const SizedBox(height: 14),
+                              _buildContatosRapidosTema(),
+                              const SizedBox(height: 14),
+                              _buildResumoFinanceiroTema(),
+                              const SizedBox(height: 14),
+                              _buildPagamentosSectionTema(),
+                              if (_podeRegistrarPagamento &&
+                                  !_participacao.estaFinalizado &&
+                                  _saldo > 0) ...[
+                                const SizedBox(height: 12),
+                                _buildNovoPagamentoButtonTema(),
+                              ],
+                              const SizedBox(height: 14),
+                              _buildCamisaSectionTema(),
+                              if (_participacao.isBatizado) ...[
+                                const SizedBox(height: 14),
+                                _buildGraduacaoSectionTema(),
+                              ],
+                              const SizedBox(height: 14),
+                              _buildCertificadoHibridoCardTema(certificado),
+                              const SizedBox(height: 14),
+                              if (_podeFinalizarAgora())
+                                _buildFinalizarButtonTema(),
+                              if (!_participacao.estaFinalizado &&
+                                  !_podeFinalizarAgora())
+                                _buildAvisoAguardandoEventoTema(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -2236,8 +2377,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       builder: (context, snapshot) {
         final dadosAluno = snapshot.data ?? {};
         final contatoAluno = dadosAluno['contato_aluno'] as String? ?? '';
-        final contatoResponsavel =
-        dadosAluno['contato_responsavel'] as String?;
+        final contatoResponsavel = dadosAluno['contato_responsavel'] as String?;
 
         return _sectionCardTema(
           icon: Icons.chat_rounded,
@@ -2260,8 +2400,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
               Expanded(
                 child: _whatsButtonTema(
                   label: 'Responsável',
-                  onPressed: contatoResponsavel != null &&
-                      contatoResponsavel.isNotEmpty
+                  onPressed:
+                      contatoResponsavel != null &&
+                          contatoResponsavel.isNotEmpty
                       ? () => _abrirWhatsApp(contatoResponsavel)
                       : null,
                   color: t.info,
@@ -2370,11 +2511,11 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Widget _miniInfoCardTema(
-      String label,
-      String value,
-      IconData icon,
-      Color color,
-      ) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -2429,18 +2570,17 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           ? 'Nenhum pagamento registrado'
           : '${_pagamentos.length} pagamento(s) no histórico',
       color: t.success,
-      trailing: _podeRegistrarPagamento &&
-          !_participacao.estaFinalizado &&
-          _saldo > 0
+      trailing:
+          _podeRegistrarPagamento && !_participacao.estaFinalizado && _saldo > 0
           ? TextButton.icon(
-        onPressed: _registrarPagamento,
-        icon: const Icon(Icons.add_rounded, size: 18),
-        label: const Text('Novo'),
-        style: TextButton.styleFrom(
-          foregroundColor: t.success,
-          textStyle: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-      )
+              onPressed: _registrarPagamento,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Novo'),
+              style: TextButton.styleFrom(
+                foregroundColor: t.success,
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            )
           : null,
       child: Column(
         children: [
@@ -2509,10 +2649,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       color: t.info,
       trailing: _podeEditarCamisa
           ? IconButton(
-        onPressed: _editarCamisa,
-        icon: Icon(Icons.edit_rounded, color: t.info),
-        tooltip: 'Editar camisa',
-      )
+              onPressed: _editarCamisa,
+              icon: Icon(Icons.edit_rounded, color: t.info),
+              tooltip: 'Editar camisa',
+            )
           : null,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -2588,10 +2728,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   Widget _buildGraduacaoSectionTema() {
     final t = context.uai;
-    final atualColor =
-    _ensureVisible(_getCorGraduacao(_participacao.graduacao), t.card);
-    final novaColor =
-    _ensureVisible(_getCorGraduacao(_participacao.graduacaoNova), t.card);
+    final atualColor = _ensureVisible(
+      _getCorGraduacao(_participacao.graduacao),
+      t.card,
+    );
+    final novaColor = _ensureVisible(
+      _getCorGraduacao(_participacao.graduacaoNova),
+      t.card,
+    );
 
     return _sectionCardTema(
       icon: Icons.school_rounded,
@@ -2600,10 +2744,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       color: t.associacao,
       trailing: _podeEditarGraduacao && !_participacao.estaFinalizado
           ? IconButton(
-        onPressed: _editarGraduacao,
-        icon: Icon(Icons.edit_rounded, color: t.info),
-        tooltip: 'Editar graduação',
-      )
+              onPressed: _editarGraduacao,
+              icon: Icon(Icons.edit_rounded, color: t.info),
+              tooltip: 'Editar graduação',
+            )
           : null,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -2772,7 +2916,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       color: warning,
       title: 'Aguardando data do evento',
       text:
-      'A finalização estará disponível a partir de ${_formatarData(_participacao.dataEvento)}',
+          'A finalização estará disponível a partir de ${_formatarData(_participacao.dataEvento)}',
     );
   }
 
@@ -2985,12 +3129,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
   }
 
-  Widget _infoTileTema(
-      String label,
-      String value,
-      IconData icon,
-      Color color,
-      ) {
+  Widget _infoTileTema(String label, String value, IconData icon, Color color) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -3116,10 +3255,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
           Text(
@@ -3186,7 +3322,12 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
   }
 
-  Widget _buildInfoCard(String label, String value, IconData icon, Color color) {
+  Widget _buildInfoCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       constraints: const BoxConstraints(minHeight: 92),
       padding: const EdgeInsets.all(12),
@@ -3282,21 +3423,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Widget _buildInfoRow(
-      String label,
-      String value, {
-        IconData? icon,
-        Color? iconColor,
-        Color? textColor,
-      }) {
+    String label,
+    String value, {
+    IconData? icon,
+    Color? iconColor,
+    Color? textColor,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey.shade500,
-          ),
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
         ),
         const SizedBox(height: 2),
         Row(
@@ -3340,7 +3478,11 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 20),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange.shade800,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -3378,12 +3520,18 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   color: Colors.red.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.payments_rounded, color: Colors.red.shade900, size: 18),
+                child: Icon(
+                  Icons.payments_rounded,
+                  color: Colors.red.shade900,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  valor >= _saldo - 0.01 ? 'Quitar saldo restante' : 'Pagamento sugerido',
+                  valor >= _saldo - 0.01
+                      ? 'Quitar saldo restante'
+                      : 'Pagamento sugerido',
                   style: TextStyle(
                     color: Colors.grey.shade800,
                     fontSize: 12,
@@ -3462,7 +3610,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     pagamento.observacoes!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5),
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 10.5,
+                    ),
                   ),
                 ],
               ],

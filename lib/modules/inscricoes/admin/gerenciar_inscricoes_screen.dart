@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,14 +14,14 @@ class GerenciarInscricoesScreen extends StatefulWidget {
   const GerenciarInscricoesScreen({super.key});
 
   @override
-  State<GerenciarInscricoesScreen> createState() => _GerenciarInscricoesScreenState();
+  State<GerenciarInscricoesScreen> createState() =>
+      _GerenciarInscricoesScreenState();
 }
 
 class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   List<Map<String, dynamic>> _turmas = [];
-
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -30,7 +30,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -56,7 +57,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   Future<void> _carregarTurmas() async {
     try {
-      final snapshot = await _firestore.collection('turmas').orderBy('nome').get();
+      final snapshot = await _firestore
+          .collection('turmas')
+          .orderBy('nome')
+          .get();
       setState(() {
         _turmas = snapshot.docs.map((doc) {
           final data = doc.data();
@@ -119,7 +123,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                           child: const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.broken_image, size: 64, color: Colors.white54),
+                              Icon(
+                                Icons.broken_image,
+                                size: 64,
+                                color: Colors.white54,
+                              ),
                               SizedBox(height: 16),
                               Text(
                                 'Erro ao carregar imagem',
@@ -134,7 +142,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 ),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.8),
                   ),
@@ -206,7 +217,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   // 🔥 MÉTODO COMPLETO DO WHATSAPP
-  Future<void> _abrirWhatsApp(String numero, {String? mensagem, bool isApp = true}) async {
+  Future<void> _abrirWhatsApp(
+    String numero, {
+    String? mensagem,
+    bool isApp = true,
+  }) async {
     try {
       String cleanedPhone = numero.replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanedPhone.startsWith('0')) {
@@ -235,22 +250,24 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
             throw Exception('Não foi possível abrir o app do WhatsApp');
           }
         } catch (appError) {
-          final webUrl = Uri.parse('https://web.whatsapp.com/send?phone=$cleanedPhone' +
-              (mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''));
-
-          await launchUrl(
-            webUrl,
-            mode: LaunchMode.externalApplication,
+          final webUrl = Uri.parse(
+            'https://web.whatsapp.com/send?phone=$cleanedPhone' +
+                (mensagem != null && mensagem.isNotEmpty
+                    ? '&text=${Uri.encodeComponent(mensagem)}'
+                    : ''),
           );
+
+          await launchUrl(webUrl, mode: LaunchMode.externalApplication);
         }
       } else {
-        final webUrl = Uri.parse('https://web.whatsapp.com/send?phone=$cleanedPhone' +
-            (mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''));
-
-        await launchUrl(
-          webUrl,
-          mode: LaunchMode.externalApplication,
+        final webUrl = Uri.parse(
+          'https://web.whatsapp.com/send?phone=$cleanedPhone' +
+              (mensagem != null && mensagem.isNotEmpty
+                  ? '&text=${Uri.encodeComponent(mensagem)}'
+                  : ''),
         );
+
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
       _mostrarErro('Erro ao abrir WhatsApp: $e');
@@ -258,7 +275,14 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   // 🔥 APROVAR - Abre tela de cadastro com dados preenchidos
-  void _aprovarInscricao(String inscricaoId, Map<String, dynamic> dados, String turmaId, String turmaNome, String academiaId, String academiaNome) {
+  void _aprovarInscricao(
+    String inscricaoId,
+    Map<String, dynamic> dados,
+    String turmaId,
+    String turmaNome,
+    String academiaId,
+    String academiaNome,
+  ) {
     final dadosComId = Map<String, dynamic>.from(dados);
     dadosComId['id'] = inscricaoId;
 
@@ -279,7 +303,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
           _atualizarContadorInscricoes();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('✅ Inscrição aprovada e aluno cadastrado com sucesso!'),
+              content: const Text(
+                '✅ Inscrição aprovada e aluno cadastrado com sucesso!',
+              ),
               backgroundColor: context.uai.success,
               behavior: SnackBarBehavior.floating,
             ),
@@ -302,7 +328,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Color.alphaBlend(context.uai.primary.withOpacity(0.10), context.uai.cardAlt),
+                color: Color.alphaBlend(
+                  context.uai.primary.withOpacity(0.10),
+                  context.uai.cardAlt,
+                ),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(Icons.warning_rounded, color: Colors.red.shade700),
@@ -386,7 +415,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(mensagem),
-          backgroundColor: arquivosFalharam.isEmpty ? Colors.red : Colors.orange,
+          backgroundColor: arquivosFalharam.isEmpty
+              ? Colors.red
+              : Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -396,9 +427,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Future<bool> _deletarArquivoStoragePorUrl(
-      String? url, {
-        required String descricao,
-      }) async {
+    String? url, {
+    required String descricao,
+  }) async {
     if (!_temTexto(url)) return true;
 
     try {
@@ -423,23 +454,25 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   // 🔥 MOSTRAR TERMO COMPLETO
-  void _mostrarTermo(BuildContext context, Map<String, dynamic> dados, String inscricaoId) {
+  void _mostrarTermo(
+    BuildContext context,
+    Map<String, dynamic> dados,
+    String inscricaoId,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => VisualizarTermoScreen(
-          dados: dados,
-          inscricaoId: inscricaoId,
-        ),
+        builder: (context) =>
+            VisualizarTermoScreen(dados: dados, inscricaoId: inscricaoId),
       ),
     );
   }
 
   // 🔥 DIÁLOGO DE SELEÇÃO DE TURMA
   void _mostrarDialogoSelecionarTurma(
-      String inscricaoId,
-      Map<String, dynamic> dados,
-      ) {
+    String inscricaoId,
+    Map<String, dynamic> dados,
+  ) {
     showDialog<void>(
       context: context,
       builder: (context) {
@@ -486,7 +519,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.16),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.16)),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.16),
+                          ),
                         ),
                         child: const Icon(
                           Icons.class_rounded,
@@ -520,7 +555,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -528,170 +566,195 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 Expanded(
                   child: _turmas.isEmpty
                       ? _buildEmptyDialogState(
-                    icon: Icons.class_outlined,
-                    title: 'Nenhuma turma disponível',
-                    subtitle: 'Cadastre uma turma antes de aprovar a inscrição.',
-                  )
+                          icon: Icons.class_outlined,
+                          title: 'Nenhuma turma disponível',
+                          subtitle:
+                              'Cadastre uma turma antes de aprovar a inscrição.',
+                        )
                       : ListView.separated(
-                    padding: const EdgeInsets.all(14),
-                    itemCount: _turmas.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final turma = _turmas[index];
-                      final alunosAtivos = _asInt(turma['alunos_ativos']);
-                      final capacidadeMaxima = _asInt(turma['capacidade_maxima']);
-                      final temLimite = capacidadeMaxima > 0;
-                      final temVaga = !temLimite || alunosAtivos < capacidadeMaxima;
-                      final porcentagem = temLimite
-                          ? ((alunosAtivos / capacidadeMaxima) * 100).clamp(0, 100).round()
-                          : 0;
-                      final progress = temLimite
-                          ? (alunosAtivos / capacidadeMaxima).clamp(0.0, 1.0)
-                          : 0.0;
-
-                      return InkWell(
-                        onTap: temVaga
-                            ? () {
-                          Navigator.pop(context);
-                          _aprovarInscricao(
-                            inscricaoId,
-                            dados,
-                            turma['id'],
-                            turma['nome'],
-                            turma['academia_id'],
-                            turma['academia_nome'],
-                          );
-                        }
-                            : null,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
                           padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: temVaga ? Colors.white : Colors.grey.shade50,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: temVaga
-                                  ? Colors.green.shade100
-                                  : Colors.grey.shade200,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.035),
-                                blurRadius: 7,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
+                          itemCount: _turmas.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final turma = _turmas[index];
+                            final alunosAtivos = _asInt(turma['alunos_ativos']);
+                            final capacidadeMaxima = _asInt(
+                              turma['capacidade_maxima'],
+                            );
+                            final temLimite = capacidadeMaxima > 0;
+                            final temVaga =
+                                !temLimite || alunosAtivos < capacidadeMaxima;
+                            final porcentagem = temLimite
+                                ? ((alunosAtivos / capacidadeMaxima) * 100)
+                                      .clamp(0, 100)
+                                      .round()
+                                : 0;
+                            final progress = temLimite
+                                ? (alunosAtivos / capacidadeMaxima).clamp(
+                                    0.0,
+                                    1.0,
+                                  )
+                                : 0.0;
+
+                            return InkWell(
+                              onTap: temVaga
+                                  ? () {
+                                      Navigator.pop(context);
+                                      _aprovarInscricao(
+                                        inscricaoId,
+                                        dados,
+                                        turma['id'],
+                                        turma['nome'],
+                                        turma['academia_id'],
+                                        turma['academia_nome'],
+                                      );
+                                    }
+                                  : null,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
                                   color: temVaga
-                                      ? Colors.green.shade50
-                                      : Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: Icon(
-                                  temVaga
-                                      ? Icons.meeting_room_rounded
-                                      : Icons.block_rounded,
-                                  color: temVaga
-                                      ? Colors.green.shade700
-                                      : Colors.grey.shade500,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            turma['nome']?.toString() ?? 'Sem nome',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w900,
-                                              color: temVaga
-                                                  ? Colors.grey.shade900
-                                                  : Colors.grey.shade500,
-                                            ),
-                                          ),
-                                        ),
-                                        if (!temVaga)
-                                          _buildSmallStatusChip(
-                                            label: 'LOTADA',
-                                            color: Colors.red,
-                                          )
-                                        else
-                                          _buildSmallStatusChip(
-                                            label: 'DISPONÍVEL',
-                                            color: Colors.green,
-                                          ),
-                                      ],
+                                      ? Colors.white
+                                      : Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: temVaga
+                                        ? Colors.green.shade100
+                                        : Colors.grey.shade200,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.035),
+                                      blurRadius: 7,
+                                      offset: const Offset(0, 3),
                                     ),
-                                    if ((turma['academia_nome']?.toString() ?? '').isNotEmpty) ...[
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        turma['academia_nome'].toString(),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 50,
+                                      height: 50,
+                                      decoration: BoxDecoration(
+                                        color: temVaga
+                                            ? Colors.green.shade50
+                                            : Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(18),
                                       ),
-                                    ],
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(99),
-                                            child: LinearProgressIndicator(
-                                              minHeight: 7,
-                                              value: progress,
-                                              backgroundColor: Colors.grey.shade200,
-                                              valueColor: AlwaysStoppedAnimation<Color>(
-                                                !temLimite
-                                                    ? Colors.green
-                                                    : porcentagem >= 90
-                                                    ? Colors.red
-                                                    : porcentagem >= 70
-                                                    ? Colors.orange
-                                                    : Colors.green,
+                                      child: Icon(
+                                        temVaga
+                                            ? Icons.meeting_room_rounded
+                                            : Icons.block_rounded,
+                                        color: temVaga
+                                            ? Colors.green.shade700
+                                            : Colors.grey.shade500,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  turma['nome']?.toString() ??
+                                                      'Sem nome',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: temVaga
+                                                        ? Colors.grey.shade900
+                                                        : Colors.grey.shade500,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (!temVaga)
+                                                _buildSmallStatusChip(
+                                                  label: 'LOTADA',
+                                                  color: Colors.red,
+                                                )
+                                              else
+                                                _buildSmallStatusChip(
+                                                  label: 'DISPONÍVEL',
+                                                  color: Colors.green,
+                                                ),
+                                            ],
+                                          ),
+                                          if ((turma['academia_nome']
+                                                      ?.toString() ??
+                                                  '')
+                                              .isNotEmpty) ...[
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              turma['academia_nome'].toString(),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Colors.grey.shade600,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
+                                          ],
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(99),
+                                                  child: LinearProgressIndicator(
+                                                    minHeight: 7,
+                                                    value: progress,
+                                                    backgroundColor:
+                                                        Colors.grey.shade200,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(
+                                                          !temLimite
+                                                              ? Colors.green
+                                                              : porcentagem >=
+                                                                    90
+                                                              ? Colors.red
+                                                              : porcentagem >=
+                                                                    70
+                                                              ? Colors.orange
+                                                              : Colors.green,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                temLimite
+                                                    ? '$alunosAtivos/$capacidadeMaxima'
+                                                    : '$alunosAtivos alunos',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.grey.shade700,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          temLimite
-                                              ? '$alunosAtivos/$capacidadeMaxima'
-                                              : '$alunosAtivos alunos',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w900,
-                                            color: Colors.grey.shade700,
-                                          ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
@@ -772,7 +835,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                           Row(
                             children: [
                               GestureDetector(
-                                onTap: () => _abrirFotoTelaCheia(fotoUrl, nomeAluno),
+                                onTap: () =>
+                                    _abrirFotoTelaCheia(fotoUrl, nomeAluno),
                                 child: Hero(
                                   tag: 'foto_inscricao_$docId',
                                   child: _buildFotoAvatar(
@@ -814,7 +878,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                 ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white,
+                                ),
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ],
@@ -921,7 +988,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                         borderRadius: const BorderRadius.vertical(
                           bottom: Radius.circular(28),
                         ),
-                        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                        border: Border(
+                          top: BorderSide(color: Colors.grey.shade200),
+                        ),
                       ),
                       child: Column(
                         children: [
@@ -937,8 +1006,12 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green.shade700,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
@@ -960,7 +1033,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                               Expanded(
                                 child: _buildContactButton(
                                   label: 'Responsável',
-                                  numero: dados['contato_responsavel']?.toString(),
+                                  numero: dados['contato_responsavel']
+                                      ?.toString(),
                                   nome: dados['nome_responsavel']?.toString(),
                                   cor: Colors.blue,
                                 ),
@@ -974,17 +1048,30 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                 child: OutlinedButton.icon(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    Future.delayed(const Duration(milliseconds: 100), () {
-                                      if (mounted) _mostrarTermo(context, dados, docId);
-                                    });
+                                    Future.delayed(
+                                      const Duration(milliseconds: 100),
+                                      () {
+                                        if (mounted)
+                                          _mostrarTermo(context, dados, docId);
+                                      },
+                                    );
                                   },
-                                  icon: const Icon(Icons.description_rounded, size: 19),
+                                  icon: const Icon(
+                                    Icons.description_rounded,
+                                    size: 19,
+                                  ),
                                   label: const Text('TERMO'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.blue.shade700,
-                                    side: BorderSide(color: Colors.blue.shade200),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                                    side: BorderSide(
+                                      color: Colors.blue.shade200,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
@@ -998,13 +1085,22 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                     Navigator.pop(context);
                                     _recusarInscricao(docId);
                                   },
-                                  icon: const Icon(Icons.delete_rounded, size: 19),
+                                  icon: const Icon(
+                                    Icons.delete_rounded,
+                                    size: 19,
+                                  ),
                                   label: const Text('RECUSAR'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.red.shade700,
-                                    side: BorderSide(color: Colors.red.shade200),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
-                                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                                    side: BorderSide(
+                                      color: Colors.red.shade200,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
@@ -1037,18 +1133,18 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     return InkWell(
       onTap: temContato
           ? () {
-        Navigator.pop(context);
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            _abrirWhatsApp(
-              numero,
-              mensagem:
-              'Olá ${nome ?? ''}! Sua inscrição na UAI Capoeira foi recebida e está sendo analisada.',
-              isApp: true,
-            );
-          }
-        });
-      }
+              Navigator.pop(context);
+              Future.delayed(const Duration(milliseconds: 100), () {
+                if (mounted) {
+                  _abrirWhatsApp(
+                    numero,
+                    mensagem:
+                        'Olá ${nome ?? ''}! Sua inscrição na UAI Capoeira foi recebida e está sendo analisada.',
+                    isApp: true,
+                  );
+                }
+              });
+            }
           : null,
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -1229,9 +1325,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     text,
                     style: TextStyle(
                       fontSize: 13.2,
-                      color: onTap == null ? Colors.grey.shade900 : Colors.blue.shade800,
+                      color: onTap == null
+                          ? Colors.grey.shade900
+                          : Colors.blue.shade800,
                       fontWeight: FontWeight.w800,
-                      decoration: onTap == null ? null : TextDecoration.underline,
+                      decoration: onTap == null
+                          ? null
+                          : TextDecoration.underline,
                     ),
                   ),
                 ],
@@ -1253,7 +1353,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  Widget _buildInfoRowClickable(String label, String? value, VoidCallback onTap) {
+  Widget _buildInfoRowClickable(
+    String label,
+    String? value,
+    VoidCallback onTap,
+  ) {
     return _buildInfoTile(
       icon: Icons.touch_app_rounded,
       label: label,
@@ -1297,7 +1401,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   void _mostrarErro(String mensagem) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensagem), backgroundColor: context.uai.error, behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: context.uai.error,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -1370,19 +1478,19 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       child: ClipOval(
         child: temFoto
             ? CachedNetworkImage(
-          imageUrl: fotoUrl,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            color: context.uai.cardAlt,
-            child: Center(
-              child: CircularProgressIndicator(
-                color: context.uai.primary,
-                strokeWidth: 2,
-              ),
-            ),
-          ),
-          errorWidget: (context, url, error) => _avatarFallback(nome),
-        )
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  color: context.uai.cardAlt,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: context.uai.primary,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => _avatarFallback(nome),
+              )
             : _avatarFallback(nome),
       ),
     );
@@ -1390,7 +1498,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   Widget _avatarFallback(String nome) {
     return Container(
-      color: Color.alphaBlend(context.uai.primary.withOpacity(0.10), context.uai.cardAlt),
+      color: Color.alphaBlend(
+        context.uai.primary.withOpacity(0.10),
+        context.uai.cardAlt,
+      ),
       alignment: Alignment.center,
       child: Text(
         _iniciais(nome),
@@ -1403,10 +1514,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  Widget _buildSmallStatusChip({
-    required String label,
-    required Color color,
-  }) {
+  Widget _buildSmallStatusChip({required String label, required Color color}) {
     final t = context.uai;
     final accent = _safeAccent(color, t.card);
 
@@ -1500,8 +1608,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Inscrições Pendentes',
@@ -1529,22 +1638,25 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildWhiteChip(Icons.pending_actions_rounded, '$total pendente${total == 1 ? '' : 's'}'),
-                  _buildWhiteChip(Icons.history_rounded, 'Aprovadas no histórico'),
-                  _buildWhiteChip(Icons.class_rounded, '${_turmas.length} turma${_turmas.length == 1 ? '' : 's'}'),
+                  _buildWhiteChip(
+                    Icons.pending_actions_rounded,
+                    '$total pendente${total == 1 ? '' : 's'}',
+                  ),
+                  _buildWhiteChip(
+                    Icons.history_rounded,
+                    'Aprovadas no histórico',
+                  ),
+                  _buildWhiteChip(
+                    Icons.class_rounded,
+                    '${_turmas.length} turma${_turmas.length == 1 ? '' : 's'}',
+                  ),
                 ],
               ),
             ],
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -1671,10 +1783,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey.shade500,
-            ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade500),
           ],
         ),
       ),
@@ -1764,8 +1873,11 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline_rounded,
-                  size: 70, color: Colors.red.shade700),
+              Icon(
+                Icons.error_outline_rounded,
+                size: 70,
+                color: Colors.red.shade700,
+              ),
               const SizedBox(height: 12),
               const Text(
                 'Erro ao carregar inscrições',
@@ -1786,9 +1898,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Widget _buildLoadingScreen() {
-    return Center(
-      child: CircularProgressIndicator(color: context.uai.primary),
-    );
+    return Center(child: CircularProgressIndicator(color: context.uai.primary));
   }
 
   @override
@@ -1855,7 +1965,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                               children: inscricoes.map((doc) {
                                 final data = doc.data() as Map<String, dynamic>;
                                 return SizedBox(
-                                  width: (constraints.maxWidth.clamp(0, 1120) - 12) / 2,
+                                  width:
+                                      (constraints.maxWidth.clamp(0, 1120) -
+                                          12) /
+                                      2,
                                   child: _buildInscricaoCard(
                                     docId: doc.id,
                                     data: data,
@@ -1889,4 +2002,3 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 }
-

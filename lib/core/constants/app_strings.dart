@@ -3,9 +3,12 @@ class AppStrings {
   static const String campeonatoTitulo = '1° CAMPEONATO UAI CAPOEIRA';
 
   // Mensagens de erro
-  static const String erroCarregarDados = 'Erro ao carregar dados. Tente novamente.';
-  static const String erroVagasEsgotadas = 'Desculpe, as vagas estão esgotadas.';
-  static const String erroPermissao = 'Erro de permissão. Contate o administrador.';
+  static const String erroCarregarDados =
+      'Erro ao carregar dados. Tente novamente.';
+  static const String erroVagasEsgotadas =
+      'Desculpe, as vagas estão esgotadas.';
+  static const String erroPermissao =
+      'Erro de permissão. Contate o administrador.';
   static const String erroGenerico = 'Erro ao enviar inscrição: ';
 
   // Mensagens de sucesso
@@ -26,11 +29,14 @@ class AppStrings {
   static const String labelGrupo = 'Grupo *';
   static const String labelProfessor = 'Nome do Professor/Mestre *';
   static const String labelProfessorContato = 'WhatsApp do Professor *';
-  static const String labelGraduacao = 'Digite a graduação do competidor (ex: 8° INFANTIL - CRUA/MARROM) *';
+  static const String labelGraduacao =
+      'Digite a graduação do competidor (ex: 8° INFANTIL - CRUA/MARROM) *';
 
   // Mensagens de ajuda
-  static const String ajudaGrupo = 'Caso seu grupo não esteja na lista, entre em contato com a organização!';
-  static const String ajudaGraduacao = '⚠️ IMPORTANTE: Esta é a GRADUAÇÃO DO COMPETIDOR, não a do professor.';
+  static const String ajudaGrupo =
+      'Caso seu grupo não esteja na lista, entre em contato com a organização!';
+  static const String ajudaGraduacao =
+      '⚠️ IMPORTANTE: Esta é a GRADUAÇÃO DO COMPETIDOR, não a do professor.';
 
   // Títulos das seções
   static const String tituloDadosCompetidor = '📋 DADOS DO COMPETIDOR';
@@ -71,8 +77,10 @@ class AppStrings {
   static const String validacaoCampoObrigatorio = 'Campo obrigatório';
 
   // Textos de seções específicas
-  static const String pixAposPagamento = '💰 Após o pagamento, faça o upload do comprovante abaixo.';
-  static const String pixAposPagamentoDialog = '💰 Após o pagamento, envie o comprovante para seu professor.';
+  static const String pixAposPagamento =
+      '💰 Após o pagamento, faça o upload do comprovante abaixo.';
+  static const String pixAposPagamentoDialog =
+      '💰 Após o pagamento, envie o comprovante para seu professor.';
   static const String pixChave = 'Chave PIX:';
   static const String pixInfoBancaria = 'Informações Bancárias:';
   static const String pixInstrucoes = 'Instruções:';

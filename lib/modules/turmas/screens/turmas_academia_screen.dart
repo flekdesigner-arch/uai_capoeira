@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -122,9 +122,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _carregarUsuarioLogado(
-      String uid, {
-        bool forcarServidor = false,
-      }) async {
+    String uid, {
+    bool forcarServidor = false,
+  }) async {
     final sources = forcarServidor
         ? const [Source.server, Source.cache]
         : const [Source.cache, Source.server];
@@ -161,9 +161,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _carregarPermissoesUsuario(
-      String uid, {
-        bool forcarServidor = false,
-      }) async {
+    String uid, {
+    bool forcarServidor = false,
+  }) async {
     final sources = forcarServidor
         ? const [Source.server, Source.cache]
         : const [Source.cache, Source.server];
@@ -195,7 +195,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             'pode_mudar_turma': data['pode_mudar_turma'] ?? false,
             'pode_visualizar_alunos': data['pode_visualizar_alunos'] ?? false,
             'pode_visualizar_relatorios':
-            data['pode_visualizar_relatorios'] ?? false,
+                data['pode_visualizar_relatorios'] ?? false,
           };
         });
 
@@ -237,7 +237,8 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro = 'Sem conexão no momento. Tente novamente em instantes.';
+          _mensagemErro =
+              'Sem conexão no momento. Tente novamente em instantes.';
         });
         return;
       }
@@ -264,15 +265,16 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       } else {
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro = 'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
+          _mensagemErro =
+              'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
         });
       }
     }
   }
 
   Future<void> _processarTurmas(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
     final turmasAcessiveis = <Map<String, dynamic>>[];
 
     for (final doc in docs) {
@@ -298,7 +300,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         'nucleo': data['nucleo'] ?? '',
         'status': data['status'] ?? '',
         'ultima_atualizacao':
-        data['ultima_atualizacao'] ?? FieldValue.serverTimestamp(),
+            data['ultima_atualizacao'] ?? FieldValue.serverTimestamp(),
         'logo_url': data['logo_url'] ?? '',
       };
 
@@ -306,7 +308,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
 
     turmasAcessiveis.sort(
-          (a, b) => a['nome'].toString().compareTo(b['nome'].toString()),
+      (a, b) => a['nome'].toString().compareTo(b['nome'].toString()),
     );
 
     if (!mounted) return;
@@ -442,10 +444,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Widget _buildFallbackLogo(
-      Map<String, dynamic> turma,
-      double size,
-      Color corTurma,
-      ) {
+    Map<String, dynamic> turma,
+    double size,
+    Color corTurma,
+  ) {
     final nome = turma['nome']?.toString() ?? '';
     final iniciais = nome.isNotEmpty ? nome.substring(0, 1).toUpperCase() : 'T';
 
@@ -494,7 +496,8 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     // Cabeçalhos com primaryGradient precisam ficar legíveis nos 4 temas oficiais.
     // No Verde Neon, o primary pode ser claro, mas o tema inteiro é dark;
     // se usar _readableOn(primary), o texto fica escuro e perde leitura no card.
-    final temaEscuro = t.background.computeLuminance() < 0.45 ||
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 ||
         t.surface.computeLuminance() < 0.45;
 
     if (temaEscuro) return Colors.white;
@@ -506,14 +509,13 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     return _onPrimaryText(t).withOpacity(opacity);
   }
 
-  Widget _buildTurmaCard(
-      Map<String, dynamic> turma, {
-        bool gridMode = false,
-      }) {
+  Widget _buildTurmaCard(Map<String, dynamic> turma, {bool gridMode = false}) {
     final t = context.uai;
     final alunosAtivos = _parseInt(turma['alunos_ativos'], 0);
     final capacidade = _parseInt(turma['capacidade_maxima'], 0);
-    final porcentagem = capacidade > 0 ? (alunosAtivos / capacidade) * 100 : 0.0;
+    final porcentagem = capacidade > 0
+        ? (alunosAtivos / capacidade) * 100
+        : 0.0;
     final corTurma = _getColorFromHex(turma['cor_turma']);
     final capacidadeColor = _capacidadeColor(porcentagem);
 
@@ -611,10 +613,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Widget _buildTurmaCardHeader(
-      Map<String, dynamic> turma,
-      Color corTurma,
-      UaiThemeTokens t,
-      ) {
+    Map<String, dynamic> turma,
+    Color corTurma,
+    UaiThemeTokens t,
+  ) {
     return Row(
       children: [
         _buildLogoTurma(turma, size: 50),
@@ -626,10 +628,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Widget _buildTurmaTitle(
-      Map<String, dynamic> turma,
-      Color corTurma,
-      UaiThemeTokens t,
-      ) {
+    Map<String, dynamic> turma,
+    Color corTurma,
+    UaiThemeTokens t,
+  ) {
     final nivel = turma['nivel']?.toString() ?? '';
     final faixa = turma['faixa_etaria']?.toString() ?? '';
 
@@ -662,11 +664,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         ],
         if (faixa.isNotEmpty) ...[
           const SizedBox(height: 6),
-          _smallPill(
-            icon: Icons.groups_rounded,
-            label: faixa,
-            color: corTurma,
-          ),
+          _smallPill(icon: Icons.groups_rounded, label: faixa, color: corTurma),
         ],
       ],
     );
@@ -781,7 +779,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     required UaiThemeTokens tokens,
     bool compact = false,
   }) {
-    final value = capacidade > 0 ? (alunosAtivos / capacidade).clamp(0.0, 1.0) : 0.0;
+    final value = capacidade > 0
+        ? (alunosAtivos / capacidade).clamp(0.0, 1.0)
+        : 0.0;
 
     return Row(
       children: [
@@ -963,8 +963,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(13),
                               decoration: BoxDecoration(
-                                borderRadius:
-                                BorderRadius.circular(t.cardRadius - 6),
+                                borderRadius: BorderRadius.circular(
+                                  t.cardRadius - 6,
+                                ),
                                 border: Border.all(color: t.border),
                               ),
                               child: Row(
@@ -974,7 +975,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           turma['nome']?.toString() ?? 'Turma',
@@ -1050,7 +1051,8 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     final t = context.uai;
 
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
 
     return AppBar(
       backgroundColor: appBarBg,
@@ -1086,32 +1088,35 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           padding: const EdgeInsets.only(right: 8),
           child: MediaQuery.of(context).size.width < 380
               ? IconButton(
-            tooltip: 'Ativar alunos inativos',
-            onPressed: _abrirTelaVincularAluno,
-            icon: const Icon(Icons.person_add_alt_1_rounded),
-            style: IconButton.styleFrom(
-              foregroundColor: appBarFg,
-              backgroundColor: appBarFg.withOpacity(0.12),
-            ),
-          )
+                  tooltip: 'Ativar alunos inativos',
+                  onPressed: _abrirTelaVincularAluno,
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  style: IconButton.styleFrom(
+                    foregroundColor: appBarFg,
+                    backgroundColor: appBarFg.withOpacity(0.12),
+                  ),
+                )
               : TextButton.icon(
-            onPressed: _abrirTelaVincularAluno,
-            icon: Icon(Icons.person_add_alt_1_rounded, size: 18),
-            label: Text('INATIVOS'),
-            style: TextButton.styleFrom(
-              foregroundColor: appBarFg,
-              backgroundColor: appBarFg.withOpacity(0.12),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-                side: BorderSide(color: appBarFg.withOpacity(0.14)),
-              ),
-              textStyle: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
+                  onPressed: _abrirTelaVincularAluno,
+                  icon: Icon(Icons.person_add_alt_1_rounded, size: 18),
+                  label: Text('INATIVOS'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: appBarFg,
+                    backgroundColor: appBarFg.withOpacity(0.12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
+                      side: BorderSide(color: appBarFg.withOpacity(0.14)),
+                    ),
+                    textStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
         ),
       ],
     );
@@ -1122,7 +1127,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     final onPrimary = _onPrimaryText(t);
     final totalAlunos = _turmas.fold<int>(
       0,
-          (total, turma) => total + _parseInt(turma['alunos_ativos'], 0),
+      (total, turma) => total + _parseInt(turma['alunos_ativos'], 0),
     );
 
     return Padding(
@@ -1146,16 +1151,13 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                 borderRadius: BorderRadius.circular(t.cardRadius - 2),
                 border: Border.all(color: onPrimary.withOpacity(0.16)),
               ),
-              child: Icon(
-                Icons.groups_3_rounded,
-                color: onPrimary,
-                size: 33,
-              ),
+              child: Icon(Icons.groups_3_rounded, color: onPrimary, size: 33),
             );
 
             final textBox = Column(
-              crossAxisAlignment:
-              narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+              crossAxisAlignment: narrow
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   widget.academiaNome,
@@ -1186,15 +1188,16 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                 ),
                 const SizedBox(height: 12),
                 Wrap(
-                  alignment:
-                  narrow ? WrapAlignment.center : WrapAlignment.start,
+                  alignment: narrow
+                      ? WrapAlignment.center
+                      : WrapAlignment.start,
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     _whiteChip(
                       icon: Icons.class_rounded,
                       label:
-                      '${_turmas.length} turma${_turmas.length == 1 ? '' : 's'}',
+                          '${_turmas.length} turma${_turmas.length == 1 ? '' : 's'}',
                     ),
                     _whiteChip(
                       icon: Icons.people_rounded,
@@ -1211,13 +1214,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             );
 
             if (narrow) {
-              return Column(
-                children: [
-                  iconBox,
-                  SizedBox(height: 14),
-                  textBox,
-                ],
-              );
+              return Column(children: [iconBox, SizedBox(height: 14), textBox]);
             }
 
             return Row(
@@ -1233,10 +1230,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _onPrimaryText(t);
 
@@ -1500,18 +1494,17 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 22),
                       sliver: SliverGrid(
                         delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildTurmaCard(
-                            _turmas[index],
-                            gridMode: true,
-                          ),
+                          (context, index) =>
+                              _buildTurmaCard(_turmas[index], gridMode: true),
                           childCount: _turmas.length,
                         ),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 430,
-                          mainAxisExtent: 200,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 430,
+                              mainAxisExtent: 200,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                            ),
                       ),
                     );
                   }

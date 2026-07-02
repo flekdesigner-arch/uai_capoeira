@@ -1,4 +1,4 @@
-﻿// lib/shared/widgets/indicador_frequencia.dart
+// lib/shared/widgets/indicador_frequencia.dart
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/chamadas/models/frequencia_model.dart';
@@ -19,11 +19,11 @@ class IndicadorFrequencia extends StatelessWidget {
   });
 
   factory IndicadorFrequencia.fromAlunoData(
-      Map<String, dynamic> alunoData, {
-        bool mostrarTexto = false,
-        double tamanho = 12,
-        bool premium = true,
-      }) {
+    Map<String, dynamic> alunoData, {
+    bool mostrarTexto = false,
+    double tamanho = 12,
+    bool premium = true,
+  }) {
     final service = FrequenciaService();
     final frequencia = service.calcularFrequencia(alunoData);
     return IndicadorFrequencia(

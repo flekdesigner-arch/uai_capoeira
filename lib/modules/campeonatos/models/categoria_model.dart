@@ -19,7 +19,10 @@ class CategoriaModel {
     required this.ativo,
   });
 
-  factory CategoriaModel.fromFirestore(Map<String, dynamic> data, {String? id}) {
+  factory CategoriaModel.fromFirestore(
+    Map<String, dynamic> data, {
+    String? id,
+  }) {
     return CategoriaModel(
       id: id ?? data['id'] ?? '',
       nome: data['nome'] ?? '',

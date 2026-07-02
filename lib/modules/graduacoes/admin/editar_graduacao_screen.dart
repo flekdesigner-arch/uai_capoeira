@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:xml/xml.dart' as xml;
 
@@ -17,6 +18,7 @@ class EditarGraduacaoScreen extends StatefulWidget {
 
 class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   final _formKey = GlobalKey<FormState>();
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
   final _nomeController = TextEditingController();
   final _tituloController = TextEditingController();
@@ -35,17 +37,52 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   Color _corPonta2 = Colors.grey;
 
   String? _svgContent;
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isLoading = false;
   bool _salvando = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSvg();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_graduacoes',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (!permitido) return;
+
+    await _loadSvg();
 
     if (widget.graduacaoId != null) {
-      _loadGraduacaoData();
+      await _loadGraduacaoData();
     }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_graduacoes',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _showSnack(
+        'Você não tem permissão para gerenciar graduações.',
+        context.uai.error,
+      );
+    }
+
+    return permitido;
   }
 
   @override
@@ -67,7 +104,8 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -83,8 +121,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (mounted) {
         setState(() => _svgContent = content);
@@ -95,6 +134,8 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   }
 
   Future<void> _loadGraduacaoData() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -113,9 +154,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
         _fraseController.text = data['frase']?.toString() ?? '';
         _descricaoSiteController.text =
             data['descricao_site']?.toString() ??
-                data['descricao_graduacao']?.toString() ??
-                data['descricao']?.toString() ??
-                '';
+            data['descricao_graduacao']?.toString() ??
+            data['descricao']?.toString() ??
+            '';
         _cordaController.text = data['corda']?.toString() ?? '';
 
         setState(() {
@@ -199,7 +240,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                             height: 46,
                             decoration: BoxDecoration(
                               color: accent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                             child: Icon(Icons.palette_rounded, color: accent),
                           ),
@@ -216,7 +259,10 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(context),
-                            icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: t.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -271,9 +317,13 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: t.textSecondary,
                                 side: BorderSide(color: t.border),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               child: const Text('CANCELAR'),
@@ -285,9 +335,13 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: t.primary,
                                 foregroundColor: _readableOn(t.primary),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               onPressed: () {
@@ -313,6 +367,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   }
 
   Future<void> _saveGraduacao() async {
+    if (!await _revalidarAcesso()) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _salvando = true);
@@ -357,7 +412,8 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
-      if (mounted) _showSnack('Erro ao salvar graduação: $e', context.uai.error);
+      if (mounted)
+        _showSnack('Erro ao salvar graduação: $e', context.uai.error);
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -385,8 +441,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
 
         final style = element.getAttribute('style') ?? '';
         final hex = _colorToHex(color).toLowerCase();
-        final newStyle =
-        style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
+        final newStyle = style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
 
         element.setAttribute('style', 'fill:$hex;$newStyle');
       }
@@ -431,6 +486,25 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: widget.graduacaoId == null
+            ? 'Nova Graduação'
+            : 'Editar Graduação',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: widget.graduacaoId == null
+            ? 'Nova Graduação'
+            : 'Editar Graduação',
+        message: 'Você não tem permissão para gerenciar graduações.',
+      );
+    }
+
     final t = context.uai;
     final isEdit = widget.graduacaoId != null;
 
@@ -445,13 +519,13 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
           IconButton(
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             onPressed: _salvando || _isLoading ? null : _saveGraduacao,
             tooltip: 'Salvar',
@@ -461,54 +535,67 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : Form(
-        key: _formKey,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 980;
+              key: _formKey,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 980;
 
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
-                child: isWide
-                    ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 410,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 8, 100),
-                        children: [
-                          _buildPreviewCard(isWide: true),
-                          const SizedBox(height: 14),
-                          _buildColorsCard(),
-                        ],
-                      ),
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: isWide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 410,
+                                  child: ListView(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      18,
+                                      18,
+                                      8,
+                                      100,
+                                    ),
+                                    children: [
+                                      _buildPreviewCard(isWide: true),
+                                      const SizedBox(height: 14),
+                                      _buildColorsCard(),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ListView(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      8,
+                                      18,
+                                      18,
+                                      100,
+                                    ),
+                                    children: [_buildFormCard()],
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                14,
+                                14,
+                                100,
+                              ),
+                              children: [
+                                _buildPreviewCard(isWide: false),
+                                const SizedBox(height: 14),
+                                _buildColorsCard(),
+                                const SizedBox(height: 14),
+                                _buildFormCard(),
+                              ],
+                            ),
                     ),
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(8, 18, 18, 100),
-                        children: [
-                          _buildFormCard(),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-                    : ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
-                  children: [
-                    _buildPreviewCard(isWide: false),
-                    const SizedBox(height: 14),
-                    _buildColorsCard(),
-                    const SizedBox(height: 14),
-                    _buildFormCard(),
-                  ],
-                ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      ),
+            ),
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
@@ -521,13 +608,13 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
             onPressed: _salvando || _isLoading ? null : _saveGraduacao,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _readableOn(t.primary),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _readableOn(t.primary),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR GRADUAÇÃO'),
             style: ElevatedButton.styleFrom(
@@ -645,7 +732,10 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(onPrimary.withOpacity(0.10), t.card),
+                      color: Color.alphaBlend(
+                        onPrimary.withOpacity(0.10),
+                        t.card,
+                      ),
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(color: onPrimary.withOpacity(0.12)),
                     ),
@@ -701,11 +791,19 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                   ),
                   SizedBox(
                     width: itemWidth,
-                    child: _buildColorButton('Ponta 1', _corPonta1, (c) => _corPonta1 = c),
+                    child: _buildColorButton(
+                      'Ponta 1',
+                      _corPonta1,
+                      (c) => _corPonta1 = c,
+                    ),
                   ),
                   SizedBox(
                     width: itemWidth,
-                    child: _buildColorButton('Ponta 2', _corPonta2, (c) => _corPonta2 = c),
+                    child: _buildColorButton(
+                      'Ponta 2',
+                      _corPonta2,
+                      (c) => _corPonta2 = c,
+                    ),
                   ),
                 ],
               );
@@ -780,11 +878,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
 
               if (narrow) {
                 return Column(
-                  children: [
-                    fields[0],
-                    const SizedBox(height: 12),
-                    fields[1],
-                  ],
+                  children: [fields[0], const SizedBox(height: 12), fields[1]],
                 );
               }
 
@@ -821,11 +915,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
 
               if (narrow) {
                 return Column(
-                  children: [
-                    fields[0],
-                    const SizedBox(height: 12),
-                    fields[1],
-                  ],
+                  children: [fields[0], const SizedBox(height: 12), fields[1]],
                 );
               }
 
@@ -842,14 +932,16 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
           _sectionTitle(
             icon: Icons.auto_stories_rounded,
             title: 'Textos da graduação',
-            subtitle: 'A descrição aparece no site. A frase continua sendo usada no certificado.',
+            subtitle:
+                'A descrição aparece no site. A frase continua sendo usada no certificado.',
             centered: false,
           ),
           const SizedBox(height: 14),
           _buildTextField(
             controller: _descricaoSiteController,
             label: 'Descrição da graduação no site',
-            hint: 'Ex: O cinza carrega o peso das correntes pelos escravizados...',
+            hint:
+                'Ex: O cinza carrega o peso das correntes pelos escravizados...',
             icon: Icons.public_rounded,
             maxLines: 5,
             onChanged: (_) => setState(() {}),
@@ -898,7 +990,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
     final accent = _ensureVisible(t.primary, t.card);
 
     return Row(
-      mainAxisAlignment: centered ? MainAxisAlignment.center : MainAxisAlignment.start,
+      mainAxisAlignment: centered
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.start,
       children: [
         Container(
           width: 42,
@@ -913,8 +1007,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
         const SizedBox(width: 11),
         Flexible(
           child: Column(
-            crossAxisAlignment:
-            centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: centered
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 title,
@@ -1063,7 +1158,10 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
         prefixIcon: Icon(icon, color: accent),
         filled: true,
         fillColor: t.cardAlt,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.inputRadius),
         ),
@@ -1091,10 +1189,10 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   }
 
   Widget _buildColorButton(
-      String label,
-      Color color,
-      ValueChanged<Color> onColorChanged,
-      ) {
+    String label,
+    Color color,
+    ValueChanged<Color> onColorChanged,
+  ) {
     final t = context.uai;
     final visibleColor = _ensureVisible(color, t.cardAlt);
 

@@ -9,7 +9,7 @@ class PwaInstallService {
   static final PwaInstallService instance = PwaInstallService._internal();
 
   final StreamController<bool> _installAvailableController =
-  StreamController<bool>.broadcast();
+      StreamController<bool>.broadcast();
 
   html.Event? _deferredPrompt;
   bool _initialized = false;

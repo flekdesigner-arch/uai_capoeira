@@ -41,8 +41,8 @@ class CertificadoParticipanteCard extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -97,7 +97,10 @@ class CertificadoParticipanteCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: borderColor, width: selecionado ? 1.4 : 1),
+            border: Border.all(
+              color: borderColor,
+              width: selecionado ? 1.4 : 1,
+            ),
             boxShadow: t.softShadow,
           ),
           child: Column(
@@ -206,17 +209,11 @@ class CertificadoParticipanteCard extends StatelessWidget {
           SizedBox(
             width: 21,
             height: 21,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.4,
-              color: accent,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: accent),
           ),
         ] else ...[
           const SizedBox(width: 8),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: t.textMuted,
-          ),
+          Icon(Icons.chevron_right_rounded, color: t.textMuted),
         ],
       ],
     );
@@ -250,7 +247,9 @@ class CertificadoParticipanteCard extends StatelessWidget {
         _chip(
           context,
           icon: Icons.workspace_premium_rounded,
-          label: participante.temGraduacaoNova ? 'Graduação ok' : 'Sem graduação',
+          label: participante.temGraduacaoNova
+              ? 'Graduação ok'
+              : 'Sem graduação',
           color: participante.temGraduacaoNova ? t.success : t.error,
         ),
       ],
@@ -360,23 +359,19 @@ class CertificadoParticipanteCard extends StatelessWidget {
         ];
 
         if (compactActions) {
-          return Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: actions,
-          );
+          return Wrap(spacing: 7, runSpacing: 7, children: actions);
         }
 
         return Row(
           children: actions
               .map(
                 (item) => Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: item,
-              ),
-            ),
-          )
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: item,
+                  ),
+                ),
+              )
               .toList(),
         );
       },
@@ -384,12 +379,12 @@ class CertificadoParticipanteCard extends StatelessWidget {
   }
 
   Widget _action(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required Color color,
-        required VoidCallback? onTap,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -398,11 +393,7 @@ class CertificadoParticipanteCard extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: processando ? null : onTap,
         icon: Icon(icon, size: 15),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         style: OutlinedButton.styleFrom(
           foregroundColor: accent,
           disabledForegroundColor: t.textMuted,
@@ -410,10 +401,7 @@ class CertificadoParticipanteCard extends StatelessWidget {
             color: onTap == null ? t.border : accent.withOpacity(0.22),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          textStyle: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
+          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -423,11 +411,11 @@ class CertificadoParticipanteCard extends StatelessWidget {
   }
 
   Widget _chip(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required Color color,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -469,9 +457,9 @@ class CertificadoParticipanteCard extends StatelessWidget {
       default:
         return raw
             .replaceAllMapped(
-          RegExp(r'([a-z])([A-Z])'),
+              RegExp(r'([a-z])([A-Z])'),
               (match) => '${match.group(1)} ${match.group(2)}',
-        )
+            )
             .toUpperCase();
     }
   }

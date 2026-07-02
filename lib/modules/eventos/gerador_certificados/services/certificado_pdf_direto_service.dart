@@ -15,18 +15,19 @@ import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certifi
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/services/certificado_lote_impressao_service.dart';
 
 class CertificadoPdfDiretoService {
-  CertificadoPdfDiretoService({
-    CertificadoSvgService? svgService,
-  }) : _svgService = svgService ?? const CertificadoSvgService();
+  CertificadoPdfDiretoService({CertificadoSvgService? svgService})
+    : _svgService = svgService ?? const CertificadoSvgService();
 
   final CertificadoSvgService _svgService;
 
   static const double _viewBoxWidth = 297.0;
   static const double _viewBoxHeight = 210.0;
-  static const String relatorioNomePadrao = 'RELATORIO_CERTIFICADOS_GRAFICA.pdf';
+  static const String relatorioNomePadrao =
+      'RELATORIO_CERTIFICADOS_GRAFICA.pdf';
 
   final Map<CertificadoTemplateTipo, String> _svgCache = {};
-  final Map<CertificadoTemplateTipo, Map<String, CertificadoSlotModel>> _slotsCache = {};
+  final Map<CertificadoTemplateTipo, Map<String, CertificadoSlotModel>>
+  _slotsCache = {};
 
   pw.Font? _arial;
   pw.Font? _arialBold;
@@ -86,13 +87,7 @@ class CertificadoPdfDiretoService {
           nomesUsados: nomesUsados,
         );
 
-        archive.addFile(
-          ArchiveFile(
-            nomeArquivo,
-            pdfBytes.length,
-            pdfBytes,
-          ),
-        );
+        archive.addFile(ArchiveFile(nomeArquivo, pdfBytes.length, pdfBytes));
 
         itens.add(
           CertificadoPacoteGraficaItem(
@@ -120,7 +115,9 @@ class CertificadoPdfDiretoService {
     }
 
     if (itens.isEmpty) {
-      throw Exception('Nenhum PDF foi gerado. Verifique as graduações e tente novamente.');
+      throw Exception(
+        'Nenhum PDF foi gerado. Verifique as graduações e tente novamente.',
+      );
     }
 
     final relatorioBytes = await gerarRelatorioGraficaPdf(
@@ -132,11 +129,7 @@ class CertificadoPdfDiretoService {
     await Future<void>.delayed(const Duration(milliseconds: 80));
 
     archive.addFile(
-      ArchiveFile(
-        relatorioNomePadrao,
-        relatorioBytes.length,
-        relatorioBytes,
-      ),
+      ArchiveFile(relatorioNomePadrao, relatorioBytes.length, relatorioBytes),
     );
 
     final zipBytes = Uint8List.fromList(
@@ -177,10 +170,7 @@ class CertificadoPdfDiretoService {
           return pw.Stack(
             children: [
               pw.Positioned.fill(
-                child: pw.SvgImage(
-                  svg: svg,
-                  fit: pw.BoxFit.fill,
-                ),
+                child: pw.SvgImage(svg: svg, fit: pw.BoxFit.fill),
               ),
               ..._textosDoCertificado(
                 evento: evento,
@@ -323,11 +313,11 @@ class CertificadoPdfDiretoService {
       final width = widthMm * sx;
       final fitted = config.autoAjustar
           ? _fitFontSize(
-        textoFinal,
-        config.fontSize,
-        width,
-        minFontSize: config.fontSize * config.minScale,
-      )
+              textoFinal,
+              config.fontSize,
+              width,
+              minFontSize: config.fontSize * config.minScale,
+            )
           : config.fontSize;
 
       widgets.add(
@@ -371,7 +361,8 @@ class CertificadoPdfDiretoService {
       final xMm = (slot.x - extraLeft) + effectiveRightPadding;
       final yMm = slot.y + topOffsetMm + config.topOffsetMm;
       final widthMm =
-          (slot.width + widthExtraMm + config.widthExtraMm) - effectiveRightPadding;
+          (slot.width + widthExtraMm + config.widthExtraMm) -
+          effectiveRightPadding;
       final heightMm = slot.height + heightExtraMm + config.heightExtraMm;
 
       addTextBox(
@@ -468,7 +459,10 @@ class CertificadoPdfDiretoService {
         widgets.add(
           pw.Positioned(
             left: x,
-            top: y + yOffset + (index * paragraph.fontSize * paragraph.lineHeight),
+            top:
+                y +
+                yOffset +
+                (index * paragraph.fontSize * paragraph.lineHeight),
             child: pw.Container(
               width: width,
               alignment: _horizontalAlignment(config.textAlign),
@@ -545,9 +539,9 @@ class CertificadoPdfDiretoService {
   }
 
   Future<String> _svgColorido(
-      CertificadoTemplateTipo tipo,
-      CertificadoParticipanteData participante,
-      ) async {
+    CertificadoTemplateTipo tipo,
+    CertificadoParticipanteData participante,
+  ) async {
     final base = _svgCache[tipo] ?? await _svgService.carregarTemplate(tipo);
     _svgCache[tipo] = base;
 
@@ -560,8 +554,8 @@ class CertificadoPdfDiretoService {
   }
 
   Future<Map<String, CertificadoSlotModel>> _slots(
-      CertificadoTemplateTipo tipo,
-      ) async {
+    CertificadoTemplateTipo tipo,
+  ) async {
     final cached = _slotsCache[tipo];
     if (cached != null) return cached;
 
@@ -585,10 +579,16 @@ class CertificadoPdfDiretoService {
     _square = await _tryLoadFont('assets/fontes/Square721 BT Roman.ttf');
     _squareBold = await _tryLoadFont('assets/fontes/Square721 BT Bold.ttf');
     _squareCn = await _tryLoadFont('assets/fontes/Square721 Cn BT Roman.ttf');
-    _squareCnBold = await _tryLoadFont('assets/fontes/Square721 Cn BT Bold.ttf');
+    _squareCnBold = await _tryLoadFont(
+      'assets/fontes/Square721 Cn BT Bold.ttf',
+    );
     _autography = await _tryLoadFont('assets/fontes/Autography.otf');
-    _photographSignature = await _tryLoadFont('assets/fontes/Photograph Signature.ttf');
-    _angelinaMalika = await _tryLoadFont('assets/fontes/Angelina Malika Personal Use.ttf');
+    _photographSignature = await _tryLoadFont(
+      'assets/fontes/Photograph Signature.ttf',
+    );
+    _angelinaMalika = await _tryLoadFont(
+      'assets/fontes/Angelina Malika Personal Use.ttf',
+    );
     _bigTimes = await _tryLoadFont('assets/fontes/Bigtimes.otf');
 
     _fontesCertificado
@@ -669,7 +669,6 @@ class CertificadoPdfDiretoService {
     }
   }
 
-
   _CertificadoTextoConfig _configTextoCampo({
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
@@ -731,35 +730,37 @@ class CertificadoPdfDiretoService {
       'orientação',
     ]);
 
-    final negrito = _readBool(raw, const ['negrito', 'bold'], font == _arialBold);
-    final autoAjustar = _readBool(
-      raw,
-      const ['autoAjustar', 'auto_ajustar', 'autoFit', 'auto_fit'],
-      true,
-    );
-    final uppercase = _readBool(
-      raw,
-      const ['uppercase', 'maiusculo', 'maiuscula', 'caixaAlta', 'caixa_alta'],
-      true,
-    );
+    final negrito = _readBool(raw, const [
+      'negrito',
+      'bold',
+    ], font == _arialBold);
+    final autoAjustar = _readBool(raw, const [
+      'autoAjustar',
+      'auto_ajustar',
+      'autoFit',
+      'auto_fit',
+    ], true);
+    final uppercase = _readBool(raw, const [
+      'uppercase',
+      'maiusculo',
+      'maiuscula',
+      'caixaAlta',
+      'caixa_alta',
+    ], true);
 
     final textCase = _normalizarTextCase(
       _readString(raw, const [
-        'textCase',
-        'text_case',
-        'caixaTexto',
-        'caixa_texto',
-        'case',
-      ]) ??
+            'textCase',
+            'text_case',
+            'caixaTexto',
+            'caixa_texto',
+            'case',
+          ]) ??
           (uppercase ? 'upper' : 'none'),
     );
 
     final tamanhoPdf = _normalizarTamanhoPt(
-      _readDouble(
-        raw,
-        const ['tamanho', 'fontSize', 'size'],
-        fontSize,
-      ),
+      _readDouble(raw, const ['tamanho', 'fontSize', 'size'], fontSize),
     );
 
     return _CertificadoTextoConfig(
@@ -778,20 +779,25 @@ class CertificadoPdfDiretoService {
         'alturaLinha',
       ], lineHeight),
       maxLines: _readInt(raw, const ['maxLines', 'linhasMaximas'], maxLines),
-      topOffsetMm: _readDouble(
-        raw,
-        const [
-          'verticalOffsetMm',
-          'vertical_offset_mm',
-          'topOffsetMm',
-          'offsetY',
-          'yOffset',
-        ],
-        topOffsetMm,
-      ),
-      heightExtraMm: _readDouble(raw, const ['heightExtraMm', 'extraAltura'], heightExtraMm),
-      widthExtraMm: _readDouble(raw, const ['widthExtraMm', 'extraLargura'], widthExtraMm),
-      rightPaddingMm: _readDouble(raw, const ['rightPaddingMm', 'paddingDireita'], rightPaddingMm),
+      topOffsetMm: _readDouble(raw, const [
+        'verticalOffsetMm',
+        'vertical_offset_mm',
+        'topOffsetMm',
+        'offsetY',
+        'yOffset',
+      ], topOffsetMm),
+      heightExtraMm: _readDouble(raw, const [
+        'heightExtraMm',
+        'extraAltura',
+      ], heightExtraMm),
+      widthExtraMm: _readDouble(raw, const [
+        'widthExtraMm',
+        'extraLargura',
+      ], widthExtraMm),
+      rightPaddingMm: _readDouble(raw, const [
+        'rightPaddingMm',
+        'paddingDireita',
+      ], rightPaddingMm),
       textCase: textCase,
       uppercase: uppercase,
       negrito: negrito,
@@ -800,10 +806,10 @@ class CertificadoPdfDiretoService {
   }
 
   Map<String, dynamic>? _configCampoEvento(
-      CertificadoEventoData evento, {
-        required String campo,
-        required List<String> aliases,
-      }) {
+    CertificadoEventoData evento, {
+    required String campo,
+    required List<String> aliases,
+  }) {
     final keys = <String>{campo, ...aliases};
 
     for (final key in keys) {
@@ -816,10 +822,10 @@ class CertificadoPdfDiretoService {
   }
 
   Map<String, dynamic>? _configCampoParticipante(
-      CertificadoParticipanteData participante, {
-        required String campo,
-        required List<String> aliases,
-      }) {
+    CertificadoParticipanteData participante, {
+    required String campo,
+    required List<String> aliases,
+  }) {
     final configRaiz = _readDynamicMap(participante, const [
       'configTextoCertificado',
       'config_texto_certificado',
@@ -843,7 +849,8 @@ class CertificadoPdfDiretoService {
 
       // Aceita também um formato mais explícito:
       // { campos: { aluno_nome: {...}, frase: {...} } }
-      final campos = configRaiz['campos'] ?? configRaiz['fields'] ?? configRaiz['textos'];
+      final campos =
+          configRaiz['campos'] ?? configRaiz['fields'] ?? configRaiz['textos'];
       if (campos is Map) {
         for (final key in keys) {
           final value = campos[key];
@@ -856,9 +863,9 @@ class CertificadoPdfDiretoService {
   }
 
   Map<String, dynamic>? _readDynamicMap(
-      Object object,
-      List<String> propertyNames,
-      ) {
+    Object object,
+    List<String> propertyNames,
+  ) {
     for (final propertyName in propertyNames) {
       try {
         final value = _readDynamicProperty(object, propertyName);
@@ -923,10 +930,10 @@ class CertificadoPdfDiretoService {
   }
 
   double _readDouble(
-      Map<String, dynamic>? data,
-      List<String> keys,
-      double fallback,
-      ) {
+    Map<String, dynamic>? data,
+    List<String> keys,
+    double fallback,
+  ) {
     if (data == null) return fallback;
 
     for (final key in keys) {
@@ -945,11 +952,7 @@ class CertificadoPdfDiretoService {
     return fallback;
   }
 
-  int _readInt(
-      Map<String, dynamic>? data,
-      List<String> keys,
-      int fallback,
-      ) {
+  int _readInt(Map<String, dynamic>? data, List<String> keys, int fallback) {
     if (data == null) return fallback;
 
     for (final key in keys) {
@@ -974,11 +977,7 @@ class CertificadoPdfDiretoService {
     return tamanho;
   }
 
-  bool _readBool(
-      Map<String, dynamic>? data,
-      List<String> keys,
-      bool fallback,
-      ) {
+  bool _readBool(Map<String, dynamic>? data, List<String> keys, bool fallback) {
     if (data == null) return fallback;
 
     for (final key in keys) {
@@ -991,14 +990,17 @@ class CertificadoPdfDiretoService {
       if (text == 'true' || text == '1' || text == 'sim' || text == 'yes') {
         return true;
       }
-      if (text == 'false' || text == '0' || text == 'nao' || text == 'não' || text == 'no') {
+      if (text == 'false' ||
+          text == '0' ||
+          text == 'nao' ||
+          text == 'não' ||
+          text == 'no') {
         return false;
       }
     }
 
     return fallback;
   }
-
 
   pw.Font? _fontByName(String? name, {bool bold = false}) {
     if (name == null || name.trim().isEmpty) return null;
@@ -1037,9 +1039,9 @@ class CertificadoPdfDiretoService {
   }
 
   pw.Alignment _alignmentFromString(
-      String? value, {
-        required pw.Alignment fallback,
-      }) {
+    String? value, {
+    required pw.Alignment fallback,
+  }) {
     final key = (value ?? '').trim().toLowerCase();
 
     if (key.contains('left') || key.contains('esquerda')) {
@@ -1058,7 +1060,9 @@ class CertificadoPdfDiretoService {
       return pw.Alignment.bottomCenter;
     }
 
-    if (key.contains('center') || key.contains('centro') || key.contains('central')) {
+    if (key.contains('center') ||
+        key.contains('centro') ||
+        key.contains('central')) {
       return pw.Alignment.center;
     }
 
@@ -1066,9 +1070,9 @@ class CertificadoPdfDiretoService {
   }
 
   pw.TextAlign _textAlignFromString(
-      String? value, {
-        required pw.TextAlign fallback,
-      }) {
+    String? value, {
+    required pw.TextAlign fallback,
+  }) {
     final key = (value ?? '').trim().toLowerCase();
 
     if (key.contains('left') || key.contains('esquerda')) {
@@ -1083,7 +1087,9 @@ class CertificadoPdfDiretoService {
       return pw.TextAlign.justify;
     }
 
-    if (key.contains('center') || key.contains('centro') || key.contains('central')) {
+    if (key.contains('center') ||
+        key.contains('centro') ||
+        key.contains('central')) {
       return pw.TextAlign.center;
     }
 
@@ -1108,9 +1114,9 @@ class CertificadoPdfDiretoService {
     final titulo = usaTokensDeGenero
         ? participante.tituloGraduacao
         : _tituloGraduacaoPorGenero(
-      participante.tituloGraduacao,
-      feminino: feminino,
-    );
+            participante.tituloGraduacao,
+            feminino: feminino,
+          );
 
     final frase = data.fraseFinal(
       tipo: tipo,
@@ -1148,9 +1154,9 @@ class CertificadoPdfDiretoService {
   }
 
   String? _sexoParticipante(
-      CertificadoParticipanteData participante,
-      dynamic data,
-      ) {
+    CertificadoParticipanteData participante,
+    dynamic data,
+  ) {
     for (final object in [participante, data]) {
       for (final property in const [
         'sexo',
@@ -1186,10 +1192,10 @@ class CertificadoPdfDiretoService {
   }
 
   String _graduacaoExibidaComGenero(
-      String graduacao, {
-        required CertificadoParticipanteData participante,
-        required dynamic data,
-      }) {
+    String graduacao, {
+    required CertificadoParticipanteData participante,
+    required dynamic data,
+  }) {
     final feminino = _isFeminino(_sexoParticipante(participante, data));
     if (!feminino) return graduacao;
 
@@ -1226,10 +1232,7 @@ class CertificadoPdfDiretoService {
     return out;
   }
 
-  String _tituloGraduacaoPorGenero(
-      String titulo, {
-        required bool feminino,
-      }) {
+  String _tituloGraduacaoPorGenero(String titulo, {required bool feminino}) {
     if (!feminino) return titulo;
 
     final upper = titulo.trim().toUpperCase();
@@ -1321,7 +1324,7 @@ class CertificadoPdfDiretoService {
 
     return lower.replaceAllMapped(
       RegExp(r'(^|[\s\-/])([a-záàâãäéèêëíìîïóòôõöúùûüç])'),
-          (match) {
+      (match) {
         final prefix = match.group(1) ?? '';
         final letter = match.group(2) ?? '';
         return '$prefix${letter.toUpperCase()}';
@@ -1347,9 +1350,7 @@ class CertificadoPdfDiretoService {
       return 'title';
     }
 
-    if (clean == 'none' ||
-        clean == 'original' ||
-        clean == 'normal') {
+    if (clean == 'none' || clean == 'original' || clean == 'normal') {
       return 'none';
     }
 
@@ -1465,9 +1466,7 @@ class CertificadoPdfDiretoService {
       return pw.Container(
         padding: const pw.EdgeInsets.only(top: 8),
         decoration: pw.BoxDecoration(
-          border: pw.Border(
-            top: pw.BorderSide(color: bordaSuave, width: 0.8),
-          ),
+          border: pw.Border(top: pw.BorderSide(color: bordaSuave, width: 0.8)),
         ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -1565,10 +1564,7 @@ class CertificadoPdfDiretoService {
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(
-              '$label: ',
-              style: st(size: 8, bold: true, color: color),
-            ),
+            pw.Text('$label: ', style: st(size: 8, bold: true, color: color)),
             pw.Expanded(
               child: pw.Text(
                 value,
@@ -1602,15 +1598,11 @@ class CertificadoPdfDiretoService {
       ..sort((a, b) => a.key.compareTo(b.key));
 
     List<List<String>> rowsResumoGraduacao() {
-      return graduacoesResumo
-          .map((e) => [e.key, e.value.toString()])
-          .toList();
+      return graduacoesResumo.map((e) => [e.key, e.value.toString()]).toList();
     }
 
     List<List<String>> rowsResumoModelo() {
-      return modelosResumo
-          .map((e) => [e.key, e.value.toString()])
-          .toList();
+      return modelosResumo.map((e) => [e.key, e.value.toString()]).toList();
     }
 
     final listaRows = itens.map((item) {
@@ -1627,10 +1619,7 @@ class CertificadoPdfDiretoService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(26, 24, 26, 32),
-        theme: pw.ThemeData.withFont(
-          base: _arial,
-          bold: _arialBold,
-        ),
+        theme: pw.ThemeData.withFont(base: _arial, bold: _arialBold),
         header: miniHeader,
         footer: rodape,
         build: (context) {
@@ -1659,13 +1648,21 @@ class CertificadoPdfDiretoService {
                         pw.Text(
                           evento.eventoNome,
                           maxLines: 2,
-                          style: st(size: 11.5, bold: true, color: hex('#DCFCE7')),
+                          style: st(
+                            size: 11.5,
+                            bold: true,
+                            color: hex('#DCFCE7'),
+                          ),
                         ),
                         pw.SizedBox(height: 5),
                         pw.Text(
                           'Relatório de conferência dos certificados enviados no arquivo ZIP.',
                           maxLines: 2,
-                          style: st(size: 8.8, color: hex('#BBF7D0'), height: 1.2),
+                          style: st(
+                            size: 8.8,
+                            color: hex('#BBF7D0'),
+                            height: 1.2,
+                          ),
                         ),
                       ],
                     ),
@@ -1764,12 +1761,16 @@ class CertificadoPdfDiretoService {
                       children: [
                         pw.Text(
                           'Orientação para conferência da gráfica',
-                          style: st(size: 9.7, bold: true, color: vermelhoEscuro),
+                          style: st(
+                            size: 9.7,
+                            bold: true,
+                            color: vermelhoEscuro,
+                          ),
                         ),
                         pw.SizedBox(height: 3),
                         pw.Text(
                           'Cada arquivo PDF dentro do ZIP corresponde a um certificado individual. '
-                              'Os nomes abaixo devem bater exatamente com os arquivos recebidos.',
+                          'Os nomes abaixo devem bater exatamente com os arquivos recebidos.',
                           style: st(size: 8.0, color: texto, height: 1.22),
                         ),
                       ],
@@ -1836,7 +1837,13 @@ class CertificadoPdfDiretoService {
             ),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
-              headers: const ['#', 'Aluno', 'Graduação', 'Modelo', 'Arquivo PDF'],
+              headers: const [
+                '#',
+                'Aluno',
+                'Graduação',
+                'Modelo',
+                'Arquivo PDF',
+              ],
               data: listaRows,
               border: pw.TableBorder(
                 horizontalInside: pw.BorderSide(color: bordaSuave, width: 0.4),
@@ -1874,7 +1881,9 @@ class CertificadoPdfDiretoService {
               pw.SizedBox(height: 6),
               pw.TableHelper.fromTextArray(
                 headers: const ['Aluno', 'Motivo'],
-                data: erros.map((erro) => [erro.alunoNome, erro.mensagem]).toList(),
+                data: erros
+                    .map((erro) => [erro.alunoNome, erro.mensagem])
+                    .toList(),
                 border: pw.TableBorder.all(color: hex('#FCA5A5'), width: 0.45),
                 headerDecoration: pw.BoxDecoration(color: vermelho),
                 headerStyle: st(size: 8, bold: true, color: branco),
@@ -1890,7 +1899,6 @@ class CertificadoPdfDiretoService {
 
     return doc.save();
   }
-
 
   pw.Alignment _horizontalAlignment(pw.TextAlign align) {
     switch (align) {
@@ -1908,14 +1916,14 @@ class CertificadoPdfDiretoService {
   }
 
   _PdfParagraphLayout _layoutParagraphLines(
-      String text, {
-        required double fontSize,
-        required double width,
-        required double maxHeight,
-        required int maxLines,
-        required double minFontSize,
-        required double lineHeight,
-      }) {
+    String text, {
+    required double fontSize,
+    required double width,
+    required double maxHeight,
+    required int maxLines,
+    required double minFontSize,
+    required double lineHeight,
+  }) {
     var currentFontSize = fontSize;
     final safeLineHeight = lineHeight <= 0 ? 1.16 : lineHeight;
 
@@ -1926,15 +1934,16 @@ class CertificadoPdfDiretoService {
         maxWidth: width,
       );
 
-      final allowedByHeight =
-      (maxHeight / (currentFontSize * safeLineHeight)).floor();
+      final allowedByHeight = (maxHeight / (currentFontSize * safeLineHeight))
+          .floor();
 
       final allowedLines = [
         if (maxLines > 0) maxLines,
         if (allowedByHeight > 0) allowedByHeight,
       ].reduce((a, b) => a < b ? a : b);
 
-      if (lines.length <= allowedLines || currentFontSize <= minFontSize + 0.1) {
+      if (lines.length <= allowedLines ||
+          currentFontSize <= minFontSize + 0.1) {
         return _PdfParagraphLayout(
           lines: lines.take(allowedLines).toList(),
           fontSize: currentFontSize,
@@ -1959,10 +1968,10 @@ class CertificadoPdfDiretoService {
   }
 
   List<String> _wrapPdfText(
-      String text, {
-        required double fontSize,
-        required double maxWidth,
-      }) {
+    String text, {
+    required double fontSize,
+    required double maxWidth,
+  }) {
     final words = text.trim().replaceAll(RegExp(r'\s+'), ' ').split(' ');
     final lines = <String>[];
     var current = '';
@@ -2006,11 +2015,11 @@ class CertificadoPdfDiretoService {
   }
 
   double _fitFontSize(
-      String text,
-      double base,
-      double maxWidth, {
-        required double minFontSize,
-      }) {
+    String text,
+    double base,
+    double maxWidth, {
+    required double minFontSize,
+  }) {
     final clean = text.trim();
     if (clean.isEmpty) return base;
 
@@ -2062,11 +2071,13 @@ class CertificadoPdfDiretoService {
   }
 
   String _nomeArquivoAlunoPdf(
-      CertificadoParticipanteData participante, {
-        required Map<String, int> nomesUsados,
-      }) {
+    CertificadoParticipanteData participante, {
+    required Map<String, int> nomesUsados,
+  }) {
     final base = _limparNomeArquivo(participante.alunoNome).trim();
-    final safeBase = base.isEmpty ? 'CERTIFICADO_${participante.participacaoId}' : base;
+    final safeBase = base.isEmpty
+        ? 'CERTIFICADO_${participante.participacaoId}'
+        : base;
 
     final count = (nomesUsados[safeBase] ?? 0) + 1;
     nomesUsados[safeBase] = count;
@@ -2090,7 +2101,6 @@ class CertificadoPdfDiretoService {
         .trim();
   }
 }
-
 
 class _PdfParagraphLayout {
   final List<String> lines;
@@ -2142,11 +2152,8 @@ class _CertificadoTextoConfig {
   });
 }
 
-typedef CertificadoZipDiretoProgress = void Function(
-    int atual,
-    int total,
-    String alunoNome,
-    );
+typedef CertificadoZipDiretoProgress =
+    void Function(int atual, int total, String alunoNome);
 
 class CertificadoZipDiretoResultado {
   final Uint8List zipBytes;

@@ -25,8 +25,8 @@ class PendenciaCard extends StatelessWidget {
   }
 
   static Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -78,8 +78,9 @@ class PendenciaCard extends StatelessWidget {
     final Color statusFg = percentualPago > 0 ? infoColor : warningColor;
 
     // Cor da barra de progresso
-    final Color progressColor =
-    percentualPago > 50 ? successColor : warningColor;
+    final Color progressColor = percentualPago > 50
+        ? successColor
+        : warningColor;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -105,8 +106,10 @@ class PendenciaCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: statusBg,
                     borderRadius: BorderRadius.circular(12),
@@ -147,8 +150,10 @@ class PendenciaCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Total:',
-                        style: TextStyle(fontSize: 12, color: textSecondary)),
+                    Text(
+                      'Total:',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
                     Text(
                       realFormat.format(total),
                       style: TextStyle(
@@ -162,8 +167,10 @@ class PendenciaCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('Restante:',
-                        style: TextStyle(fontSize: 12, color: textSecondary)),
+                    Text(
+                      'Restante:',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
                     Text(
                       realFormat.format(restante),
                       style: TextStyle(
@@ -182,11 +189,14 @@ class PendenciaCard extends StatelessWidget {
               const SizedBox(height: 8),
               Divider(height: 1, color: borderColor),
               const SizedBox(height: 8),
-              Text('Itens:',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: textPrimary)),
+              Text(
+                'Itens:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: textPrimary,
+                ),
+              ),
               const SizedBox(height: 4),
               ...(data['itens'] as List).take(2).map((item) {
                 return Padding(
@@ -222,8 +232,7 @@ class PendenciaCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () =>
-                      onRegistrarPagamento(docId, data, restante),
+                  onPressed: () => onRegistrarPagamento(docId, data, restante),
                   icon: const Icon(Icons.payment, size: 18),
                   label: const Text('Registrar Pagamento'),
                   style: ElevatedButton.styleFrom(
@@ -232,7 +241,8 @@ class PendenciaCard extends StatelessWidget {
                     minimumSize: const Size(180, 40),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(
-                          context.uai.buttonRadius),
+                        context.uai.buttonRadius,
+                      ),
                     ),
                   ),
                 ),
@@ -245,25 +255,29 @@ class PendenciaCard extends StatelessWidget {
               const SizedBox(height: 12),
               Divider(height: 1, color: borderColor),
               const SizedBox(height: 8),
-              Text('Histórico de pagamentos:',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: textPrimary)),
+              Text(
+                'Histórico de pagamentos:',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: textPrimary,
+                ),
+              ),
               const SizedBox(height: 4),
               ...(data['pagamentos'] as List).map((pagamento) {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 4),
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: cardAlt,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.check_circle,
-                          size: 12, color: successColor),
+                      Icon(Icons.check_circle, size: 12, color: successColor),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -272,9 +286,10 @@ class PendenciaCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        pagamento['forma']
-                            ?.toUpperCase()
-                            .replaceAll('_', ' ') ??
+                        pagamento['forma']?.toUpperCase().replaceAll(
+                              '_',
+                              ' ',
+                            ) ??
                             '',
                         style: TextStyle(fontSize: 9, color: textMuted),
                       ),

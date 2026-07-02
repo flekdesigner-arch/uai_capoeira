@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_model.dart';
@@ -20,7 +20,8 @@ class ChavesPorCategoriaScreen extends StatefulWidget {
   });
 
   @override
-  State<ChavesPorCategoriaScreen> createState() => _ChavesPorCategoriaScreenState();
+  State<ChavesPorCategoriaScreen> createState() =>
+      _ChavesPorCategoriaScreenState();
 }
 
 class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
@@ -44,7 +45,9 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
       final chaves = await _campeonatoService.getChaves(widget.categoriaId);
 
       // Carregar competidores para mapear IDs -> nomes
-      final competidores = await _campeonatoService.getCompetidoresPorCategoria(widget.categoriaNome);
+      final competidores = await _campeonatoService.getCompetidoresPorCategoria(
+        widget.categoriaNome,
+      );
 
       final Map<String, InscricaoCampeonatoModel> map = {};
       for (var comp in competidores) {
@@ -117,7 +120,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
         title: const Text('🔄 Resetar Chaves'),
         content: const Text(
           'Tem certeza que deseja resetar todas as chaves?\n'
-              'Todo o histórico de resultados será perdido.',
+          'Todo o histórico de resultados será perdido.',
         ),
         actions: [
           TextButton(
@@ -140,10 +143,15 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
 
     try {
       // Busca os competidores novamente
-      final competidores = await _campeonatoService.getCompetidoresPorCategoria(widget.categoriaNome);
+      final competidores = await _campeonatoService.getCompetidoresPorCategoria(
+        widget.categoriaNome,
+      );
 
       // 👇 CORREÇÃO AQUI!
-      final List<String> competidoresIds = competidores.map((c) => c.id).toList().cast<String>();
+      final List<String> competidoresIds = competidores
+          .map((c) => c.id)
+          .toList()
+          .cast<String>();
 
       // Gera novas chaves
       await _campeonatoService.gerarChaves(widget.categoriaId, competidoresIds);
@@ -325,7 +333,8 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
   Widget _buildChavesContent() {
     final chaves = _chaves!['chaves'] as List<dynamic>;
     final rodadaAtual = _chaves!['rodada'] ?? 1;
-    final totalRodadas = _chaves!['total_rodadas'] ?? _getTotalRodadas(_competidoresMap.length);
+    final totalRodadas =
+        _chaves!['total_rodadas'] ?? _getTotalRodadas(_competidoresMap.length);
     final todasFinalizadas = _isTodasChavesFinalizadas(chaves);
 
     return Column(
@@ -368,7 +377,10 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 ),
               if (rodadaAtual == totalRodadas && todasFinalizadas)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.green,
                     borderRadius: BorderRadius.circular(20),
@@ -401,7 +413,12 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
     );
   }
 
-  Widget _buildChaveCard(Map<String, dynamic> chave, int index, int rodadaAtual, int totalRodadas) {
+  Widget _buildChaveCard(
+    Map<String, dynamic> chave,
+    int index,
+    int rodadaAtual,
+    int totalRodadas,
+  ) {
     final comp1Id = chave['competidor1'];
     final comp2Id = chave['competidor2'];
     final vencedorId = chave['vencedor'];
@@ -467,7 +484,10 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: getStatusColor().withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -494,14 +514,20 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                   ),
                   if (rodadaAtual == totalRodadas && vencedorId != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.amber.shade100,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
                         '🏆 FINAL',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                 ],
@@ -525,10 +551,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Container(
-                        height: 1,
-                        color: Colors.grey.shade300,
-                      ),
+                      child: Container(height: 1, color: Colors.grey.shade300),
                     ),
                     Container(
                       width: 30,
@@ -549,10 +572,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                       ),
                     ),
                     Expanded(
-                      child: Container(
-                        height: 1,
-                        color: Colors.grey.shade300,
-                      ),
+                      child: Container(height: 1, color: Colors.grey.shade300),
                     ),
                   ],
                 ),
@@ -615,7 +635,10 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                     decoration: BoxDecoration(
                       color: Colors.amber.shade50,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber.shade200, width: 1),
+                      border: Border.all(
+                        color: Colors.amber.shade200,
+                        width: 1,
+                      ),
                     ),
                     child: const Center(
                       child: Text(
@@ -682,32 +705,32 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
             ),
             child: fotoUrl != null && fotoUrl.isNotEmpty
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1,
-                      valueColor: AlwaysStoppedAnimation<Color>(cor),
+                    borderRadius: BorderRadius.circular(18),
+                    child: CachedNetworkImage(
+                      imageUrl: fotoUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1,
+                            valueColor: AlwaysStoppedAnimation<Color>(cor),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Icon(
+                        isVencedor ? Icons.emoji_events : Icons.person,
+                        size: 18,
+                        color: isVencedor ? Colors.green : cor,
+                      ),
                     ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => Icon(
-                  isVencedor ? Icons.emoji_events : Icons.person,
-                  size: 18,
-                  color: isVencedor ? Colors.green : cor,
-                ),
-              ),
-            )
+                  )
                 : Icon(
-              isVencedor ? Icons.emoji_events : Icons.person,
-              size: 18,
-              color: isVencedor ? Colors.green : cor,
-            ),
+                    isVencedor ? Icons.emoji_events : Icons.person,
+                    size: 18,
+                    color: isVencedor ? Colors.green : cor,
+                  ),
           ),
           const SizedBox(width: 12),
 
@@ -723,8 +746,12 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                         nome,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: isVencedor ? FontWeight.bold : FontWeight.normal,
-                          color: isVencedor ? Colors.green.shade900 : Colors.black87,
+                          fontWeight: isVencedor
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isVencedor
+                              ? Colors.green.shade900
+                              : Colors.black87,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -732,7 +759,10 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                     ),
                     if (isBye)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blue.shade100,
                           borderRadius: BorderRadius.circular(10),
@@ -751,10 +781,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
                 if (apelido.isNotEmpty)
                   Text(
                     apelido,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -773,11 +800,7 @@ class _ChavesPorCategoriaScreenState extends State<ChavesPorCategoriaScreen> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.emoji_events,
-                    size: 10,
-                    color: Colors.white,
-                  ),
+                  Icon(Icons.emoji_events, size: 10, color: Colors.white),
                   SizedBox(width: 2),
                   Text(
                     'VENC',

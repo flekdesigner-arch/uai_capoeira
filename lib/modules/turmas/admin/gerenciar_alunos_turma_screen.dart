@@ -41,8 +41,8 @@ class _GerenciarAlunosTurmaScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -87,31 +87,37 @@ class _GerenciarAlunosTurmaScreenState
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .get();
 
-      final alunosVinculadosIds =
-      alunosVinculadosSnapshot.docs.map((doc) => doc.id).toList();
+      final alunosVinculadosIds = alunosVinculadosSnapshot.docs
+          .map((doc) => doc.id)
+          .toList();
 
-      final disponiveis = todosAlunosSnapshot.docs.map((doc) {
-        final data = doc.data();
+      final disponiveis = todosAlunosSnapshot.docs
+          .map((doc) {
+            final data = doc.data();
 
-        final bool jaVinculado = alunosVinculadosIds.contains(doc.id);
-        final bool temTurma =
-            data['turma_id'] != null && data['turma_id'].toString().isNotEmpty;
-        final bool turmaDiferente = temTurma && data['turma_id'] != widget.turmaId;
+            final bool jaVinculado = alunosVinculadosIds.contains(doc.id);
+            final bool temTurma =
+                data['turma_id'] != null &&
+                data['turma_id'].toString().isNotEmpty;
+            final bool turmaDiferente =
+                temTurma && data['turma_id'] != widget.turmaId;
 
-        return {
-          'id': doc.id,
-          'nome': data['nome'] ?? 'Sem nome',
-          'apelido': data['apelido'] ?? '',
-          'graduacao': data['graduacao_atual'] ?? 'Sem graduação',
-          'foto_url': data['foto_perfil_aluno'] ?? '',
-          'ja_vinculado': jaVinculado,
-          'tem_turma_atual': temTurma,
-          'turma_atual': turmaDiferente ? data['turma'] : '',
-          'turma_id_atual': turmaDiferente ? data['turma_id'] : null,
-        };
-      }).where((aluno) {
-        return aluno['ja_vinculado'] != true;
-      }).toList();
+            return {
+              'id': doc.id,
+              'nome': data['nome'] ?? 'Sem nome',
+              'apelido': data['apelido'] ?? '',
+              'graduacao': data['graduacao_atual'] ?? 'Sem graduação',
+              'foto_url': data['foto_perfil_aluno'] ?? '',
+              'ja_vinculado': jaVinculado,
+              'tem_turma_atual': temTurma,
+              'turma_atual': turmaDiferente ? data['turma'] : '',
+              'turma_id_atual': turmaDiferente ? data['turma_id'] : null,
+            };
+          })
+          .where((aluno) {
+            return aluno['ja_vinculado'] != true;
+          })
+          .toList();
 
       vinculados.sort((a, b) {
         return a['nome'].toString().compareTo(b['nome'].toString());
@@ -136,10 +142,7 @@ class _GerenciarAlunosTurmaScreenState
       debugPrint('Erro ao carregar alunos: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao carregar alunos: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao carregar alunos: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -147,9 +150,9 @@ class _GerenciarAlunosTurmaScreenState
   }
 
   Future<void> _vincularAluno(
-      String alunoId,
-      Map<String, dynamic> alunoData,
-      ) async {
+    String alunoId,
+    Map<String, dynamic> alunoData,
+  ) async {
     setState(() => _isLoading = true);
 
     try {
@@ -173,10 +176,7 @@ class _GerenciarAlunosTurmaScreenState
       debugPrint('Erro ao vincular aluno: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao vincular aluno: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao vincular aluno: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -184,9 +184,9 @@ class _GerenciarAlunosTurmaScreenState
   }
 
   Future<void> _removerVinculoAluno(
-      String alunoId,
-      Map<String, dynamic> alunoData,
-      ) async {
+    String alunoId,
+    Map<String, dynamic> alunoData,
+  ) async {
     setState(() => _isLoading = true);
 
     try {
@@ -210,10 +210,7 @@ class _GerenciarAlunosTurmaScreenState
       debugPrint('Erro ao remover vínculo: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao remover aluno: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao remover aluno: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -257,8 +254,10 @@ class _GerenciarAlunosTurmaScreenState
   Widget _buildAlunoDisponivelCard(Map<String, dynamic> aluno) {
     final t = context.uai;
     final bool temTurmaAtual = aluno['tem_turma_atual'] ?? false;
-    final Color accent =
-    _ensureVisible(temTurmaAtual ? t.warning : t.primary, t.card);
+    final Color accent = _ensureVisible(
+      temTurmaAtual ? t.warning : t.primary,
+      t.card,
+    );
 
     return _buildAlunoCard(
       aluno: aluno,
@@ -273,10 +272,7 @@ class _GerenciarAlunosTurmaScreenState
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(t.buttonRadius),
           ),
-          textStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-          ),
+          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
         ),
         child: Text(temTurmaAtual ? 'TROCAR' : 'VINCULAR'),
       ),
@@ -351,10 +347,7 @@ class _GerenciarAlunosTurmaScreenState
                       'Graduação: $graduacao',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: t.textSecondary, fontSize: 12),
                     ),
                     if (warning && turmaAtual.isNotEmpty) ...[
                       const SizedBox(height: 6),
@@ -376,10 +369,7 @@ class _GerenciarAlunosTurmaScreenState
     );
   }
 
-  Widget _avatarAluno({
-    required String fotoUrl,
-    required Color accent,
-  }) {
+  Widget _avatarAluno({required String fotoUrl, required Color accent}) {
     final t = context.uai;
 
     return Container(
@@ -393,12 +383,12 @@ class _GerenciarAlunosTurmaScreenState
       child: ClipOval(
         child: fotoUrl.isNotEmpty
             ? Image.network(
-          fotoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _avatarFallback(accent);
-          },
-        )
+                fotoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _avatarFallback(accent);
+                },
+              )
             : _avatarFallback(accent),
       ),
     );
@@ -409,18 +399,11 @@ class _GerenciarAlunosTurmaScreenState
 
     return Container(
       color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
-      child: Icon(
-        Icons.person_rounded,
-        color: accent,
-        size: 27,
-      ),
+      child: Icon(Icons.person_rounded, color: accent, size: 27),
     );
   }
 
-  void _showConfirmacaoRemocao(
-      String alunoId,
-      Map<String, dynamic> aluno,
-      ) {
+  void _showConfirmacaoRemocao(String alunoId, Map<String, dynamic> aluno) {
     final nome = _safeText(aluno['nome'], 'este aluno');
 
     _showConfirmDialog(
@@ -428,16 +411,13 @@ class _GerenciarAlunosTurmaScreenState
       icon: Icons.person_remove_alt_1_rounded,
       color: context.uai.error,
       message:
-      'Tem certeza que deseja remover $nome da turma ${widget.turmaNome}?',
+          'Tem certeza que deseja remover $nome da turma ${widget.turmaNome}?',
       confirmLabel: 'REMOVER',
       onConfirm: () => _removerVinculoAluno(alunoId, aluno),
     );
   }
 
-  void _showConfirmacaoVinculo(
-      String alunoId,
-      Map<String, dynamic> aluno,
-      ) {
+  void _showConfirmacaoVinculo(String alunoId, Map<String, dynamic> aluno) {
     final bool temTurmaAtual = aluno['tem_turma_atual'] ?? false;
     final String turmaAtual = _safeText(aluno['turma_atual']);
     final String nome = _safeText(aluno['nome'], 'este aluno');
@@ -498,8 +478,7 @@ class _GerenciarAlunosTurmaScreenState
                           height: 48,
                           decoration: BoxDecoration(
                             color: accent.withOpacity(0.12),
-                            borderRadius:
-                            BorderRadius.circular(t.buttonRadius),
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                           child: Icon(icon, color: accent),
                         ),
@@ -526,10 +505,7 @@ class _GerenciarAlunosTurmaScreenState
                     const SizedBox(height: 14),
                     Text(
                       message,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     LayoutBuilder(
@@ -543,8 +519,9 @@ class _GerenciarAlunosTurmaScreenState
                             side: BorderSide(color: t.border),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                           child: const Text(
@@ -563,8 +540,9 @@ class _GerenciarAlunosTurmaScreenState
                             foregroundColor: _readableOn(color),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                           child: Text(
@@ -666,7 +644,8 @@ class _GerenciarAlunosTurmaScreenState
                   child: TextField(
                     style: TextStyle(color: t.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Buscar aluno por nome, apelido ou graduação...',
+                      hintText:
+                          'Buscar aluno por nome, apelido ou graduação...',
                       hintStyle: TextStyle(color: t.textMuted),
                       prefixIcon: Icon(
                         Icons.search_rounded,
@@ -675,14 +654,14 @@ class _GerenciarAlunosTurmaScreenState
                       suffixIcon: _searchQuery.isEmpty
                           ? null
                           : IconButton(
-                        tooltip: 'Limpar busca',
-                        onPressed: () =>
-                            setState(() => _searchQuery = ''),
-                        icon: Icon(
-                          Icons.close_rounded,
-                          color: t.textSecondary,
-                        ),
-                      ),
+                              tooltip: 'Limpar busca',
+                              onPressed: () =>
+                                  setState(() => _searchQuery = ''),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: t.textSecondary,
+                              ),
+                            ),
                       filled: true,
                       fillColor: t.cardAlt,
                       border: OutlineInputBorder(
@@ -700,8 +679,9 @@ class _GerenciarAlunosTurmaScreenState
                           width: 1.4,
                         ),
                       ),
-                      contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                      ),
                     ),
                     onChanged: (value) => setState(() => _searchQuery = value),
                   ),
@@ -721,7 +701,8 @@ class _GerenciarAlunosTurmaScreenState
                       ),
                       Tab(
                         icon: const Icon(Icons.person_add_rounded),
-                        text: 'DISPONÍVEIS (${_filtrarAlunosDisponiveis().length})',
+                        text:
+                            'DISPONÍVEIS (${_filtrarAlunosDisponiveis().length})',
                       ),
                     ],
                   ),
@@ -733,11 +714,8 @@ class _GerenciarAlunosTurmaScreenState
         body: _isLoading
             ? Center(child: CircularProgressIndicator(color: t.primary))
             : TabBarView(
-          children: [
-            _buildVinculadosTab(),
-            _buildDisponiveisTab(),
-          ],
-        ),
+                children: [_buildVinculadosTab(), _buildDisponiveisTab()],
+              ),
       ),
     );
   }
@@ -839,10 +817,7 @@ class _GerenciarAlunosTurmaScreenState
                 Text(
                   text,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    height: 1.35,
-                  ),
+                  style: TextStyle(color: t.textSecondary, height: 1.35),
                 ),
               ],
             ),
@@ -908,8 +883,4 @@ class _GerenciarAlunosTurmaScreenState
   }
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-}
+enum _SnackType { success, error, warning }

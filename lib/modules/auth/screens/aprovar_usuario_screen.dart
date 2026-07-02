@@ -38,7 +38,10 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
   // 🔥 CARREGA TIPOS DO FIRESTORE (configurável)
   Future<void> _carregarTiposUsuarios() async {
     try {
-      final doc = await _firestore.collection('configuracoes').doc('tipos_usuario').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('tipos_usuario')
+          .get();
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
@@ -46,13 +49,16 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
 
         if (tipos != null && tipos.isNotEmpty) {
           setState(() {
-            _tiposUsuarios = tipos.map((t) => Map<String, dynamic>.from(t)).toList();
+            _tiposUsuarios = tipos
+                .map((t) => Map<String, dynamic>.from(t))
+                .toList();
             _carregando = false;
           });
 
           // Define o tipo padrão (primeiro ou o que já estava)
           final tipoAtual = widget.userData['tipo'];
-          if (tipoAtual != null && _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
+          if (tipoAtual != null &&
+              _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
             _selectedTipo = tipoAtual;
           } else {
             _selectedTipo = _tiposUsuarios.first['tipo'];
@@ -64,7 +70,6 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
 
       // Fallback para tipos padrão se não encontrar no Firestore
       _carregarTiposFallback();
-
     } catch (e) {
       print('Erro ao carregar tipos: $e');
       _carregarTiposFallback();
@@ -80,34 +85,35 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
           'peso': 10,
           'descricao': 'Acesso básico ao conteúdo',
           'icone': 'person',
-          'cor': '#4CAF50' // verde
+          'cor': '#4CAF50', // verde
         },
         {
           'tipo': 'monitor',
           'peso': 30,
           'descricao': 'Pode auxiliar alunos',
           'icone': 'supervised_user_circle',
-          'cor': '#2196F3' // azul
+          'cor': '#2196F3', // azul
         },
         {
           'tipo': 'professor',
           'peso': 50,
           'descricao': 'Cadastra alunos e agenda aulas',
           'icone': 'school',
-          'cor': '#FF9800' // laranja
+          'cor': '#FF9800', // laranja
         },
         {
           'tipo': 'administrador',
           'peso': 100,
           'descricao': 'Acesso total ao sistema',
           'icone': 'admin_panel_settings',
-          'cor': '#F44336' // vermelho
+          'cor': '#F44336', // vermelho
         },
       ];
       _carregando = false;
 
       final tipoAtual = widget.userData['tipo'];
-      if (tipoAtual != null && _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
+      if (tipoAtual != null &&
+          _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
         _selectedTipo = tipoAtual;
       } else {
         _selectedTipo = _tiposUsuarios.first['tipo'];
@@ -188,7 +194,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
 
     try {
       final tipoSelecionado = _tiposUsuarios.firstWhere(
-            (t) => t['tipo'] == _selectedTipo,
+        (t) => t['tipo'] == _selectedTipo,
         orElse: () => _tiposUsuarios.first,
       );
 
@@ -226,7 +232,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
         title: const Text('Rejeitar Usuário'),
         content: const Text(
           'Tem certeza que deseja rejeitar este usuário? '
-              'Ele será marcado como "bloqueado" e não poderá acessar o sistema.',
+          'Ele será marcado como "bloqueado" e não poderá acessar o sistema.',
         ),
         actions: [
           TextButton(
@@ -319,9 +325,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
   @override
   Widget build(BuildContext context) {
     if (_carregando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final theme = Theme.of(context);
@@ -396,18 +400,19 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                     CircleAvatar(
                       backgroundColor: theme.primaryColor.withOpacity(0.1),
                       radius: 30,
-                      backgroundImage: fotoUrl != null && fotoUrl.toString().isNotEmpty
+                      backgroundImage:
+                          fotoUrl != null && fotoUrl.toString().isNotEmpty
                           ? NetworkImage(fotoUrl.toString()) as ImageProvider
                           : null,
                       child: fotoUrl == null || fotoUrl.toString().isEmpty
                           ? Text(
-                        nome.substring(0, 1).toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: theme.primaryColor,
-                        ),
-                      )
+                              nome.substring(0, 1).toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: theme.primaryColor,
+                              ),
+                            )
                           : null,
                     ),
                     const SizedBox(width: 16),
@@ -443,10 +448,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
             const SizedBox(height: 24),
             const Text(
               'Definir Tipo de Acesso',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -459,7 +461,9 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: _tiposUsuarios.map((tipo) => _buildTipoCard(tipo, theme)).toList(),
+              children: _tiposUsuarios
+                  .map((tipo) => _buildTipoCard(tipo, theme))
+                  .toList(),
             ),
 
             const SizedBox(height: 24),
@@ -472,8 +476,16 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      _getTipoIcon(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo)),
-                      color: _getTipoColor(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo)),
+                      _getTipoIcon(
+                        _tiposUsuarios.firstWhere(
+                          (t) => t['tipo'] == _selectedTipo,
+                        ),
+                      ),
+                      color: _getTipoColor(
+                        _tiposUsuarios.firstWhere(
+                          (t) => t['tipo'] == _selectedTipo,
+                        ),
+                      ),
                       size: 32,
                     ),
                     const SizedBox(width: 16),
@@ -482,17 +494,29 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _selectedTipo[0].toUpperCase() + _selectedTipo.substring(1),
+                            _selectedTipo[0].toUpperCase() +
+                                _selectedTipo.substring(1),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: _getTipoColor(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo)),
+                              color: _getTipoColor(
+                                _tiposUsuarios.firstWhere(
+                                  (t) => t['tipo'] == _selectedTipo,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _getTipoDescricao(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo)),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            _getTipoDescricao(
+                              _tiposUsuarios.firstWhere(
+                                (t) => t['tipo'] == _selectedTipo,
+                              ),
+                            ),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -500,9 +524,16 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                     Chip(
                       label: Text(
                         'Peso: ${_getPesoTipo(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo))}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
-                      backgroundColor: _getTipoColor(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo)),
+                      backgroundColor: _getTipoColor(
+                        _tiposUsuarios.firstWhere(
+                          (t) => t['tipo'] == _selectedTipo,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -514,10 +545,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
             // Informações do aprovador
             const Text(
               'Informações da Aprovação',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Card(
@@ -556,10 +584,10 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                     ),
                     icon: _rejeitando
                         ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.close, size: 20),
                     label: Text(_rejeitando ? 'REJEITANDO...' : 'REJEITAR'),
                   ),
@@ -575,12 +603,14 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
                     ),
                     icon: _aprovando
                         ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.check, size: 20),
-                    label: Text(_aprovando ? 'APROVANDO...' : 'APROVAR USUÁRIO'),
+                    label: Text(
+                      _aprovando ? 'APROVANDO...' : 'APROVAR USUÁRIO',
+                    ),
                   ),
                 ),
               ],
@@ -632,10 +662,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
             const SizedBox(height: 4),
             Text(
               'Peso: $peso',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 10,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontSize: 10),
             ),
             if (isSelected)
               const Padding(

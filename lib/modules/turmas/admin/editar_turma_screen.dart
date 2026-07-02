@@ -41,8 +41,10 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   final TextEditingController _duracaoController = TextEditingController();
   final TextEditingController _observacoesController = TextEditingController();
   final TextEditingController _whatsappController = TextEditingController();
-  final TextEditingController _pesoUsuarioAcessarController = TextEditingController();
-  final TextEditingController _msgConviteWhatsappController = TextEditingController();
+  final TextEditingController _pesoUsuarioAcessarController =
+      TextEditingController();
+  final TextEditingController _msgConviteWhatsappController =
+      TextEditingController();
 
   String _faixaEtariaSelecionada = 'INFANTIL';
   String _statusSelecionado = 'ATIVA';
@@ -108,17 +110,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     'MISTA',
   ];
 
-  final List<String> _statusOptions = const [
-    'ATIVA',
-    'INATIVA',
-    'ESGOTADA',
-  ];
+  final List<String> _statusOptions = const ['ATIVA', 'INATIVA', 'ESGOTADA'];
 
-  final List<String> _tiposAula = const [
-    'OBJETIVA',
-    'INSTRUMENTAÇÃO',
-    'RODA',
-  ];
+  final List<String> _tiposAula = const ['OBJETIVA', 'INSTRUMENTAÇÃO', 'RODA'];
 
   final List<String> _cores = const [
     '#059669',
@@ -173,7 +167,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     _idadeMaxController.text = '12';
     _pesoUsuarioAcessarController.text = '1';
     _msgConviteWhatsappController.text =
-    'Olá! Você foi convidado(a) para participar do grupo da turma. Clique no link abaixo para entrar:\n\n';
+        'Olá! Você foi convidado(a) para participar do grupo da turma. Clique no link abaixo para entrar:\n\n';
   }
 
   int _toInt(dynamic value, {int fallback = 0}) {
@@ -190,8 +184,8 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -235,16 +229,14 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   }
 
   Map<String, dynamic> _mapUsuarioProfessor(
-      String id,
-      Map<String, dynamic> data, {
-        bool selecionadoForaFiltro = false,
-      }) {
-    final nome = (data['nome_completo'] ??
-        data['name'] ??
-        data['nome'] ??
-        'Sem nome')
-        .toString()
-        .trim();
+    String id,
+    Map<String, dynamic> data, {
+    bool selecionadoForaFiltro = false,
+  }) {
+    final nome =
+        (data['nome_completo'] ?? data['name'] ?? data['nome'] ?? 'Sem nome')
+            .toString()
+            .trim();
 
     return {
       'id': id,
@@ -268,9 +260,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       final pesoB = _toInt(b['peso']);
       if (pesoA != pesoB) return pesoB.compareTo(pesoA);
 
-      return (a['nome'] ?? '')
-          .toString()
-          .compareTo((b['nome'] ?? '').toString());
+      return (a['nome'] ?? '').toString().compareTo(
+        (b['nome'] ?? '').toString(),
+      );
     });
   }
 
@@ -365,19 +357,22 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   Future<void> _carregarTurma() async {
     setState(() => _isLoading = true);
     try {
-      final doc = await _firestore.collection('turmas').doc(widget.turmaId).get();
+      final doc = await _firestore
+          .collection('turmas')
+          .doc(widget.turmaId)
+          .get();
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
 
         _nomeController.text = data['nome'] ?? '';
         _nivelController.text = data['nivel'] ?? '';
-        _capacidadeController.text =
-            (data['capacidade_maxima'] ?? 25).toString();
+        _capacidadeController.text = (data['capacidade_maxima'] ?? 25)
+            .toString();
         _idadeMinController.text = (data['idade_minima'] ?? 6).toString();
         _idadeMaxController.text = (data['idade_maxima'] ?? 12).toString();
-        _duracaoController.text =
-            (data['duracao_aula_minutos'] ?? 60).toString();
+        _duracaoController.text = (data['duracao_aula_minutos'] ?? 60)
+            .toString();
         _observacoesController.text = data['observacoes'] ?? '';
         _whatsappController.text = data['whatsapp_url'] ?? '';
         _pesoUsuarioAcessarController.text =
@@ -396,15 +391,16 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
 
         final professoresIds = data['professores_ids'] as List<dynamic>? ?? [];
         setState(() {
-          _professoresSelecionados =
-              professoresIds.map((id) => id.toString()).toList();
+          _professoresSelecionados = professoresIds
+              .map((id) => id.toString())
+              .toList();
           _ordenarProfessoresDisponiveis();
         });
 
         await _garantirProfessoresSelecionadosVisiveis();
 
         final diasConfiguracao =
-        data['dias_configuracao'] as Map<String, dynamic>?;
+            data['dias_configuracao'] as Map<String, dynamic>?;
 
         if (diasConfiguracao != null) {
           for (final dia in _diasConfiguracao.keys) {
@@ -480,10 +476,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
 
   TimeOfDay _timeFromString(String time) {
     final parts = time.split(':');
-    return TimeOfDay(
-      hour: int.parse(parts[0]),
-      minute: int.parse(parts[1]),
-    );
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
   }
 
   String _timeToString(TimeOfDay time) {
@@ -553,10 +546,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     }
 
     if (_professoresSelecionados.isEmpty) {
-      _showSnack(
-        'Selecione pelo menos um professor',
-        type: _SnackType.error,
-      );
+      _showSnack('Selecione pelo menos um professor', type: _SnackType.error);
       return;
     }
 
@@ -565,7 +555,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     try {
       final professoresNomes = _professoresSelecionados.map((id) {
         final professor = _professoresDisponiveis.firstWhere(
-              (p) => p['id'] == id,
+          (p) => p['id'] == id,
           orElse: () => {'nome': 'Professor não encontrado'},
         );
         return professor['nome'];
@@ -604,8 +594,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
         'faixa_etaria': _faixaEtariaSelecionada,
         'professores_ids': _professoresSelecionados,
         'professores_nomes': professoresNomes,
-        'professor_principal':
-        professoresNomes.isNotEmpty ? professoresNomes.first : '',
+        'professor_principal': professoresNomes.isNotEmpty
+            ? professoresNomes.first
+            : '',
         'capacidade_maxima': int.tryParse(_capacidadeController.text) ?? 25,
         'idade_minima': int.tryParse(_idadeMinController.text) ?? 6,
         'idade_maxima': int.tryParse(_idadeMaxController.text) ?? 12,
@@ -617,10 +608,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
         'cor_turma': _corSelecionada,
         'observacoes': _observacoesController.text.trim(),
         'whatsapp_url': _whatsappController.text.trim(),
-        'msg_convite_grupo_whatsapp':
-        _msgConviteWhatsappController.text.trim(),
+        'msg_convite_grupo_whatsapp': _msgConviteWhatsappController.text.trim(),
         'peso_do_usuario_para_acessar':
-        int.tryParse(_pesoUsuarioAcessarController.text) ?? 1,
+            int.tryParse(_pesoUsuarioAcessarController.text) ?? 1,
         'atualizado_em': FieldValue.serverTimestamp(),
       };
 
@@ -725,10 +715,14 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                 height: 48,
                                 decoration: BoxDecoration(
                                   color: error.withOpacity(0.12),
-                                  borderRadius:
-                                  BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
-                                child: Icon(Icons.warning_rounded, color: error),
+                                child: Icon(
+                                  Icons.warning_rounded,
+                                  color: error,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -776,8 +770,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                 error.withOpacity(0.10),
                                 t.cardAlt,
                               ),
-                              borderRadius:
-                              BorderRadius.circular(t.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
+                              ),
                               border: Border.all(
                                 color: error.withOpacity(0.18),
                               ),
@@ -796,21 +791,23 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                           TextFormField(
                             controller: confirmacaoController,
                             style: TextStyle(color: t.textPrimary),
-                            decoration: _inputDecoration(
-                              label: 'Digite o nome da turma',
-                              icon: Icons.warning_amber_rounded,
-                            ).copyWith(
-                              suffixIcon: confirmacaoController.text.isNotEmpty
-                                  ? Icon(
-                                currentConfere
-                                    ? Icons.check_circle_rounded
-                                    : Icons.error_rounded,
-                                color: currentConfere
-                                    ? t.success
-                                    : t.error,
-                              )
-                                  : null,
-                            ),
+                            decoration:
+                                _inputDecoration(
+                                  label: 'Digite o nome da turma',
+                                  icon: Icons.warning_amber_rounded,
+                                ).copyWith(
+                                  suffixIcon:
+                                      confirmacaoController.text.isNotEmpty
+                                      ? Icon(
+                                          currentConfere
+                                              ? Icons.check_circle_rounded
+                                              : Icons.error_rounded,
+                                          color: currentConfere
+                                              ? t.success
+                                              : t.error,
+                                        )
+                                      : null,
+                                ),
                             onChanged: (value) {
                               setDialogState(() {
                                 nomeConfere = value.trim() == nomeTurma;
@@ -860,16 +857,14 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                 ),
                                 child: const Text(
                                   'EXCLUIR TURMA',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                               );
 
                               if (narrow) {
                                 return Column(
                                   crossAxisAlignment:
-                                  CrossAxisAlignment.stretch,
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     cancel,
                                     const SizedBox(height: 10),
@@ -1031,19 +1026,18 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
           label: label + (obrigatorio ? ' *' : ''),
           hint: hintText,
           icon: icon,
-        ).copyWith(
-          alignLabelWithHint: (maxLines ?? 1) > 1,
-        ),
+        ).copyWith(alignLabelWithHint: (maxLines ?? 1) > 1),
         keyboardType: keyboardType,
         maxLines: maxLines ?? 1,
-        validator: validator ??
+        validator:
+            validator ??
             (obrigatorio
                 ? (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Campo obrigatório';
-              }
-              return null;
-            }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Campo obrigatório';
+                    }
+                    return null;
+                  }
                 : null),
       ),
     );
@@ -1063,8 +1057,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       if (value.trim().isNotEmpty && !items.contains(value)) value,
     ].toSet().toList();
 
-    final safeValue =
-    normalizedItems.contains(value) ? value : normalizedItems.first;
+    final safeValue = normalizedItems.contains(value)
+        ? value
+        : normalizedItems.first;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1146,17 +1141,16 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.inputRadius),
                     border: Border.all(
-                      color: selecionado
-                          ? primary.withOpacity(0.22)
-                          : t.border,
+                      color: selecionado ? primary.withOpacity(0.22) : t.border,
                     ),
                   ),
                   child: Column(
                     children: [
                       CheckboxListTile(
                         dense: true,
-                        contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
                         value: selecionado,
                         activeColor: primary,
                         title: Text(
@@ -1306,10 +1300,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     );
   }
 
-  Widget _buildTipoAulaDropdown({
-    required String dia,
-    required String value,
-  }) {
+  Widget _buildTipoAulaDropdown({required String dia, required String value}) {
     final t = context.uai;
     final accent = _ensureVisible(_tipoAulaColor(value), t.cardAlt);
 
@@ -1318,16 +1309,17 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       isExpanded: true,
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary),
-      decoration: _inputDecoration(
-        label: 'Tipo de aula',
-        icon: Icons.sports_martial_arts_rounded,
-      ).copyWith(
-        prefixIcon: Icon(
-          Icons.sports_martial_arts_rounded,
-          color: accent,
-          size: 20,
-        ),
-      ),
+      decoration:
+          _inputDecoration(
+            label: 'Tipo de aula',
+            icon: Icons.sports_martial_arts_rounded,
+          ).copyWith(
+            prefixIcon: Icon(
+              Icons.sports_martial_arts_rounded,
+              color: accent,
+              size: 20,
+            ),
+          ),
       items: _tiposAula.map((tipo) {
         return DropdownMenuItem<String>(
           value: tipo,
@@ -1416,13 +1408,15 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       final pesoB = _toInt(b['peso']);
       if (pesoA != pesoB) return pesoB.compareTo(pesoA);
 
-      return (a['nome'] ?? '')
-          .toString()
-          .compareTo((b['nome'] ?? '').toString());
+      return (a['nome'] ?? '').toString().compareTo(
+        (b['nome'] ?? '').toString(),
+      );
     });
 
     final selecionadosVisiveis = professoresOrdenados
-        .where((professor) => _professoresSelecionados.contains(professor['id']))
+        .where(
+          (professor) => _professoresSelecionados.contains(professor['id']),
+        )
         .length;
 
     final selectedAccent = _ensureVisible(t.primary, t.cardAlt);
@@ -1446,10 +1440,8 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
               _smallPill(
                 icon: Icons.check_circle_rounded,
                 label:
-                '${_professoresSelecionados.length} selecionado${_professoresSelecionados.length == 1 ? '' : 's'}',
-                color: _professoresSelecionados.isEmpty
-                    ? t.warning
-                    : t.success,
+                    '${_professoresSelecionados.length} selecionado${_professoresSelecionados.length == 1 ? '' : 's'}',
+                color: _professoresSelecionados.isEmpty ? t.warning : t.success,
               ),
             ],
           ),
@@ -1469,7 +1461,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
               icon: Icons.warning_amber_rounded,
               color: t.warning,
               text:
-              'Atenção: ${_professoresSelecionados.length - selecionadosVisiveis} professor(es) selecionado(s) não foram encontrados na lista normal e serão buscados pelo ID salvo na turma.',
+                  'Atenção: ${_professoresSelecionados.length - selecionadosVisiveis} professor(es) selecionado(s) não foram encontrados na lista normal e serão buscados pelo ID salvo na turma.',
             ),
           ],
           const SizedBox(height: 12),
@@ -1478,7 +1470,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
               icon: Icons.person_search_rounded,
               title: 'Nenhum usuário com permissão de professor encontrado',
               subtitle:
-              'Verifique se o usuário está ativo e com peso_permissao 50 ou maior.',
+                  'Verifique se o usuário está ativo e com peso_permissao 50 ou maior.',
             )
           else
             Column(
@@ -1495,9 +1487,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                   child: Material(
                     color: isSelecionado
                         ? Color.alphaBlend(
-                      selectedAccent.withOpacity(0.10),
-                      t.cardAlt,
-                    )
+                            selectedAccent.withOpacity(0.10),
+                            t.cardAlt,
+                          )
                         : t.cardAlt,
                     borderRadius: BorderRadius.circular(t.inputRadius),
                     clipBehavior: Clip.antiAlias,
@@ -1552,15 +1544,13 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                 ),
                                 _buildProfessorBadge(
                                   label: 'PESO $peso',
-                                  color:
-                                  peso >= 50 ? t.success : t.warning,
+                                  color: peso >= 50 ? t.success : t.warning,
                                   icon: Icons.security_rounded,
                                 ),
                                 if (status.trim().isNotEmpty)
                                   _buildProfessorBadge(
                                     label: status.toUpperCase(),
-                                    color:
-                                    status.toLowerCase() == 'ativa'
+                                    color: status.toLowerCase() == 'ativa'
                                         ? t.success
                                         : t.warning,
                                     icon: Icons.circle,
@@ -1589,8 +1579,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                           });
                         },
                         secondary: CircleAvatar(
-                          backgroundColor:
-                          isSelecionado ? selectedAccent : t.border,
+                          backgroundColor: isSelecionado
+                              ? selectedAccent
+                              : t.border,
                           child: Icon(
                             isSelecionado
                                 ? Icons.check_rounded
@@ -1650,7 +1641,8 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   Widget _buildLogoUpload() {
     final t = context.uai;
     final hasLogo =
-        _logoFile != null || (_logoUrlAtual != null && _logoUrlAtual!.isNotEmpty);
+        _logoFile != null ||
+        (_logoUrlAtual != null && _logoUrlAtual!.isNotEmpty);
 
     return _buildCard(
       Column(
@@ -1681,57 +1673,59 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                 child: _isLoading
                     ? Center(child: CircularProgressIndicator(color: t.primary))
                     : Row(
-                  children: [
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 62,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius:
-                        BorderRadius.circular(t.inputRadius),
-                        border: Border.all(color: t.border),
-                      ),
-                      child: ClipRRect(
-                        borderRadius:
-                        BorderRadius.circular(t.inputRadius - 1),
-                        child: _logoFile != null
-                            ? Image.file(_logoFile!, fit: BoxFit.cover)
-                            : hasLogo
-                            ? Image.network(
-                          _logoUrlAtual!,
-                          fit: BoxFit.cover,
-                          cacheWidth: 180,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.image_not_supported_rounded,
-                            color: t.textMuted,
+                        children: [
+                          const SizedBox(width: 12),
+                          Container(
+                            width: 62,
+                            height: 62,
+                            decoration: BoxDecoration(
+                              color: t.card,
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
+                              ),
+                              border: Border.all(color: t.border),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius - 1,
+                              ),
+                              child: _logoFile != null
+                                  ? Image.file(_logoFile!, fit: BoxFit.cover)
+                                  : hasLogo
+                                  ? Image.network(
+                                      _logoUrlAtual!,
+                                      fit: BoxFit.cover,
+                                      cacheWidth: 180,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        Icons.image_not_supported_rounded,
+                                        color: t.textMuted,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.add_photo_alternate_rounded,
+                                      color: t.textMuted,
+                                    ),
+                            ),
                           ),
-                        )
-                            : Icon(
-                          Icons.add_photo_alternate_rounded,
-                          color: t.textMuted,
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              hasLogo
+                                  ? 'Toque para trocar a logo'
+                                  : 'Toque para adicionar uma logo',
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: _ensureVisible(t.primary, t.cardAlt),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        hasLogo
-                            ? 'Toque para trocar a logo'
-                            : 'Toque para adicionar uma logo',
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: _ensureVisible(t.primary, t.cardAlt),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
               ),
             ),
           ),
@@ -1909,10 +1903,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1970,227 +1961,221 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       body: _isLoading && !_isEditing
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildAcademiaHeaderLeve(),
-                    _buildSectionTitle(
-                      'Informações Básicas',
-                      Icons.info_outline_rounded,
-                    ),
-                    _buildCard(
-                      Column(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 980),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildFormField(
-                            controller: _nomeController,
-                            label: 'Nome da Turma',
-                            icon: Icons.group_rounded,
-                            obrigatorio: true,
+                          _buildAcademiaHeaderLeve(),
+                          _buildSectionTitle(
+                            'Informações Básicas',
+                            Icons.info_outline_rounded,
                           ),
-                          _buildFormField(
-                            controller: _nivelController,
-                            label: 'Nível',
-                            icon: Icons.star_rounded,
-                            obrigatorio: true,
-                            hintText:
-                            'INICIANTE, INTERMEDIÁRIO, AVANÇADO',
-                          ),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow = constraints.maxWidth < 560;
+                          _buildCard(
+                            Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _nomeController,
+                                  label: 'Nome da Turma',
+                                  icon: Icons.group_rounded,
+                                  obrigatorio: true,
+                                ),
+                                _buildFormField(
+                                  controller: _nivelController,
+                                  label: 'Nível',
+                                  icon: Icons.star_rounded,
+                                  obrigatorio: true,
+                                  hintText:
+                                      'INICIANTE, INTERMEDIÁRIO, AVANÇADO',
+                                ),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
 
-                              final faixa = _buildDropdownField(
-                                value: _faixaEtariaSelecionada,
-                                items: _faixaEtariaOptions,
-                                label: 'Faixa Etária',
-                                icon: Icons.people_rounded,
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() =>
-                                    _faixaEtariaSelecionada = value);
-                                  }
-                                },
-                              );
-
-                              final status = _buildDropdownField(
-                                value: _statusSelecionado,
-                                items: _statusOptions,
-                                label: 'Status',
-                                icon: Icons.circle_rounded,
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(
-                                          () => _statusSelecionado = value,
+                                    final faixa = _buildDropdownField(
+                                      value: _faixaEtariaSelecionada,
+                                      items: _faixaEtariaOptions,
+                                      label: 'Faixa Etária',
+                                      icon: Icons.people_rounded,
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(
+                                            () =>
+                                                _faixaEtariaSelecionada = value,
+                                          );
+                                        }
+                                      },
                                     );
-                                  }
-                                },
-                              );
 
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    faixa,
-                                    status,
-                                  ],
-                                );
-                              }
+                                    final status = _buildDropdownField(
+                                      value: _statusSelecionado,
+                                      items: _statusOptions,
+                                      label: 'Status',
+                                      icon: Icons.circle_rounded,
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(
+                                            () => _statusSelecionado = value,
+                                          );
+                                        }
+                                      },
+                                    );
 
-                              return Row(
-                                children: [
-                                  Expanded(child: faixa),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: status),
-                                ],
-                              );
-                            },
+                                    if (narrow) {
+                                      return Column(children: [faixa, status]);
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: faixa),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: status),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                _buildDataInicioField(),
+                              ],
+                            ),
                           ),
-                          _buildDataInicioField(),
+                          _buildSectionTitle(
+                            'Professores',
+                            Icons.person_rounded,
+                          ),
+                          _buildSelecaoProfessores(),
+                          _buildSectionTitle(
+                            'Dias e Horários',
+                            Icons.calendar_today_rounded,
+                          ),
+                          _buildDiasSemanaComHorarios(),
+                          _buildSectionTitle(
+                            'Personalização',
+                            Icons.palette_rounded,
+                          ),
+                          _buildLogoUpload(),
+                          _buildCoresDisponiveis(),
+                          _buildSectionTitle(
+                            'Capacidade e Idades',
+                            Icons.format_list_numbered_rounded,
+                          ),
+                          _buildCard(
+                            Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _capacidadeController,
+                                  label: 'Capacidade Máxima',
+                                  icon: Icons.people_rounded,
+                                  keyboardType: TextInputType.number,
+                                  obrigatorio: true,
+                                ),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
+
+                                    final idadeMin = _buildFormField(
+                                      controller: _idadeMinController,
+                                      label: 'Idade Mínima',
+                                      icon: Icons.child_care_rounded,
+                                      keyboardType: TextInputType.number,
+                                    );
+
+                                    final idadeMax = _buildFormField(
+                                      controller: _idadeMaxController,
+                                      label: 'Idade Máxima',
+                                      icon: Icons.person_rounded,
+                                      keyboardType: TextInputType.number,
+                                    );
+
+                                    if (narrow) {
+                                      return Column(
+                                        children: [idadeMin, idadeMax],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: idadeMin),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: idadeMax),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                _buildFormField(
+                                  controller: _duracaoController,
+                                  label: 'Duração da Aula (minutos)',
+                                  icon: Icons.timer_rounded,
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ],
+                            ),
+                          ),
+                          _buildSectionTitle(
+                            'Configurações Avançadas',
+                            Icons.settings_rounded,
+                          ),
+                          _buildCard(
+                            Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _pesoUsuarioAcessarController,
+                                  label: 'Peso de Acesso',
+                                  icon: Icons.lock_rounded,
+                                  keyboardType: TextInputType.number,
+                                  obrigatorio: true,
+                                  hintText:
+                                      'Comparar com peso_permissao do usuário',
+                                ),
+                              ],
+                            ),
+                          ),
+                          _buildSectionTitle('Comunicação', Icons.chat_rounded),
+                          _buildCard(
+                            Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _whatsappController,
+                                  label: 'Link do Grupo WhatsApp',
+                                  icon: Icons.chat_rounded,
+                                  keyboardType: TextInputType.url,
+                                  hintText: 'https://chat.whatsapp.com/...',
+                                ),
+                                _buildFormField(
+                                  controller: _msgConviteWhatsappController,
+                                  label: 'Mensagem de Convite',
+                                  icon: Icons.message_rounded,
+                                  maxLines: 4,
+                                  hintText: 'Digite a mensagem de convite...',
+                                ),
+                              ],
+                            ),
+                          ),
+                          _buildSectionTitle('Observações', Icons.note_rounded),
+                          _buildCard(
+                            Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _observacoesController,
+                                  label: 'Observações',
+                                  icon: Icons.note_rounded,
+                                  maxLines: 4,
+                                  hintText: 'Digite observações importantes...',
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    _buildSectionTitle('Professores', Icons.person_rounded),
-                    _buildSelecaoProfessores(),
-                    _buildSectionTitle(
-                      'Dias e Horários',
-                      Icons.calendar_today_rounded,
-                    ),
-                    _buildDiasSemanaComHorarios(),
-                    _buildSectionTitle(
-                      'Personalização',
-                      Icons.palette_rounded,
-                    ),
-                    _buildLogoUpload(),
-                    _buildCoresDisponiveis(),
-                    _buildSectionTitle(
-                      'Capacidade e Idades',
-                      Icons.format_list_numbered_rounded,
-                    ),
-                    _buildCard(
-                      Column(
-                        children: [
-                          _buildFormField(
-                            controller: _capacidadeController,
-                            label: 'Capacidade Máxima',
-                            icon: Icons.people_rounded,
-                            keyboardType: TextInputType.number,
-                            obrigatorio: true,
-                          ),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow = constraints.maxWidth < 560;
-
-                              final idadeMin = _buildFormField(
-                                controller: _idadeMinController,
-                                label: 'Idade Mínima',
-                                icon: Icons.child_care_rounded,
-                                keyboardType: TextInputType.number,
-                              );
-
-                              final idadeMax = _buildFormField(
-                                controller: _idadeMaxController,
-                                label: 'Idade Máxima',
-                                icon: Icons.person_rounded,
-                                keyboardType: TextInputType.number,
-                              );
-
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    idadeMin,
-                                    idadeMax,
-                                  ],
-                                );
-                              }
-
-                              return Row(
-                                children: [
-                                  Expanded(child: idadeMin),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: idadeMax),
-                                ],
-                              );
-                            },
-                          ),
-                          _buildFormField(
-                            controller: _duracaoController,
-                            label: 'Duração da Aula (minutos)',
-                            icon: Icons.timer_rounded,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ],
-                      ),
-                    ),
-                    _buildSectionTitle(
-                      'Configurações Avançadas',
-                      Icons.settings_rounded,
-                    ),
-                    _buildCard(
-                      Column(
-                        children: [
-                          _buildFormField(
-                            controller: _pesoUsuarioAcessarController,
-                            label: 'Peso de Acesso',
-                            icon: Icons.lock_rounded,
-                            keyboardType: TextInputType.number,
-                            obrigatorio: true,
-                            hintText:
-                            'Comparar com peso_permissao do usuário',
-                          ),
-                        ],
-                      ),
-                    ),
-                    _buildSectionTitle(
-                      'Comunicação',
-                      Icons.chat_rounded,
-                    ),
-                    _buildCard(
-                      Column(
-                        children: [
-                          _buildFormField(
-                            controller: _whatsappController,
-                            label: 'Link do Grupo WhatsApp',
-                            icon: Icons.chat_rounded,
-                            keyboardType: TextInputType.url,
-                            hintText: 'https://chat.whatsapp.com/...',
-                          ),
-                          _buildFormField(
-                            controller: _msgConviteWhatsappController,
-                            label: 'Mensagem de Convite',
-                            icon: Icons.message_rounded,
-                            maxLines: 4,
-                            hintText: 'Digite a mensagem de convite...',
-                          ),
-                        ],
-                      ),
-                    ),
-                    _buildSectionTitle('Observações', Icons.note_rounded),
-                    _buildCard(
-                      Column(
-                        children: [
-                          _buildFormField(
-                            controller: _observacoesController,
-                            label: 'Observações',
-                            icon: Icons.note_rounded,
-                            maxLines: 4,
-                            hintText: 'Digite observações importantes...',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
@@ -2212,13 +2197,13 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
             ),
             icon: _isLoading
                 ? SizedBox(
-              width: 19,
-              height: 19,
-              child: CircularProgressIndicator(
-                color: _readableOn(t.primary),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      color: _readableOn(t.primary),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(_isEditing ? Icons.save_rounded : Icons.add_rounded),
             label: Text(_isEditing ? 'ATUALIZAR TURMA' : 'CRIAR TURMA'),
           ),
@@ -2228,8 +2213,4 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   }
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-}
+enum _SnackType { success, error, warning }

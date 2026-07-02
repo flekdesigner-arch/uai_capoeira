@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/sistema/firebase_saude/models/firebase_saude_models.dart';
@@ -18,6 +19,9 @@ class FirebaseSaudeScreen extends StatefulWidget {
 class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
   final FirebaseSaudeService _service = FirebaseSaudeService();
   final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
   final TextEditingController _buscaController = TextEditingController();
 
   bool _verificandoAcesso = true;
@@ -62,6 +66,7 @@ class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
 
   Future<void> _carregarTudo() async {
     if (_carregando) return;
+    if (!await _revalidarAcesso()) return;
 
     setState(() {
       _carregando = true;
@@ -103,6 +108,7 @@ class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
   Future<void> _listarDocumentos({required bool reset}) async {
     final colecao = _colecaoSelecionada;
     if (colecao == null || _carregandoDocumentos) return;
+    if (!await _revalidarAcesso()) return;
 
     setState(() {
       _carregandoDocumentos = true;
@@ -153,6 +159,7 @@ class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
   Future<void> _abrirDocumento(FirebaseSaudeDocumento doc) async {
     final colecao = _colecaoSelecionada;
     if (colecao == null) return;
+    if (!await _revalidarAcesso()) return;
 
     try {
       final completo = await _service.obterDocumento(
@@ -165,6 +172,21 @@ class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
       if (!mounted) return;
       _snack(_erroAmigavel(e), color: context.uai.error);
     }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _temAcesso = false);
+      _snack(
+        'Você não tem permissão para acessar a Saúde Firebase.',
+        color: context.uai.error,
+      );
+    }
+
+    return permitido;
   }
 
   @override
@@ -210,7 +232,8 @@ class _FirebaseSaudeScreenState extends State<FirebaseSaudeScreen> {
       return _emptyState(
         icon: Icons.lock_rounded,
         title: 'Acesso restrito',
-        message: 'Este painel é exclusivo para admin/master com conta ativa.',
+        message:
+            'Você não tem permissão para acessar a Saúde Firebase.\n\nEste módulo é restrito a administradores principais.',
       );
     }
 

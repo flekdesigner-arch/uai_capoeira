@@ -30,10 +30,7 @@ import 'package:uai_capoeira/modules/certificados/widgets/certificado_preview_wi
 class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
   final AreaAlunoEventoResumo evento;
 
-  const AreaAlunoCertificadoViewerScreen({
-    super.key,
-    required this.evento,
-  });
+  const AreaAlunoCertificadoViewerScreen({super.key, required this.evento});
 
   static const CertificadoSvgService _svgService = CertificadoSvgService();
 
@@ -44,8 +41,8 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -86,81 +83,78 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
     final direto = _safe(evento.alunoNome, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['aluno_nome', 'nome_aluno', 'nome'],
-      fallback: 'Aluno',
-    );
+    return _fromParticipacao([
+      'aluno_nome',
+      'nome_aluno',
+      'nome',
+    ], fallback: 'Aluno');
   }
 
   String _alunoCpf() {
     final direto = _safe(evento.alunoCpf, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['cpf', 'aluno_cpf', 'cpf_aluno'],
-      fallback: '',
-    );
+    return _fromParticipacao(['cpf', 'aluno_cpf', 'cpf_aluno'], fallback: '');
   }
 
   String _alunoSexo() {
     final direto = _safe(evento.alunoSexo, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['sexo', 'aluno_sexo', 'sexo_aluno', 'genero'],
-      fallback: '',
-    );
+    return _fromParticipacao([
+      'sexo',
+      'aluno_sexo',
+      'sexo_aluno',
+      'genero',
+    ], fallback: '');
   }
 
   String _certificadoOuDiploma() {
     final direto = _safe(evento.certificadoOuDiploma, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      [
-        'certificado_ou_diploma',
-        'certificadoOuDiploma',
-        'tipo_certificado',
-        'tipoCertificado',
-      ],
-      fallback: 'CERTIFICADO',
-    );
+    return _fromParticipacao([
+      'certificado_ou_diploma',
+      'certificadoOuDiploma',
+      'tipo_certificado',
+      'tipoCertificado',
+    ], fallback: 'CERTIFICADO');
   }
 
   String _fraseGraduacao() {
     final direto = _safe(evento.graduacaoNovaFrase, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['frase', 'frase_certificado', 'fraseCertificado'],
-      fallback: '',
-    );
+    return _fromParticipacao([
+      'frase',
+      'frase_certificado',
+      'fraseCertificado',
+    ], fallback: '');
   }
 
   String _graduacaoNovaCor1() {
     final direto = _safe(evento.graduacaoNovaCor1, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['graduacao_nova_cor1', 'hex_cor1', 'graduacao_cor1'],
-      fallback: '',
-    );
+    return _fromParticipacao([
+      'graduacao_nova_cor1',
+      'hex_cor1',
+      'graduacao_cor1',
+    ], fallback: '');
   }
 
   String _graduacaoNovaCor2() {
     final direto = _safe(evento.graduacaoNovaCor2, fallback: '');
     if (direto.isNotEmpty) return direto;
 
-    return _fromParticipacao(
-      ['graduacao_nova_cor2', 'hex_cor2', 'graduacao_cor2'],
-      fallback: '',
-    );
+    return _fromParticipacao([
+      'graduacao_nova_cor2',
+      'hex_cor2',
+      'graduacao_cor2',
+    ], fallback: '');
   }
 
-  Color _cor(
-      String? hex, {
-        Color fallback = const Color(0xFF9E9E9E),
-      }) {
+  Color _cor(String? hex, {Color fallback = const Color(0xFF9E9E9E)}) {
     return _svgService.colorFromHex(hex, fallback: fallback);
   }
 
@@ -175,9 +169,10 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
       return cidade.toUpperCase();
     }
 
-    final data = DateFormat("dd 'de' MMMM 'de' yyyy", 'pt_BR')
-        .format(evento.dataEvento!)
-        .toUpperCase();
+    final data = DateFormat(
+      "dd 'de' MMMM 'de' yyyy",
+      'pt_BR',
+    ).format(evento.dataEvento!).toUpperCase();
 
     return '${cidade.toUpperCase()}, $data';
   }
@@ -186,10 +181,10 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
     final nova = _safe(evento.graduacaoNova, fallback: '');
     if (nova.isNotEmpty) return nova;
 
-    final novaParticipacao = _fromParticipacao(
-      ['graduacao_nova', 'graduacaoNova'],
-      fallback: '',
-    );
+    final novaParticipacao = _fromParticipacao([
+      'graduacao_nova',
+      'graduacaoNova',
+    ], fallback: '');
     if (novaParticipacao.isNotEmpty) return novaParticipacao;
 
     final atual = _safe(evento.graduacaoAtual, fallback: '');
@@ -216,23 +211,20 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
       final lista = raw
           .whereType<Map>()
           .map((item) {
-        final map = Map<String, dynamic>.from(item);
-        final nome = _safe(
-          map['nome'] ?? map['nome_assinatura'] ?? map['responsavel'],
-          fallback: '',
-        );
-        final apelido = _safe(
-          map['apelido'] ?? map['cargo'] ?? map['titulo'],
-          fallback: '',
-        );
+            final map = Map<String, dynamic>.from(item);
+            final nome = _safe(
+              map['nome'] ?? map['nome_assinatura'] ?? map['responsavel'],
+              fallback: '',
+            );
+            final apelido = _safe(
+              map['apelido'] ?? map['cargo'] ?? map['titulo'],
+              fallback: '',
+            );
 
-        if (nome.isEmpty) return null;
+            if (nome.isEmpty) return null;
 
-        return CertificadoAssinaturaData(
-          nome: nome,
-          apelido: apelido,
-        );
-      })
+            return CertificadoAssinaturaData(nome: nome, apelido: apelido);
+          })
           .whereType<CertificadoAssinaturaData>()
           .toList();
 
@@ -277,14 +269,8 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
 
     final tipo = _tipoTemplate();
     final data = _previewData();
-    final cor1 = _cor(
-      _graduacaoNovaCor1(),
-      fallback: const Color(0xFF9E9E9E),
-    );
-    final cor2 = _cor(
-      _graduacaoNovaCor2(),
-      fallback: cor1,
-    );
+    final cor1 = _cor(_graduacaoNovaCor1(), fallback: const Color(0xFF9E9E9E));
+    final cor2 = _cor(_graduacaoNovaCor2(), fallback: cor1);
     final contorno = const Color(0xFF1A0202);
 
     return Scaffold(
@@ -302,8 +288,9 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth =
-          constraints.maxWidth > 1260 ? 1260.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 1260
+              ? 1260.0
+              : constraints.maxWidth;
           final isMobile = constraints.maxWidth < 650;
           final isWide = constraints.maxWidth >= 1050;
 
@@ -423,11 +410,11 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
   }
 
   Widget _buildLogoEvento(
-      BuildContext context, {
-        required double size,
-        required Color background,
-        required Color foreground,
-      }) {
+    BuildContext context, {
+    required double size,
+    required Color background,
+    required Color foreground,
+  }) {
     final logo = _safe(evento.logoEventoUrl, fallback: '');
 
     return Container(
@@ -441,21 +428,21 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: logo.isNotEmpty
           ? Image.network(
-        logo,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) {
-          return Icon(
-            Icons.workspace_premium_rounded,
-            color: foreground,
-            size: size * 0.52,
-          );
-        },
-      )
+              logo,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) {
+                return Icon(
+                  Icons.workspace_premium_rounded,
+                  color: foreground,
+                  size: size * 0.52,
+                );
+              },
+            )
           : Icon(
-        Icons.workspace_premium_rounded,
-        color: foreground,
-        size: size * 0.52,
-      ),
+              Icons.workspace_premium_rounded,
+              color: foreground,
+              size: size * 0.52,
+            ),
     );
   }
 
@@ -608,7 +595,7 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
           Expanded(
             child: Text(
               'Esta tela mostra apenas a prévia real do certificado usando o template oficial. '
-                  'O PDF oficial e a opção de download devem ser liberados somente após a finalização do evento.',
+              'O PDF oficial e a opção de download devem ser liberados somente após a finalização do evento.',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w600,

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -26,7 +26,8 @@ class _EventosScreenState extends State<EventosScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -40,9 +41,10 @@ class _EventosScreenState extends State<EventosScreen>
 
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
-  Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
-
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   late TabController _tabController;
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
@@ -63,7 +65,6 @@ class _EventosScreenState extends State<EventosScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this, initialIndex: 0);
     _permissoesFuture = _carregarPermissoesTela();
-    _carregarFiltros();
   }
 
   Future<_EventosPermissoes> _carregarPermissoesTela() async {
@@ -72,6 +73,10 @@ class _EventosScreenState extends State<EventosScreen>
         'pode_acessar_eventos',
         'podeAcessarEventos',
         'pode_ver_eventos',
+        'pode_criar_evento',
+        'pode_editar_evento',
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_participantes_evento',
       ]),
       _permissaoService.temQualquerPermissao([
         'pode_ver_eventos',
@@ -83,14 +88,13 @@ class _EventosScreenState extends State<EventosScreen>
         'pode_acessar_eventos_andamento',
         'pode_gerenciar_eventos_andamento',
       ]),
+      _permissaoService.temQualquerPermissao(['pode_editar_evento']),
+      _permissaoService.temQualquerPermissao(['pode_excluir_evento']),
+      _permissaoService.temQualquerPermissao(['pode_finalizar_evento']),
+      _permissaoService.temQualquerPermissao(['pode_criar_evento']),
       _permissaoService.temQualquerPermissao([
-        'pode_editar_evento',
-      ]),
-      _permissaoService.temQualquerPermissao([
-        'pode_excluir_evento',
-      ]),
-      _permissaoService.temQualquerPermissao([
-        'pode_finalizar_evento',
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_participantes_evento',
       ]),
     ]);
 
@@ -101,9 +105,14 @@ class _EventosScreenState extends State<EventosScreen>
       podeEditarEvento: results[3],
       podeExcluirEvento: results[4],
       podeFinalizarEvento: results[5],
+      podeCriarEvento: results[6],
+      podeGerenciarParticipantes: results[7],
     );
 
-    await _selecionarAbaInicial(permissoes);
+    if (permissoes.podeEntrarModulo) {
+      await _carregarFiltros();
+      await _selecionarAbaInicial(permissoes);
+    }
 
     return permissoes;
   }
@@ -150,10 +159,13 @@ class _EventosScreenState extends State<EventosScreen>
 
   Future<void> _carregarFiltros() async {
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('eventos').get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('eventos')
+          .get();
 
-      final eventos =
-      snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
+      final eventos = snapshot.docs
+          .map((doc) => EventoModel.fromFirestore(doc))
+          .toList();
 
       final cidadesSet = <String>{};
       final tiposSet = <String>{};
@@ -214,7 +226,10 @@ class _EventosScreenState extends State<EventosScreen>
         builder: (context, setStateDialog) {
           return SafeArea(
             child: Container(
-              decoration: BoxDecoration(color: context.uai.card, borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+              decoration: BoxDecoration(
+                color: context.uai.card,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              ),
               padding: EdgeInsets.fromLTRB(18, 12, 18, 18),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -239,8 +254,10 @@ class _EventosScreenState extends State<EventosScreen>
                           color: context.uai.error.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(15),
                         ),
-                        child: Icon(Icons.filter_list_rounded,
-                            color: context.uai.primary),
+                        child: Icon(
+                          Icons.filter_list_rounded,
+                          color: context.uai.primary,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -263,8 +280,10 @@ class _EventosScreenState extends State<EventosScreen>
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      prefixIcon:
-                      Icon(Icons.location_city, color: context.uai.error),
+                      prefixIcon: Icon(
+                        Icons.location_city,
+                        color: context.uai.error,
+                      ),
                       filled: true,
                       fillColor: context.uai.cardAlt,
                     ),
@@ -288,15 +307,15 @@ class _EventosScreenState extends State<EventosScreen>
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      prefixIcon: Icon(Icons.category, color: context.uai.error),
+                      prefixIcon: Icon(
+                        Icons.category,
+                        color: context.uai.error,
+                      ),
                       filled: true,
                       fillColor: context.uai.cardAlt,
                     ),
                     items: _tipos.map((tipo) {
-                      return DropdownMenuItem(
-                        value: tipo,
-                        child: Text(tipo),
-                      );
+                      return DropdownMenuItem(value: tipo, child: Text(tipo));
                     }).toList(),
                     onChanged: (value) {
                       setStateDialog(() {
@@ -317,7 +336,9 @@ class _EventosScreenState extends State<EventosScreen>
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: context.uai.primary,
-                            side: BorderSide(color: context.uai.error.withOpacity(0.22)),
+                            side: BorderSide(
+                              color: context.uai.error.withOpacity(0.22),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -394,10 +415,8 @@ class _EventosScreenState extends State<EventosScreen>
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => DetalhesEventoScreen(
-            evento: evento,
-            eventoId: docId,
-          ),
+          builder: (context) =>
+              DetalhesEventoScreen(evento: evento, eventoId: docId),
         ),
       );
       return;
@@ -407,10 +426,8 @@ class _EventosScreenState extends State<EventosScreen>
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => DetalhesEventoAndamentoScreen(
-            evento: evento,
-            eventoId: docId,
-          ),
+          builder: (context) =>
+              DetalhesEventoAndamentoScreen(evento: evento, eventoId: docId),
         ),
       );
       return;
@@ -419,10 +436,8 @@ class _EventosScreenState extends State<EventosScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => DetalhesEventoScreen(
-          evento: evento,
-          eventoId: docId,
-        ),
+        builder: (context) =>
+            DetalhesEventoScreen(evento: evento, eventoId: docId),
       ),
     );
   }
@@ -433,7 +448,8 @@ class _EventosScreenState extends State<EventosScreen>
       future: _permissoesFuture,
       builder: (context, snapshot) {
         final loadingPermissoes =
-            snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData;
+            snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData;
 
         if (loadingPermissoes) {
           return Scaffold(
@@ -445,7 +461,7 @@ class _EventosScreenState extends State<EventosScreen>
 
         final permissoes = snapshot.data ?? const _EventosPermissoes();
 
-        if (!permissoes.podeAcessarEventos && !permissoes.podeVerEventos) {
+        if (!permissoes.podeEntrarModulo) {
           return Scaffold(
             backgroundColor: context.uai.background,
             appBar: _buildAppBar(permissoes),
@@ -489,10 +505,7 @@ class _EventosScreenState extends State<EventosScreen>
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: _appBarFg(),
         unselectedLabelColor: _appBarFg().withOpacity(0.62),
-        labelStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
+        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.normal,
           fontSize: 12,
@@ -534,15 +547,18 @@ class _EventosScreenState extends State<EventosScreen>
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator(color: context.uai.primary));
+          return Center(
+            child: CircularProgressIndicator(color: context.uai.primary),
+          );
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return _buildEmptyState('Nenhum evento encontrado');
         }
 
-        List<EventoModel> eventos =
-        snapshot.data!.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
+        List<EventoModel> eventos = snapshot.data!.docs
+            .map((doc) => EventoModel.fromFirestore(doc))
+            .toList();
 
         if (status != 'todos') {
           eventos = eventos.where((e) => e.status == status).toList();
@@ -667,7 +683,11 @@ class _EventosScreenState extends State<EventosScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outline_rounded, size: 62, color: context.uai.error.withOpacity(0.22)),
+            Icon(
+              Icons.lock_outline_rounded,
+              size: 62,
+              color: context.uai.error.withOpacity(0.22),
+            ),
             const SizedBox(height: 12),
             Text(
               'Acesso não liberado',
@@ -758,7 +778,7 @@ class _EventosScreenState extends State<EventosScreen>
     if (scheme != 'http' && scheme != 'https') {
       debugPrint(
         '🖼️ [Eventos] Banner ignorado para "${evento.nome}". '
-            'Use URL http/https. Valor atual: $raw',
+        'Use URL http/https. Valor atual: $raw',
       );
       return null;
     }
@@ -841,10 +861,10 @@ class _EventosScreenState extends State<EventosScreen>
   }
 
   Widget _buildEventoCard(
-      EventoModel evento,
-      String docId,
-      _EventosPermissoes permissoes,
-      ) {
+    EventoModel evento,
+    String docId,
+    _EventosPermissoes permissoes,
+  ) {
     final status = evento.status;
     final corStatus = status == 'finalizado'
         ? Colors.grey
@@ -874,11 +894,7 @@ class _EventosScreenState extends State<EventosScreen>
             return;
           }
 
-          _abrirEvento(
-            evento: evento,
-            docId: docId,
-            permissoes: permissoes,
-          );
+          _abrirEvento(evento: evento, docId: docId, permissoes: permissoes);
         },
         child: Ink(
           decoration: BoxDecoration(
@@ -919,8 +935,12 @@ class _EventosScreenState extends State<EventosScreen>
                           top: 7,
                           left: 7,
                           child: _buildCardBadge(
-                            text: bloqueadoAndamento ? 'Bloqueado' : textoStatus,
-                            color: bloqueadoAndamento ? context.uai.warning : corStatus,
+                            text: bloqueadoAndamento
+                                ? 'Bloqueado'
+                                : textoStatus,
+                            color: bloqueadoAndamento
+                                ? context.uai.warning
+                                : corStatus,
                             maxWidth: isTiny ? 72 : 88,
                           ),
                         ),
@@ -1035,7 +1055,6 @@ class _EventosScreenState extends State<EventosScreen>
     );
   }
 
-
   @override
   void dispose() {
     _tabController.dispose();
@@ -1050,6 +1069,8 @@ class _EventosPermissoes {
   final bool podeEditarEvento;
   final bool podeExcluirEvento;
   final bool podeFinalizarEvento;
+  final bool podeCriarEvento;
+  final bool podeGerenciarParticipantes;
 
   const _EventosPermissoes({
     this.podeAcessarEventos = false,
@@ -1058,6 +1079,14 @@ class _EventosPermissoes {
     this.podeEditarEvento = false,
     this.podeExcluirEvento = false,
     this.podeFinalizarEvento = false,
+    this.podeCriarEvento = false,
+    this.podeGerenciarParticipantes = false,
   });
-}
 
+  bool get podeEntrarModulo =>
+      podeAcessarEventos ||
+      podeVerEventos ||
+      podeCriarEvento ||
+      podeEditarEvento ||
+      podeGerenciarParticipantes;
+}

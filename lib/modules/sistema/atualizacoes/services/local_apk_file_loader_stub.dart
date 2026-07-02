@@ -22,7 +22,7 @@ class LocalApkFileLoaderStub extends LocalApkFileLoader {
       bytes: null,
       sizeBytes: 0,
       errorMessage:
-      'Leitura local de APK disponível apenas no Windows Desktop.',
+          'Leitura local de APK disponível apenas no Windows Desktop.',
     );
   }
 }

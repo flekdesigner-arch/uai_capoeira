@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -23,16 +23,66 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   final Set<String> _secoesExpandidas = <String>{};
 
   final List<Map<String, dynamic>> _iconesDisponiveis = [
-    {'nome': 'Gavel', 'icon': Icons.gavel_rounded, 'iconName': 'gavel', 'cor': Colors.blue},
-    {'nome': 'Person Add', 'icon': Icons.person_add_rounded, 'iconName': 'person_add', 'cor': Colors.green},
-    {'nome': 'School', 'icon': Icons.school_rounded, 'iconName': 'school', 'cor': Colors.orange},
-    {'nome': 'Premium', 'icon': Icons.workspace_premium_rounded, 'iconName': 'workspace_premium', 'cor': Colors.purple},
-    {'nome': 'Security', 'icon': Icons.security_rounded, 'iconName': 'security', 'cor': Colors.red},
-    {'nome': 'Group', 'icon': Icons.group_rounded, 'iconName': 'group', 'cor': Colors.teal},
-    {'nome': 'Star', 'icon': Icons.star_rounded, 'iconName': 'star', 'cor': Colors.amber},
-    {'nome': 'Events', 'icon': Icons.emoji_events_rounded, 'iconName': 'emoji_events', 'cor': Colors.deepOrange},
-    {'nome': 'Book', 'icon': Icons.menu_book_rounded, 'iconName': 'menu_book', 'cor': Colors.brown},
-    {'nome': 'Rule', 'icon': Icons.rule_rounded, 'iconName': 'rule', 'cor': Colors.indigo},
+    {
+      'nome': 'Gavel',
+      'icon': Icons.gavel_rounded,
+      'iconName': 'gavel',
+      'cor': Colors.blue,
+    },
+    {
+      'nome': 'Person Add',
+      'icon': Icons.person_add_rounded,
+      'iconName': 'person_add',
+      'cor': Colors.green,
+    },
+    {
+      'nome': 'School',
+      'icon': Icons.school_rounded,
+      'iconName': 'school',
+      'cor': Colors.orange,
+    },
+    {
+      'nome': 'Premium',
+      'icon': Icons.workspace_premium_rounded,
+      'iconName': 'workspace_premium',
+      'cor': Colors.purple,
+    },
+    {
+      'nome': 'Security',
+      'icon': Icons.security_rounded,
+      'iconName': 'security',
+      'cor': Colors.red,
+    },
+    {
+      'nome': 'Group',
+      'icon': Icons.group_rounded,
+      'iconName': 'group',
+      'cor': Colors.teal,
+    },
+    {
+      'nome': 'Star',
+      'icon': Icons.star_rounded,
+      'iconName': 'star',
+      'cor': Colors.amber,
+    },
+    {
+      'nome': 'Events',
+      'icon': Icons.emoji_events_rounded,
+      'iconName': 'emoji_events',
+      'cor': Colors.deepOrange,
+    },
+    {
+      'nome': 'Book',
+      'icon': Icons.menu_book_rounded,
+      'iconName': 'menu_book',
+      'cor': Colors.brown,
+    },
+    {
+      'nome': 'Rule',
+      'icon': Icons.rule_rounded,
+      'iconName': 'rule',
+      'cor': Colors.indigo,
+    },
   ];
 
   @override
@@ -48,7 +98,8 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -64,17 +115,23 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
 
   Future<void> _carregarRegimento() async {
     try {
-      final doc = await _firestore.collection('site_conteudo').doc('regimento').get();
+      final doc = await _firestore
+          .collection('site_conteudo')
+          .doc('regimento')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
 
         if (data.containsKey('secoes') && data['secoes'] is List) {
-          _secoes = (data['secoes'] as List).map((item) {
-            if (item is Map<String, dynamic>) return item;
-            if (item is Map) return Map<String, dynamic>.from(item);
-            return <String, dynamic>{};
-          }).where((item) => item.isNotEmpty).toList();
+          _secoes = (data['secoes'] as List)
+              .map((item) {
+                if (item is Map<String, dynamic>) return item;
+                if (item is Map) return Map<String, dynamic>.from(item);
+                return <String, dynamic>{};
+              })
+              .where((item) => item.isNotEmpty)
+              .toList();
         } else {
           _secoes = _getSecoesPadrao();
         }
@@ -273,7 +330,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: t.surface,
         insetPadding: const EdgeInsets.all(18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius),
+        ),
         title: Row(
           children: [
             Icon(Icons.warning_rounded, color: error),
@@ -404,9 +463,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     if (_carregando) {
       return Scaffold(
         backgroundColor: t.background,
-        body: Center(
-          child: CircularProgressIndicator(color: t.primary),
-        ),
+        body: Center(child: CircularProgressIndicator(color: t.primary)),
       );
     }
 
@@ -423,13 +480,13 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           IconButton(
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             onPressed: _salvando ? null : _salvar,
             tooltip: 'Salvar',
@@ -459,13 +516,13 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
             onPressed: _salvando ? null : _salvar,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR REGIMENTO'),
             style: ElevatedButton.styleFrom(
@@ -546,8 +603,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Editar Regimento',
@@ -589,13 +647,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                logo,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [logo, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -610,10 +662,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final onPrimary = _onPrimary();
 
     return Container(
@@ -653,7 +702,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     final cor = _ensureVisible(corOriginal, t.card);
     final expanded = _secaoEstaExpandida(secao, index);
     return Container(
-      decoration: _cardDecoration(borderColor: cor.withOpacity(expanded ? 0.28 : 0.18)),
+      decoration: _cardDecoration(
+        borderColor: cor.withOpacity(expanded ? 0.28 : 0.18),
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
         child: Column(
@@ -666,18 +717,26 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                 splashColor: cor.withOpacity(0.10),
                 highlightColor: cor.withOpacity(0.05),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Color.alphaBlend(cor.withOpacity(expanded ? 0.14 : 0.08), t.card),
+                        Color.alphaBlend(
+                          cor.withOpacity(expanded ? 0.14 : 0.08),
+                          t.card,
+                        ),
                         Color.alphaBlend(cor.withOpacity(0.035), t.card),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     border: expanded
-                        ? Border(bottom: BorderSide(color: cor.withOpacity(0.12)))
+                        ? Border(
+                            bottom: BorderSide(color: cor.withOpacity(0.12)),
+                          )
                         : null,
                   ),
                   child: Row(
@@ -754,8 +813,16 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                             label: const Text('EDITAR SEÇÃO'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: _ensureVisible(t.info, t.card),
-                              side: BorderSide(color: _ensureVisible(t.info, t.card).withOpacity(0.28)),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                              side: BorderSide(
+                                color: _ensureVisible(
+                                  t.info,
+                                  t.card,
+                                ).withOpacity(0.28),
+                              ),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ),
@@ -767,8 +834,16 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                             label: const Text('REMOVER'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: _ensureVisible(t.error, t.card),
-                              side: BorderSide(color: _ensureVisible(t.error, t.card).withOpacity(0.30)),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                              side: BorderSide(
+                                color: _ensureVisible(
+                                  t.error,
+                                  t.card,
+                                ).withOpacity(0.30),
+                              ),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ),
@@ -868,7 +943,7 @@ class _DialogSecaoState extends State<_DialogSecao> {
     final iconName = widget.secao?['icone']?.toString();
 
     _iconeSelecionado = widget.iconesDisponiveis.indexWhere(
-          (icone) => icone['iconName'] == iconName,
+      (icone) => icone['iconName'] == iconName,
     );
 
     if (_iconeSelecionado == -1) _iconeSelecionado = 0;
@@ -878,7 +953,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
     if (corRaw is int) {
       _corSelecionada = Color(corRaw);
     } else {
-      _corSelecionada = widget.iconesDisponiveis[_iconeSelecionado]['cor'] as Color;
+      _corSelecionada =
+          widget.iconesDisponiveis[_iconeSelecionado]['cor'] as Color;
     }
   }
 
@@ -895,7 +971,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -1057,7 +1134,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
 
                         if (titulo.isEmpty) return;
 
-                        final icone = widget.iconesDisponiveis[_iconeSelecionado];
+                        final icone =
+                            widget.iconesDisponiveis[_iconeSelecionado];
 
                         widget.onSalvar(
                           titulo,

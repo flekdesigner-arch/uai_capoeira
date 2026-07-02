@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -18,7 +18,10 @@ class NovaVendaScreen extends StatefulWidget {
 class _NovaVendaScreenState extends State<NovaVendaScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   String? _alunoSelecionadoId;
   String? _alunoSelecionadoNome;
@@ -39,7 +42,8 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -176,7 +180,8 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
     final theme = Theme.of(context);
     final cardBg = context.uai.card;
     final border = context.uai.border;
-    final primary = context.uai.success; // Uniformes usa cor de sucesso como primária
+    final primary =
+        context.uai.success; // Uniformes usa cor de sucesso como primária
     final onPrimary = _readableOn(primary);
     final textPrimary = context.uai.textPrimary;
     final textSecondary = context.uai.textSecondary;
@@ -186,8 +191,10 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: const Text('NOVA VENDA',
-            style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text(
+          'NOVA VENDA',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -216,9 +223,13 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('ALUNO',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: textPrimary)),
+                  Text(
+                    'ALUNO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   InkWell(
                     onTap: _selecionarAluno,
@@ -243,8 +254,11 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                               placeholder: (_, __) => CircleAvatar(
                                 radius: 16,
                                 backgroundColor: cardAlt,
-                                child: Icon(Icons.person,
-                                    size: 18, color: textMuted),
+                                child: Icon(
+                                  Icons.person,
+                                  size: 18,
+                                  color: textMuted,
+                                ),
                               ),
                               errorWidget: (_, __, ___) => CircleAvatar(
                                 radius: 16,
@@ -294,15 +308,20 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('ITENS',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
+                      Text(
+                        'ITENS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
                       TextButton.icon(
                         onPressed: _adicionarItem,
                         icon: Icon(Icons.add, color: primary),
-                        label: Text('Adicionar Item',
-                            style: TextStyle(color: primary)),
+                        label: Text(
+                          'Adicionar Item',
+                          style: TextStyle(color: primary),
+                        ),
                       ),
                     ],
                   ),
@@ -314,11 +333,16 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                         padding: const EdgeInsets.all(32),
                         child: Column(
                           children: [
-                            Icon(Icons.shopping_cart_outlined,
-                                size: 48, color: textMuted),
+                            Icon(
+                              Icons.shopping_cart_outlined,
+                              size: 48,
+                              color: textMuted,
+                            ),
                             const SizedBox(height: 8),
-                            Text('Nenhum item adicionado',
-                                style: TextStyle(color: textMuted)),
+                            Text(
+                              'Nenhum item adicionado',
+                              style: TextStyle(color: textMuted),
+                            ),
                           ],
                         ),
                       ),
@@ -342,8 +366,10 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                             ),
                             child: Icon(Icons.shopping_bag, color: primary),
                           ),
-                          title: Text(item['nome'],
-                              style: TextStyle(color: textPrimary)),
+                          title: Text(
+                            item['nome'],
+                            style: TextStyle(color: textPrimary),
+                          ),
                           subtitle: Text(
                             '${item['quantidade']} x ${_realFormat.format(item['preco_unitario'])}',
                             style: TextStyle(color: textSecondary),
@@ -353,14 +379,19 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                             children: [
                               Text(
                                 _realFormat.format(
-                                    item['quantidade'] * item['preco_unitario']),
+                                  item['quantidade'] * item['preco_unitario'],
+                                ),
                                 style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: textPrimary),
+                                  fontWeight: FontWeight.bold,
+                                  color: textPrimary,
+                                ),
                               ),
                               IconButton(
-                                icon: Icon(Icons.close,
-                                    size: 16, color: context.uai.error),
+                                icon: Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: context.uai.error,
+                                ),
                                 onPressed: () => _removerItem(index),
                               ),
                             ],
@@ -374,11 +405,14 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('TOTAL',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
+                      Text(
+                        'TOTAL',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
                       Text(
                         _realFormat.format(_valorTotal),
                         style: TextStyle(
@@ -407,28 +441,38 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('PAGAMENTO',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: textPrimary)),
+                  Text(
+                    'PAGAMENTO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   SegmentedButton<String>(
                     segments: [
                       ButtonSegment(
                         value: 'pendente',
-                        label: Text('Pendente',
-                            style: TextStyle(color: textPrimary)),
+                        label: Text(
+                          'Pendente',
+                          style: TextStyle(color: textPrimary),
+                        ),
                         icon: Icon(Icons.pending, color: context.uai.warning),
                       ),
                       ButtonSegment(
                         value: 'pago',
-                        label:
-                        Text('Pago', style: TextStyle(color: textPrimary)),
+                        label: Text(
+                          'Pago',
+                          style: TextStyle(color: textPrimary),
+                        ),
                         icon: Icon(Icons.check_circle, color: primary),
                       ),
                       ButtonSegment(
                         value: 'parcial',
-                        label: Text('Parcial',
-                            style: TextStyle(color: textPrimary)),
+                        label: Text(
+                          'Parcial',
+                          style: TextStyle(color: textPrimary),
+                        ),
                         icon: Icon(Icons.money_off, color: context.uai.info),
                       ),
                     ],
@@ -439,16 +483,15 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                       });
                     },
                     style: ButtonStyle(
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                            (states) {
-                          if (states.contains(WidgetState.selected)) {
-                            return primary.withOpacity(0.1);
-                          }
-                          return cardAlt;
-                        },
-                      ),
-                      foregroundColor:
-                      WidgetStateProperty.all(textPrimary),
+                      backgroundColor: WidgetStateProperty.resolveWith((
+                        states,
+                      ) {
+                        if (states.contains(WidgetState.selected)) {
+                          return primary.withOpacity(0.1);
+                        }
+                        return cardAlt;
+                      }),
+                      foregroundColor: WidgetStateProperty.all(textPrimary),
                     ),
                   ),
 
@@ -464,20 +507,22 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                         filled: true,
                         fillColor: cardAlt,
                         border: OutlineInputBorder(
-                          borderRadius:
-                          BorderRadius.circular(context.uai.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
                           borderSide: BorderSide(color: border),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius:
-                          BorderRadius.circular(context.uai.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
                           borderSide: BorderSide(color: border),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius:
-                          BorderRadius.circular(context.uai.inputRadius),
-                          borderSide:
-                          BorderSide(color: primary, width: 1.4),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
+                          borderSide: BorderSide(color: primary, width: 1.4),
                         ),
                       ),
                       onChanged: (value) {
@@ -501,18 +546,21 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                       filled: true,
                       fillColor: cardAlt,
                       border: OutlineInputBorder(
-                        borderRadius:
-                        BorderRadius.circular(context.uai.inputRadius),
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
                         borderSide: BorderSide(color: border),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                        BorderRadius.circular(context.uai.inputRadius),
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
                         borderSide: BorderSide(color: border),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                        BorderRadius.circular(context.uai.inputRadius),
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
                         borderSide: BorderSide(color: primary, width: 1.4),
                       ),
                       alignLabelWithHint: true,

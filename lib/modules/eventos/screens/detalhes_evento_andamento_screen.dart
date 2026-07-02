@@ -1,4 +1,4 @@
-﻿// lib/screens/eventos/detalhes_evento_andamento_screen.dart
+// lib/screens/eventos/detalhes_evento_andamento_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -27,10 +27,12 @@ class DetalhesEventoAndamentoScreen extends StatefulWidget {
   });
 
   @override
-  State<DetalhesEventoAndamentoScreen> createState() => _DetalhesEventoAndamentoScreenState();
+  State<DetalhesEventoAndamentoScreen> createState() =>
+      _DetalhesEventoAndamentoScreenState();
 }
 
-class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoScreen> {
+class _DetalhesEventoAndamentoScreenState
+    extends State<DetalhesEventoAndamentoScreen> {
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -38,7 +40,8 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -52,9 +55,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
 
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
-  Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
-
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   final ParticipacaoService _participacaoService = ParticipacaoService();
   final PermissaoService _permissaoService = PermissaoService();
@@ -82,8 +86,27 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   @override
   void initState() {
     super.initState();
-    _carregarDados();
-    _verificarPermissoes();
+    _inicializarComPermissao();
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    await _verificarPermissoes();
+    if (!mounted) return;
+
+    final podeCarregar =
+        _podeAcessarEventoAndamento ||
+        _podeGerenciarParticipantes ||
+        _podeGerenciarGastos ||
+        _podeGerenciarPatrocinadores ||
+        _podeGerenciarCamisas ||
+        _podeVerRelatorios ||
+        _podeGerarCertificados;
+
+    if (podeCarregar) {
+      await _carregarDados();
+    } else {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _verificarPermissoes() async {
@@ -152,6 +175,17 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
   }
 
   Future<void> _carregarDados() async {
+    if (!(_podeAcessarEventoAndamento ||
+        _podeGerenciarParticipantes ||
+        _podeGerenciarGastos ||
+        _podeGerenciarPatrocinadores ||
+        _podeGerenciarCamisas ||
+        _podeVerRelatorios ||
+        _podeGerarCertificados)) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -178,7 +212,9 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
 
   Future<void> _carregarEstatisticas() async {
     try {
-      final estatisticas = await _participacaoService.getEstatisticasPorEvento(widget.eventoId);
+      final estatisticas = await _participacaoService.getEstatisticasPorEvento(
+        widget.eventoId,
+      );
 
       setState(() {
         _totalParticipantes = estatisticas['total'] ?? 0;
@@ -263,7 +299,9 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         }
       }
 
-      debugPrint('📊 Camisas de PARTICIPAÇÕES: ${participacoesSnapshot.docs.length}');
+      debugPrint(
+        '📊 Camisas de PARTICIPAÇÕES: ${participacoesSnapshot.docs.length}',
+      );
 
       // 2️⃣ Busca camisas AVULSAS
       final camisasSnapshot = await FirebaseFirestore.instance
@@ -284,7 +322,21 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         _camisasCount = Map.fromEntries(
           contagemCombinada.entries.toList()..sort((a, b) {
             // Ordenação personalizada (PP, P, M, G, GG, XG, XXG, 4A, 6A, etc)
-            final ordem = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', '4A', '6A', '8A', '10A', '12A', '14A'];
+            final ordem = [
+              'PP',
+              'P',
+              'M',
+              'G',
+              'GG',
+              'XG',
+              'XXG',
+              '4A',
+              '6A',
+              '8A',
+              '10A',
+              '12A',
+              '14A',
+            ];
             final indexA = ordem.indexOf(a.key);
             final indexB = ordem.indexOf(b.key);
             if (indexA != -1 && indexB != -1) return indexA.compareTo(indexB);
@@ -293,12 +345,14 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
             return a.key.compareTo(b.key);
           }),
         );
-        _totalCamisas = contagemCombinada.values.fold(0, (sum, val) => sum + val);
+        _totalCamisas = contagemCombinada.values.fold(
+          0,
+          (sum, val) => sum + val,
+        );
       });
 
       debugPrint('🎯 TOTAL DE CAMISAS: $_totalCamisas');
       debugPrint('📋 Distribuição: $_camisasCount');
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar camisas: $e');
     }
@@ -323,7 +377,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         final entries = _camisasCount.entries.toList();
 
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 20,
+          ),
           backgroundColor: Colors.transparent,
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -406,7 +463,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(Icons.close_rounded, color: Colors.white),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white,
+                                ),
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ],
@@ -424,9 +484,15 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                   width: double.infinity,
                                   padding: EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: context.uai.warning.withOpacity(0.08),
+                                    color: context.uai.warning.withOpacity(
+                                      0.08,
+                                    ),
                                     borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(color: context.uai.warning.withOpacity(0.12)),
+                                    border: Border.all(
+                                      color: context.uai.warning.withOpacity(
+                                        0.12,
+                                      ),
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
@@ -448,7 +514,9 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                         ),
                                         decoration: BoxDecoration(
                                           color: context.uai.warning,
-                                          borderRadius: BorderRadius.circular(99),
+                                          borderRadius: BorderRadius.circular(
+                                            99,
+                                          ),
                                         ),
                                         child: Text(
                                           '$_totalCamisas',
@@ -479,7 +547,8 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
 
                                 LayoutBuilder(
                                   builder: (context, localConstraints) {
-                                    final availableWidth = localConstraints.maxWidth;
+                                    final availableWidth =
+                                        localConstraints.maxWidth;
                                     final columns = availableWidth < 270
                                         ? 2
                                         : availableWidth < 390
@@ -487,7 +556,9 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                         : 4;
                                     const spacing = 9.0;
                                     final itemWidth =
-                                        (availableWidth - (spacing * (columns - 1))) / columns;
+                                        (availableWidth -
+                                            (spacing * (columns - 1))) /
+                                        columns;
 
                                     return Wrap(
                                       spacing: spacing,
@@ -496,27 +567,34 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                         return SizedBox(
                                           width: itemWidth,
                                           child: Container(
-                                            constraints: BoxConstraints(minHeight: 82),
+                                            constraints: BoxConstraints(
+                                              minHeight: 82,
+                                            ),
                                             padding: EdgeInsets.symmetric(
                                               horizontal: 8,
                                               vertical: 10,
                                             ),
                                             decoration: BoxDecoration(
                                               color: context.uai.card,
-                                              borderRadius: BorderRadius.circular(16),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
                                               border: Border.all(
-                                                color: context.uai.warning.withOpacity(0.12),
+                                                color: context.uai.warning
+                                                    .withOpacity(0.12),
                                               ),
                                               boxShadow: [
                                                 BoxShadow(
-                                                  color: context.uai.warning.withOpacity(0.12).withOpacity(0.35),
+                                                  color: context.uai.warning
+                                                      .withOpacity(0.12)
+                                                      .withOpacity(0.35),
                                                   blurRadius: 5,
                                                   offset: const Offset(0, 2),
                                                 ),
                                               ],
                                             ),
                                             child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
                                               children: [
                                                 FittedBox(
                                                   fit: BoxFit.scaleDown,
@@ -524,9 +602,13 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                                     entry.key,
                                                     maxLines: 1,
                                                     style: TextStyle(
-                                                      fontSize: isSmall ? 17 : 19,
-                                                      fontWeight: FontWeight.w900,
-                                                      color: context.uai.warning,
+                                                      fontSize: isSmall
+                                                          ? 17
+                                                          : 19,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      color:
+                                                          context.uai.warning,
                                                     ),
                                                   ),
                                                 ),
@@ -537,10 +619,15 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                                     vertical: 4,
                                                   ),
                                                   decoration: BoxDecoration(
-                                                    color: context.uai.warning.withOpacity(0.08),
-                                                    borderRadius: BorderRadius.circular(99),
+                                                    color: context.uai.warning
+                                                        .withOpacity(0.08),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          99,
+                                                        ),
                                                     border: Border.all(
-                                                      color: context.uai.warning.withOpacity(0.12),
+                                                      color: context.uai.warning
+                                                          .withOpacity(0.12),
                                                     ),
                                                   ),
                                                   child: FittedBox(
@@ -549,9 +636,13 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                                                       '${entry.value}',
                                                       maxLines: 1,
                                                       style: TextStyle(
-                                                        fontSize: isSmall ? 15 : 17,
-                                                        fontWeight: FontWeight.w900,
-                                                        color: context.uai.warning,
+                                                        fontSize: isSmall
+                                                            ? 15
+                                                            : 17,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                        color:
+                                                            context.uai.warning,
                                                       ),
                                                     ),
                                                   ),
@@ -587,7 +678,9 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: context.uai.warning,
                                 foregroundColor: _appBarFg(),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 textStyle: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.4,
@@ -610,7 +703,6 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
       },
     );
   }
-
 
   Future<void> _abrirLink(String? url) async {
     if (url == null || url.isEmpty) return;
@@ -650,7 +742,6 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     return 'R\$ ${valor.toStringAsFixed(2)}';
   }
 
-
   Widget _buildAcessoAndamentoBloqueado() {
     return Center(
       child: Padding(
@@ -673,7 +764,11 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_outline_rounded, size: 58, color: context.uai.warning),
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 58,
+                color: context.uai.warning,
+              ),
               const SizedBox(height: 12),
               Text(
                 'Evento em andamento bloqueado',
@@ -725,10 +820,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () async {
-              await Future.wait([
-                _carregarDados(),
-                _verificarPermissoes(),
-              ]);
+              await Future.wait([_carregarDados(), _verificarPermissoes()]);
             },
             tooltip: 'Atualizar dados e permissões',
           ),
@@ -744,50 +836,44 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           : !_podeAcessarEventoAndamento
           ? _buildAcessoAndamentoBloqueado()
           : RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait([
-            _carregarDados(),
-            _verificarPermissoes(),
-          ]);
-        },
-        color: context.uai.primary,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final r = UaiResponsive.fromConstraints(
-              context,
-              constraints,
-            );
+              onRefresh: () async {
+                await Future.wait([_carregarDados(), _verificarPermissoes()]);
+              },
+              color: context.uai.primary,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final r = UaiResponsive.fromConstraints(context, constraints);
 
-            final maxWidth = r.isPhone
-                ? double.infinity
-                : r.isTablet
-                ? 920.0
-                : 1120.0;
+                  final maxWidth = r.isPhone
+                      ? double.infinity
+                      : r.isTablet
+                      ? 920.0
+                      : 1120.0;
 
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: r.listInsets,
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: maxWidth),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeader(evento),
-                        SizedBox(height: r.sectionSpacing),
-                        _buildEstatisticasCard(),
-                        SizedBox(height: r.sectionSpacing),
-                        _buildMenuBotoes(evento),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: r.listInsets,
+                    children: [
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildHeader(evento),
+                              SizedBox(height: r.sectionSpacing),
+                              _buildEstatisticasCard(),
+                              SizedBox(height: r.sectionSpacing),
+                              _buildMenuBotoes(evento),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -837,15 +923,15 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GeradorCertificadosEventoScreen(
-          evento: eventoComId,
-        ),
+        builder: (context) =>
+            GeradorCertificadosEventoScreen(evento: eventoComId),
       ),
     ).then((_) => _carregarDados());
   }
 
   Widget _buildHeader(EventoModel evento) {
-    final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
+    final hasBanner =
+        evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -871,10 +957,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                   : 335,
               child: hasBanner
                   ? Image.network(
-                evento.linkBanner!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildFallbackBanner(),
-              )
+                      evento.linkBanner!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildFallbackBanner(),
+                    )
                   : _buildFallbackBanner(),
             ),
             Positioned.fill(
@@ -940,7 +1026,10 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _headerMeta(Icons.calendar_month_rounded, _formatarData()),
+                      _headerMeta(
+                        Icons.calendar_month_rounded,
+                        _formatarData(),
+                      ),
                       if (evento.horario.trim().isNotEmpty)
                         _headerMeta(Icons.access_time_rounded, evento.horario),
                       if (evento.cidade.trim().isNotEmpty)
@@ -966,7 +1055,11 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         ),
       ),
       child: const Center(
-        child: Icon(Icons.event_available_rounded, size: 72, color: Colors.white),
+        child: Icon(
+          Icons.event_available_rounded,
+          size: 72,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -995,10 +1088,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
               fontSize: 11.5,
               fontWeight: FontWeight.w900,
               shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 4,
-                ),
+                Shadow(color: Colors.black.withOpacity(0.45), blurRadius: 4),
               ],
             ),
           ),
@@ -1027,10 +1117,7 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
               shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 4,
-                ),
+                Shadow(color: Colors.black.withOpacity(0.45), blurRadius: 4),
               ],
             ),
           ),
@@ -1055,7 +1142,8 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
           _sectionHeader(
             icon: Icons.dashboard_rounded,
             title: 'Resumo do evento',
-            subtitle: 'Dados atualizados de participantes, camisas, gastos e patrocínios.',
+            subtitle:
+                'Dados atualizados de participantes, camisas, gastos e patrocínios.',
             color: context.uai.primary,
           ),
           const SizedBox(height: 14),
@@ -1084,10 +1172,34 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
                   (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
               final items = [
-                _StatData(Icons.people_rounded, '$_totalParticipantes', 'Participantes', context.uai.info, null),
-                _StatData(Icons.shopping_bag_rounded, '$_totalCamisas', 'Camisas', context.uai.warning, _mostrarDetalhesCamisas),
-                _StatData(Icons.money_off_rounded, _formatarMoeda(_totalGastos), 'Gastos', context.uai.error, null),
-                _StatData(Icons.volunteer_activism_rounded, _formatarMoeda(_totalPatrocinioValor), 'Patrocínio', context.uai.success, null),
+                _StatData(
+                  Icons.people_rounded,
+                  '$_totalParticipantes',
+                  'Participantes',
+                  context.uai.info,
+                  null,
+                ),
+                _StatData(
+                  Icons.shopping_bag_rounded,
+                  '$_totalCamisas',
+                  'Camisas',
+                  context.uai.warning,
+                  _mostrarDetalhesCamisas,
+                ),
+                _StatData(
+                  Icons.money_off_rounded,
+                  _formatarMoeda(_totalGastos),
+                  'Gastos',
+                  context.uai.error,
+                  null,
+                ),
+                _StatData(
+                  Icons.volunteer_activism_rounded,
+                  _formatarMoeda(_totalPatrocinioValor),
+                  'Patrocínio',
+                  context.uai.success,
+                  null,
+                ),
               ];
 
               return Wrap(
@@ -1138,7 +1250,8 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         _buildMenuButton(
           icon: Icons.workspace_premium_rounded,
           title: 'Gerador de certificados',
-          subtitle: 'Gerar PDFs, PNGs, impressão em lotes e pacote para gráfica',
+          subtitle:
+              'Gerar PDFs, PNGs, impressão em lotes e pacote para gráfica',
           color: context.uai.associacao,
           onTap: _abrirGeradorCertificados,
         ),
@@ -1489,7 +1602,8 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
         ? (widget.evento.organizadores as List).join(', ')
         : widget.evento.organizadores?.toString() ?? 'Não informado';
 
-    String texto = '''
+    String texto =
+        '''
 🎉 *${widget.evento.nome}* (EM ANDAMENTO)
 
 📅 Data: ${_formatarData()} ${widget.evento.horario.isNotEmpty ? 'às ${widget.evento.horario}' : ''}
@@ -1516,7 +1630,6 @@ class _DetalhesEventoAndamentoScreenState extends State<DetalhesEventoAndamentoS
     }
   }
 }
-
 
 class _StatData {
   final IconData icon;

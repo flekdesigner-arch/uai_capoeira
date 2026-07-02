@@ -17,15 +17,15 @@ class CertificadoLoteImpressaoService {
   CertificadoLoteImpressaoService({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _storage = storage ?? FirebaseStorage.instance;
 
   static const int tamanhoPadraoLote = 10;
 
   List<List<T>> dividirEmLotes<T>(
-      List<T> items, {
-        int tamanhoLote = tamanhoPadraoLote,
-      }) {
+    List<T> items, {
+    int tamanhoLote = tamanhoPadraoLote,
+  }) {
     if (items.isEmpty) return [];
 
     final tamanhoSeguro = tamanhoLote <= 0 ? tamanhoPadraoLote : tamanhoLote;
@@ -153,9 +153,7 @@ class CertificadoLoteImpressaoService {
       final numeroLote = i + 1;
       final grupo = grupos[i];
 
-      final pdfBytes = await gerarPdfMultipaginaComPngs(
-        certificados: grupo,
-      );
+      final pdfBytes = await gerarPdfMultipaginaComPngs(certificados: grupo);
 
       final nomeArquivo = nomeArquivoLote(
         evento: evento,
@@ -168,7 +166,7 @@ class CertificadoLoteImpressaoService {
 
       if (enviarStorage) {
         storagePath =
-        'eventos/${evento.eventoId}/certificados/lotes_impressao/$nomeArquivo';
+            'eventos/${evento.eventoId}/certificados/lotes_impressao/$nomeArquivo';
 
         linkPdf = await _uploadBytes(
           bytes: pdfBytes,
@@ -195,10 +193,12 @@ class CertificadoLoteImpressaoService {
         pdfBytes: pdfBytes,
         linkPdf: linkPdf,
         storagePath: storagePath,
-        participacoesIds:
-        grupo.map((item) => item.participante.participacaoId).toList(),
-        participantesNomes:
-        grupo.map((item) => item.participante.alunoNome).toList(),
+        participacoesIds: grupo
+            .map((item) => item.participante.participacaoId)
+            .toList(),
+        participantesNomes: grupo
+            .map((item) => item.participante.alunoNome)
+            .toList(),
         status: 'gerado',
         criadoEm: DateTime.now(),
         impresso: false,
@@ -283,8 +283,9 @@ class CertificadoLoteImpressaoService {
 
       batch.update(ref, {
         'certificado_impresso': impresso,
-        'certificado_impresso_em':
-        impresso ? FieldValue.serverTimestamp() : null,
+        'certificado_impresso_em': impresso
+            ? FieldValue.serverTimestamp()
+            : null,
         'certificado_atualizado_em': FieldValue.serverTimestamp(),
       });
     }
@@ -304,11 +305,12 @@ class CertificadoLoteImpressaoService {
         .collection('participacoes_eventos_em_andamento')
         .doc(participacaoId)
         .update({
-      'certificado_impresso': impresso,
-      'certificado_impresso_em':
-      impresso ? FieldValue.serverTimestamp() : null,
-      'certificado_atualizado_em': FieldValue.serverTimestamp(),
-    });
+          'certificado_impresso': impresso,
+          'certificado_impresso_em': impresso
+              ? FieldValue.serverTimestamp()
+              : null,
+          'certificado_atualizado_em': FieldValue.serverTimestamp(),
+        });
   }
 
   Future<Uint8List> gerarRelatorioGraficaPdf({
@@ -319,14 +321,14 @@ class CertificadoLoteImpressaoService {
     final itens = certificados
         .map(
           (cert) => CertificadoPacoteGraficaItem(
-        numero: certificados.indexOf(cert) + 1,
-        participacaoId: cert.participante.participacaoId,
-        alunoNome: cert.participante.alunoNome,
-        graduacao: cert.participante.graduacaoNova,
-        modelo: cert.participante.certificadoOuDiploma,
-        nomeArquivo: cert.nomeArquivo,
-      ),
-    )
+            numero: certificados.indexOf(cert) + 1,
+            participacaoId: cert.participante.participacaoId,
+            alunoNome: cert.participante.alunoNome,
+            graduacao: cert.participante.graduacaoNova,
+            modelo: cert.participante.certificadoOuDiploma,
+            nomeArquivo: cert.nomeArquivo,
+          ),
+        )
         .toList();
 
     return gerarRelatorioGraficaPdfPorItens(
@@ -361,10 +363,7 @@ class CertificadoLoteImpressaoService {
           return [
             pw.Text(
               titulo,
-              style: pw.TextStyle(
-                fontSize: 20,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 8),
             pw.Text('Evento: ${evento.eventoNome}'),
@@ -508,11 +507,7 @@ class CertificadoLoteImpressaoService {
     const relatorioNome = 'RELATORIO_CERTIFICADOS_GRAFICA.pdf';
 
     archive.addFile(
-      ArchiveFile(
-        relatorioNome,
-        relatorioBytes.length,
-        relatorioBytes,
-      ),
+      ArchiveFile(relatorioNome, relatorioBytes.length, relatorioBytes),
     );
 
     final zipBytes = Uint8List.fromList(
@@ -530,8 +525,9 @@ class CertificadoLoteImpressaoService {
       linkZip: null,
       storagePath: null,
       certificadosNomes: certificados.map((e) => e.nomeArquivo).toList(),
-      participacoesIds:
-      certificados.map((e) => e.participante.participacaoId).toList(),
+      participacoesIds: certificados
+          .map((e) => e.participante.participacaoId)
+          .toList(),
       criadoEm: DateTime.now(),
     );
 
@@ -575,8 +571,8 @@ class CertificadoLoteImpressaoService {
   }
 
   Future<String> registrarPacoteGrafica(
-      CertificadoPacoteGraficaGerado pacote,
-      ) async {
+    CertificadoPacoteGraficaGerado pacote,
+  ) async {
     if (pacote.eventoId.trim().isEmpty) {
       throw Exception('Evento sem ID para registrar pacote.');
     }
@@ -641,9 +637,7 @@ class CertificadoLoteImpressaoService {
     );
   }
 
-  Future<void> baixarLotePdf({
-    required CertificadoLoteGerado lote,
-  }) async {
+  Future<void> baixarLotePdf({required CertificadoLoteGerado lote}) async {
     await FileSaver.instance.saveFile(
       name: lote.nomeArquivo.replaceAll('.pdf', ''),
       bytes: lote.pdfBytes,
@@ -662,10 +656,7 @@ class CertificadoLoteImpressaoService {
 
     await ref.putData(
       bytes,
-      SettableMetadata(
-        contentType: contentType,
-        customMetadata: metadata,
-      ),
+      SettableMetadata(contentType: contentType, customMetadata: metadata),
     );
 
     return ref.getDownloadURL();

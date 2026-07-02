@@ -9,16 +9,18 @@ class UniformesService {
   // 📦 ADICIONAR/EDITAR ITEM NO ESTOQUE
   // Agora retorna o ID do documento (String) para ser usado em fluxos com variações.
   Future<String> adicionarItemEstoque(
-      Map<String, dynamic> dados, {
-        String? itemId,
-      }) async {
+    Map<String, dynamic> dados, {
+    String? itemId,
+  }) async {
     if (itemId == null) {
       // Criação
       dados.addAll({
         'criado_em': FieldValue.serverTimestamp(),
         'criado_por': currentUser?.uid,
       });
-      final docRef = await _firestore.collection('uniformes_estoque').add(dados);
+      final docRef = await _firestore
+          .collection('uniformes_estoque')
+          .add(dados);
       return docRef.id;
     } else {
       // Edição
@@ -26,7 +28,10 @@ class UniformesService {
         'ultima_atualizacao': FieldValue.serverTimestamp(),
         'atualizado_por': currentUser?.uid,
       });
-      await _firestore.collection('uniformes_estoque').doc(itemId).update(dados);
+      await _firestore
+          .collection('uniformes_estoque')
+          .doc(itemId)
+          .update(dados);
       return itemId; // retorna o ID que já existia
     }
   }
@@ -55,7 +60,9 @@ class UniformesService {
 
   // 💰 REGISTRAR VENDA
   Future<String> registrarVenda(Map<String, dynamic> dadosVenda) async {
-    final docRef = await _firestore.collection('vendas_uniformes').add(dadosVenda);
+    final docRef = await _firestore
+        .collection('vendas_uniformes')
+        .add(dadosVenda);
 
     // Atualizar estoque (decrementar quantidade)
     for (var item in dadosVenda['itens']) {
@@ -64,8 +71,8 @@ class UniformesService {
             .collection('uniformes_estoque')
             .doc(item['item_id'])
             .update({
-          'quantidade': FieldValue.increment(-(item['quantidade'])),
-        });
+              'quantidade': FieldValue.increment(-(item['quantidade'])),
+            });
       }
     }
 
@@ -80,8 +87,9 @@ class UniformesService {
     required Map<String, dynamic> vendaData,
   }) async {
     double novoValorPago = (vendaData['valor_pago'] ?? 0) + valorPagamento;
-    String novoStatus =
-    novoValorPago >= (vendaData['valor_total'] ?? 0) ? 'pago' : 'parcial';
+    String novoStatus = novoValorPago >= (vendaData['valor_total'] ?? 0)
+        ? 'pago'
+        : 'parcial';
 
     await _firestore.collection('vendas_uniformes').doc(vendaId).update({
       'valor_pago': novoValorPago,
@@ -92,15 +100,16 @@ class UniformesService {
           'forma': formaPagamento,
           'data': DateTime.now().toIso8601String(),
           'usuario_id': currentUser?.uid,
-        }
+        },
       ]),
     });
   }
 
   // 🛒 CRIAR PEDIDO
   Future<String> criarPedido(Map<String, dynamic> dadosPedido) async {
-    final docRef =
-    await _firestore.collection('pedidos_uniformes').add(dadosPedido);
+    final docRef = await _firestore
+        .collection('pedidos_uniformes')
+        .add(dadosPedido);
     return docRef.id;
   }
 
@@ -140,7 +149,7 @@ class UniformesService {
           'forma': formaPagamento,
           'data': DateTime.now().toIso8601String(),
           'usuario_id': currentUser?.uid,
-        }
+        },
       ]),
     });
   }

@@ -1,4 +1,4 @@
-﻿// lib/services/certificado_service.dart
+// lib/services/certificado_service.dart
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -29,7 +29,7 @@ class CertificadoService {
     'Times New Roman Bold',
     'Verdana',
     'Verdana Bold',
-    'Bauhaus 93'
+    'Bauhaus 93',
   ];
 
   // Carrega as fontes
@@ -89,7 +89,9 @@ class CertificadoService {
     final tipo = graduacaoData['tipo_publico'] == 'INFANTIL' ? 'i' : 'a';
     final nomeArquivo = '$nivel$tipo.png';
 
-    debugPrint('🖼️ Fundo selecionado: $nomeArquivo (nível $nivel, ${graduacaoData['tipo_publico']})');
+    debugPrint(
+      '🖼️ Fundo selecionado: $nomeArquivo (nível $nivel, ${graduacaoData['tipo_publico']})',
+    );
     return 'assets/images/certificados/graduacoes/$nomeArquivo';
   }
 
@@ -101,11 +103,16 @@ class CertificadoService {
   // Converte TextAlign para pw.TextAlign
   pw.TextAlign _textAlignToPwTextAlign(TextAlign align) {
     switch (align) {
-      case TextAlign.center: return pw.TextAlign.center;
-      case TextAlign.right: return pw.TextAlign.right;
-      case TextAlign.left: return pw.TextAlign.left;
-      case TextAlign.justify: return pw.TextAlign.justify;
-      default: return pw.TextAlign.left;
+      case TextAlign.center:
+        return pw.TextAlign.center;
+      case TextAlign.right:
+        return pw.TextAlign.right;
+      case TextAlign.left:
+        return pw.TextAlign.left;
+      case TextAlign.justify:
+        return pw.TextAlign.justify;
+      default:
+        return pw.TextAlign.left;
     }
   }
 
@@ -119,7 +126,8 @@ class CertificadoService {
 
   // Pega fonte do cache com fallback
   pw.Font _getFont(String fontName) {
-    if (_fontesDisponiveis.contains(fontName) && _cacheFontes.containsKey(fontName)) {
+    if (_fontesDisponiveis.contains(fontName) &&
+        _cacheFontes.containsKey(fontName)) {
       return _cacheFontes[fontName]!;
     }
 
@@ -135,12 +143,12 @@ class CertificadoService {
 
   // Substitui placeholders na frase
   String _substituirPlaceholders(
-      String frase, {
-        required String alunoNome,
-        required String cpf,
-        required String titulo,
-        required String corda,
-      }) {
+    String frase, {
+    required String alunoNome,
+    required String cpf,
+    required String titulo,
+    required String corda,
+  }) {
     return frase
         .replaceAll('{nome}', alunoNome.isNotEmpty ? alunoNome : 'NOME')
         .replaceAll('{cpf}', cpf.isNotEmpty ? cpf : 'CPF')
@@ -176,16 +184,29 @@ class CertificadoService {
       } catch (e) {
         debugPrint('❌ Erro ao carregar fundo $fundoPath: $e');
         // Fallback para um fundo padrão
-        fundoBytes = await _carregarImagemAsset('assets/images/certificados/graduacoes/1a.png');
+        fundoBytes = await _carregarImagemAsset(
+          'assets/images/certificados/graduacoes/1a.png',
+        );
       }
 
       final fundoImage = pw.MemoryImage(fundoBytes);
 
       // 🔥 LISTA DE CAMPOS
       final campos = [
-        'assinatura1', 'assinatura2', 'assinatura3', 'assinatura4', 'assinatura5',
-        'apelido1', 'apelido2', 'apelido3', 'apelido4', 'apelido5',
-        'nome_do_aluno', 'cpf', 'localdata', 'frase_unica',
+        'assinatura1',
+        'assinatura2',
+        'assinatura3',
+        'assinatura4',
+        'assinatura5',
+        'apelido1',
+        'apelido2',
+        'apelido3',
+        'apelido4',
+        'apelido5',
+        'nome_do_aluno',
+        'cpf',
+        'localdata',
+        'frase_unica',
       ];
 
       debugPrint('🔍 Gerando PDF com todas as configurações...');
@@ -205,7 +226,8 @@ class CertificadoService {
                 // TODOS OS CAMPOS DA CONFIGURAÇÃO
                 ...campos.map((campoId) {
                   // 🔥 CORREÇÃO: Verifica pelo TIPO DO CERTIFICADO, não pelo ID do modelo
-                  final tipoCertificado = configCertificado['tipo_certificado']?.toString() ?? '';
+                  final tipoCertificado =
+                      configCertificado['tipo_certificado']?.toString() ?? '';
 
                   // Se for CERTIFICADO (sem CPF), esconde o campo CPF
                   if (tipoCertificado == 'CERTIFICADO' && campoId == 'cpf') {
@@ -241,20 +263,26 @@ class CertificadoService {
                     100,
                   );
 
-                  final fontFamily = configCertificado['fonte_$campoId']?.toString() ?? 'Arial';
+                  final fontFamily =
+                      configCertificado['fonte_$campoId']?.toString() ??
+                      'Arial';
 
                   final corValue = configCertificado['cor_$campoId'];
                   final cor = corValue != null && corValue is int
                       ? _colorToPdfColor(Color(corValue))
                       : PdfColors.black;
 
-                  final alignStr = configCertificado['alinhamento_$campoId']?.toString() ?? 'left';
+                  final alignStr =
+                      configCertificado['alinhamento_$campoId']?.toString() ??
+                      'left';
 
                   // Pega o texto para cada campo
                   String texto = '';
                   switch (campoId) {
                     case 'nome_do_aluno':
-                      texto = alunoNome.isNotEmpty ? alunoNome : 'NOME DO ALUNO';
+                      texto = alunoNome.isNotEmpty
+                          ? alunoNome
+                          : 'NOME DO ALUNO';
                       break;
                     case 'cpf':
                       texto = cpf.isNotEmpty ? cpf : '000.000.000-00';
@@ -263,7 +291,7 @@ class CertificadoService {
                       String fraseBase = fraseDaGraduacao.isNotEmpty
                           ? fraseDaGraduacao
                           : (configCertificado['frase_unica'] ??
-                          'CERTIFICAMOS QUE {nome} CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA.');
+                                'CERTIFICAMOS QUE {nome} CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA.');
                       texto = _substituirPlaceholders(
                         fraseBase,
                         alunoNome: alunoNome,
@@ -277,11 +305,19 @@ class CertificadoService {
                       break;
                     default:
                       if (campoId.startsWith('assinatura')) {
-                        final index = int.parse(campoId.replaceAll('assinatura', '')) - 1;
-                        texto = configCertificado['assinatura${index+1}']?.toString() ?? 'ASSINATURA ${index+1}';
+                        final index =
+                            int.parse(campoId.replaceAll('assinatura', '')) - 1;
+                        texto =
+                            configCertificado['assinatura${index + 1}']
+                                ?.toString() ??
+                            'ASSINATURA ${index + 1}';
                       } else if (campoId.startsWith('apelido')) {
-                        final index = int.parse(campoId.replaceAll('apelido', '')) - 1;
-                        final apelido = configCertificado['apelido${index+1}']?.toString() ?? '';
+                        final index =
+                            int.parse(campoId.replaceAll('apelido', '')) - 1;
+                        final apelido =
+                            configCertificado['apelido${index + 1}']
+                                ?.toString() ??
+                            '';
                         texto = apelido.isNotEmpty ? '($apelido)' : '(APELIDO)';
                       }
                   }
@@ -290,8 +326,12 @@ class CertificadoService {
 
                   // 🔥 LOG PARA VERIFICAR OS VALORES CONVERTIDOS
                   debugPrint('📐 PDF - Campo $campoId:');
-                  debugPrint('   mm: x=${x.toStringAsFixed(2)}, y=${y.toStringAsFixed(2)}, fontSize=${fontSize.toStringAsFixed(2)}, maxWidth=${maxWidth.toStringAsFixed(2)}');
-                  debugPrint('   tipo: $tipoCertificado, visível: ${!(tipoCertificado == 'CERTIFICADO' && campoId == 'cpf')}');
+                  debugPrint(
+                    '   mm: x=${x.toStringAsFixed(2)}, y=${y.toStringAsFixed(2)}, fontSize=${fontSize.toStringAsFixed(2)}, maxWidth=${maxWidth.toStringAsFixed(2)}',
+                  );
+                  debugPrint(
+                    '   tipo: $tipoCertificado, visível: ${!(tipoCertificado == 'CERTIFICADO' && campoId == 'cpf')}',
+                  );
 
                   return pw.Positioned(
                     left: x,
@@ -305,7 +345,9 @@ class CertificadoService {
                           font: _getFont(fontFamily),
                           color: cor,
                         ),
-                        textAlign: _textAlignToPwTextAlign(_getTextAlignFromString(alignStr)),
+                        textAlign: _textAlignToPwTextAlign(
+                          _getTextAlignFromString(alignStr),
+                        ),
                         softWrap: true,
                       ),
                     ),
@@ -322,7 +364,8 @@ class CertificadoService {
       final bytes = await pdf.save();
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'certificado_${alunoNome.replaceAll(' ', '_')}_$timestamp.pdf';
+      final fileName =
+          'certificado_${alunoNome.replaceAll(' ', '_')}_$timestamp.pdf';
       final tempFile = File('${tempDir.path}/$fileName');
 
       debugPrint('📁 Salvando em: ${tempFile.path}');
@@ -332,13 +375,11 @@ class CertificadoService {
 
       if (await tempFile.exists()) {
         debugPrint('✅ Arquivo salvo com sucesso');
-        await Share.shareXFiles(
-          [XFile(tempFile.path)],
-          text: 'Certificado de $alunoNome',
-        );
+        await Share.shareXFiles([
+          XFile(tempFile.path),
+        ], text: 'Certificado de $alunoNome');
         debugPrint('✅ Compartilhamento iniciado');
       }
-
     } catch (e) {
       debugPrint('❌ Erro: $e');
       rethrow;

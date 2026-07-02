@@ -31,8 +31,8 @@ class ItemEstoqueCard extends StatelessWidget {
   }
 
   static Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
     final bgIsDark = background.computeLuminance() < 0.45;
     final hsl = HSLColor.fromColor(color);
@@ -102,7 +102,11 @@ class ItemEstoqueCard extends StatelessWidget {
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
                 errorWidget: (_, __, ___) => const Center(
-                  child: Icon(Icons.broken_image, color: Colors.white, size: 80),
+                  child: Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 80,
+                  ),
                 ),
               ),
             ),
@@ -184,24 +188,21 @@ class ItemEstoqueCard extends StatelessWidget {
             ),
             child: fotoUrl != null && fotoUrl.isNotEmpty
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Icon(
-                  _getCategoriaIcon(categoria),
-                  color: visibleCatColor,
-                ),
-                errorWidget: (_, __, ___) => Icon(
-                  _getCategoriaIcon(categoria),
-                  color: visibleCatColor,
-                ),
-              ),
-            )
-                : Icon(
-              _getCategoriaIcon(categoria),
-              color: visibleCatColor,
-            ),
+                    borderRadius: BorderRadius.circular(8),
+                    child: CachedNetworkImage(
+                      imageUrl: fotoUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Icon(
+                        _getCategoriaIcon(categoria),
+                        color: visibleCatColor,
+                      ),
+                      errorWidget: (_, __, ___) => Icon(
+                        _getCategoriaIcon(categoria),
+                        color: visibleCatColor,
+                      ),
+                    ),
+                  )
+                : Icon(_getCategoriaIcon(categoria), color: visibleCatColor),
           ),
         ),
         title: Row(
@@ -220,8 +221,8 @@ class ItemEstoqueCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: controlaEstoque
                     ? (baixoEstoque
-                    ? context.uai.warning.withOpacity(0.1)
-                    : context.uai.success.withOpacity(0.1))
+                          ? context.uai.warning.withOpacity(0.1)
+                          : context.uai.success.withOpacity(0.1))
                     : context.uai.textMuted.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -229,7 +230,9 @@ class ItemEstoqueCard extends StatelessWidget {
                 controlaEstoque ? '$quantidade un' : 'Sem estoque',
                 style: TextStyle(
                   color: controlaEstoque
-                      ? (baixoEstoque ? context.uai.warning : context.uai.success)
+                      ? (baixoEstoque
+                            ? context.uai.warning
+                            : context.uai.success)
                       : context.uai.textMuted,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
@@ -241,10 +244,7 @@ class ItemEstoqueCard extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              subtitulo,
-              style: TextStyle(color: context.uai.textSecondary),
-            ),
+            Text(subtitulo, style: TextStyle(color: context.uai.textSecondary)),
             Text(
               'Preço: ${realFormat.format(precoVenda)}',
               style: TextStyle(
@@ -332,8 +332,9 @@ class ItemEstoqueCard extends StatelessWidget {
                           color: context.uai.primary.withOpacity(0.5),
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                          BorderRadius.circular(context.uai.buttonRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.buttonRadius,
+                          ),
                         ),
                       ),
                     ),
@@ -348,7 +349,8 @@ class ItemEstoqueCard extends StatelessWidget {
                           foregroundColor: _readableOn(context.uai.success),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
-                                context.uai.buttonRadius),
+                              context.uai.buttonRadius,
+                            ),
                           ),
                         ),
                       ),
@@ -368,7 +370,8 @@ class ItemEstoqueCard extends StatelessWidget {
                               : context.uai.textMuted,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
-                                context.uai.buttonRadius),
+                              context.uai.buttonRadius,
+                            ),
                           ),
                         ),
                       ),
@@ -384,7 +387,8 @@ class ItemEstoqueCard extends StatelessWidget {
                           foregroundColor: _readableOn(context.uai.error),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
-                                context.uai.buttonRadius),
+                              context.uai.buttonRadius,
+                            ),
                           ),
                         ),
                       ),

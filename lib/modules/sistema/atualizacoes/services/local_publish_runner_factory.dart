@@ -21,7 +21,7 @@
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_runner_base.dart';
 
 import 'local_publish_runner_stub.dart'
-if (dart.library.io) 'local_publish_runner_windows_factory.dart';
+    if (dart.library.io) 'local_publish_runner_windows_factory.dart';
 
 LocalPublishRunner getLocalPublishRunner() {
   return createLocalPublishRunner();

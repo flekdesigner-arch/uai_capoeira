@@ -76,8 +76,10 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Future<void> _inicializarTela() async {
+    await _verificarPermissao();
+    if (!mounted || !_podeFinalizar) return;
+
     await Future.wait([
-      _verificarPermissao(),
       _loadSvg(),
       _preloadGraduacoes(),
       _garantirIndiceAlunos(),
@@ -95,8 +97,10 @@ class _FinalizacaoMassaEventoScreenState
       _alunosExtraPorNome.clear();
       _indexarAlunosFuture = null;
 
+      await _verificarPermissao();
+      if (!mounted || !_podeFinalizar) return;
+
       await Future.wait([
-        _verificarPermissao(),
         _loadSvg(force: true),
         _preloadGraduacoes(forceServer: true),
         _garantirIndiceAlunos(),
@@ -130,8 +134,9 @@ class _FinalizacaoMassaEventoScreenState
     if (_svgContent != null && !force) return;
 
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
       if (!mounted) return;
       setState(() => _svgContent = content);
     } catch (e) {
@@ -175,7 +180,8 @@ class _FinalizacaoMassaEventoScreenState
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final nomeGraduacao = data['nome_graduacao']?.toString() ??
+        final nomeGraduacao =
+            data['nome_graduacao']?.toString() ??
             data['nome']?.toString() ??
             data['titulo']?.toString() ??
             '';
@@ -190,7 +196,7 @@ class _FinalizacaoMassaEventoScreenState
           'hex_ponta2': data['hex_ponta2'],
           'nome_graduacao': nomeGraduacao,
           'nivel_graduacao':
-          data['nivel_graduacao'] ?? data['nivel'] ?? data['ordem'] ?? 9999,
+              data['nivel_graduacao'] ?? data['nivel'] ?? data['ordem'] ?? 9999,
           'tipo_publico': data['tipo_publico'],
         };
 
@@ -225,8 +231,8 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -270,10 +276,8 @@ class _FinalizacaoMassaEventoScreenState
 
   String _normalizeString(String text) {
     if (text.isEmpty) return '';
-    const withAccents =
-        'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
-    const withoutAccents =
-        'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
 
     var normalized = text;
     for (var i = 0; i < withAccents.length; i++) {
@@ -297,8 +301,8 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Map<String, dynamic>? _graduacaoMapDoParticipante(
-      _FinalizacaoParticipanteData item,
-      ) {
+    _FinalizacaoParticipanteData item,
+  ) {
     final ids = [
       item.graduacaoNovaId,
       item.graduacaoAtualId,
@@ -335,8 +339,10 @@ class _FinalizacaoMassaEventoScreenState
     if (nomeMap != null && nomeMap.isNotEmpty) return nomeMap;
 
     if (item.graduacaoNova.trim().isNotEmpty) return item.graduacaoNova.trim();
-    if (item.graduacaoAtual.trim().isNotEmpty) return item.graduacaoAtual.trim();
-    if (item.graduacaoTexto.trim().isNotEmpty) return item.graduacaoTexto.trim();
+    if (item.graduacaoAtual.trim().isNotEmpty)
+      return item.graduacaoAtual.trim();
+    if (item.graduacaoTexto.trim().isNotEmpty)
+      return item.graduacaoTexto.trim();
     return 'SEM GRADUAÇÃO';
   }
 
@@ -386,12 +392,13 @@ class _FinalizacaoMassaEventoScreenState
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
-        final hex = '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+        final hex =
+            '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
         final oldStyle = element.getAttribute('style') ?? '';
 
         if (oldStyle.contains('fill:')) {
@@ -428,40 +435,44 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   List<_FinalizacaoParticipanteData> _mapearParticipantes(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final buscaNormalizada = _normalizeString(_busca);
 
     final lista = docs
         .map(_FinalizacaoParticipanteData.fromDoc)
         .where((item) => !item.finalizado)
         .where((item) {
-      if (buscaNormalizada.isEmpty) return true;
+          if (buscaNormalizada.isEmpty) return true;
 
-      final alvo = _normalizeString([
-        item.nome,
-        item.graduacaoAtual,
-        item.graduacaoNova,
-        item.graduacaoTexto,
-        item.turma,
-        item.tamanhoCamisa,
-      ].join(' '));
+          final alvo = _normalizeString(
+            [
+              item.nome,
+              item.graduacaoAtual,
+              item.graduacaoNova,
+              item.graduacaoTexto,
+              item.turma,
+              item.tamanhoCamisa,
+            ].join(' '),
+          );
 
-      return alvo.contains(buscaNormalizada);
-    }).where((item) {
-      final chamado = _chamados.contains(item.id);
-      if (_filtroChamada == 'Chamados') return chamado;
-      if (_filtroChamada == 'Não chamados') return !chamado;
-      return true;
-    }).toList();
+          return alvo.contains(buscaNormalizada);
+        })
+        .where((item) {
+          final chamado = _chamados.contains(item.id);
+          if (_filtroChamada == 'Chamados') return chamado;
+          if (_filtroChamada == 'Não chamados') return !chamado;
+          return true;
+        })
+        .toList();
 
     lista.sort((a, b) => a.nome.compareTo(b.nome));
     return lista;
   }
 
   List<_FinalizacaoParticipanteData> _ordenarParaVisualPrincipal(
-      List<_FinalizacaoParticipanteData> participantes,
-      ) {
+    List<_FinalizacaoParticipanteData> participantes,
+  ) {
     final lista = List<_FinalizacaoParticipanteData>.from(participantes);
 
     if (_ordenacaoPrincipal == 'graduacao') {
@@ -485,7 +496,9 @@ class _FinalizacaoMassaEventoScreenState
     return lista;
   }
 
-  int _contarFinalizados(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  int _contarFinalizados(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return docs
         .map(_FinalizacaoParticipanteData.fromDoc)
         .where((item) => item.finalizado)
@@ -493,8 +506,8 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   List<_GrupoGraduacaoFinalizacao> _agruparPorGraduacao(
-      List<_FinalizacaoParticipanteData> participantes,
-      ) {
+    List<_FinalizacaoParticipanteData> participantes,
+  ) {
     final grupos = <String, _GrupoGraduacaoFinalizacao>{};
 
     for (final item in participantes) {
@@ -505,7 +518,7 @@ class _FinalizacaoMassaEventoScreenState
 
       grupos.putIfAbsent(
         key,
-            () => _GrupoGraduacaoFinalizacao(
+        () => _GrupoGraduacaoFinalizacao(
           key: key,
           titulo: titulo,
           ordem: _nivelGraduacaoResolvido(item),
@@ -579,8 +592,8 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Future<_AlunoExtraEventoData> _buscarAlunoExtra(
-      _FinalizacaoParticipanteData item,
-      ) async {
+    _FinalizacaoParticipanteData item,
+  ) async {
     // Mesma ideia da tela de participantes:
     // 1) tenta direto pelo aluno_id no documento alunos;
     // 2) se não achou, tenta pelo índice local de alunos;
@@ -652,7 +665,9 @@ class _FinalizacaoMassaEventoScreenState
 
           for (final entry in _alunosExtraPorNome.entries) {
             final key = entry.key;
-            if (key == nomeKey || key.startsWith(nomeKey) || nomeKey.startsWith(key)) {
+            if (key == nomeKey ||
+                key.startsWith(nomeKey) ||
+                nomeKey.startsWith(key)) {
               if (entry.value.fotoUrl.trim().isNotEmpty) {
                 _alunoExtraCache[futureKey] = entry.value;
               }
@@ -710,7 +725,9 @@ class _FinalizacaoMassaEventoScreenState
 
       return extra;
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar foto do aluno ${item.nome} ($futureKey): $e');
+      debugPrint(
+        '⚠️ Erro ao buscar foto do aluno ${item.nome} ($futureKey): $e',
+      );
       return _AlunoExtraEventoData.empty();
     }
   }
@@ -751,9 +768,9 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   void _marcarTodosFiltrados(
-      List<_FinalizacaoParticipanteData> participantes,
-      bool chamado,
-      ) {
+    List<_FinalizacaoParticipanteData> participantes,
+    bool chamado,
+  ) {
     if (_processando || participantes.isEmpty) return;
 
     _setStatePreservandoScroll(() {
@@ -787,17 +804,19 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Future<void> _abrirDialogoChamar(
-      List<_FinalizacaoParticipanteData> participantes,
-      ) async {
+    List<_FinalizacaoParticipanteData> participantes,
+  ) async {
     if (_processando) return;
 
-    final selecionados = participantes
-        .where((item) => _chamados.contains(item.id))
-        .toList()
-      ..sort((a, b) => a.nome.compareTo(b.nome));
+    final selecionados =
+        participantes.where((item) => _chamados.contains(item.id)).toList()
+          ..sort((a, b) => a.nome.compareTo(b.nome));
 
     if (selecionados.isEmpty) {
-      _mostrarSnack('Marque pelo menos um aluno para chamar.', context.uai.warning);
+      _mostrarSnack(
+        'Marque pelo menos um aluno para chamar.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -805,7 +824,9 @@ class _FinalizacaoMassaEventoScreenState
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        final chamadosDialog = List<_FinalizacaoParticipanteData>.from(selecionados);
+        final chamadosDialog = List<_FinalizacaoParticipanteData>.from(
+          selecionados,
+        );
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -813,10 +834,16 @@ class _FinalizacaoMassaEventoScreenState
             final primary = _ensureVisible(t.primary, t.card);
 
             return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 20,
+              ),
               backgroundColor: Colors.transparent,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
+                constraints: const BoxConstraints(
+                  maxWidth: 720,
+                  maxHeight: 720,
+                ),
                 child: Material(
                   color: t.card,
                   borderRadius: BorderRadius.circular(24),
@@ -866,7 +893,9 @@ class _FinalizacaoMassaEventoScreenState
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: _readableOn(t.primary).withOpacity(0.80),
+                                      color: _readableOn(
+                                        t.primary,
+                                      ).withOpacity(0.80),
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12,
                                     ),
@@ -887,117 +916,131 @@ class _FinalizacaoMassaEventoScreenState
                       Flexible(
                         child: chamadosDialog.isEmpty
                             ? Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.person_remove_alt_1_rounded,
-                                color: t.textMuted,
-                                size: 54,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Nenhum aluno na chamada',
-                                style: TextStyle(
-                                  color: t.textPrimary,
-                                  fontWeight: FontWeight.w900,
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.person_remove_alt_1_rounded,
+                                      color: t.textMuted,
+                                      size: 54,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Nenhum aluno na chamada',
+                                      style: TextStyle(
+                                        color: t.textPrimary,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Feche esta caixa e marque novamente os alunos que serão chamados.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: t.textSecondary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Feche esta caixa e marque novamente os alunos que serão chamados.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: t.textSecondary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
+                              )
                             : ListView.separated(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.all(14),
-                          itemCount: chamadosDialog.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final item = chamadosDialog[index];
-                            final svg = _getModifiedSvg(item);
-                            final cor = _ensureVisible(_cor1Graduacao(item), t.card);
-                            final nomeGrad = _nomeGraduacaoResolvido(item);
+                                shrinkWrap: true,
+                                padding: const EdgeInsets.all(14),
+                                itemCount: chamadosDialog.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final item = chamadosDialog[index];
+                                  final svg = _getModifiedSvg(item);
+                                  final cor = _ensureVisible(
+                                    _cor1Graduacao(item),
+                                    t.card,
+                                  );
+                                  final nomeGrad = _nomeGraduacaoResolvido(
+                                    item,
+                                  );
 
-                            return Container(
-                              padding: const EdgeInsets.fromLTRB(10, 9, 8, 9),
-                              decoration: BoxDecoration(
-                                color: cor.withOpacity(0.055),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: cor.withOpacity(0.16)),
-                              ),
-                              child: Row(
-                                children: [
-                                  _AvatarAlunoChamado(
-                                    item: item,
-                                    extraFuture: _buscarAlunoExtra(item),
-                                    borderColor: cor,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                  return Container(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      9,
+                                      8,
+                                      9,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: cor.withOpacity(0.055),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: cor.withOpacity(0.16),
+                                      ),
+                                    ),
+                                    child: Row(
                                       children: [
-                                        Text(
-                                          item.nome,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: t.textPrimary,
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 13.5,
+                                        _AvatarAlunoChamado(
+                                          item: item,
+                                          extraFuture: _buscarAlunoExtra(item),
+                                          borderColor: cor,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item.nome,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: t.textPrimary,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 13.5,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                nomeGrad,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: t.textSecondary,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          nomeGrad,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: t.textSecondary,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 11,
+                                        if (svg != null) ...[
+                                          const SizedBox(width: 8),
+                                          SizedBox(
+                                            width: 34,
+                                            height: 42,
+                                            child: SvgPicture.string(
+                                              svg,
+                                              fit: BoxFit.contain,
+                                            ),
+                                          ),
+                                        ],
+                                        IconButton(
+                                          tooltip: 'Remover da chamada',
+                                          onPressed: () {
+                                            setDialogState(() {
+                                              chamadosDialog.removeAt(index);
+                                            });
+                                          },
+                                          icon: Icon(
+                                            Icons.close_rounded,
+                                            color: t.error,
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  if (svg != null) ...[
-                                    const SizedBox(width: 8),
-                                    SizedBox(
-                                      width: 34,
-                                      height: 42,
-                                      child: SvgPicture.string(
-                                        svg,
-                                        fit: BoxFit.contain,
-                                      ),
-                                    ),
-                                  ],
-                                  IconButton(
-                                    tooltip: 'Remover da chamada',
-                                    onPressed: () {
-                                      setDialogState(() {
-                                        chamadosDialog.removeAt(index);
-                                      });
-                                    },
-                                    icon: Icon(
-                                      Icons.close_rounded,
-                                      color: t.error,
-                                    ),
-                                  ),
-                                ],
+                                  );
+                                },
                               ),
-                            );
-                          },
-                        ),
                       ),
                       Container(
                         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
@@ -1017,11 +1060,11 @@ class _FinalizacaoMassaEventoScreenState
                                 onPressed: chamadosDialog.isEmpty
                                     ? null
                                     : () => Navigator.pop(
-                                  dialogContext,
-                                  List<_FinalizacaoParticipanteData>.from(
-                                    chamadosDialog,
-                                  ),
-                                ),
+                                        dialogContext,
+                                        List<_FinalizacaoParticipanteData>.from(
+                                          chamadosDialog,
+                                        ),
+                                      ),
                                 icon: const Icon(Icons.verified_rounded),
                                 label: const Text('FINALIZAR DE VERDADE'),
                                 style: ElevatedButton.styleFrom(
@@ -1085,11 +1128,22 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Future<void> _finalizarDeVerdade(
-      List<_FinalizacaoParticipanteData> confirmados,
-      ) async {
+    List<_FinalizacaoParticipanteData> confirmados,
+  ) async {
     if (_processando) return;
 
     if (!_podeFinalizar) {
+      _mostrarSnack(
+        'Você não tem permissão para finalizar participantes.',
+        context.uai.error,
+      );
+      return;
+    }
+
+    final permitido = await _permissaoService.temQualquerPermissaoDireta([
+      'pode_concluir_participacao_evento',
+    ]);
+    if (!permitido) {
       _mostrarSnack(
         'Você não tem permissão para finalizar participantes.',
         context.uai.error,
@@ -1212,7 +1266,7 @@ class _FinalizacaoMassaEventoScreenState
               'valor_total': item.valorInscricao + item.valorCamisa,
               'tamanho_camisa': item.tamanhoCamisa,
               'modelagem_camisa':
-              dadosOriginais['modelagem_camisa'] ?? 'NORMAL',
+                  dadosOriginais['modelagem_camisa'] ?? 'NORMAL',
               'tipo_camisa': dadosOriginais['tipo_camisa'] ?? 'MANGA',
               'link_certificado': linkCertificadoAtual.isNotEmpty
                   ? linkCertificadoAtual
@@ -1230,9 +1284,7 @@ class _FinalizacaoMassaEventoScreenState
         if (item.alunoId.trim().isNotEmpty &&
             (novaGraduacaoNome.isNotEmpty || novaGraduacaoId.isNotEmpty)) {
           final alunoRef = _firestore.collection('alunos').doc(item.alunoId);
-          final dadosAluno = <String, dynamic>{
-            'atualizado_em': agora,
-          };
+          final dadosAluno = <String, dynamic>{'atualizado_em': agora};
 
           if (novaGraduacaoNome.isNotEmpty) {
             dadosAluno['graduacao_atual'] = novaGraduacaoNome;
@@ -1325,12 +1377,12 @@ class _FinalizacaoMassaEventoScreenState
             onPressed: _processando
                 ? null
                 : () {
-              setState(() {
-                _viewMode = _viewMode == _viewGraduacoes
-                    ? _viewPrincipal
-                    : _viewGraduacoes;
-              });
-            },
+                    setState(() {
+                      _viewMode = _viewMode == _viewGraduacoes
+                          ? _viewPrincipal
+                          : _viewGraduacoes;
+                    });
+                  },
             icon: Icon(
               _viewMode == _viewGraduacoes
                   ? Icons.workspace_premium_rounded
@@ -1366,13 +1418,13 @@ class _FinalizacaoMassaEventoScreenState
             onPressed: _isRefreshing || _processando ? null : _atualizarTudo,
             icon: _isRefreshing
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: appBarFg,
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: appBarFg,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -1394,48 +1446,48 @@ class _FinalizacaoMassaEventoScreenState
           : !_podeFinalizar
           ? _buildSemPermissao()
           : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _firestore
-            .collection('participacoes_eventos_em_andamento')
-            .where('evento_id', isEqualTo: widget.eventoId)
-            .orderBy('aluno_nome')
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return _buildErro(snapshot.error.toString());
-          }
+              stream: _firestore
+                  .collection('participacoes_eventos_em_andamento')
+                  .where('evento_id', isEqualTo: widget.eventoId)
+                  .orderBy('aluno_nome')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return _buildErro(snapshot.error.toString());
+                }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return _buildLoading();
-          }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return _buildLoading();
+                }
 
-          final docs = snapshot.data?.docs ?? [];
-          final participantes = _mapearParticipantes(docs);
-          final totalFinalizados = _contarFinalizados(docs);
+                final docs = snapshot.data?.docs ?? [];
+                final participantes = _mapearParticipantes(docs);
+                final totalFinalizados = _contarFinalizados(docs);
 
-          _chamados.removeWhere(
-                (id) => docs.every((doc) => doc.id != id),
-          );
+                _chamados.removeWhere(
+                  (id) => docs.every((doc) => doc.id != id),
+                );
 
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: _buildConteudo(
-                  participantes: participantes,
-                  docs: docs,
-                  totalFinalizados: totalFinalizados,
-                ),
-              ),
-              if (_chamados.isNotEmpty)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildChamarOverlay(participantes),
-                ),
-            ],
-          );
-        },
-      ),
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _buildConteudo(
+                        participantes: participantes,
+                        docs: docs,
+                        totalFinalizados: totalFinalizados,
+                      ),
+                    ),
+                    if (_chamados.isNotEmpty)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _buildChamarOverlay(participantes),
+                      ),
+                  ],
+                );
+              },
+            ),
     );
   }
 
@@ -1449,10 +1501,7 @@ class _FinalizacaoMassaEventoScreenState
       focusNode: _buscaFocus,
       onChanged: _onBuscaChanged,
       textInputAction: TextInputAction.search,
-      style: TextStyle(
-        color: appBarFg,
-        fontWeight: FontWeight.w800,
-      ),
+      style: TextStyle(color: appBarFg, fontWeight: FontWeight.w800),
       cursorColor: appBarFg,
       decoration: InputDecoration(
         hintText: 'Buscar por nome ou graduação...',
@@ -1460,17 +1509,20 @@ class _FinalizacaoMassaEventoScreenState
         prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
         suffixIcon: _busca.isNotEmpty
             ? IconButton(
-          onPressed: () {
-            _buscaController.clear();
-            setState(() => _busca = '');
-            _buscaFocus.requestFocus();
-          },
-          icon: Icon(Icons.close_rounded, color: appBarFg),
-        )
+                onPressed: () {
+                  _buscaController.clear();
+                  setState(() => _busca = '');
+                  _buscaFocus.requestFocus();
+                },
+                icon: Icon(Icons.close_rounded, color: appBarFg),
+              )
             : null,
         filled: true,
         fillColor: searchBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),
           borderSide: BorderSide(color: searchBorder),
@@ -1481,10 +1533,7 @@ class _FinalizacaoMassaEventoScreenState
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),
-          borderSide: BorderSide(
-            color: appBarFg.withOpacity(0.75),
-            width: 1.2,
-          ),
+          borderSide: BorderSide(color: appBarFg.withOpacity(0.75), width: 1.2),
         ),
       ),
     );
@@ -1496,7 +1545,8 @@ class _FinalizacaoMassaEventoScreenState
     required int totalFinalizados,
   }) {
     final totalGeral = docs.length;
-    final totalNaFila = docs.map(_FinalizacaoParticipanteData.fromDoc)
+    final totalNaFila = docs
+        .map(_FinalizacaoParticipanteData.fromDoc)
         .where((item) => !item.finalizado)
         .length;
 
@@ -1679,23 +1729,14 @@ class _FinalizacaoMassaEventoScreenState
                 'finalizados',
                 t.success,
               ),
-              _resumoChip(
-                Icons.groups_rounded,
-                '$totalGeral',
-                'total',
-                t.info,
-              ),
+              _resumoChip(Icons.groups_rounded, '$totalGeral', 'total', t.info),
             ],
           );
 
           if (compact) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                header,
-                const SizedBox(height: 10),
-                stats,
-              ],
+              children: [header, const SizedBox(height: 10), stats],
             );
           }
 
@@ -1749,9 +1790,12 @@ class _FinalizacaoMassaEventoScreenState
     );
   }
 
-  Widget _buildPainelControle(List<_FinalizacaoParticipanteData> participantes) {
+  Widget _buildPainelControle(
+    List<_FinalizacaoParticipanteData> participantes,
+  ) {
     final t = context.uai;
-    final todosChamados = participantes.isNotEmpty &&
+    final todosChamados =
+        participantes.isNotEmpty &&
         participantes.every((item) => _chamados.contains(item.id));
 
     return Container(
@@ -1780,22 +1824,25 @@ class _FinalizacaoMassaEventoScreenState
           final actions = SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              mainAxisAlignment:
-              compact ? MainAxisAlignment.start : MainAxisAlignment.end,
+              mainAxisAlignment: compact
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.end,
               children: [
                 OutlinedButton.icon(
                   onPressed: _processando || participantes.isEmpty
                       ? null
                       : () => _marcarTodosFiltrados(
-                    participantes,
-                    !todosChamados,
-                  ),
+                          participantes,
+                          !todosChamados,
+                        ),
                   icon: Icon(
                     todosChamados
                         ? Icons.remove_done_rounded
                         : Icons.done_all_rounded,
                   ),
-                  label: Text(todosChamados ? 'DESMARCAR FILTRO' : 'MARCAR FILTRO'),
+                  label: Text(
+                    todosChamados ? 'DESMARCAR FILTRO' : 'MARCAR FILTRO',
+                  ),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -1812,11 +1859,7 @@ class _FinalizacaoMassaEventoScreenState
           if (compact) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                filtros,
-                const SizedBox(height: 8),
-                actions,
-              ],
+              children: [filtros, const SizedBox(height: 8), actions],
             );
           }
 
@@ -1842,11 +1885,7 @@ class _FinalizacaoMassaEventoScreenState
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 15,
-            color: selected ? primary : t.textSecondary,
-          ),
+          Icon(icon, size: 15, color: selected ? primary : t.textSecondary),
           const SizedBox(width: 5),
           Text(label),
         ],
@@ -1854,9 +1893,7 @@ class _FinalizacaoMassaEventoScreenState
       onSelected: (_) => setState(() => _filtroChamada = label),
       backgroundColor: t.card,
       selectedColor: primary.withOpacity(0.12),
-      side: BorderSide(
-        color: selected ? primary.withOpacity(0.34) : t.border,
-      ),
+      side: BorderSide(color: selected ? primary.withOpacity(0.34) : t.border),
       labelStyle: TextStyle(
         color: selected ? primary : t.textSecondary,
         fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
@@ -1864,12 +1901,12 @@ class _FinalizacaoMassaEventoScreenState
     );
   }
 
-  Widget _buildGraduacoesView(List<_FinalizacaoParticipanteData> participantes) {
+  Widget _buildGraduacoesView(
+    List<_FinalizacaoParticipanteData> participantes,
+  ) {
     final grupos = _agruparPorGraduacao(participantes);
 
-    return Column(
-      children: grupos.map(_buildGrupoGraduacaoCard).toList(),
-    );
+    return Column(children: grupos.map(_buildGrupoGraduacaoCard).toList());
   }
 
   Widget _buildGrupoGraduacaoCard(_GrupoGraduacaoFinalizacao grupo) {
@@ -1877,8 +1914,9 @@ class _FinalizacaoMassaEventoScreenState
     final cor1 = _ensureVisible(grupo.color1, t.card);
     final cor2 = _ensureVisible(grupo.color2, t.card);
     final aberto = _gruposAbertos.contains(grupo.key);
-    final chamadosGrupo =
-        grupo.alunos.where((item) => _chamados.contains(item.id)).length;
+    final chamadosGrupo = grupo.alunos
+        .where((item) => _chamados.contains(item.id))
+        .length;
     final todosChamados =
         grupo.alunos.isNotEmpty && chamadosGrupo == grupo.alunos.length;
     final svg = _getModifiedSvg(grupo.referencia);
@@ -1886,7 +1924,9 @@ class _FinalizacaoMassaEventoScreenState
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: aberto ? Color.alphaBlend(cor1.withOpacity(0.03), t.card) : t.card,
+        color: aberto
+            ? Color.alphaBlend(cor1.withOpacity(0.03), t.card)
+            : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         border: Border.all(
           color: aberto ? cor1.withOpacity(0.44) : cor1.withOpacity(0.20),
@@ -1947,7 +1987,8 @@ class _FinalizacaoMassaEventoScreenState
                               value: grupo.alunos.isEmpty
                                   ? 0
                                   : ((chamadosGrupo / grupo.alunos.length)
-                                  .clamp(0.0, 1.0)).toDouble(),
+                                            .clamp(0.0, 1.0))
+                                        .toDouble(),
                               minHeight: 6,
                               backgroundColor: t.border.withOpacity(0.65),
                               valueColor: AlwaysStoppedAnimation<Color>(cor1),
@@ -1977,9 +2018,9 @@ class _FinalizacaoMassaEventoScreenState
                       onPressed: _processando
                           ? null
                           : () => _marcarTodosFiltrados(
-                        grupo.alunos,
-                        !todosChamados,
-                      ),
+                              grupo.alunos,
+                              !todosChamados,
+                            ),
                       icon: Icon(
                         todosChamados
                             ? Icons.remove_done_rounded
@@ -2012,7 +2053,10 @@ class _FinalizacaoMassaEventoScreenState
                     AnimatedRotation(
                       turns: aberto ? 0.5 : 0,
                       duration: const Duration(milliseconds: 180),
-                      child: Icon(Icons.keyboard_arrow_down_rounded, color: cor1),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: cor1,
+                      ),
                     ),
                   ],
                 ),
@@ -2022,8 +2066,9 @@ class _FinalizacaoMassaEventoScreenState
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 180),
             sizeCurve: Curves.easeOutCubic,
-            crossFadeState:
-            aberto ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: aberto
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             firstChild: const SizedBox.shrink(),
             secondChild: Padding(
               padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
@@ -2044,8 +2089,7 @@ class _FinalizacaoMassaEventoScreenState
         children: [
           Expanded(child: Container(color: cor1)),
           Expanded(child: Container(color: cor2)),
-          if (cor1 == cor2)
-            Container(width: 1, color: t.card.withOpacity(0.8)),
+          if (cor1 == cor2) Container(width: 1, color: t.card.withOpacity(0.8)),
         ],
       ),
     );
@@ -2057,7 +2101,9 @@ class _FinalizacaoMassaEventoScreenState
         // O log mostrou BoxConstraints(w=-5.0, h=232.0). Isso acontecia quando
         // o Flutter media o conteúdo expandido com largura transitória muito
         // pequena e o cálculo de 2 colunas gerava largura negativa.
-        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 0.0;
         if (width <= 0) return const SizedBox.shrink();
 
         final isMobileGrid = width < 620;
@@ -2128,13 +2174,15 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Widget _buildVisualPrincipalView(
-      List<_FinalizacaoParticipanteData> participantes,
-      ) {
+    List<_FinalizacaoParticipanteData> participantes,
+  ) {
     final ordenados = _ordenarParaVisualPrincipal(participantes);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 0.0;
         if (width <= 0) return const SizedBox.shrink();
 
         final columns = width >= 1500
@@ -2178,8 +2226,8 @@ class _FinalizacaoMassaEventoScreenState
   }
 
   Widget _buildChamarOverlay(
-      List<_FinalizacaoParticipanteData> participantesFiltrados,
-      ) {
+    List<_FinalizacaoParticipanteData> participantesFiltrados,
+  ) {
     final t = context.uai;
     final primary = _ensureVisible(t.primary, t.card);
 
@@ -2223,7 +2271,11 @@ class _FinalizacaoMassaEventoScreenState
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: primary.withOpacity(0.14)),
                         ),
-                        child: Icon(Icons.campaign_rounded, color: primary, size: 20),
+                        child: Icon(
+                          Icons.campaign_rounded,
+                          color: primary,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 9),
                       Expanded(
@@ -2500,7 +2552,9 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
     final bottomPadding = compact ? 7.0 : 9.0;
     final nomeFont = compact ? 9.6 : 12.8;
     final nomeMaxLines = compact ? 2 : 2;
-    final checkSize = chamado ? (compact ? 23.0 : 28.0) : (compact ? 12.0 : 14.0);
+    final checkSize = chamado
+        ? (compact ? 23.0 : 28.0)
+        : (compact ? 12.0 : 14.0);
     final checkIconSize = compact ? 15.0 : 18.0;
     final actionSize = compact ? 24.0 : 29.0;
     final actionIconSize = compact ? 13.5 : 16.0;
@@ -2513,7 +2567,9 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
         final extra = snapshot.data ?? _AlunoExtraEventoData.empty();
         final fotoUrl = item.melhorFoto(extra);
         final nome = item.nome.trim().isEmpty ? extra.nome : item.nome;
-        final primeiraLetra = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
+        final primeiraLetra = nome.trim().isEmpty
+            ? '?'
+            : nome.trim()[0].toUpperCase();
 
         return AnimatedScale(
           duration: const Duration(milliseconds: 130),
@@ -2575,7 +2631,8 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                                     right: horizontalPadding,
                                     bottom: bottomPadding,
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
@@ -2603,7 +2660,9 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                                                 label: item.graduacaoCurta,
                                               ),
                                             ),
-                                            if (item.tamanhoCamisa.isNotEmpty) ...[
+                                            if (item
+                                                .tamanhoCamisa
+                                                .isNotEmpty) ...[
                                               const SizedBox(width: 5),
                                               _CamisaChipMini(
                                                 label: item.tamanhoCamisa,
@@ -2649,10 +2708,10 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                           ),
                           child: chamado
                               ? Icon(
-                            Icons.check_rounded,
-                            color: readableOn(accent),
-                            size: checkIconSize,
-                          )
+                                  Icons.check_rounded,
+                                  color: readableOn(accent),
+                                  size: checkIconSize,
+                                )
                               : null,
                         ),
                       ),
@@ -2687,10 +2746,7 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                           child: SizedBox(
                             width: svgWidth,
                             height: svgHeight,
-                            child: SvgPicture.string(
-                              svg!,
-                              fit: BoxFit.contain,
-                            ),
+                            child: SvgPicture.string(svg!, fit: BoxFit.contain),
                           ),
                         ),
                       if (processando)
@@ -2747,7 +2803,9 @@ class _FinalizacaoAlunoHorizontalCard extends StatelessWidget {
         final extra = snapshot.data ?? _AlunoExtraEventoData.empty();
         final fotoUrl = item.melhorFoto(extra);
         final nome = item.nome.trim().isEmpty ? extra.nome : item.nome;
-        final primeiraLetra = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
+        final primeiraLetra = nome.trim().isEmpty
+            ? '?'
+            : nome.trim()[0].toUpperCase();
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 160),
@@ -2832,14 +2890,17 @@ class _FinalizacaoAlunoHorizontalCard extends StatelessWidget {
                                       Icon(
                                         chamado
                                             ? Icons.campaign_rounded
-                                            : Icons.radio_button_unchecked_rounded,
+                                            : Icons
+                                                  .radio_button_unchecked_rounded,
                                         color: accent,
                                         size: 14,
                                       ),
                                       const SizedBox(width: 5),
                                       Expanded(
                                         child: Text(
-                                          chamado ? 'Chamado para finalizar' : 'Toque para marcar',
+                                          chamado
+                                              ? 'Chamado para finalizar'
+                                              : 'Toque para marcar',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -2883,7 +2944,9 @@ class _FinalizacaoAlunoHorizontalCard extends StatelessWidget {
                           ),
                         ),
                         child: Icon(
-                          chamado ? Icons.check_rounded : Icons.campaign_rounded,
+                          chamado
+                              ? Icons.check_rounded
+                              : Icons.campaign_rounded,
                           color: readableOn(chamado ? accent : cor1),
                           size: 19,
                         ),
@@ -2949,10 +3012,7 @@ class _FotoAlunoEvento extends StatefulWidget {
   final String fotoUrl;
   final String fallbackLetter;
 
-  const _FotoAlunoEvento({
-    required this.fotoUrl,
-    required this.fallbackLetter,
-  });
+  const _FotoAlunoEvento({required this.fotoUrl, required this.fallbackLetter});
 
   @override
   State<_FotoAlunoEvento> createState() => _FotoAlunoEventoState();
@@ -2980,7 +3040,9 @@ class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
     final raw = widget.fotoUrl.trim();
     _lastRaw = raw;
 
-    if (raw.isEmpty || raw.startsWith('http://') || raw.startsWith('https://')) {
+    if (raw.isEmpty ||
+        raw.startsWith('http://') ||
+        raw.startsWith('https://')) {
       _resolvedFuture = null;
       return;
     }
@@ -2992,7 +3054,8 @@ class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
     try {
       final value = raw.trim();
       if (value.isEmpty) return null;
-      if (value.startsWith('http://') || value.startsWith('https://')) return value;
+      if (value.startsWith('http://') || value.startsWith('https://'))
+        return value;
 
       if (value.startsWith('gs://')) {
         return FirebaseStorage.instance.refFromURL(value).getDownloadURL();
@@ -3027,7 +3090,8 @@ class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
         future: future,
         builder: (context, snapshot) {
           final resolved = snapshot.data?.trim() ?? '';
-          if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+          if (resolved.startsWith('http://') ||
+              resolved.startsWith('https://')) {
             return _network(context, resolved);
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -3297,8 +3361,8 @@ class _FinalizacaoParticipanteData {
   }
 
   factory _FinalizacaoParticipanteData.fromDoc(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data();
 
     // Usa o MESMO model da tela de participantes como fonte principal.
@@ -3329,13 +3393,15 @@ class _FinalizacaoParticipanteData {
     );
     final saldoCalculado = (valorTotal - totalPago).clamp(0, double.infinity);
 
-    final estaQuitado = p.estaQuitado ||
+    final estaQuitado =
+        p.estaQuitado ||
         data['esta_quitado'] == true ||
         data['quitado'] == true ||
         statusPagamento.toLowerCase().contains('quit') ||
         (valorTotal > 0 && totalPago >= valorTotal);
 
-    final finalizado = data['finalizado'] == true ||
+    final finalizado =
+        data['finalizado'] == true ||
         data['participacao_finalizada'] == true ||
         data['data_finalizacao'] != null ||
         data['finalizado_em'] != null ||
@@ -3372,9 +3438,9 @@ class _FinalizacaoParticipanteData {
       nome: alunoNomeModelo.isNotEmpty
           ? alunoNomeModelo
           : _text(
-        data['aluno_nome'] ?? data['alunoNome'],
-        fallback: _text(data['nome'], fallback: 'Aluno'),
-      ),
+              data['aluno_nome'] ?? data['alunoNome'],
+              fallback: _text(data['nome'], fallback: 'Aluno'),
+            ),
       fotoUrl: _firstUrl([
         p.alunoFoto,
         data['aluno_foto'],
@@ -3411,7 +3477,10 @@ class _FinalizacaoParticipanteData {
       dataEvento: _asDateTime(data['data_evento'] ?? modelMap['data_evento']),
       tipoEvento: _text(
         p.tipoEvento,
-        fallback: _text(data['tipo_evento'] ?? data['tipoEvento'], fallback: 'EVENTO'),
+        fallback: _text(
+          data['tipo_evento'] ?? data['tipoEvento'],
+          fallback: 'EVENTO',
+        ),
       ),
       eventoId: _text(
         p.eventoId,
@@ -3433,7 +3502,9 @@ class _FinalizacaoParticipanteData {
         ),
       ),
       valorInscricao: _asDouble(
-        data['valor_inscricao'] ?? data['valorInscricao'] ?? modelMap['valor_inscricao'],
+        data['valor_inscricao'] ??
+            data['valorInscricao'] ??
+            modelMap['valor_inscricao'],
       ),
       valorCamisa: _asDouble(
         data['valor_camisa'] ?? data['valorCamisa'] ?? modelMap['valor_camisa'],
@@ -3472,7 +3543,8 @@ class _FinalizacaoParticipanteData {
       ).toUpperCase(),
       statusPagamento: statusPagamento,
       estaQuitado: estaQuitado,
-      aguardandoFinalizacao: p.aguardandoFinalizacao ||
+      aguardandoFinalizacao:
+          p.aguardandoFinalizacao ||
           data['aguardando_finalizacao'] == true ||
           data['aguardandoFinalizacao'] == true,
       finalizado: finalizado,
@@ -3572,7 +3644,10 @@ class _AlunoExtraEventoData {
       ]),
       graduacaoAtual: _text(
         data['graduacao_atual'],
-        fallback: _text(data['graduacao_nome'], fallback: _text(data['graduacao'])),
+        fallback: _text(
+          data['graduacao_nome'],
+          fallback: _text(data['graduacao']),
+        ),
       ),
       graduacaoAtualId: _text(
         data['graduacao_id'],

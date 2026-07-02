@@ -8,7 +8,9 @@ class UploadService {
   // Upload de imagem para o Firebase Storage
   Future<String?> uploadImagem(File imagem, {String? pasta}) async {
     try {
-      String fileName = DateTime.now().millisecondsSinceEpoch.toString() + path.extension(imagem.path);
+      String fileName =
+          DateTime.now().millisecondsSinceEpoch.toString() +
+          path.extension(imagem.path);
       String caminho = 'eventos/${pasta ?? 'banners'}/$fileName';
 
       Reference ref = _storage.ref().child(caminho);

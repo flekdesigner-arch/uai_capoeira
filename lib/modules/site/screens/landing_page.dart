@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -36,7 +36,7 @@ class _LandingPageState extends State<LandingPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final RastreioSiteService _rastreioService = RastreioSiteService();
   final DispositivoRastreioService _dispositivoRastreioService =
-  const DispositivoRastreioService();
+      const DispositivoRastreioService();
 
   int _selectedIndex = 0;
   final ScrollController _scrollController = ScrollController();
@@ -178,8 +178,8 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -197,7 +197,8 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   bool get _isUaiClassicoPublicTheme {
-    return AppThemeController.instance.currentPreset == UaiThemePreset.uaiClassico;
+    return AppThemeController.instance.currentPreset ==
+        UaiThemePreset.uaiClassico;
   }
 
   // ==================== RASTREAMENTO ====================
@@ -209,10 +210,7 @@ class _LandingPageState extends State<LandingPage> {
         context,
         tela: 'landing_page',
         origem: 'site_landing',
-        extra: {
-          'pagina_inicial': 'home',
-          'modulo': 'site_publico',
-        },
+        extra: {'pagina_inicial': 'home', 'modulo': 'site_publico'},
       );
 
       final functions = FirebaseFunctions.instance;
@@ -235,10 +233,7 @@ class _LandingPageState extends State<LandingPage> {
 
         _rastreioService.iniciarSessaoComDocumento(docId);
 
-        await _rastreioService.registrarPaginaVista(
-          'home',
-          'inicial',
-        );
+        await _rastreioService.registrarPaginaVista('home', 'inicial');
 
         await _rastreioService.registrarEvento(
           tipo: 'dispositivo',
@@ -247,7 +242,9 @@ class _LandingPageState extends State<LandingPage> {
           metadata: dispositivo,
         );
 
-        debugPrint('✅ Rastreamento iniciado com dispositivo para documento $docId');
+        debugPrint(
+          '✅ Rastreamento iniciado com dispositivo para documento $docId',
+        );
       } else {
         debugPrint('❌ Falha na Cloud Function: ${data['error']}');
       }
@@ -316,8 +313,10 @@ class _LandingPageState extends State<LandingPage> {
   // ==================== CONFIGURAÇÕES ====================
   Future<void> _carregarConfiguracoes() async {
     try {
-      final docInscricoes =
-      await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final docInscricoes = await _firestore
+          .collection('configuracoes')
+          .doc('inscricoes')
+          .get();
       if (mounted) {
         setState(() {
           _inscricoesAbertas =
@@ -337,8 +336,10 @@ class _LandingPageState extends State<LandingPage> {
         });
       }
 
-      final docCampeonato =
-      await _firestore.collection('configuracoes').doc('campeonato').get();
+      final docCampeonato = await _firestore
+          .collection('configuracoes')
+          .doc('campeonato')
+          .get();
       if (mounted) {
         setState(() {
           _campeonatoAtivo = docCampeonato.data()?['campeonato_ativo'] ?? false;
@@ -385,8 +386,10 @@ class _LandingPageState extends State<LandingPage> {
 
   Future<void> _carregarConfiguracoesMenu() async {
     try {
-      final doc =
-      await _firestore.collection('configuracoes_site').doc('menu').get();
+      final doc = await _firestore
+          .collection('configuracoes_site')
+          .doc('menu')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -394,7 +397,9 @@ class _LandingPageState extends State<LandingPage> {
         final List<Map<String, dynamic>> itensOrdenados = [];
 
         final ordemRaw = data['ordem'];
-        final ordem = ordemRaw is List ? ordemRaw.map((e) => e.toString()) : <String>[];
+        final ordem = ordemRaw is List
+            ? ordemRaw.map((e) => e.toString())
+            : <String>[];
 
         if (ordem.isNotEmpty) {
           itensOrdenados.add(
@@ -404,7 +409,7 @@ class _LandingPageState extends State<LandingPage> {
           for (final id in ordem) {
             if (id != 'inicio' && id != 'acessar_app') {
               final item = _itensMenuBase.firstWhere(
-                    (item) => item['id'] == id,
+                (item) => item['id'] == id,
                 orElse: () => <String, dynamic>{},
               );
               if (item.isNotEmpty) itensOrdenados.add(item);
@@ -428,16 +433,18 @@ class _LandingPageState extends State<LandingPage> {
         if (!mounted) return;
 
         setState(() {
-          _itensMenu =
-          itensOrdenados.isEmpty ? List.from(_itensMenuBase) : itensOrdenados;
+          _itensMenu = itensOrdenados.isEmpty
+              ? List.from(_itensMenuBase)
+              : itensOrdenados;
 
           if (data['titulos'] != null) {
             _textosPersonalizados = Map<String, dynamic>.from(data['titulos']);
           }
 
           if (data['visibilidade'] != null) {
-            _visibilidadePersonalizada =
-            Map<String, bool>.from(data['visibilidade']);
+            _visibilidadePersonalizada = Map<String, bool>.from(
+              data['visibilidade'],
+            );
           }
 
           _carregandoConfigMenu = false;
@@ -676,8 +683,10 @@ class _LandingPageState extends State<LandingPage> {
                       decoration: InputDecoration(
                         labelText: 'Digite a senha de acesso',
                         labelStyle: TextStyle(color: t.textSecondary),
-                        prefixIcon:
-                        Icon(Icons.password_rounded, color: primary),
+                        prefixIcon: Icon(
+                          Icons.password_rounded,
+                          color: primary,
+                        ),
                         filled: true,
                         fillColor: t.cardAlt,
                         border: OutlineInputBorder(
@@ -707,8 +716,9 @@ class _LandingPageState extends State<LandingPage> {
                             side: BorderSide(color: t.border),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                           child: const Text(
@@ -724,8 +734,9 @@ class _LandingPageState extends State<LandingPage> {
                             foregroundColor: _readableOn(t.primary),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                           child: const Text(
@@ -775,7 +786,8 @@ class _LandingPageState extends State<LandingPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => user != null ? const AuthCheck() : const LoginScreen(),
+          builder: (_) =>
+              user != null ? const AuthCheck() : const LoginScreen(),
         ),
       );
       return;
@@ -1011,10 +1023,7 @@ class _LandingPageState extends State<LandingPage> {
               ],
             ),
             body: Stack(
-              children: [
-                _buildMainContent(),
-                const ChatAssistenteWidget(),
-              ],
+              children: [_buildMainContent(), const ChatAssistenteWidget()],
             ),
           ),
         );
@@ -1036,7 +1045,10 @@ class _LandingPageState extends State<LandingPage> {
 
   Widget _buildContadorVisitas({bool comBackground = true}) {
     final t = context.uai;
-    final primary = _ensureVisible(t.primary, comBackground ? t.cardAlt : t.primary);
+    final primary = _ensureVisible(
+      t.primary,
+      comBackground ? t.cardAlt : t.primary,
+    );
     final onPrimary = _readableOn(t.primary);
 
     if (_carregandoVisitas) {
@@ -1239,7 +1251,8 @@ class _LandingPageState extends State<LandingPage> {
   Widget _buildThemeSelectorSmallTile() {
     final t = context.uai;
     final controller = AppThemeController.instance;
-    final preset = controller.currentPreset == UaiThemePreset.usuarioPersonalizado
+    final preset =
+        controller.currentPreset == UaiThemePreset.usuarioPersonalizado
         ? UaiThemePreset.uaiClassico
         : controller.currentPreset;
 
@@ -1360,7 +1373,9 @@ class _LandingPageState extends State<LandingPage> {
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: isSelected ? color.withOpacity(0.18) : Colors.transparent,
+                  color: isSelected
+                      ? color.withOpacity(0.18)
+                      : Colors.transparent,
                 ),
               ),
               child: Row(
@@ -1384,8 +1399,9 @@ class _LandingPageState extends State<LandingPage> {
                       label,
                       style: TextStyle(
                         color: isSelected ? color : t.textPrimary,
-                        fontWeight:
-                        isSelected ? FontWeight.w900 : FontWeight.w700,
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : FontWeight.w700,
                         fontSize: 13.5,
                       ),
                     ),
@@ -1410,7 +1426,9 @@ class _LandingPageState extends State<LandingPage> {
       color: context.uai.background,
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 1180),
+          constraints: BoxConstraints(
+            maxWidth: isMobile ? double.infinity : 1180,
+          ),
           child: _buildSelectedContent(),
         ),
       ),
@@ -1452,10 +1470,10 @@ class _LandingPageState extends State<LandingPage> {
     return _itensMenu
         .where(
           (item) =>
-      item['id'] != 'inicio' &&
-          item['id'] != 'acessar_app' &&
-          _deveMostrarItem(item),
-    )
+              item['id'] != 'inicio' &&
+              item['id'] != 'acessar_app' &&
+              _deveMostrarItem(item),
+        )
         .toList();
   }
 
@@ -1557,9 +1575,7 @@ class _LandingPageState extends State<LandingPage> {
             fit: BoxFit.contain,
             placeholderBuilder: (_) => SizedBox(
               height: height,
-              child: Center(
-                child: CircularProgressIndicator(color: t.primary),
-              ),
+              child: Center(child: CircularProgressIndicator(color: t.primary)),
             ),
           );
         }
@@ -1635,7 +1651,7 @@ class _LandingPageState extends State<LandingPage> {
 
     result = result.replaceFirstMapped(
       RegExp(r'(<polygon[^>]*id="faixa"[^>]*)(/?>)', caseSensitive: false),
-          (match) {
+      (match) {
         var tag = match.group(1) ?? '';
         final close = match.group(2) ?? '>';
 
@@ -1716,11 +1732,7 @@ class _LandingPageState extends State<LandingPage> {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        buttons[0],
-        const SizedBox(width: 12),
-        buttons[1],
-      ],
+      children: [buttons[0], const SizedBox(width: 12), buttons[1]],
     );
   }
 
@@ -1992,7 +2004,8 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final current = controller.currentPreset == UaiThemePreset.usuarioPersonalizado
+        final current =
+            controller.currentPreset == UaiThemePreset.usuarioPersonalizado
             ? UaiThemePreset.uaiClassico
             : controller.currentPreset;
 
@@ -2047,7 +2060,10 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close_rounded, color: tokens.textSecondary),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -2130,7 +2146,9 @@ class _PublicPresetTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? tokens.primary.withOpacity(0.55) : tokens.border,
+              color: selected
+                  ? tokens.primary.withOpacity(0.55)
+                  : tokens.border,
             ),
           ),
           child: Row(

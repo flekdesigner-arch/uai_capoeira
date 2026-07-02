@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -20,7 +20,8 @@ class ListaInscricoesScreen extends StatefulWidget {
   State<ListaInscricoesScreen> createState() => _ListaInscricoesScreenState();
 }
 
-class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with SingleTickerProviderStateMixin {
+class _ListaInscricoesScreenState extends State<ListaInscricoesScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final CampeonatoService _campeonatoService = CampeonatoService();
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy HH:mm');
@@ -87,7 +88,9 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
       final data = doc.data() as Map<String, dynamic>;
 
       // Filtro de categoria
-      bool categoriaOk = _filtroCategoria == 'Todas' || data['categoria_nome'] == _filtroCategoria;
+      bool categoriaOk =
+          _filtroCategoria == 'Todas' ||
+          data['categoria_nome'] == _filtroCategoria;
 
       // Filtro de grupo
       bool grupoOk = _filtroGrupo == 'Todos' || data['grupo'] == _filtroGrupo;
@@ -107,7 +110,8 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
         final grupo = (data['grupo'] ?? '').toLowerCase();
         final query = _searchQuery.toLowerCase();
 
-        searchOk = nome.contains(query) ||
+        searchOk =
+            nome.contains(query) ||
             apelido.contains(query) ||
             grupo.contains(query);
       }
@@ -160,10 +164,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                     prefixIcon: const Icon(Icons.category, color: Colors.amber),
                   ),
                   items: _categorias.map((cat) {
-                    return DropdownMenuItem(
-                      value: cat,
-                      child: Text(cat),
-                    );
+                    return DropdownMenuItem(value: cat, child: Text(cat));
                   }).toList(),
                   onChanged: (value) {
                     setStateDialog(() {
@@ -182,10 +183,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                     prefixIcon: const Icon(Icons.group, color: Colors.amber),
                   ),
                   items: _grupos.map((grupo) {
-                    return DropdownMenuItem(
-                      value: grupo,
-                      child: Text(grupo),
-                    );
+                    return DropdownMenuItem(value: grupo, child: Text(grupo));
                   }).toList(),
                   onChanged: (value) {
                     setStateDialog(() {
@@ -201,12 +199,18 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    prefixIcon: const Icon(Icons.attach_money, color: Colors.amber),
+                    prefixIcon: const Icon(
+                      Icons.attach_money,
+                      color: Colors.amber,
+                    ),
                   ),
                   items: const [
                     DropdownMenuItem(value: 'todos', child: Text('Todos')),
                     DropdownMenuItem(value: 'pagos', child: Text('Pagos')),
-                    DropdownMenuItem(value: 'nao_pagos', child: Text('Não pagos')),
+                    DropdownMenuItem(
+                      value: 'nao_pagos',
+                      child: Text('Não pagos'),
+                    ),
                   ],
                   onChanged: (value) {
                     setStateDialog(() {
@@ -280,9 +284,9 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
               prefixIcon: const Icon(Icons.search, color: Colors.amber),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                icon: const Icon(Icons.clear, color: Colors.grey),
-                onPressed: () => setState(() => _searchQuery = ''),
-              )
+                      icon: const Icon(Icons.clear, color: Colors.grey),
+                      onPressed: () => setState(() => _searchQuery = ''),
+                    )
                   : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -323,17 +327,18 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: _filtroCategoria != 'Todas' ||
-                          _filtroGrupo != 'Todos' ||
-                          _filtroPagamento != 'todos'
+                      color:
+                          _filtroCategoria != 'Todas' ||
+                              _filtroGrupo != 'Todos' ||
+                              _filtroPagamento != 'todos'
                           ? Colors.amber.shade200
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       _filtroCategoria != 'Todas' ||
-                          _filtroGrupo != 'Todos' ||
-                          _filtroPagamento != 'todos'
+                              _filtroGrupo != 'Todos' ||
+                              _filtroPagamento != 'todos'
                           ? 'Filtros ativos'
                           : 'Todos os filtros',
                       style: TextStyle(
@@ -348,14 +353,21 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
               InkWell(
                 onTap: _mostrarFiltrosDialog,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade100,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.filter_list, size: 14, color: Colors.amber.shade900),
+                      Icon(
+                        Icons.filter_list,
+                        size: 14,
+                        color: Colors.amber.shade900,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         'Filtrar',
@@ -397,7 +409,11 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 60, color: Colors.grey.shade400),
+                Icon(
+                  Icons.error_outline,
+                  size: 60,
+                  color: Colors.grey.shade400,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Erro ao carregar inscrições',
@@ -436,7 +452,11 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.filter_alt_off, size: 60, color: Colors.grey.shade400),
+                Icon(
+                  Icons.filter_alt_off,
+                  size: 60,
+                  color: Colors.grey.shade400,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _searchQuery.isNotEmpty
@@ -467,7 +487,8 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
     final status = data['status'] ?? 'pendente';
     final isPago = data['taxa_paga'] ?? false;
     final isMaior = data['is_maior_idade'] ?? true;
-    final temFoto = data['foto_url'] != null && data['foto_url'].toString().isNotEmpty;
+    final temFoto =
+        data['foto_url'] != null && data['foto_url'].toString().isNotEmpty;
 
     Color statusColor;
     String statusText;
@@ -520,42 +541,41 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                     decoration: BoxDecoration(
                       color: Colors.amber.shade100,
                       borderRadius: BorderRadius.circular(25),
-                      border: Border.all(
-                        color: statusColor,
-                        width: 2,
-                      ),
+                      border: Border.all(color: statusColor, width: 2),
                     ),
                     child: temFoto
                         ? ClipRRect(
-                      borderRadius: BorderRadius.circular(23),
-                      child: CachedNetworkImage(
-                        imageUrl: data['foto_url'],
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        errorWidget: (context, url, error) => Center(
-                          child: Text(
-                            data['nome']?[0] ?? '?',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber.shade900,
+                            borderRadius: BorderRadius.circular(23),
+                            child: CachedNetworkImage(
+                              imageUrl: data['foto_url'],
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Center(
+                                child: Text(
+                                  data['nome']?[0] ?? '?',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              data['nome']?[0] ?? '?',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                        : Center(
-                      child: Text(
-                        data['nome']?[0] ?? '?',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber.shade900,
-                        ),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -575,7 +595,10 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                           runSpacing: 4,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: statusColor.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
@@ -591,7 +614,10 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                             ),
                             if (!isMaior)
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.purple.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
@@ -614,9 +640,14 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: isPago ? Colors.green.shade50 : Colors.grey.shade100,
+                          color: isPago
+                              ? Colors.green.shade50
+                              : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -682,14 +713,15 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Icon(Icons.access_time, size: 10, color: Colors.grey.shade500),
+                  Icon(
+                    Icons.access_time,
+                    size: 10,
+                    color: Colors.grey.shade500,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Inscrição: ${_dateFormat.format((data['data_inscricao'] as Timestamp).toDate())}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                    ),
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   ),
                 ],
               ),
@@ -708,10 +740,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen> with Sing
         Expanded(
           child: Text(
             text,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey.shade700,
-            ),
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
             overflow: TextOverflow.ellipsis,
           ),
         ),

@@ -43,16 +43,18 @@ class _AreaAlunoSolicitarAlteracaoScreenState
 
     _nomeController = TextEditingController(text: _txt('nome'));
     _apelidoController = TextEditingController(text: _txt('apelido'));
-    _dataNascimentoController =
-        TextEditingController(text: _txt('data_nascimento'));
+    _dataNascimentoController = TextEditingController(
+      text: _txt('data_nascimento'),
+    );
     _sexoController = TextEditingController(text: _txt('sexo'));
     _cidadeController = TextEditingController(text: _txt('cidade'));
     _enderecoController = TextEditingController(text: _txt('endereco'));
     _contatoAlunoController = TextEditingController(
       text: _formatPhoneNumber(_txt('contato_aluno')),
     );
-    _nomeResponsavelController =
-        TextEditingController(text: _txt('nome_responsavel'));
+    _nomeResponsavelController = TextEditingController(
+      text: _txt('nome_responsavel'),
+    );
     _contatoResponsavelController = TextEditingController(
       text: _formatPhoneNumber(_txt('contato_responsavel')),
     );
@@ -81,8 +83,8 @@ class _AreaAlunoSolicitarAlteracaoScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -118,9 +120,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
   }
 
   Future<void> _selectDate(
-      BuildContext context,
-      TextEditingController controller,
-      ) async {
+    BuildContext context,
+    TextEditingController controller,
+  ) async {
     final t = context.uai;
     final atual = _parseDate(controller.text);
 
@@ -140,8 +142,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme(
-              brightness:
-              t.background.computeLuminance() < 0.45 ? Brightness.dark : Brightness.light,
+              brightness: t.background.computeLuminance() < 0.45
+                  ? Brightness.dark
+                  : Brightness.light,
               primary: primary,
               onPrimary: _readableOn(primary),
               secondary: primary,
@@ -271,10 +274,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
     final camposAlterados = _camposAlterados();
 
     if (camposAlterados.isEmpty) {
-      _mostrarSnack(
-        'Nenhuma alteração foi identificada.',
-        t.warning,
-      );
+      _mostrarSnack('Nenhuma alteração foi identificada.', t.warning);
       return;
     }
 
@@ -314,15 +314,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
       if (!mounted) return;
       Navigator.pop(context, true);
     } on FirebaseFunctionsException catch (e) {
-      _mostrarSnack(
-        e.message ?? 'Erro ao enviar solicitação.',
-        t.error,
-      );
+      _mostrarSnack(e.message ?? 'Erro ao enviar solicitação.', t.error);
     } catch (e) {
-      _mostrarSnack(
-        'Erro ao enviar solicitação: $e',
-        t.error,
-      );
+      _mostrarSnack('Erro ao enviar solicitação: $e', t.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -362,7 +356,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
           ),
           content: Text(
             'Sua solicitação foi enviada para análise da coordenação. '
-                'Os dados oficiais só serão alterados depois da aprovação.',
+            'Os dados oficiais só serão alterados depois da aprovação.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -425,8 +419,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth =
-          constraints.maxWidth > 780 ? 780.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 780
+              ? 780.0
+              : constraints.maxWidth;
 
           return Center(
             child: ConstrainedBox(
@@ -507,7 +502,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
                           controller: _observacaoController,
                           label: 'Explique se quiser',
                           hint:
-                          'Ex: Meu telefone mudou / meu endereço está incompleto...',
+                              'Ex: Meu telefone mudou / meu endereço está incompleto...',
                           icon: Icons.edit_note_rounded,
                           maxLines: 4,
                         ),
@@ -522,13 +517,13 @@ class _AreaAlunoSolicitarAlteracaoScreenState
                         onPressed: _enviando ? null : _enviarSolicitacao,
                         icon: _enviando
                             ? SizedBox(
-                          width: 19,
-                          height: 19,
-                          child: CircularProgressIndicator(
-                            color: _readableOn(t.primary),
-                            strokeWidth: 2,
-                          ),
-                        )
+                                width: 19,
+                                height: 19,
+                                child: CircularProgressIndicator(
+                                  color: _readableOn(t.primary),
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Icon(Icons.send_rounded),
                         label: Text(
                           _enviando
@@ -578,11 +573,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.edit_note_rounded,
-              color: onPrimary,
-              size: 31,
-            ),
+            child: Icon(Icons.edit_note_rounded, color: onPrimary, size: 31),
           ),
           const SizedBox(width: 13),
           Expanded(
@@ -622,7 +613,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
       icon: Icons.lock_outline_rounded,
       color: t.info,
       text:
-      'Essa solicitação não altera seu cadastro automaticamente. '
+          'Essa solicitação não altera seu cadastro automaticamente. '
           'A coordenação irá comparar os dados atuais com os dados solicitados e aprovar ou recusar.',
     );
   }
@@ -769,26 +760,20 @@ class _AreaAlunoSolicitarAlteracaoScreenState
           color: t.primary,
         ),
         items: const [
-          DropdownMenuItem<String?>(
-            value: null,
-            child: Text('Não informado'),
-          ),
+          DropdownMenuItem<String?>(value: null, child: Text('Não informado')),
           DropdownMenuItem<String?>(
             value: 'MASCULINO',
             child: Text('MASCULINO'),
           ),
-          DropdownMenuItem<String?>(
-            value: 'FEMININO',
-            child: Text('FEMININO'),
-          ),
+          DropdownMenuItem<String?>(value: 'FEMININO', child: Text('FEMININO')),
         ],
         onChanged: _enviando
             ? null
             : (value) {
-          setState(() {
-            _sexoController.text = value ?? '';
-          });
-        },
+                setState(() {
+                  _sexoController.text = value ?? '';
+                });
+              },
       ),
     );
   }
@@ -863,14 +848,15 @@ class _AreaAlunoSolicitarAlteracaoScreenState
           prefixIcon: icon,
           color: t.primary,
         ),
-        validator: validator ??
+        validator:
+            validator ??
             (obrigatorio
                 ? (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Campo obrigatório';
-              }
-              return null;
-            }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Campo obrigatório';
+                    }
+                    return null;
+                  }
                 : null),
       ),
     );
@@ -892,8 +878,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
       labelStyle: TextStyle(color: t.textSecondary),
       hintStyle: TextStyle(color: t.textMuted),
       prefixIcon: Icon(prefixIcon, color: accent, size: 21),
-      suffixIcon:
-      suffixIcon == null ? null : Icon(suffixIcon, color: accent),
+      suffixIcon: suffixIcon == null ? null : Icon(suffixIcon, color: accent),
       filled: true,
       fillColor: t.cardAlt,
       border: OutlineInputBorder(
@@ -975,9 +960,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
 class _PhoneInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     var digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (digits.length > 11) {
@@ -992,10 +977,10 @@ class _PhoneInputFormatter extends TextInputFormatter {
       formatted = '(${digits.substring(0, 2)}) ${digits.substring(2)}';
     } else if (digits.length <= 10) {
       formatted =
-      '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
     } else {
       formatted =
-      '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
     }
 
     return TextEditingValue(

@@ -13,7 +13,7 @@
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_apk_file_loader_base.dart';
 
 import 'local_apk_file_loader_stub.dart'
-if (dart.library.io) 'local_apk_file_loader_io.dart';
+    if (dart.library.io) 'local_apk_file_loader_io.dart';
 
 LocalApkFileLoader getLocalApkFileLoader() {
   return createLocalApkFileLoader();

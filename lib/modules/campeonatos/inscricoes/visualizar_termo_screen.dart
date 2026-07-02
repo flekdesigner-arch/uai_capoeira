@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,16 +7,16 @@ import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_mod
 class VisualizarTermoScreen extends StatelessWidget {
   final InscricaoCampeonatoModel inscricao;
 
-  const VisualizarTermoScreen({
-    super.key,
-    required this.inscricao,
-  });
+  const VisualizarTermoScreen({super.key, required this.inscricao});
 
   @override
   Widget build(BuildContext context) {
     final isMaior = inscricao.isMaiorIdade;
-    final temAssinatura = inscricao.assinaturaUrl != null && inscricao.assinaturaUrl!.isNotEmpty;
-    final temTermo = inscricao.termoAutorizacao != null && inscricao.termoAutorizacao!.isNotEmpty;
+    final temAssinatura =
+        inscricao.assinaturaUrl != null && inscricao.assinaturaUrl!.isNotEmpty;
+    final temTermo =
+        inscricao.termoAutorizacao != null &&
+        inscricao.termoAutorizacao!.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -100,7 +100,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                     children: [
                       _buildInfoChip(
                         icon: Icons.calendar_today,
-                        label: _formatarDataInscricao(inscricao.dataInscricao), // 👈 CORREÇÃO: dataInscricao pode ser null
+                        label: _formatarDataInscricao(
+                          inscricao.dataInscricao,
+                        ), // 👈 CORREÇÃO: dataInscricao pode ser null
                         color: Colors.amber.shade900,
                       ),
                       _buildInfoChip(
@@ -110,7 +112,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                       ),
                       _buildInfoChip(
                         icon: Icons.category,
-                        label: inscricao.categoriaNome ?? 'Categoria não informada', // 👈 CORREÇÃO: pode ser null
+                        label:
+                            inscricao.categoriaNome ??
+                            'Categoria não informada', // 👈 CORREÇÃO: pode ser null
                         color: Colors.purple,
                       ),
                       if (temAssinatura)
@@ -160,12 +164,10 @@ class VisualizarTermoScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.grey.shade200),
                       ),
-                      child: SelectableText(  // 👈 Agora pode selecionar o texto
+                      child: SelectableText(
+                        // 👈 Agora pode selecionar o texto
                         inscricao.termoAutorizacao!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                        ),
+                        style: const TextStyle(fontSize: 14, height: 1.5),
                       ),
                     ),
 
@@ -187,7 +189,8 @@ class VisualizarTermoScreen extends StatelessWidget {
 
                       // 👇 Imagem clicável para ampliar
                       GestureDetector(
-                        onTap: () => _ampliarImagem(context, inscricao.assinaturaUrl!),
+                        onTap: () =>
+                            _ampliarImagem(context, inscricao.assinaturaUrl!),
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
@@ -205,7 +208,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade50,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
+                                  border: Border.all(
+                                    color: Colors.grey.shade300,
+                                  ),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
@@ -213,28 +218,32 @@ class VisualizarTermoScreen extends StatelessWidget {
                                     imageUrl: inscricao.assinaturaUrl!,
                                     fit: BoxFit.contain,
                                     placeholder: (context, url) => const Center(
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                    errorWidget: (context, url, error) => Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.broken_image,
-                                            size: 48,
-                                            color: Colors.grey.shade400,
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Erro ao carregar assinatura',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ],
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
                                     ),
+                                    errorWidget: (context, url, error) =>
+                                        Center(
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.broken_image,
+                                                size: 48,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Erro ao carregar assinatura',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                   ),
                                 ),
                               ),
@@ -401,11 +410,7 @@ class VisualizarTermoScreen extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 12,
-            color: color,
-          ),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
           Text(
             label,

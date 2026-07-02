@@ -184,18 +184,16 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
     // Mesmo formato usado no index.js com Luxon: 2026-W20.
     final quinta = data.add(Duration(days: 4 - data.weekday));
     final inicioAno = DateTime(quinta.year, 1, 1);
-    final semana = ((quinta.difference(inicioAno).inDays + inicioAno.weekday + 6) / 7).floor();
+    final semana =
+        ((quinta.difference(inicioAno).inDays + inicioAno.weekday + 6) / 7)
+            .floor();
 
     return '${quinta.year}-W${semana.toString().padLeft(2, '0')}';
   }
 
   String _normalizarDiaSemana(dynamic dia) {
-    final valor = dia
-        ?.toString()
-        .toLowerCase()
-        .replaceAll('.', '')
-        .trim() ??
-        '';
+    final valor =
+        dia?.toString().toLowerCase().replaceAll('.', '').trim() ?? '';
 
     switch (valor) {
       case 'segunda':
@@ -264,11 +262,13 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
     final ultimaPresencaDate = _ultimaPresenca?.toDate();
     if (ultimaPresencaDate != null) {
       _diasSemTreinar = DateTime.now()
-          .difference(DateTime(
-        ultimaPresencaDate.year,
-        ultimaPresencaDate.month,
-        ultimaPresencaDate.day,
-      ))
+          .difference(
+            DateTime(
+              ultimaPresencaDate.year,
+              ultimaPresencaDate.month,
+              ultimaPresencaDate.day,
+            ),
+          )
           .inDays;
     } else {
       _diasSemTreinar = 0;
@@ -287,7 +287,8 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
 
     switch (widget.filtroTemporal) {
       case 'Semana':
-        _valorFiltroAtual = porSemana[semanaAtual] ?? _parseInt(contador['semana']);
+        _valorFiltroAtual =
+            porSemana[semanaAtual] ?? _parseInt(contador['semana']);
         break;
       case 'Mês':
         _valorFiltroAtual = porMes[mesAtual] ?? _parseInt(contador['mes']);
@@ -314,10 +315,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           .get(const GetOptions(source: Source.server));
 
       _logsRecentes = snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        return {'id': doc.id, ...doc.data()};
       }).toList();
 
       // Se ainda não tiver porDiaSemana no contador, usa os logs recentes como fallback visual parcial.
@@ -421,13 +419,13 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           : null,
       child: fotoUrl == null || fotoUrl.isEmpty
           ? Text(
-        inicial,
-        style: const TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey,
-        ),
-      )
+              inicial,
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            )
           : null,
     );
   }
@@ -518,7 +516,11 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded, color: Colors.red.shade400, size: 42),
+            Icon(
+              Icons.error_outline_rounded,
+              color: Colors.red.shade400,
+              size: 42,
+            ),
             const SizedBox(height: 10),
             Text(
               _erro ?? 'Erro ao carregar dados',
@@ -607,15 +609,21 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
               ),
               title: Text(
                 _formatarData(data),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               subtitle: professor.isNotEmpty
                   ? Text(
-                'Prof. $professor',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              )
+                      'Prof. $professor',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
                   : null,
               trailing: Text(
                 tipo,
@@ -647,10 +655,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                corStatus.withOpacity(0.18),
-                Colors.white,
-              ],
+              colors: [corStatus.withOpacity(0.18), Colors.white],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -682,11 +687,16 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                       runSpacing: 6,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: corStatus.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: corStatus.withOpacity(0.25)),
+                            border: Border.all(
+                              color: corStatus.withOpacity(0.25),
+                            ),
                           ),
                           child: Text(
                             _getNivelTexto(),
@@ -698,7 +708,10 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(20),
@@ -718,7 +731,10 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                     const SizedBox(height: 5),
                     Text(
                       _getSubtituloFiltro(),
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ],
                 ),
@@ -805,7 +821,10 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: corStatus.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
@@ -825,12 +844,19 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
               const SizedBox(height: 18),
               Row(
                 children: [
-                  Icon(Icons.calendar_month_rounded, color: Colors.red.shade900, size: 18),
+                  Icon(
+                    Icons.calendar_month_rounded,
+                    color: Colors.red.shade900,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
                       'Presenças por dia da semana',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -852,12 +878,19 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    Icon(Icons.history_rounded, color: Colors.grey.shade700, size: 18),
+                    Icon(
+                      Icons.history_rounded,
+                      color: Colors.grey.shade700,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
                         'Últimos registros',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],

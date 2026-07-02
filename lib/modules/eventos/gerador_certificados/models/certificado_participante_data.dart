@@ -163,10 +163,7 @@ class CertificadoParticipanteData {
         graduacao?['titulo_graduacao'],
         'ALUNO',
       ]),
-      corda: _firstNotEmpty([
-        graduacao?['corda'],
-        graduacaoNova,
-      ]),
+      corda: _firstNotEmpty([graduacao?['corda'], graduacaoNova]),
       frase: _firstNotEmpty([
         graduacao?['frase'],
         'CERTIFICAMOS QUE O(A) ALUNO(A) ACIMA ESTÁ APTO(A) E APROVADO(A) PARA RECEBER A GRADUAÇÃO EM CAPOEIRA.',
@@ -188,29 +185,38 @@ class CertificadoParticipanteData {
       aguardandoFinalizacao: participacao['aguardando_finalizacao'] == true,
       statusPagamento: _asString(participacao['status']),
       linkCertificado: _nullableString(participacao['link_certificado']),
-      certificadoAtualizadoEm:
-      _asDate(participacao['certificado_atualizado_em']),
-      certificadoGerado: participacao['certificado_gerado'] == true ||
+      certificadoAtualizadoEm: _asDate(
+        participacao['certificado_atualizado_em'],
+      ),
+      certificadoGerado:
+          participacao['certificado_gerado'] == true ||
           _asString(participacao['link_certificado']).isNotEmpty,
-      certificadoStatus:
-      _firstNotEmpty([participacao['certificado_status'], 'pendente']),
+      certificadoStatus: _firstNotEmpty([
+        participacao['certificado_status'],
+        'pendente',
+      ]),
       certificadoImpresso: participacao['certificado_impresso'] == true,
       certificadoImpressoEm: _asDate(participacao['certificado_impresso_em']),
-      certificadoLoteImpressao:
-      _asInt(participacao['certificado_lote_impressao']),
-      certificadoArquivoLote:
-      _nullableString(participacao['certificado_arquivo_lote']),
+      certificadoLoteImpressao: _asInt(
+        participacao['certificado_lote_impressao'],
+      ),
+      certificadoArquivoLote: _nullableString(
+        participacao['certificado_arquivo_lote'],
+      ),
       certificadoLoteId: _nullableString(participacao['certificado_lote_id']),
-      certificadoIncluidoZip:
-      participacao['certificado_incluido_zip'] == true,
-      certificadoPacoteGraficaId:
-      _nullableString(participacao['certificado_pacote_grafica_id']),
-      certificadoPacoteGraficaNome:
-      _nullableString(participacao['certificado_pacote_grafica_nome']),
-      certificadoStoragePath:
-      _nullableString(participacao['certificado_storage_path']),
-      certificadoTipoArquivo:
-      _nullableString(participacao['certificado_tipo_arquivo']),
+      certificadoIncluidoZip: participacao['certificado_incluido_zip'] == true,
+      certificadoPacoteGraficaId: _nullableString(
+        participacao['certificado_pacote_grafica_id'],
+      ),
+      certificadoPacoteGraficaNome: _nullableString(
+        participacao['certificado_pacote_grafica_nome'],
+      ),
+      certificadoStoragePath: _nullableString(
+        participacao['certificado_storage_path'],
+      ),
+      certificadoTipoArquivo: _nullableString(
+        participacao['certificado_tipo_arquivo'],
+      ),
     );
   }
 
@@ -289,10 +295,10 @@ class CertificadoParticipanteData {
       assinaturas: evento.assinaturas
           .map(
             (assinatura) => CertificadoAssinaturaData(
-          nome: assinatura.nome,
-          apelido: assinatura.apelido,
-        ),
-      )
+              nome: assinatura.nome,
+              apelido: assinatura.apelido,
+            ),
+          )
           .toList(),
     );
   }
@@ -397,31 +403,31 @@ class CertificadoParticipanteData {
       ponta2: ponta2 ?? this.ponta2,
       presente: presente ?? this.presente,
       aguardandoFinalizacao:
-      aguardandoFinalizacao ?? this.aguardandoFinalizacao,
+          aguardandoFinalizacao ?? this.aguardandoFinalizacao,
       statusPagamento: statusPagamento ?? this.statusPagamento,
       linkCertificado: linkCertificado ?? this.linkCertificado,
       certificadoAtualizadoEm:
-      certificadoAtualizadoEm ?? this.certificadoAtualizadoEm,
+          certificadoAtualizadoEm ?? this.certificadoAtualizadoEm,
       certificadoGerado: certificadoGerado ?? this.certificadoGerado,
       certificadoStatus: certificadoStatus ?? this.certificadoStatus,
       certificadoImpresso: certificadoImpresso ?? this.certificadoImpresso,
       certificadoImpressoEm:
-      certificadoImpressoEm ?? this.certificadoImpressoEm,
+          certificadoImpressoEm ?? this.certificadoImpressoEm,
       certificadoLoteImpressao:
-      certificadoLoteImpressao ?? this.certificadoLoteImpressao,
+          certificadoLoteImpressao ?? this.certificadoLoteImpressao,
       certificadoArquivoLote:
-      certificadoArquivoLote ?? this.certificadoArquivoLote,
+          certificadoArquivoLote ?? this.certificadoArquivoLote,
       certificadoLoteId: certificadoLoteId ?? this.certificadoLoteId,
       certificadoIncluidoZip:
-      certificadoIncluidoZip ?? this.certificadoIncluidoZip,
+          certificadoIncluidoZip ?? this.certificadoIncluidoZip,
       certificadoPacoteGraficaId:
-      certificadoPacoteGraficaId ?? this.certificadoPacoteGraficaId,
+          certificadoPacoteGraficaId ?? this.certificadoPacoteGraficaId,
       certificadoPacoteGraficaNome:
-      certificadoPacoteGraficaNome ?? this.certificadoPacoteGraficaNome,
+          certificadoPacoteGraficaNome ?? this.certificadoPacoteGraficaNome,
       certificadoStoragePath:
-      certificadoStoragePath ?? this.certificadoStoragePath,
+          certificadoStoragePath ?? this.certificadoStoragePath,
       certificadoTipoArquivo:
-      certificadoTipoArquivo ?? this.certificadoTipoArquivo,
+          certificadoTipoArquivo ?? this.certificadoTipoArquivo,
     );
   }
 

@@ -59,7 +59,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   void didUpdateWidget(covariant CertificadoPreviewWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final changed = oldWidget.tipo != widget.tipo ||
+    final changed =
+        oldWidget.tipo != widget.tipo ||
         oldWidget.cor1 != widget.cor1 ||
         oldWidget.cor2 != widget.cor2 ||
         oldWidget.corContorno != widget.corContorno ||
@@ -96,7 +97,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -233,8 +235,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
               final payload = snapshot.data!;
 
-              final data = widget.data ??
-                  CertificadoPreviewData.exemplo(widget.tipo);
+              final data =
+                  widget.data ?? CertificadoPreviewData.exemplo(widget.tipo);
 
               final previewFrame = _buildPreviewFrame(
                 exportKey: widget.exportKey,
@@ -250,10 +252,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
               );
 
               return InkWell(
-                onTap: () => _abrirPreviewTelaCheia(
-                  payload: payload,
-                  data: data,
-                ),
+                onTap: () =>
+                    _abrirPreviewTelaCheia(payload: payload, data: data),
                 borderRadius: BorderRadius.circular(t.cardRadius - 4),
                 child: previewFrame,
               );
@@ -323,11 +323,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        widget.tipo.icon,
-                        color: Colors.white,
-                        size: 22,
-                      ),
+                      Icon(widget.tipo.icon, color: Colors.white, size: 22),
                       const SizedBox(width: 9),
                       Expanded(
                         child: Column(
@@ -382,8 +378,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                           // Aqui usamos o maior tamanho possível sem cortar.
                           final scaleByWidth = availableWidth / 297;
                           final scaleByHeight = availableHeight / 210;
-                          final baseScale =
-                          scaleByWidth < scaleByHeight ? scaleByWidth : scaleByHeight;
+                          final baseScale = scaleByWidth < scaleByHeight
+                              ? scaleByWidth
+                              : scaleByHeight;
 
                           // Em telas grandes, deixa bem próximo do tamanho cheio.
                           final scale = baseScale.clamp(1.0, 4.0);
@@ -541,7 +538,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
     return lower.replaceAllMapped(
       RegExp(r'(^|[\s\-/])([a-záàâãäéèêëíìîïóòôõöúùûüç])'),
-          (match) {
+      (match) {
         final prefix = match.group(1) ?? '';
         final letter = match.group(2) ?? '';
         return '$prefix${letter.toUpperCase()}';
@@ -562,15 +559,19 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
     final cfgNome = _textoConfig(CertificadoTextoCampoConfig.campoNome);
     final cfgCpf = _textoConfig(CertificadoTextoCampoConfig.campoCpf);
-    final cfgGraduacao =
-    _textoConfig(CertificadoTextoCampoConfig.campoGraduacao);
+    final cfgGraduacao = _textoConfig(
+      CertificadoTextoCampoConfig.campoGraduacao,
+    );
     final cfgFrase = _textoConfig(CertificadoTextoCampoConfig.campoFrase);
-    final cfgAssinaturaNome =
-    _textoConfig(CertificadoTextoCampoConfig.campoAssinaturaNome);
-    final cfgAssinaturaApelido =
-    _textoConfig(CertificadoTextoCampoConfig.campoAssinaturaApelido);
-    final cfgLocalData =
-    _textoConfig(CertificadoTextoCampoConfig.campoLocalData);
+    final cfgAssinaturaNome = _textoConfig(
+      CertificadoTextoCampoConfig.campoAssinaturaNome,
+    );
+    final cfgAssinaturaApelido = _textoConfig(
+      CertificadoTextoCampoConfig.campoAssinaturaApelido,
+    );
+    final cfgLocalData = _textoConfig(
+      CertificadoTextoCampoConfig.campoLocalData,
+    );
 
     Alignment bottomAlignmentFromTextAlign(TextAlign align) {
       switch (align) {
@@ -735,7 +736,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     if (widget.tipo.exigeCpf && data.cpfFormatado.isNotEmpty) {
       final cpfSlotOriginal = slots[CertificadoSlotIds.cpf];
 
-      final cpfSlot = cpfSlotOriginal ??
+      final cpfSlot =
+          cpfSlotOriginal ??
           const CertificadoSlotModel(
             id: CertificadoSlotIds.cpf,
             x: 132.9,
@@ -748,8 +750,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         _PositionedSlotText(
           slot: cpfSlot,
           scale: scale,
-          topOffset: ((cpfSlotOriginal == null ? 0.0 : -0.42) +
-              cfgCpf.verticalOffsetMm) *
+          topOffset:
+              ((cpfSlotOriginal == null ? 0.0 : -0.42) +
+                  cfgCpf.verticalOffsetMm) *
               scale,
           leftOffset: cpfSlotOriginal == null ? 0 : 1.1 * scale,
           widthExtra: cpfSlotOriginal == null ? 0 : 10.0 * scale,
@@ -822,7 +825,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     );
 
     for (var i = 0; i < 5; i++) {
-      final assinatura = i < data.assinaturas.length ? data.assinaturas[i] : null;
+      final assinatura = i < data.assinaturas.length
+          ? data.assinaturas[i]
+          : null;
       if (assinatura == null) continue;
 
       final numero = i + 1;
@@ -875,9 +880,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   }
 
   String _graduacaoExibidaComGenero(
-      String graduacao,
-      CertificadoPreviewData data,
-      ) {
+    String graduacao,
+    CertificadoPreviewData data,
+  ) {
     if (!data.sexoFeminino) return graduacao;
 
     var out = graduacao.trim().toUpperCase();
@@ -921,7 +926,11 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   }
 
   Widget _buildPreviewFrame({
-    required Widget Function(double innerWidth, double innerHeight, double scale)
+    required Widget Function(
+      double innerWidth,
+      double innerHeight,
+      double scale,
+    )
     childBuilder,
     GlobalKey? exportKey,
   }) {
@@ -930,8 +939,10 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHeight = widget.maxHeight ?? 520.0;
-        final calculatedHeight = (constraints.maxWidth / (297 / 210))
-            .clamp(180.0, maxHeight);
+        final calculatedHeight = (constraints.maxWidth / (297 / 210)).clamp(
+          180.0,
+          maxHeight,
+        );
 
         // Esse padding é apenas visual no painel.
         // A exportação NÃO captura esse padding, nem a borda arredondada do card.
@@ -950,10 +961,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
         final conteudo = exportKey == null
             ? certificadoLimpo
-            : RepaintBoundary(
-          key: exportKey,
-          child: certificadoLimpo,
-        );
+            : RepaintBoundary(key: exportKey, child: certificadoLimpo);
 
         return Container(
           height: calculatedHeight,
@@ -989,11 +997,7 @@ class _PreviewParagraphText extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final lines = _wrap(
-          text,
-          style: style,
-          maxWidth: constraints.maxWidth,
-        );
+        final lines = _wrap(text, style: style, maxWidth: constraints.maxWidth);
 
         final visibleLines = maxLines == null
             ? lines
@@ -1029,10 +1033,10 @@ class _PreviewParagraphText extends StatelessWidget {
   }
 
   List<String> _wrap(
-      String value, {
-        required TextStyle style,
-        required double maxWidth,
-      }) {
+    String value, {
+    required TextStyle style,
+    required double maxWidth,
+  }) {
     final words = value.trim().replaceAll(RegExp(r'\s+'), ' ').split(' ');
     final lines = <String>[];
     var current = '';
@@ -1098,10 +1102,7 @@ class _CertificadoPreviewPayload {
   final String svg;
   final Map<String, CertificadoSlotModel> slots;
 
-  const _CertificadoPreviewPayload({
-    required this.svg,
-    required this.slots,
-  });
+  const _CertificadoPreviewPayload({required this.svg, required this.slots});
 }
 
 class _ColorDot extends StatelessWidget {
@@ -1138,7 +1139,8 @@ class _InfoChip extends StatelessWidget {
 
   Color _ensureVisible(BuildContext context, Color color) {
     final background = context.uai.card;
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;

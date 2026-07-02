@@ -6,7 +6,10 @@ class UsuarioService {
   // Cache simples para evitar buscas repetidas
   static final Map<String, Map<String, dynamic>> _cache = {};
 
-  Future<Map<String, dynamic>> buscarUsuario(String uid, {bool forceRefresh = false}) async {
+  Future<Map<String, dynamic>> buscarUsuario(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
     // Se forçar atualização, remove do cache primeiro
     if (forceRefresh && _cache.containsKey(uid)) {
       print('🔄 Forçando refresh - removendo cache de $uid');
@@ -49,7 +52,9 @@ class UsuarioService {
         _cache[uid] = data;
         return data;
       } else {
-        print('⚠️ Permissões não encontradas - buscando apenas dados do usuário');
+        print(
+          '⚠️ Permissões não encontradas - buscando apenas dados do usuário',
+        );
 
         // Fallback: buscar apenas dados básicos do usuário
         final userDoc = await _firestore.collection('usuarios').doc(uid).get();
@@ -67,7 +72,10 @@ class UsuarioService {
   }
 
   // 🔥 MÉTODO ESPECÍFICO PARA BUSCAR APENAS PERMISSÕES
-  Future<Map<String, bool>> buscarPermissoes(String uid, {bool forceRefresh = false}) async {
+  Future<Map<String, bool>> buscarPermissoes(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
     if (forceRefresh && _cache.containsKey(uid)) {
       _cache.remove(uid);
     }
@@ -98,7 +106,11 @@ class UsuarioService {
     return dados['nome_completo'] ?? 'Usuário ID: ${uid.substring(0, 6)}...';
   }
 
-  Future<bool> verificarPermissao(String uid, String chavePermissao, {bool forceRefresh = false}) async {
+  Future<bool> verificarPermissao(
+    String uid,
+    String chavePermissao, {
+    bool forceRefresh = false,
+  }) async {
     if (uid.isEmpty) return false;
 
     final dados = await buscarUsuario(uid, forceRefresh: forceRefresh);
@@ -108,23 +120,49 @@ class UsuarioService {
 
   // 🔥 MÉTODOS PARA UNIFORMES
   Future<bool> podeEditarVenda(String uid, {bool forceRefresh = false}) async {
-    return verificarPermissao(uid, 'pode_editar_venda', forceRefresh: forceRefresh);
+    return verificarPermissao(
+      uid,
+      'pode_editar_venda',
+      forceRefresh: forceRefresh,
+    );
   }
 
   Future<bool> podeExcluirVenda(String uid, {bool forceRefresh = false}) async {
-    return verificarPermissao(uid, 'pode_excluir_venda', forceRefresh: forceRefresh);
+    return verificarPermissao(
+      uid,
+      'pode_excluir_venda',
+      forceRefresh: forceRefresh,
+    );
   }
 
   Future<bool> podeEditarPedido(String uid, {bool forceRefresh = false}) async {
-    return verificarPermissao(uid, 'pode_editar_pedido', forceRefresh: forceRefresh);
+    return verificarPermissao(
+      uid,
+      'pode_editar_pedido',
+      forceRefresh: forceRefresh,
+    );
   }
 
-  Future<bool> podeExcluirPedido(String uid, {bool forceRefresh = false}) async {
-    return verificarPermissao(uid, 'pode_excluir_pedido', forceRefresh: forceRefresh);
+  Future<bool> podeExcluirPedido(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
+    return verificarPermissao(
+      uid,
+      'pode_excluir_pedido',
+      forceRefresh: forceRefresh,
+    );
   }
 
-  Future<bool> podeGerenciarEstoque(String uid, {bool forceRefresh = false}) async {
-    return verificarPermissao(uid, 'pode_gerenciar_estoque', forceRefresh: forceRefresh);
+  Future<bool> podeGerenciarEstoque(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
+    return verificarPermissao(
+      uid,
+      'pode_gerenciar_estoque',
+      forceRefresh: forceRefresh,
+    );
   }
 
   // 🔥 Método para limpar cache

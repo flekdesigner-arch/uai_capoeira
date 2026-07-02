@@ -81,8 +81,9 @@ class AppTheme {
         titleTextStyle: TextStyle(
           color: appBarFg,
           fontSize: 19,
-          fontWeight:
-          preset == UaiThemePreset.verdeNeon ? FontWeight.w500 : FontWeight.w900,
+          fontWeight: preset == UaiThemePreset.verdeNeon
+              ? FontWeight.w500
+              : FontWeight.w900,
           fontFamily: fontFamily,
           letterSpacing: preset == UaiThemePreset.verdeNeon ? 0.8 : 0,
         ),
@@ -117,8 +118,9 @@ class AppTheme {
             borderRadius: BorderRadius.circular(t.buttonRadius),
           ),
           textStyle: TextStyle(
-            fontWeight:
-            preset == UaiThemePreset.verdeNeon ? FontWeight.w600 : FontWeight.w900,
+            fontWeight: preset == UaiThemePreset.verdeNeon
+                ? FontWeight.w600
+                : FontWeight.w900,
             letterSpacing: preset == UaiThemePreset.verdeNeon ? 0.6 : 0.2,
             fontFamily: fontFamily,
           ),
@@ -162,7 +164,10 @@ class AppTheme {
         errorStyle: TextStyle(color: t.error, fontFamily: fontFamily),
         prefixIconColor: t.textMuted,
         suffixIconColor: t.textMuted,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.inputRadius),
           borderSide: BorderSide(color: t.border),

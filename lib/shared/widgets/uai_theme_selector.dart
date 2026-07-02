@@ -40,10 +40,7 @@ class UaiThemeIconButton extends StatelessWidget {
 class UaiThemeSelectorButton extends StatelessWidget {
   final bool compact;
 
-  const UaiThemeSelectorButton({
-    super.key,
-    this.compact = false,
-  });
+  const UaiThemeSelectorButton({super.key, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +76,10 @@ class UaiThemeSelectorButton extends StatelessWidget {
                       gradient: tokens.primaryGradient,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.palette_rounded, color: Colors.white),
+                    child: const Icon(
+                      Icons.palette_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -179,7 +179,10 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                       gradient: tokens.primaryGradient,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.palette_rounded, color: Colors.white),
+                    child: const Icon(
+                      Icons.palette_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -195,11 +198,17 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                   IconButton(
                     tooltip: 'Atualizar temas salvos',
                     onPressed: _refresh,
-                    icon: Icon(Icons.refresh_rounded, color: tokens.textSecondary),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      color: tokens.textSecondary,
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close_rounded, color: tokens.textSecondary),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -220,7 +229,8 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                       for (final preset in UaiThemePreset.values) ...[
                         _PresetTile(
                           preset: preset,
-                          selected: preset == controller.currentPreset &&
+                          selected:
+                              preset == controller.currentPreset &&
                               (preset != UaiThemePreset.usuarioPersonalizado ||
                                   controller.activeSavedThemeId == null),
                           onTap: () async {
@@ -261,11 +271,14 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                       FutureBuilder<List<SavedUserTheme>>(
                         future: _savedThemesFuture,
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
                             return Padding(
                               padding: const EdgeInsets.all(18),
                               child: Center(
-                                child: CircularProgressIndicator(color: tokens.primary),
+                                child: CircularProgressIndicator(
+                                  color: tokens.primary,
+                                ),
                               ),
                             );
                           }
@@ -284,7 +297,8 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                             return const _InfoCard(
                               icon: Icons.palette_outlined,
                               title: 'Nenhum tema salvo ainda',
-                              subtitle: 'Crie um tema e toque em “Salvar na nuvem”.',
+                              subtitle:
+                                  'Crie um tema e toque em “Salvar na nuvem”.',
                             );
                           }
 
@@ -293,7 +307,8 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                               for (final theme in themes) ...[
                                 _SavedThemeTile(
                                   theme: theme,
-                                  selected: controller.activeSavedThemeId == theme.id,
+                                  selected:
+                                      controller.activeSavedThemeId == theme.id,
                                   onApply: () async {
                                     await controller.applySavedUserTheme(theme);
                                   },
@@ -305,10 +320,15 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                                     if (mounted) await _refresh();
                                   },
                                   onDelete: () async {
-                                    final ok = await _confirmDelete(context, theme);
+                                    final ok = await _confirmDelete(
+                                      context,
+                                      theme,
+                                    );
                                     if (ok != true) return;
 
-                                    await controller.deleteSavedUserTheme(theme.id);
+                                    await controller.deleteSavedUserTheme(
+                                      theme.id,
+                                    );
                                     if (mounted) await _refresh();
                                   },
                                 ),
@@ -369,11 +389,7 @@ class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final Widget? trailing;
 
-  const _SectionTitle({
-    required this.title,
-    required this.icon,
-    this.trailing,
-  });
+  const _SectionTitle({required this.title, required this.icon, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -439,10 +455,7 @@ class _InfoCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: tokens.textSecondary, fontSize: 12),
                 ),
               ],
             ),
@@ -479,7 +492,9 @@ class _PresetTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? tokens.primary.withOpacity(0.55) : tokens.border,
+              color: selected
+                  ? tokens.primary.withOpacity(0.55)
+                  : tokens.border,
             ),
           ),
           child: Row(
@@ -578,7 +593,9 @@ class _SavedThemeTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? tokens.primary.withOpacity(0.55) : tokens.border,
+              color: selected
+                  ? tokens.primary.withOpacity(0.55)
+                  : tokens.border,
             ),
           ),
           child: Row(
@@ -599,7 +616,9 @@ class _SavedThemeTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      selected ? 'Ativo neste dispositivo' : 'Toque para usar este tema',
+                      selected
+                          ? 'Ativo neste dispositivo'
+                          : 'Toque para usar este tema',
                       style: TextStyle(
                         color: tokens.textSecondary,
                         fontWeight: FontWeight.w500,
@@ -645,21 +664,9 @@ class _ThemePreviewDots extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            child: _dot(tokens.primary, 19),
-          ),
-          Positioned(
-            right: 0,
-            top: 3,
-            child: _dot(tokens.card, 22),
-          ),
-          Positioned(
-            left: 11,
-            bottom: 0,
-            child: _dot(tokens.accent, 17),
-          ),
+          Positioned(left: 0, top: 0, child: _dot(tokens.primary, 19)),
+          Positioned(right: 0, top: 3, child: _dot(tokens.card, 22)),
+          Positioned(left: 11, bottom: 0, child: _dot(tokens.accent, 17)),
         ],
       ),
     );
@@ -679,9 +686,9 @@ class _ThemePreviewDots extends StatelessWidget {
 }
 
 Future<void> showUaiUserThemeEditor(
-    BuildContext context, {
-      SavedUserTheme? savedTheme,
-    }) async {
+  BuildContext context, {
+  SavedUserTheme? savedTheme,
+}) async {
   await showDialog<void>(
     context: context,
     builder: (_) => _UserThemeEditorDialog(savedTheme: savedTheme),
@@ -721,11 +728,19 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
     _nameController = TextEditingController(
       text: widget.savedTheme?.name ?? '',
     );
-    _primaryController = TextEditingController(text: _hex(initialSettings.primary));
-    _backgroundController = TextEditingController(text: _hex(initialSettings.background));
-    _surfaceController = TextEditingController(text: _hex(initialSettings.surface));
+    _primaryController = TextEditingController(
+      text: _hex(initialSettings.primary),
+    );
+    _backgroundController = TextEditingController(
+      text: _hex(initialSettings.background),
+    );
+    _surfaceController = TextEditingController(
+      text: _hex(initialSettings.surface),
+    );
     _cardController = TextEditingController(text: _hex(initialSettings.card));
-    _textController = TextEditingController(text: _hex(initialSettings.textPrimary));
+    _textController = TextEditingController(
+      text: _hex(initialSettings.textPrimary),
+    );
     _accentController = TextEditingController(
       text: _hex(initialSettings.accent ?? initialSettings.primary),
     );
@@ -790,7 +805,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -807,7 +825,9 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                           decoration: const InputDecoration(
                             labelText: 'Nome do tema salvo',
                             hintText: 'Ex: Verde Duende, Café Premium...',
-                            prefixIcon: Icon(Icons.drive_file_rename_outline_rounded),
+                            prefixIcon: Icon(
+                              Icons.drive_file_rename_outline_rounded,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -816,7 +836,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         _colorField('Surface / painéis', _surfaceController),
                         _colorField('Cards', _cardController),
                         _colorField('Texto principal', _textController),
-                        _colorField('Accent / destaque extra', _accentController),
+                        _colorField(
+                          'Accent / destaque extra',
+                          _accentController,
+                        ),
                         const SizedBox(height: 10),
                         _radiusSlider(
                           label: 'Arredondamento dos cards',
@@ -841,10 +864,22 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                             prefixIcon: Icon(Icons.font_download_rounded),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'default', child: Text('Padrão')),
-                            DropdownMenuItem(value: 'monospace', child: Text('Robótica / monospace')),
-                            DropdownMenuItem(value: 'serif', child: Text('Serifada')),
-                            DropdownMenuItem(value: 'sans-serif', child: Text('Sans-serif')),
+                            DropdownMenuItem(
+                              value: 'default',
+                              child: Text('Padrão'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'monospace',
+                              child: Text('Robótica / monospace'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'serif',
+                              child: Text('Serifada'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'sans-serif',
+                              child: Text('Sans-serif'),
+                            ),
                           ],
                           onChanged: (value) {
                             if (value == null) return;
@@ -871,9 +906,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         onPressed: _savingCloud
                             ? null
                             : () async {
-                          await AppThemeController.instance.resetUserTheme();
-                          if (mounted) Navigator.pop(context);
-                        },
+                                await AppThemeController.instance
+                                    .resetUserTheme();
+                                if (mounted) Navigator.pop(context);
+                              },
                         icon: const Icon(Icons.restart_alt_rounded),
                         label: const Text('Resetar'),
                       );
@@ -882,11 +918,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         onPressed: _savingCloud
                             ? null
                             : () async {
-                          await AppThemeController.instance.applyUserTheme(
-                            _settingsFromFields(),
-                          );
-                          if (mounted) Navigator.pop(context);
-                        },
+                                await AppThemeController.instance
+                                    .applyUserTheme(_settingsFromFields());
+                                if (mounted) Navigator.pop(context);
+                              },
                         icon: const Icon(Icons.phone_android_rounded),
                         label: const Text('Só neste aparelho'),
                       );
@@ -895,10 +930,12 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         onPressed: _savingCloud ? null : _saveCloud,
                         icon: _savingCloud
                             ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Icon(Icons.cloud_upload_rounded),
                         label: Text(
                           widget.savedTheme == null
@@ -980,10 +1017,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         content: Text(
           message,
-          style: TextStyle(
-            color: onColor,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: onColor, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -1068,10 +1102,8 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
           onTap: () async {
             final selected = await showDialog<Color>(
               context: context,
-              builder: (_) => _UaiColorPickerDialog(
-                title: label,
-                initialColor: color,
-              ),
+              builder: (_) =>
+                  _UaiColorPickerDialog(title: label, initialColor: color),
             );
 
             if (selected == null) return;
@@ -1169,9 +1201,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
   }
 
   Widget _contrastWarning(UaiThemeTokens preview) {
-    final diff = (preview.textPrimary.computeLuminance() -
-        preview.card.computeLuminance())
-        .abs();
+    final diff =
+        (preview.textPrimary.computeLuminance() -
+                preview.card.computeLuminance())
+            .abs();
 
     final ok = diff >= 0.34;
 
@@ -1214,12 +1247,24 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
 
   UserThemeSettings _settingsFromFields() {
     return UserThemeSettings(
-      primary: _parseColor(_primaryController.text) ?? UserThemeSettings.defaultDark.primary,
-      background: _parseColor(_backgroundController.text) ?? UserThemeSettings.defaultDark.background,
-      surface: _parseColor(_surfaceController.text) ?? UserThemeSettings.defaultDark.surface,
-      card: _parseColor(_cardController.text) ?? UserThemeSettings.defaultDark.card,
-      textPrimary: _parseColor(_textController.text) ?? UserThemeSettings.defaultDark.textPrimary,
-      accent: _parseColor(_accentController.text) ?? UserThemeSettings.defaultDark.accent,
+      primary:
+          _parseColor(_primaryController.text) ??
+          UserThemeSettings.defaultDark.primary,
+      background:
+          _parseColor(_backgroundController.text) ??
+          UserThemeSettings.defaultDark.background,
+      surface:
+          _parseColor(_surfaceController.text) ??
+          UserThemeSettings.defaultDark.surface,
+      card:
+          _parseColor(_cardController.text) ??
+          UserThemeSettings.defaultDark.card,
+      textPrimary:
+          _parseColor(_textController.text) ??
+          UserThemeSettings.defaultDark.textPrimary,
+      accent:
+          _parseColor(_accentController.text) ??
+          UserThemeSettings.defaultDark.accent,
       cardRadius: _cardRadius,
       buttonRadius: _buttonRadius,
       inputRadius: _buttonRadius,
@@ -1286,12 +1331,8 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
     _blue = widget.initialColor.blue.toDouble();
   }
 
-  Color get _color => Color.fromARGB(
-    255,
-    _red.round(),
-    _green.round(),
-    _blue.round(),
-  );
+  Color get _color =>
+      Color.fromARGB(255, _red.round(), _green.round(), _blue.round());
 
   @override
   Widget build(BuildContext context) {
@@ -1321,10 +1362,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        color.withOpacity(0.68),
-                        color,
-                      ],
+                      colors: [color.withOpacity(0.68), color],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1483,19 +1521,16 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
           ),
           boxShadow: selected
               ? [
-            BoxShadow(
-              color: color.withOpacity(0.35),
-              blurRadius: 14,
-              offset: const Offset(0, 5),
-            ),
-          ]
+                  BoxShadow(
+                    color: color.withOpacity(0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 5),
+                  ),
+                ]
               : null,
         ),
         child: selected
-            ? Icon(
-          Icons.check_rounded,
-          color: _readableOn(color),
-        )
+            ? Icon(Icons.check_rounded, color: _readableOn(color))
             : null,
       ),
     );

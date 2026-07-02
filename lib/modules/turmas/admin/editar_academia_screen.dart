@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class EditarAcademiaScreen extends StatefulWidget {
@@ -14,8 +15,11 @@ class EditarAcademiaScreen extends StatefulWidget {
 class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
   bool get _isEditing => widget.academiaId != null;
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isLoading = false;
   bool _usuariosCarregando = false;
 
@@ -62,11 +66,44 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   void initState() {
     super.initState();
     _academiaId = widget.academiaId;
-    _carregarUsuarios();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_academias',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (!permitido) return;
+
+    await _carregarUsuarios();
 
     if (_isEditing) {
-      _carregarAcademia();
+      await _carregarAcademia();
     }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_academias',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _showSnack(
+        'Você não tem permissão para gerenciar academias.',
+        type: _SnackType.error,
+      );
+    }
+
+    return permitido;
   }
 
   @override
@@ -89,8 +126,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -110,6 +147,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _carregarUsuarios() async {
+    if (!await _revalidarAcesso()) return;
+
     if (mounted) setState(() => _usuariosCarregando = true);
 
     try {
@@ -163,10 +202,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       debugPrint('❌ Erro ao carregar usuários: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao carregar usuários: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao carregar usuários: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _usuariosCarregando = false);
@@ -174,11 +210,15 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _carregarAcademia() async {
+    if (!await _revalidarAcesso()) return;
+
     if (mounted) setState(() => _isLoading = true);
 
     try {
-      final doc =
-      await _firestore.collection('academias').doc(_academiaId).get();
+      final doc = await _firestore
+          .collection('academias')
+          .doc(_academiaId)
+          .get();
 
       if (!doc.exists || doc.data() == null) return;
 
@@ -190,37 +230,43 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       _telefoneController.text = data['telefone']?.toString() ?? '';
       _emailController.text = data['email']?.toString() ?? '';
       _whatsappController.text =
-          data['whatsapp']?.toString() ?? data['whatsapp_url']?.toString() ?? '';
+          data['whatsapp']?.toString() ??
+          data['whatsapp_url']?.toString() ??
+          '';
       _logoUrlController.text = data['logo_url']?.toString() ?? '';
       _observacoesController.text = data['observacoes']?.toString() ?? '';
 
       final professoresIds = data['professores_ids'] as List<dynamic>? ?? [];
-      final professoresNomes = data['professores_nomes'] as List<dynamic>? ?? [];
+      final professoresNomes =
+          data['professores_nomes'] as List<dynamic>? ?? [];
       final responsavelId = data['responsavel_id']?.toString();
 
       if (!mounted) return;
 
       setState(() {
-        _modalidadeSelecionada =
-            data['modalidade']?.toString() ?? 'CAPOEIRA';
+        _modalidadeSelecionada = data['modalidade']?.toString() ?? 'CAPOEIRA';
         _statusSelecionado = data['status']?.toString() ?? 'ativa';
 
         _responsavelSelecionadoId =
-        responsavelId != null && responsavelId.isNotEmpty
+            responsavelId != null && responsavelId.isNotEmpty
             ? responsavelId
             : null;
         _responsavelAnteriorId = _responsavelSelecionadoId;
 
-        _responsavelNome = data['responsavel']?.toString() ??
+        _responsavelNome =
+            data['responsavel']?.toString() ??
             data['responsavel_nome']?.toString() ??
             '';
 
-        _professoresSelecionadosIds =
-            professoresIds.map((id) => id.toString()).toList();
-        _professoresAnterioresIds =
-        List<String>.from(_professoresSelecionadosIds);
-        _professoresSelecionadosNomes =
-            professoresNomes.map((nome) => nome.toString()).toList();
+        _professoresSelecionadosIds = professoresIds
+            .map((id) => id.toString())
+            .toList();
+        _professoresAnterioresIds = List<String>.from(
+          _professoresSelecionadosIds,
+        );
+        _professoresSelecionadosNomes = professoresNomes
+            .map((nome) => nome.toString())
+            .toList();
       });
 
       if (_responsavelSelecionadoId != null &&
@@ -233,10 +279,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       debugPrint('❌ Erro ao carregar academia: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao carregar dados: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao carregar dados: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -247,7 +290,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     if (responsavelId == null) return;
 
     final responsavel = _todosUsuarios.firstWhere(
-          (user) => user['id'] == responsavelId,
+      (user) => user['id'] == responsavelId,
       orElse: () => {},
     );
 
@@ -260,8 +303,10 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
   Future<void> _buscarNomeResponsavelPorId(String responsavelId) async {
     try {
-      final responsavelDoc =
-      await _firestore.collection('usuarios').doc(responsavelId).get();
+      final responsavelDoc = await _firestore
+          .collection('usuarios')
+          .doc(responsavelId)
+          .get();
 
       if (!mounted) return;
 
@@ -269,7 +314,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         final responsavelData = responsavelDoc.data()!;
 
         setState(() {
-          _responsavelNome = responsavelData['nome_completo']?.toString() ??
+          _responsavelNome =
+              responsavelData['nome_completo']?.toString() ??
               responsavelData['name']?.toString() ??
               'Responsável';
         });
@@ -283,9 +329,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _atualizarVinculoUsuario(
-      String usuarioId,
-      bool adicionar,
-      ) async {
+    String usuarioId,
+    bool adicionar,
+  ) async {
     if (_academiaId == null) {
       debugPrint('❌ _academiaId é null, não é possível vincular');
       return;
@@ -343,9 +389,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.fromLTRB(18, 18, 8, 14),
-                        decoration: BoxDecoration(
-                          gradient: t.primaryGradient,
-                        ),
+                        decoration: BoxDecoration(gradient: t.primaryGradient),
                         child: Row(
                           children: [
                             Container(
@@ -353,11 +397,13 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                               height: 48,
                               decoration: BoxDecoration(
                                 color: _readableOn(t.primary).withOpacity(0.14),
-                                borderRadius:
-                                BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                                 border: Border.all(
-                                  color:
-                                  _readableOn(t.primary).withOpacity(0.16),
+                                  color: _readableOn(
+                                    t.primary,
+                                  ).withOpacity(0.16),
                                 ),
                               ),
                               child: Icon(
@@ -383,8 +429,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                   Text(
                                     'Selecione quem terá acesso à academia.',
                                     style: TextStyle(
-                                      color: _readableOn(t.primary)
-                                          .withOpacity(0.78),
+                                      color: _readableOn(
+                                        t.primary,
+                                      ).withOpacity(0.78),
                                       fontSize: 12,
                                       height: 1.25,
                                     ),
@@ -405,163 +452,161 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                       Expanded(
                         child: _usuariosCarregando
                             ? Center(
-                          child: CircularProgressIndicator(
-                            color: t.primary,
-                          ),
-                        )
+                                child: CircularProgressIndicator(
+                                  color: t.primary,
+                                ),
+                              )
                             : _professoresDisponiveis.isEmpty
                             ? _dialogEmptyProfessores()
                             : ListView.builder(
-                          padding: const EdgeInsets.all(14),
-                          itemCount: _professoresDisponiveis.length,
-                          itemBuilder: (context, index) {
-                            final professor =
-                            _professoresDisponiveis[index];
-                            final id = professor['id']?.toString() ?? '';
-                            final isSelecionado =
-                            selecaoTemporaria.contains(id);
+                                padding: const EdgeInsets.all(14),
+                                itemCount: _professoresDisponiveis.length,
+                                itemBuilder: (context, index) {
+                                  final professor =
+                                      _professoresDisponiveis[index];
+                                  final id = professor['id']?.toString() ?? '';
+                                  final isSelecionado = selecaoTemporaria
+                                      .contains(id);
 
-                            return Padding(
-                              padding:
-                              const EdgeInsets.only(bottom: 10),
-                              child: Material(
-                                color: isSelecionado
-                                    ? Color.alphaBlend(
-                                  primary.withOpacity(0.10),
-                                  t.cardAlt,
-                                )
-                                    : t.cardAlt,
-                                borderRadius: BorderRadius.circular(
-                                  t.inputRadius,
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  onTap: () {
-                                    setDialogState(() {
-                                      if (isSelecionado) {
-                                        selecaoTemporaria.remove(id);
-                                      } else if (id.isNotEmpty) {
-                                        selecaoTemporaria.add(id);
-                                      }
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      borderRadius:
-                                      BorderRadius.circular(
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Material(
+                                      color: isSelecionado
+                                          ? Color.alphaBlend(
+                                              primary.withOpacity(0.10),
+                                              t.cardAlt,
+                                            )
+                                          : t.cardAlt,
+                                      borderRadius: BorderRadius.circular(
                                         t.inputRadius,
                                       ),
-                                      border: Border.all(
-                                        color: isSelecionado
-                                            ? primary.withOpacity(0.34)
-                                            : t.border,
-                                        width: isSelecionado ? 1.3 : 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        _professorAvatar(
-                                          professor: professor,
-                                          selected: isSelecionado,
-                                          accent: primary,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            if (isSelecionado) {
+                                              selecaoTemporaria.remove(id);
+                                            } else if (id.isNotEmpty) {
+                                              selecaoTemporaria.add(id);
+                                            }
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              t.inputRadius,
+                                            ),
+                                            border: Border.all(
+                                              color: isSelecionado
+                                                  ? primary.withOpacity(0.34)
+                                                  : t.border,
+                                              width: isSelecionado ? 1.3 : 1,
+                                            ),
+                                          ),
+                                          child: Row(
                                             children: [
-                                              Text(
-                                                professor['nome']
-                                                    ?.toString() ??
-                                                    'Sem nome',
-                                                maxLines: 1,
-                                                overflow:
-                                                TextOverflow.ellipsis,
-                                                style: TextStyle(
+                                              _professorAvatar(
+                                                professor: professor,
+                                                selected: isSelecionado,
+                                                accent: primary,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      professor['nome']
+                                                              ?.toString() ??
+                                                          'Sem nome',
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: isSelecionado
+                                                            ? primary
+                                                            : t.textPrimary,
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    Text(
+                                                      professor['email']
+                                                              ?.toString() ??
+                                                          'Sem email',
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: t.textSecondary,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 7),
+                                                    Wrap(
+                                                      spacing: 6,
+                                                      runSpacing: 6,
+                                                      children: [
+                                                        _miniBadge(
+                                                          label:
+                                                              professor['tipo']
+                                                                  ?.toString()
+                                                                  .toUpperCase() ??
+                                                              'PROFESSOR',
+                                                          color: info,
+                                                          icon: Icons
+                                                              .badge_rounded,
+                                                        ),
+                                                        _miniBadge(
+                                                          label:
+                                                              'Peso ${professor['peso_permissao'] ?? 0}',
+                                                          color: success,
+                                                          icon: Icons
+                                                              .security_rounded,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Container(
+                                                width: 28,
+                                                height: 28,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
                                                   color: isSelecionado
                                                       ? primary
-                                                      : t.textPrimary,
-                                                  fontSize: 15,
-                                                  fontWeight:
-                                                  FontWeight.w900,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 3),
-                                              Text(
-                                                professor['email']
-                                                    ?.toString() ??
-                                                    'Sem email',
-                                                maxLines: 1,
-                                                overflow:
-                                                TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color:
-                                                  t.textSecondary,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 7),
-                                              Wrap(
-                                                spacing: 6,
-                                                runSpacing: 6,
-                                                children: [
-                                                  _miniBadge(
-                                                    label: professor[
-                                                    'tipo']
-                                                        ?.toString()
-                                                        .toUpperCase() ??
-                                                        'PROFESSOR',
-                                                    color: info,
-                                                    icon: Icons
-                                                        .badge_rounded,
+                                                      : Colors.transparent,
+                                                  border: Border.all(
+                                                    color: isSelecionado
+                                                        ? primary
+                                                        : t.border,
+                                                    width: 2,
                                                   ),
-                                                  _miniBadge(
-                                                    label:
-                                                    'Peso ${professor['peso_permissao'] ?? 0}',
-                                                    color: success,
-                                                    icon: Icons
-                                                        .security_rounded,
-                                                  ),
-                                                ],
+                                                ),
+                                                child: isSelecionado
+                                                    ? Icon(
+                                                        Icons.check_rounded,
+                                                        color: _readableOn(
+                                                          primary,
+                                                        ),
+                                                        size: 18,
+                                                      )
+                                                    : null,
                                               ),
                                             ],
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
-                                        Container(
-                                          width: 28,
-                                          height: 28,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: isSelecionado
-                                                ? primary
-                                                : Colors.transparent,
-                                            border: Border.all(
-                                              color: isSelecionado
-                                                  ? primary
-                                                  : t.border,
-                                              width: 2,
-                                            ),
-                                          ),
-                                          child: isSelecionado
-                                              ? Icon(
-                                            Icons.check_rounded,
-                                            color:
-                                            _readableOn(primary),
-                                            size: 18,
-                                          )
-                                              : null,
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ),
+                                  );
+                                },
                               ),
-                            );
-                          },
-                        ),
                       ),
                       Container(
                         padding: const EdgeInsets.all(14),
@@ -575,7 +620,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                               icon: Icons.info_outline_rounded,
                               color: t.info,
                               text:
-                              '${selecaoTemporaria.length} professor(es) selecionado(s)',
+                                  '${selecaoTemporaria.length} professor(es) selecionado(s)',
                             ),
                             const SizedBox(height: 12),
                             LayoutBuilder(
@@ -608,7 +653,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                   onPressed: () {
                                     setState(() {
                                       _professoresSelecionadosIds =
-                                      List<String>.from(selecaoTemporaria);
+                                          List<String>.from(selecaoTemporaria);
                                     });
                                     Navigator.pop(dialogContext);
                                   },
@@ -635,7 +680,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                 if (narrow) {
                                   return Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       cancel,
                                       const SizedBox(height: 10),
@@ -723,21 +768,18 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       child: ClipOval(
         child: fotoUrl != null && fotoUrl.isNotEmpty
             ? Image.network(
-          fotoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _avatarFallback(selected: selected, accent: accent);
-          },
-        )
+                fotoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _avatarFallback(selected: selected, accent: accent);
+                },
+              )
             : _avatarFallback(selected: selected, accent: accent),
       ),
     );
   }
 
-  Widget _avatarFallback({
-    required bool selected,
-    required Color accent,
-  }) {
+  Widget _avatarFallback({required bool selected, required Color accent}) {
     final t = context.uai;
 
     return Container(
@@ -786,6 +828,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _salvarAcademia() async {
+    if (!await _revalidarAcesso()) return;
     if (!_formKey.currentState!.validate()) return;
 
     if (_responsavelSelecionadoId == null) {
@@ -805,7 +848,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
           responsavelNome == 'Erro ao carregar' ||
           responsavelNome == 'Usuário não encontrado') {
         final responsavel = _usuariosDisponiveis.firstWhere(
-              (user) => user['id'] == _responsavelSelecionadoId,
+          (user) => user['id'] == _responsavelSelecionadoId,
           orElse: () => {'nome': 'Responsável não encontrado'},
         );
         responsavelNome = responsavel['nome']?.toString() ?? '';
@@ -813,9 +856,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
       final professoresNomes = _professoresSelecionadosIds.map((id) {
         final professor = _professoresDisponiveis.firstWhere(
-              (p) => p['id'] == id,
+          (p) => p['id'] == id,
           orElse: () => _usuariosDisponiveis.firstWhere(
-                (u) => u['id'] == id,
+            (u) => u['id'] == id,
             orElse: () => {'nome': 'Professor não encontrado'},
           ),
         );
@@ -905,10 +948,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         }
 
         if (mounted) {
-          _showSnack(
-            'Academia criada com sucesso!',
-            type: _SnackType.success,
-          );
+          _showSnack('Academia criada com sucesso!', type: _SnackType.success);
         }
       }
 
@@ -917,10 +957,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       debugPrint('❌ Erro ao salvar: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao salvar: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao salvar: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -929,6 +966,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
   Future<void> _excluirAcademia() async {
     if (_academiaId == null) return;
+    if (!await _revalidarAcesso()) return;
 
     setState(() => _isLoading = true);
 
@@ -942,10 +980,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showSnack(
-          'Erro ao verificar turmas: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao verificar turmas: $e', type: _SnackType.error);
       }
       return;
     }
@@ -981,8 +1016,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final currentConfere =
-                confirmacaoController.text.trim().toUpperCase() ==
-                    nomeAcademia;
+                confirmacaoController.text.trim().toUpperCase() == nomeAcademia;
 
             return Dialog(
               insetPadding: const EdgeInsets.all(18),
@@ -1012,8 +1046,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                 height: 48,
                                 decoration: BoxDecoration(
                                   color: t.error.withOpacity(0.12),
-                                  borderRadius:
-                                  BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                                 child: Icon(
                                   Icons.warning_rounded,
@@ -1057,21 +1092,23 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                           TextFormField(
                             controller: confirmacaoController,
                             style: TextStyle(color: t.textPrimary),
-                            decoration: _inputDecoration(
-                              label: 'Digite o nome da academia',
-                              icon: Icons.warning_rounded,
-                            ).copyWith(
-                              suffixIcon: confirmacaoController.text.isNotEmpty
-                                  ? Icon(
-                                currentConfere
-                                    ? Icons.check_circle_rounded
-                                    : Icons.error_rounded,
-                                color: currentConfere
-                                    ? t.success
-                                    : t.error,
-                              )
-                                  : null,
-                            ),
+                            decoration:
+                                _inputDecoration(
+                                  label: 'Digite o nome da academia',
+                                  icon: Icons.warning_rounded,
+                                ).copyWith(
+                                  suffixIcon:
+                                      confirmacaoController.text.isNotEmpty
+                                      ? Icon(
+                                          currentConfere
+                                              ? Icons.check_circle_rounded
+                                              : Icons.error_rounded,
+                                          color: currentConfere
+                                              ? t.success
+                                              : t.error,
+                                        )
+                                      : null,
+                                ),
                             onChanged: (value) {
                               setDialogState(() {
                                 nomeConfere =
@@ -1123,16 +1160,14 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                 ),
                                 child: const Text(
                                   'EXCLUIR',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                               );
 
                               if (narrow) {
                                 return Column(
                                   crossAxisAlignment:
-                                  CrossAxisAlignment.stretch,
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     cancel,
                                     const SizedBox(height: 10),
@@ -1191,8 +1226,10 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _realizarExclusaoAcademia(
-      QuerySnapshot<Map<String, dynamic>> turmasSnapshot,
-      ) async {
+    QuerySnapshot<Map<String, dynamic>> turmasSnapshot,
+  ) async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -1215,20 +1252,14 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       await _firestore.collection('academias').doc(_academiaId).delete();
 
       if (mounted) {
-        _showSnack(
-          'Academia excluída com sucesso!',
-          type: _SnackType.success,
-        );
+        _showSnack('Academia excluída com sucesso!', type: _SnackType.success);
         Navigator.pop(context);
       }
     } catch (e) {
       debugPrint('❌ Erro ao excluir: $e');
 
       if (mounted) {
-        _showSnack(
-          'Erro ao excluir: $e',
-          type: _SnackType.error,
-        );
+        _showSnack('Erro ao excluir: $e', type: _SnackType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -1292,22 +1323,21 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         style: TextStyle(color: context.uai.textPrimary),
         keyboardType: keyboardType,
         maxLines: maxLines ?? 1,
-        validator: validator ??
+        validator:
+            validator ??
             (obrigatorio
                 ? (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Campo obrigatório';
-              }
-              return null;
-            }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Campo obrigatório';
+                    }
+                    return null;
+                  }
                 : null),
         decoration: _inputDecoration(
           label: label + (obrigatorio ? ' *' : ''),
           icon: icon,
           hint: hint,
-        ).copyWith(
-          alignLabelWithHint: (maxLines ?? 1) > 1,
-        ),
+        ).copyWith(alignLabelWithHint: (maxLines ?? 1) > 1),
       ),
     );
   }
@@ -1326,8 +1356,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       if (value.trim().isNotEmpty && !items.contains(value)) value,
     ].toSet().toList();
 
-    final safeValue =
-    normalizedItems.contains(value) ? value : normalizedItems.first;
+    final safeValue = normalizedItems.contains(value)
+        ? value
+        : normalizedItems.first;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1409,7 +1440,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                 if (novoId == null) return;
 
                 final usuario = _usuariosDisponiveis.firstWhere(
-                      (u) => u['id'] == novoId,
+                  (u) => u['id'] == novoId,
                   orElse: () => {'nome': '', 'email': ''},
                 );
 
@@ -1539,10 +1570,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      color: _readableOn(info),
-                    ),
+                    Icon(Icons.arrow_forward_rounded, color: _readableOn(info)),
                   ],
                 ),
               ),
@@ -1563,7 +1591,11 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.school_rounded, size: 16, color: t.textSecondary),
+                      Icon(
+                        Icons.school_rounded,
+                        size: 16,
+                        color: t.textSecondary,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'Professores vinculados:',
@@ -1581,7 +1613,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                     runSpacing: 8,
                     children: _professoresSelecionadosIds.map((id) {
                       final professor = _professoresDisponiveis.firstWhere(
-                            (p) => p['id'] == id,
+                        (p) => p['id'] == id,
                         orElse: () => {'nome': 'Professor', 'email': ''},
                       );
 
@@ -1750,15 +1782,18 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
             child: Icon(
-              _isEditing ? Icons.edit_location_alt_rounded : Icons.add_business_rounded,
+              _isEditing
+                  ? Icons.edit_location_alt_rounded
+                  : Icons.add_business_rounded,
               color: onPrimary,
               size: 33,
             ),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 _isEditing ? 'Editar Academia' : 'Nova Academia',
@@ -1782,8 +1817,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
               ),
               const SizedBox(height: 12),
               Wrap(
-                alignment:
-                narrow ? WrapAlignment.center : WrapAlignment.start,
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
                 spacing: 8,
                 runSpacing: 8,
                 children: [
@@ -1799,8 +1833,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                   ),
                   _heroChip(
                     icon: Icons.people_rounded,
-                    label:
-                    '${_professoresSelecionadosIds.length} professores',
+                    label: '${_professoresSelecionadosIds.length} professores',
                   ),
                 ],
               ),
@@ -1809,11 +1842,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
           if (narrow) {
             return Column(
-              children: [
-                iconBox,
-                const SizedBox(height: 14),
-                text,
-              ],
+              children: [iconBox, const SizedBox(height: 14), text],
             );
           }
 
@@ -1829,10 +1858,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     );
   }
 
-  Widget _heroChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _heroChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -1881,6 +1907,21 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: _isEditing ? 'Editar Academia' : 'Nova Academia',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: _isEditing ? 'Editar Academia' : 'Nova Academia',
+        message: 'Você não tem permissão para gerenciar academias.',
+      );
+    }
+
     final t = context.uai;
 
     return Scaffold(
@@ -1888,10 +1929,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       appBar: AppBar(
         title: Text(
           _isEditing ? 'Editar Academia' : 'Nova Academia',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         actions: [
           if (_isEditing)
@@ -1903,16 +1941,17 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
           IconButton(
             icon: _isLoading || _usuariosCarregando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _readableOn(t.primary),
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _readableOn(t.primary),
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
-            onPressed:
-            _isLoading || _usuariosCarregando ? null : _salvarAcademia,
+            onPressed: _isLoading || _usuariosCarregando
+                ? null
+                : _salvarAcademia,
             tooltip: 'Salvar',
           ),
         ],
@@ -1920,173 +1959,166 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHero(),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      icon: Icons.business_rounded,
-                      title: 'Dados da Academia',
-                      subtitle:
-                      'Nome, modalidade, status, cidade e endereço.',
-                      color: t.primary,
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 980),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _buildFormField(
-                            controller: _nomeController,
-                            label: 'Nome da Academia/Núcleo',
+                          _buildHero(),
+                          const SizedBox(height: 14),
+                          _sectionCard(
                             icon: Icons.business_rounded,
-                            obrigatorio: true,
+                            title: 'Dados da Academia',
+                            subtitle:
+                                'Nome, modalidade, status, cidade e endereço.',
+                            color: t.primary,
+                            child: Column(
+                              children: [
+                                _buildFormField(
+                                  controller: _nomeController,
+                                  label: 'Nome da Academia/Núcleo',
+                                  icon: Icons.business_rounded,
+                                  obrigatorio: true,
+                                ),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
+
+                                    final modalidade = _buildDropdownField(
+                                      value: _modalidadeSelecionada,
+                                      items: _modalidades,
+                                      label: 'Modalidade',
+                                      icon: Icons.sports_martial_arts_rounded,
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setState(
+                                          () => _modalidadeSelecionada = value,
+                                        );
+                                      },
+                                    );
+
+                                    final status = _buildDropdownField(
+                                      value: _statusSelecionado,
+                                      items: _statusOptions,
+                                      label: 'Status',
+                                      icon: Icons.circle_rounded,
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setState(
+                                          () => _statusSelecionado = value,
+                                        );
+                                      },
+                                    );
+
+                                    if (narrow) {
+                                      return Column(
+                                        children: [modalidade, status],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: modalidade),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: status),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                _buildFormField(
+                                  controller: _cidadeController,
+                                  label: 'Cidade',
+                                  icon: Icons.location_city_rounded,
+                                  obrigatorio: true,
+                                ),
+                                _buildFormField(
+                                  controller: _enderecoController,
+                                  label: 'Endereço Completo',
+                                  icon: Icons.location_on_rounded,
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
                           ),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow = constraints.maxWidth < 560;
+                          const SizedBox(height: 14),
+                          _buildSelecaoResponsavel(),
+                          const SizedBox(height: 14),
+                          _buildSelecaoProfessores(),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            icon: Icons.contact_phone_rounded,
+                            title: 'Contato e Mídia',
+                            subtitle:
+                                'Telefone, email, WhatsApp, logo e observações.',
+                            color: t.associacao,
+                            child: Column(
+                              children: [
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
 
-                              final modalidade = _buildDropdownField(
-                                value: _modalidadeSelecionada,
-                                items: _modalidades,
-                                label: 'Modalidade',
-                                icon:
-                                Icons.sports_martial_arts_rounded,
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(
-                                        () => _modalidadeSelecionada = value,
-                                  );
-                                },
-                              );
+                                    final telefone = _buildFormField(
+                                      controller: _telefoneController,
+                                      label: 'Telefone de Contato',
+                                      icon: Icons.phone_rounded,
+                                      keyboardType: TextInputType.phone,
+                                    );
 
-                              final status = _buildDropdownField(
-                                value: _statusSelecionado,
-                                items: _statusOptions,
-                                label: 'Status',
-                                icon: Icons.circle_rounded,
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(
-                                        () => _statusSelecionado = value,
-                                  );
-                                },
-                              );
+                                    final email = _buildFormField(
+                                      controller: _emailController,
+                                      label: 'Email',
+                                      icon: Icons.email_rounded,
+                                      keyboardType: TextInputType.emailAddress,
+                                    );
 
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    modalidade,
-                                    status,
-                                  ],
-                                );
-                              }
+                                    if (narrow) {
+                                      return Column(
+                                        children: [telefone, email],
+                                      );
+                                    }
 
-                              return Row(
-                                children: [
-                                  Expanded(child: modalidade),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: status),
-                                ],
-                              );
-                            },
-                          ),
-                          _buildFormField(
-                            controller: _cidadeController,
-                            label: 'Cidade',
-                            icon: Icons.location_city_rounded,
-                            obrigatorio: true,
-                          ),
-                          _buildFormField(
-                            controller: _enderecoController,
-                            label: 'Endereço Completo',
-                            icon: Icons.location_on_rounded,
-                            maxLines: 2,
+                                    return Row(
+                                      children: [
+                                        Expanded(child: telefone),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: email),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                _buildFormField(
+                                  controller: _whatsappController,
+                                  label: 'Link do Grupo WhatsApp',
+                                  icon: Icons.chat_rounded,
+                                  keyboardType: TextInputType.url,
+                                ),
+                                _buildFormField(
+                                  controller: _logoUrlController,
+                                  label: 'URL da Logo',
+                                  icon: Icons.image_rounded,
+                                  keyboardType: TextInputType.url,
+                                ),
+                                _buildFormField(
+                                  controller: _observacoesController,
+                                  label: 'Observações',
+                                  icon: Icons.note_alt_rounded,
+                                  maxLines: 4,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    _buildSelecaoResponsavel(),
-                    const SizedBox(height: 14),
-                    _buildSelecaoProfessores(),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      icon: Icons.contact_phone_rounded,
-                      title: 'Contato e Mídia',
-                      subtitle:
-                      'Telefone, email, WhatsApp, logo e observações.',
-                      color: t.associacao,
-                      child: Column(
-                        children: [
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow = constraints.maxWidth < 560;
-
-                              final telefone = _buildFormField(
-                                controller: _telefoneController,
-                                label: 'Telefone de Contato',
-                                icon: Icons.phone_rounded,
-                                keyboardType: TextInputType.phone,
-                              );
-
-                              final email = _buildFormField(
-                                controller: _emailController,
-                                label: 'Email',
-                                icon: Icons.email_rounded,
-                                keyboardType: TextInputType.emailAddress,
-                              );
-
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    telefone,
-                                    email,
-                                  ],
-                                );
-                              }
-
-                              return Row(
-                                children: [
-                                  Expanded(child: telefone),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: email),
-                                ],
-                              );
-                            },
-                          ),
-                          _buildFormField(
-                            controller: _whatsappController,
-                            label: 'Link do Grupo WhatsApp',
-                            icon: Icons.chat_rounded,
-                            keyboardType: TextInputType.url,
-                          ),
-                          _buildFormField(
-                            controller: _logoUrlController,
-                            label: 'URL da Logo',
-                            icon: Icons.image_rounded,
-                            keyboardType: TextInputType.url,
-                          ),
-                          _buildFormField(
-                            controller: _observacoesController,
-                            label: 'Observações',
-                            icon: Icons.note_alt_rounded,
-                            maxLines: 4,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
@@ -2096,17 +2128,18 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
             boxShadow: t.softShadow,
           ),
           child: ElevatedButton.icon(
-            onPressed:
-            _isLoading || _usuariosCarregando ? null : _salvarAcademia,
+            onPressed: _isLoading || _usuariosCarregando
+                ? null
+                : _salvarAcademia,
             icon: _isLoading || _usuariosCarregando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _readableOn(t.primary),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _readableOn(t.primary),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(
               _isLoading || _usuariosCarregando
@@ -2131,8 +2164,4 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-}
+enum _SnackType { success, error, warning }

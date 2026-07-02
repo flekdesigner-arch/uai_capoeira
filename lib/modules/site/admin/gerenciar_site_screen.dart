@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 import 'regimento_interno_screen.dart';
@@ -25,7 +26,10 @@ class GerenciarSiteScreen extends StatefulWidget {
 
 class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   final SiteConfigService _configService = SiteConfigService();
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _carregando = true;
   String? _erro;
 
@@ -111,7 +115,37 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarConfiguracoes();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_site',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _carregarConfiguracoes();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_site',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _mostrarErro('Você não tem permissão para gerenciar o site.');
+    }
+
+    return permitido;
   }
 
   Color _readableOn(Color background) {
@@ -121,7 +155,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -172,6 +207,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   }
 
   Future<void> _carregarConfiguracoes() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() {
       _carregando = true;
       _erro = null;
@@ -179,7 +216,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
     try {
       final configs = await _configService.carregarConfiguracoesSite();
-      final areaAlunoConfig = await _configService.carregarConfiguracoesAreaAluno();
+      final areaAlunoConfig = await _configService
+          .carregarConfiguracoesAreaAluno();
 
       if (!mounted) return;
 
@@ -223,8 +261,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             final indexB = configs['ordem'].indexOf(b['id']);
 
             if (indexA == -1 && indexB == -1) {
-              return (a['ordem_padrao'] ?? 999)
-                  .compareTo(b['ordem_padrao'] ?? 999);
+              return (a['ordem_padrao'] ?? 999).compareTo(
+                b['ordem_padrao'] ?? 999,
+              );
             }
 
             if (indexA == -1) return 1;
@@ -233,8 +272,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           });
         } else {
           _secoes.sort(
-                (a, b) => (a['ordem_padrao'] ?? 999)
-                .compareTo(b['ordem_padrao'] ?? 999),
+            (a, b) =>
+                (a['ordem_padrao'] ?? 999).compareTo(b['ordem_padrao'] ?? 999),
           );
         }
 
@@ -267,6 +306,21 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Gerenciar Site',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gerenciar Site',
+        message: 'Você não tem permissão para gerenciar o site.',
+      );
+    }
+
     final t = context.uai;
 
     return Scaffold(
@@ -316,7 +370,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildBody() {
     if (_carregando) {
-      return Center(child: CircularProgressIndicator(color: context.uai.primary));
+      return Center(
+        child: CircularProgressIndicator(color: context.uai.primary),
+      );
     }
 
     if (_erro != null) {
@@ -435,11 +491,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: onPrimary.withOpacity(0.13)),
                 ),
-                child: Icon(
-                  Icons.public_rounded,
-                  color: onPrimary,
-                  size: 31,
-                ),
+                child: Icon(Icons.public_rounded, color: onPrimary, size: 31),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -831,7 +883,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                     _buildMiniInfo(
                       icon: Icons.verified_user_rounded,
                       label: 'Segurança',
-                      value: _configAreaAluno['exigir_telefone_confirmacao'] == true
+                      value:
+                          _configAreaAluno['exigir_telefone_confirmacao'] ==
+                              true
                           ? 'Telefone'
                           : 'Simples',
                       color: t.info,
@@ -857,10 +911,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: infos
-                          .map((w) => SizedBox(
-                        width: (constraints.maxWidth - 8) / 2,
-                        child: w,
-                      ))
+                          .map(
+                            (w) => SizedBox(
+                              width: (constraints.maxWidth - 8) / 2,
+                              child: w,
+                            ),
+                          )
                           .toList(),
                     );
                   }
@@ -1080,10 +1136,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     );
   }
 
-  Widget _buildStatusChip({
-    required String texto,
-    required Color color,
-  }) {
+  Widget _buildStatusChip({required String texto, required Color color}) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
 
@@ -1110,7 +1163,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       case 'regimento':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const RegimentoInternoScreen()),
+          MaterialPageRoute(
+            builder: (context) => const RegimentoInternoScreen(),
+          ),
         ).then(_handleResult);
         break;
       case 'biografia':
@@ -1128,7 +1183,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       case 'inscricao':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const ConfigurarInscricoesScreen()),
+          MaterialPageRoute(
+            builder: (context) => const ConfigurarInscricoesScreen(),
+          ),
         ).then(_handleResult);
         break;
       case 'area_aluno':
@@ -1140,13 +1197,17 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       case 'campeonato':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const ConfigurarCampeonatoScreen()),
+          MaterialPageRoute(
+            builder: (context) => const ConfigurarCampeonatoScreen(),
+          ),
         ).then(_handleResult);
         break;
       case 'timeline':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const GerenciarTimelineScreen()),
+          MaterialPageRoute(
+            builder: (context) => const GerenciarTimelineScreen(),
+          ),
         ).then(_handleResult);
         break;
       default:
@@ -1161,7 +1222,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius),
+        ),
         title: Row(
           children: [
             Icon(Icons.tune_rounded, color: t.primary),
@@ -1170,7 +1233,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
               child: Text(
                 'Configurações do Site',
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],
@@ -1339,7 +1405,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius),
+        ),
         title: Row(
           children: [
             Icon(secao['icone'], color: accent),
@@ -1347,7 +1415,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             Expanded(
               child: Text(
                 secao['titulo'],
-                style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],
@@ -1358,7 +1429,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             Text(
               'Esta seção está atualmente oculta no site.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -1366,7 +1440,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                   ? 'Você pode abrir o painel da Área do Aluno ou torná-la visível agora.'
                   : 'Deseja torná-la visível novamente?',
               textAlign: TextAlign.center,
-              style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ],
         ),
@@ -1386,6 +1463,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
+              if (!await _revalidarAcesso()) return;
 
               if (isAreaAluno) {
                 await _configService.alterarVisibilidadeAreaAluno(true);
@@ -1425,14 +1503,19 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius),
+        ),
         title: Column(
           children: [
             Icon(Icons.lock_rounded, size: 42, color: t.primary),
             const SizedBox(height: 8),
             Text(
               'Alterar Senha do App',
-              style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ],
         ),
@@ -1492,6 +1575,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
               }
 
               Navigator.pop(context);
+              if (!await _revalidarAcesso()) return;
               await _configService.alterarSenhaApp(novaSenha);
 
               if (mounted) {
@@ -1532,9 +1616,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           content: const Text('✅ Configurações salvas com sucesso!'),
           backgroundColor: context.uai.success,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
 
@@ -1550,7 +1632,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius),
+        ),
         title: Row(
           children: [
             Icon(secao['icone'], color: accent),
@@ -1558,7 +1642,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             Expanded(
               child: Text(
                 secao['titulo'],
-                style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],
@@ -1573,7 +1660,11 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                 color: accent.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.hourglass_empty_rounded, size: 50, color: accent),
+              child: Icon(
+                Icons.hourglass_empty_rounded,
+                size: 50,
+                color: accent,
+              ),
             ),
             const SizedBox(height: 20),
             Text(

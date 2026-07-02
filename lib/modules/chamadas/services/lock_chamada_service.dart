@@ -8,7 +8,10 @@ class LockChamadaService {
   static final Map<String, bool> _lockStatus = {}; // Cache do status
 
   // 🔥 VERIFICAR DISPONIBILIDADE
-  static Future<bool> verificarDisponibilidade(String turmaId, {String? usuarioId}) async {
+  static Future<bool> verificarDisponibilidade(
+    String turmaId, {
+    String? usuarioId,
+  }) async {
     debugPrint('🔒 Verificando disponibilidade para turma $turmaId');
 
     try {
@@ -59,12 +62,12 @@ class LockChamadaService {
 
       debugPrint('🔒 DISPONÍVEL (expirado ou outro dia)');
       return true;
-
     } catch (e) {
       debugPrint('🔒 Erro na verificação: $e');
       return true;
     }
   }
+
   // 🔒 OCUPAR CHAMADA
   static Future<bool> ocuparChamada({
     required String turmaId,
@@ -89,7 +92,11 @@ class LockChamadaService {
         final timestamp = data?['timestamp']?.toDate();
 
         if (timestamp != null) {
-          final dataLock = DateTime(timestamp.year, timestamp.month, timestamp.day);
+          final dataLock = DateTime(
+            timestamp.year,
+            timestamp.month,
+            timestamp.day,
+          );
 
           if (dataLock.isAtSameMomentAs(dataHoje)) {
             final diferenca = DateTime.now().difference(timestamp);
@@ -121,7 +128,6 @@ class LockChamadaService {
       _iniciarHeartbeat(turmaId, usuarioId);
 
       return true;
-
     } catch (e) {
       debugPrint('🔒 ERRO ao ocupar: $e');
       return false;
@@ -134,7 +140,9 @@ class LockChamadaService {
     _timers[turmaId]?.cancel();
 
     // Cria novo timer que atualiza o lock a cada 2 minutos
-    _timers[turmaId] = Timer.periodic(const Duration(minutes: 2), (timer) async {
+    _timers[turmaId] = Timer.periodic(const Duration(minutes: 2), (
+      timer,
+    ) async {
       try {
         final lockRef = FirebaseFirestore.instance
             .collection('locks_chamada')
@@ -187,15 +195,15 @@ class LockChamadaService {
         .doc(turmaId)
         .snapshots()
         .map((snapshot) {
-      if (!snapshot.exists) {
-        debugPrint('👤 Lock não existe (monitor)');
-        return null;
-      }
+          if (!snapshot.exists) {
+            debugPrint('👤 Lock não existe (monitor)');
+            return null;
+          }
 
-      final data = snapshot.data();
-      debugPrint('👤 Lock atual: ${data?['usuario_nome']}');
-      return data;
-    })
+          final data = snapshot.data();
+          debugPrint('👤 Lock atual: ${data?['usuario_nome']}');
+          return data;
+        })
         .distinct(); // IMPORTANTE: Evita notificações duplicadas
   }
 }

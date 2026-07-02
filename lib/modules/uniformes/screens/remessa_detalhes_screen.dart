@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,14 +13,21 @@ import 'package:uai_capoeira/modules/uniformes/dialogs/pagamento_dialog.dart';
 class RemessaDetalhesScreen extends StatefulWidget {
   final String remessaId;
   final Map<String, dynamic> remessaData;
-  const RemessaDetalhesScreen({super.key, required this.remessaId, required this.remessaData});
+  const RemessaDetalhesScreen({
+    super.key,
+    required this.remessaId,
+    required this.remessaData,
+  });
 
   @override
   State<RemessaDetalhesScreen> createState() => _RemessaDetalhesScreenState();
 }
 
 class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
   final FornecedorService _fornecedorService = FornecedorService();
@@ -36,7 +43,8 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -93,16 +101,24 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: Text(data['nome'] ?? 'Remessa',
-            style: const TextStyle(fontWeight: FontWeight.w900)),
+        title: Text(
+          data['nome'] ?? 'Remessa',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: onPrimary),
             onSelected: (value) async {
               if (value == 'pdf_resumido') {
-                await RemessaPdfService.gerarPdfResumido(widget.remessaId, data);
+                await RemessaPdfService.gerarPdfResumido(
+                  widget.remessaId,
+                  data,
+                );
               } else if (value == 'pdf_completo') {
-                await RemessaPdfService.gerarPdfCompleto(widget.remessaId, data);
+                await RemessaPdfService.gerarPdfCompleto(
+                  widget.remessaId,
+                  data,
+                );
               } else if (value == 'alterar_status') {
                 _mostrarAlterarStatus();
               } else if (value == 'finalizar') {
@@ -114,29 +130,39 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'pdf_resumido',
-                child: Text('📄 PDF resumido (confecção)',
-                    style: TextStyle(color: textPrimary)),
+                child: Text(
+                  '📄 PDF resumido (confecção)',
+                  style: TextStyle(color: textPrimary),
+                ),
               ),
               PopupMenuItem(
                 value: 'pdf_completo',
-                child: Text('📊 PDF completo (associação)',
-                    style: TextStyle(color: textPrimary)),
+                child: Text(
+                  '📊 PDF completo (associação)',
+                  style: TextStyle(color: textPrimary),
+                ),
               ),
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'alterar_status',
-                child: Text('🔄 Alterar status',
-                    style: TextStyle(color: textPrimary)),
+                child: Text(
+                  '🔄 Alterar status',
+                  style: TextStyle(color: textPrimary),
+                ),
               ),
               PopupMenuItem(
                 value: 'finalizar',
-                child: Text('✅ Finalizar remessa',
-                    style: TextStyle(color: textPrimary)),
+                child: Text(
+                  '✅ Finalizar remessa',
+                  style: TextStyle(color: textPrimary),
+                ),
               ),
               PopupMenuItem(
                 value: 'excluir',
-                child: Text('🗑️ Excluir remessa',
-                    style: TextStyle(color: error)),
+                child: Text(
+                  '🗑️ Excluir remessa',
+                  style: TextStyle(color: error),
+                ),
               ),
             ],
           ),
@@ -144,24 +170,41 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       ),
       body: Column(
         children: [
-          _buildCabecalho(data, primary, textPrimary, textSecondary, textMuted, cardBg, border, cardAlt, warning, error, info),
+          _buildCabecalho(
+            data,
+            primary,
+            textPrimary,
+            textSecondary,
+            textMuted,
+            cardBg,
+            border,
+            cardAlt,
+            warning,
+            error,
+            info,
+          ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _remessaService.getPedidosDaRemessa(widget.remessaId),
               builder: (context, snapshot) {
                 if (!snapshot.hasData)
-                  return Center(child: CircularProgressIndicator(color: primary));
+                  return Center(
+                    child: CircularProgressIndicator(color: primary),
+                  );
                 final pedidos = snapshot.data!.docs;
                 if (pedidos.isEmpty) {
                   return Center(
-                    child: Text('Nenhum pedido vinculado',
-                        style: TextStyle(color: textMuted)),
+                    child: Text(
+                      'Nenhum pedido vinculado',
+                      style: TextStyle(color: textMuted),
+                    ),
                   );
                 }
                 return ListView.builder(
                   itemCount: pedidos.length,
                   itemBuilder: (_, i) {
-                    final pedidoData = pedidos[i].data() as Map<String, dynamic>;
+                    final pedidoData =
+                        pedidos[i].data() as Map<String, dynamic>;
                     final bool ehEstoque = pedidoData['tipo_estoque'] == true;
 
                     return Column(
@@ -173,11 +216,18 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.inventory_2, size: 16, color: warning),
+                                Icon(
+                                  Icons.inventory_2,
+                                  size: 16,
+                                  color: warning,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'Item para estoque – será adicionado ao finalizar',
-                                  style: TextStyle(fontSize: 11, color: warning),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: warning,
+                                  ),
                                 ),
                               ],
                             ),
@@ -204,18 +254,18 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
   }
 
   Widget _buildCabecalho(
-      Map<String, dynamic> data,
-      Color primary,
-      Color textPrimary,
-      Color textSecondary,
-      Color textMuted,
-      Color cardBg,
-      Color border,
-      Color cardAlt,
-      Color warning,
-      Color error,
-      Color info,
-      ) {
+    Map<String, dynamic> data,
+    Color primary,
+    Color textPrimary,
+    Color textSecondary,
+    Color textMuted,
+    Color cardBg,
+    Color border,
+    Color cardAlt,
+    Color warning,
+    Color error,
+    Color info,
+  ) {
     return Container(
       margin: const EdgeInsets.all(12),
       padding: const EdgeInsets.all(16),
@@ -231,9 +281,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
           Text(
             'Status: ${data['status']}'.toUpperCase(),
             style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: textPrimary),
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: textPrimary,
+            ),
           ),
           const SizedBox(height: 4),
           if (data['data_prevista'] != null)
@@ -246,8 +297,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
               children: [
                 Icon(Icons.business, size: 16, color: textMuted),
                 const SizedBox(width: 4),
-                Text('Fornecedor: $_fornecedorNome',
-                    style: TextStyle(color: textPrimary)),
+                Text(
+                  'Fornecedor: $_fornecedorNome',
+                  style: TextStyle(color: textPrimary),
+                ),
               ],
             ),
           if (_carregandoFornecedor)
@@ -259,8 +312,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
               data['observacoes'].toString().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text('Obs: ${data['observacoes']}',
-                  style: TextStyle(color: textSecondary)),
+              child: Text(
+                'Obs: ${data['observacoes']}',
+                style: TextStyle(color: textSecondary),
+              ),
             ),
         ],
       ),
@@ -303,15 +358,21 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Finalizar Remessa',
-            style: TextStyle(color: context.uai.textPrimary)),
-        content: Text(mensagem,
-            style: TextStyle(color: context.uai.textSecondary)),
+        title: Text(
+          'Finalizar Remessa',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
+        content: Text(
+          mensagem,
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: TextStyle(color: context.uai.primary)),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(color: context.uai.primary),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -336,7 +397,9 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         await doc.reference.delete();
       }
 
-      await _remessaService.atualizarRemessa(widget.remessaId, {'status': 'finalizada'});
+      await _remessaService.atualizarRemessa(widget.remessaId, {
+        'status': 'finalizada',
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -354,8 +417,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -403,16 +468,21 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Ação não permitida',
-            style: TextStyle(color: context.uai.textPrimary)),
+        title: Text(
+          'Ação não permitida',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
         content: Text(
-            'Todos os pedidos com aluno devem estar finalizados e pagos antes de finalizar a remessa.',
-            style: TextStyle(color: context.uai.textSecondary)),
+          'Todos os pedidos com aluno devem estar finalizados e pagos antes de finalizar a remessa.',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Entendi',
-                style: TextStyle(color: context.uai.primary)),
+            child: Text(
+              'Entendi',
+              style: TextStyle(color: context.uai.primary),
+            ),
           ),
         ],
       ),
@@ -428,8 +498,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Alterar status da remessa',
-                  style: TextStyle(color: context.uai.textPrimary)),
+              title: Text(
+                'Alterar status da remessa',
+                style: TextStyle(color: context.uai.textPrimary),
+              ),
               content: DropdownButtonFormField<String>(
                 value: novoStatus,
                 style: TextStyle(color: context.uai.textPrimary),
@@ -437,32 +509,52 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                   filled: true,
                   fillColor: context.uai.cardAlt,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                    borderSide: BorderSide(color: context.uai.primary, width: 1.4),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
+                    borderSide: BorderSide(
+                      color: context.uai.primary,
+                      width: 1.4,
+                    ),
                   ),
                 ),
                 dropdownColor: context.uai.card,
                 items: const [
                   DropdownMenuItem(value: 'pendente', child: Text('Pendente')),
-                  DropdownMenuItem(value: 'em_producao', child: Text('Em produção')),
-                  DropdownMenuItem(value: 'finalizada', child: Text('Finalizada')),
-                  DropdownMenuItem(value: 'cancelada', child: Text('Cancelada')),
+                  DropdownMenuItem(
+                    value: 'em_producao',
+                    child: Text('Em produção'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'finalizada',
+                    child: Text('Finalizada'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'cancelada',
+                    child: Text('Cancelada'),
+                  ),
                 ],
                 onChanged: (v) => setState(() => novoStatus = v!),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: Text('Cancelar',
-                      style: TextStyle(color: context.uai.primary)),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(color: context.uai.primary),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -494,12 +586,16 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
           await doc.reference.update({'status': 'em_confeccao'});
         }
       }
-      await _remessaService.atualizarRemessa(widget.remessaId, {'status': novoStatus});
+      await _remessaService.atualizarRemessa(widget.remessaId, {
+        'status': novoStatus,
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Status atualizado!',
-                style: TextStyle(color: _readableOn(context.uai.success))),
+            content: Text(
+              'Status atualizado!',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
             backgroundColor: context.uai.success,
           ),
         );
@@ -509,8 +605,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -524,11 +622,13 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         .where('remessa_id', isEqualTo: widget.remessaId)
         .get();
     bool todosOk = pedidos.docs
-        .where((doc) => (doc.data() as Map<String, dynamic>)['tipo_estoque'] != true)
+        .where(
+          (doc) => (doc.data() as Map<String, dynamic>)['tipo_estoque'] != true,
+        )
         .every((doc) {
-      final d = doc.data() as Map<String, dynamic>;
-      return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
-    });
+          final d = doc.data() as Map<String, dynamic>;
+          return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
+        });
     if (!todosOk) {
       _mostrarDialogoPedidosPendentes();
       return;
@@ -537,15 +637,21 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Excluir Remessa',
-            style: TextStyle(color: context.uai.textPrimary)),
-        content: Text('Deseja excluir a remessa? Os pedidos não serão deletados.',
-            style: TextStyle(color: context.uai.textSecondary)),
+        title: Text(
+          'Excluir Remessa',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
+        content: Text(
+          'Deseja excluir a remessa? Os pedidos não serão deletados.',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: TextStyle(color: context.uai.primary)),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(color: context.uai.primary),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -565,8 +671,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Remessa excluída!',
-                style: TextStyle(color: _readableOn(context.uai.success))),
+            content: Text(
+              'Remessa excluída!',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
             backgroundColor: context.uai.success,
           ),
         );
@@ -576,8 +684,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -586,14 +696,19 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
   }
 
   // ─── Callbacks para os cards de pedido ────────────────────────
-  Future<void> _marcarPedidoComoConfeccao(String docId, Map<String, dynamic> data) async {
+  Future<void> _marcarPedidoComoConfeccao(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'em_confeccao');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Pedido em confecção',
-                style: TextStyle(color: _readableOn(context.uai.info))),
+            content: Text(
+              'Pedido em confecção',
+              style: TextStyle(color: _readableOn(context.uai.info)),
+            ),
             backgroundColor: context.uai.info,
           ),
         );
@@ -602,8 +717,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -611,14 +728,19 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _marcarPedidoComoFinalizado(String docId, Map<String, dynamic> data) async {
+  Future<void> _marcarPedidoComoFinalizado(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'finalizado');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Pedido finalizado',
-                style: TextStyle(color: _readableOn(context.uai.success))),
+            content: Text(
+              'Pedido finalizado',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
             backgroundColor: context.uai.success,
           ),
         );
@@ -627,8 +749,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -636,15 +760,20 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _registrarPagamentoPedido(String docId, Map<String, dynamic> data) async {
+  Future<void> _registrarPagamentoPedido(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     double total = (data['valor_total'] ?? 0).toDouble();
     double pago = (data['valor_pago'] ?? 0).toDouble();
     double restante = total - pago;
     if (restante <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Pedido já pago!',
-              style: TextStyle(color: _readableOn(context.uai.warning))),
+          content: Text(
+            'Pedido já pago!',
+            style: TextStyle(color: _readableOn(context.uai.warning)),
+          ),
           backgroundColor: context.uai.warning,
         ),
       );
@@ -668,8 +797,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Pagamento registrado',
-                      style: TextStyle(color: _readableOn(context.uai.success))),
+                  content: Text(
+                    'Pagamento registrado',
+                    style: TextStyle(color: _readableOn(context.uai.success)),
+                  ),
                   backgroundColor: context.uai.success,
                 ),
               );
@@ -678,8 +809,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Erro: $e',
-                      style: TextStyle(color: _readableOn(context.uai.error))),
+                  content: Text(
+                    'Erro: $e',
+                    style: TextStyle(color: _readableOn(context.uai.error)),
+                  ),
                   backgroundColor: context.uai.error,
                 ),
               );

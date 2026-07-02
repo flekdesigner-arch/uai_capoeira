@@ -17,7 +17,8 @@ class RegistrarPagamentoModal extends StatefulWidget {
   });
 
   @override
-  State<RegistrarPagamentoModal> createState() => _RegistrarPagamentoModalState();
+  State<RegistrarPagamentoModal> createState() =>
+      _RegistrarPagamentoModalState();
 }
 
 class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
@@ -28,7 +29,8 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -79,7 +81,6 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
     );
   }
 
-
   final _formKey = GlobalKey<FormState>();
   final _valorController = TextEditingController();
   final _observacoesController = TextEditingController();
@@ -120,9 +121,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
     return Dialog(
       backgroundColor: context.uai.card,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: double.infinity,
         constraints: BoxConstraints(
@@ -164,7 +163,9 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                   decoration: BoxDecoration(
                     color: context.uai.info.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: context.uai.info.withOpacity(0.24)),
+                    border: Border.all(
+                      color: context.uai.info.withOpacity(0.24),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -181,7 +182,9 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: widget.saldoAtual > 0 ? context.uai.error : context.uai.success,
+                          color: widget.saldoAtual > 0
+                              ? context.uai.error
+                              : context.uai.success,
                         ),
                       ),
                     ],
@@ -234,7 +237,8 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                     spacing: 8,
                     runSpacing: 8,
                     children: widget.sugestoes.map((valor) {
-                      final isSelected = _valorController.text == valor.toStringAsFixed(2);
+                      final isSelected =
+                          _valorController.text == valor.toStringAsFixed(2);
                       return FilterChip(
                         label: Text(_formatarMoeda(valor)),
                         selected: isSelected,
@@ -248,7 +252,9 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                         checkmarkColor: context.uai.success,
                         labelStyle: TextStyle(
                           fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       );
                     }).toList(),
@@ -314,11 +320,15 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                       child: Row(
                         children: [
                           Icon(
-                            forma == 'PIX' ? Icons.pix :
-                            forma == 'PATROCÍNIO' ? Icons.volunteer_activism :
-                            Icons.payment,
+                            forma == 'PIX'
+                                ? Icons.pix
+                                : forma == 'PATROCÍNIO'
+                                ? Icons.volunteer_activism
+                                : Icons.payment,
                             size: 16,
-                            color: forma == 'PATROCÍNIO' ? context.uai.associacao : context.uai.textSecondary,
+                            color: forma == 'PATROCÍNIO'
+                                ? context.uai.associacao
+                                : context.uai.textSecondary,
                           ),
                           const SizedBox(width: 8),
                           Text(forma),
@@ -348,11 +358,20 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                         filled: true,
                         fillColor: context.uai.cardAlt,
                       ),
-                      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((parcela) {
-                        final valorParcela = (double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0) / parcela;
+                      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((
+                        parcela,
+                      ) {
+                        final valorParcela =
+                            (double.tryParse(
+                                  _valorController.text.replaceAll(',', '.'),
+                                ) ??
+                                0) /
+                            parcela;
                         return DropdownMenuItem(
                           value: parcela,
-                          child: Text('$parcela x ${_formatarMoeda(valorParcela)}'),
+                          child: Text(
+                            '$parcela x ${_formatarMoeda(valorParcela)}',
+                          ),
                         );
                       }).toList(),
                       onChanged: (value) {

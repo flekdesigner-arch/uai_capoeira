@@ -52,7 +52,7 @@ class _EventoCertificadoConfigDialogState
 
   final GlobalKey _previewExportKey = GlobalKey();
   final CertificadoFileShareService _fileShareService =
-  const CertificadoFileShareService();
+      const CertificadoFileShareService();
   bool _compartilhandoPreview = false;
 
   late final List<TextEditingController> _nomeControllers;
@@ -63,7 +63,7 @@ class _EventoCertificadoConfigDialogState
       id: ConfiguracoesCertificadoEvento.modeloAutomatico,
       title: 'Automático pela graduação',
       subtitle:
-      'Usa CERTIFICADO, CERTIFICADO COM CPF ou DIPLOMA conforme a graduação do aluno.',
+          'Usa CERTIFICADO, CERTIFICADO COM CPF ou DIPLOMA conforme a graduação do aluno.',
       icon: Icons.auto_awesome_rounded,
     ),
     _ModeloCertificadoOption(
@@ -108,7 +108,8 @@ class _EventoCertificadoConfigDialogState
     _CampoTextoOption(
       id: CertificadoTextoCampoConfig.campoFrase,
       title: 'Frase',
-      subtitle: 'Texto principal do certificado. Permite espaçamento entre linhas.',
+      subtitle:
+          'Texto principal do certificado. Permite espaçamento entre linhas.',
       icon: Icons.notes_rounded,
       mostrarLineHeight: true,
       autoAjustarEditavel: false,
@@ -156,12 +157,12 @@ class _EventoCertificadoConfigDialogState
 
     _nomeControllers = List.generate(
       5,
-          (index) => TextEditingController(text: assinaturas[index].nome),
+      (index) => TextEditingController(text: assinaturas[index].nome),
     );
 
     _apelidoControllers = List.generate(
       5,
-          (index) => TextEditingController(text: assinaturas[index].apelido),
+      (index) => TextEditingController(text: assinaturas[index].apelido),
     );
   }
 
@@ -183,8 +184,8 @@ class _EventoCertificadoConfigDialogState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -201,7 +202,10 @@ class _EventoCertificadoConfigDialogState
     return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
   }
 
-  Color _colorFromHex(String? hexColor, {Color fallback = const Color(0xFF1A0202)}) {
+  Color _colorFromHex(
+    String? hexColor, {
+    Color fallback = const Color(0xFF1A0202),
+  }) {
     if (hexColor == null || hexColor.trim().isEmpty) return fallback;
 
     try {
@@ -259,7 +263,9 @@ class _EventoCertificadoConfigDialogState
                             height: 46,
                             decoration: BoxDecoration(
                               color: accent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                             child: Icon(Icons.palette_rounded, color: accent),
                           ),
@@ -276,7 +282,10 @@ class _EventoCertificadoConfigDialogState
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(context),
-                            icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: t.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -292,7 +301,10 @@ class _EventoCertificadoConfigDialogState
                         ),
                         onChanged: (value) {
                           if (value.trim().length >= 7) {
-                            final color = _colorFromHex(value, fallback: pickedColor);
+                            final color = _colorFromHex(
+                              value,
+                              fallback: pickedColor,
+                            );
                             setDialogState(() => pickedColor = color);
                             setState(() => onColorChanged(color));
                           }
@@ -331,9 +343,13 @@ class _EventoCertificadoConfigDialogState
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: t.textSecondary,
                                 side: BorderSide(color: t.border),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               child: const Text('CANCELAR'),
@@ -345,9 +361,13 @@ class _EventoCertificadoConfigDialogState
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: t.primary,
                                 foregroundColor: _readableOn(t.primary),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               onPressed: () {
@@ -414,10 +434,7 @@ class _EventoCertificadoConfigDialogState
       if (nome.isEmpty && apelido.isEmpty) continue;
 
       assinaturas.add(
-        AssinaturaCertificadoEvento(
-          nome: nome,
-          apelido: apelido,
-        ),
+        AssinaturaCertificadoEvento(nome: nome, apelido: apelido),
       );
     }
 
@@ -485,10 +502,7 @@ class _EventoCertificadoConfigDialogState
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SizedBox(
-                            width: 515,
-                            child: leftContent,
-                          ),
+                          SizedBox(width: 515, child: leftContent),
                           VerticalDivider(
                             width: 1,
                             thickness: 1,
@@ -496,7 +510,12 @@ class _EventoCertificadoConfigDialogState
                           ),
                           Expanded(
                             child: ListView(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                14,
+                                16,
+                                18,
+                              ),
                               children: [
                                 _buildPreviewCertificadoCard(expanded: true),
                               ],
@@ -557,10 +576,7 @@ class _EventoCertificadoConfigDialogState
               borderRadius: BorderRadius.circular(t.buttonRadius),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.card_membership_rounded,
-              color: onPrimary,
-            ),
+            child: Icon(Icons.card_membership_rounded, color: onPrimary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -617,17 +633,11 @@ class _EventoCertificadoConfigDialogState
           onChanged: (value) => setState(() => _ativo = value),
           title: Text(
             _ativo ? 'Certificados ativos' : 'Certificados desativados',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           subtitle: Text(
             'Esse controle acompanha o botão principal de certificados do evento.',
-            style: TextStyle(
-              color: t.textSecondary,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: t.textSecondary, fontSize: 12),
           ),
         ),
       ),
@@ -645,7 +655,10 @@ class _EventoCertificadoConfigDialogState
       child: Column(
         children: _modelos.map((modelo) {
           final selected = _modeloPadrao == modelo.id;
-          final accent = _ensureVisible(selected ? t.primary : t.textSecondary, t.card);
+          final accent = _ensureVisible(
+            selected ? t.primary : t.textSecondary,
+            t.card,
+          );
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -793,11 +806,13 @@ class _EventoCertificadoConfigDialogState
   }
 
   void _atualizarTexto(
-      String campo,
-      CertificadoTextoCampoConfig Function(CertificadoTextoCampoConfig atual) update,
-      ) {
+    String campo,
+    CertificadoTextoCampoConfig Function(CertificadoTextoCampoConfig atual)
+    update,
+  ) {
     setState(() {
-      final atual = _textos[campo] ??
+      final atual =
+          _textos[campo] ??
           CertificadoTextoCampoConfig.defaults[campo] ??
           CertificadoTextoCampoConfig.padraoGenerico;
 
@@ -814,7 +829,9 @@ class _EventoCertificadoConfigDialogState
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Configurações de texto restauradas para o padrão.'),
+        content: const Text(
+          'Configurações de texto restauradas para o padrão.',
+        ),
         backgroundColor: context.uai.success,
         behavior: SnackBarBehavior.floating,
       ),
@@ -827,7 +844,8 @@ class _EventoCertificadoConfigDialogState
     return _dialogSection(
       icon: Icons.format_size_rounded,
       title: 'Visual dos textos',
-      subtitle: 'Configure fonte, tamanho em pt real, cor, alinhamento, espaçamento e posição vertical.',
+      subtitle:
+          'Configure fonte, tamanho em pt real, cor, alinhamento, espaçamento e posição vertical.',
       color: t.primary,
       child: Column(
         children: [
@@ -866,7 +884,7 @@ class _EventoCertificadoConfigDialogState
           Expanded(
             child: Text(
               'Os campos simples continuam se autoajustando dentro da caixa-guia. '
-                  'A frase quebra linha normalmente e usa o espaçamento vertical configurado.',
+              'A frase quebra linha normalmente e usa o espaçamento vertical configurado.',
               style: TextStyle(
                 color: info,
                 fontSize: 12,
@@ -945,14 +963,15 @@ class _EventoCertificadoConfigDialogState
 
   Widget _textoConfigCard(_CampoTextoOption campo) {
     final t = context.uai;
-    final config = _textos[campo.id] ??
+    final config =
+        _textos[campo.id] ??
         CertificadoTextoCampoConfig.defaults[campo.id] ??
         CertificadoTextoCampoConfig.padraoGenerico;
 
     final accent = _ensureVisible(t.primary, t.cardAlt);
     final corTexto = _hexToColor(config.corHex, const Color(0xFF1A0202));
-    final fonteValue = CertificadoTextoCampoConfig.fontesDisponiveis
-        .contains(config.fonte)
+    final fonteValue =
+        CertificadoTextoCampoConfig.fontesDisponiveis.contains(config.fonte)
         ? config.fonte
         : CertificadoTextoCampoConfig.fontesDisponiveis.first;
 
@@ -1029,16 +1048,15 @@ class _EventoCertificadoConfigDialogState
                   label: 'Fonte',
                   icon: Icons.font_download_rounded,
                 ),
-                items: CertificadoTextoCampoConfig.fontesDisponiveis.map((fonte) {
+                items: CertificadoTextoCampoConfig.fontesDisponiveis.map((
+                  fonte,
+                ) {
                   return DropdownMenuItem<String>(
                     value: fonte,
                     child: Text(
                       fonte,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontFamily: fonte,
-                      ),
+                      style: TextStyle(color: t.textPrimary, fontFamily: fonte),
                     ),
                   );
                 }).toList(),
@@ -1046,23 +1064,16 @@ class _EventoCertificadoConfigDialogState
                   if (value == null) return;
                   _atualizarTexto(
                     campo.id,
-                        (atual) => atual.copyWith(fonte: value),
+                    (atual) => atual.copyWith(fonte: value),
                   );
                 },
               );
 
-              final tamanho = _fontSizePtSelector(
-                campo: campo,
-                config: config,
-              );
+              final tamanho = _fontSizePtSelector(campo: campo, config: config);
 
               if (narrow) {
                 return Column(
-                  children: [
-                    fonte,
-                    const SizedBox(height: 10),
-                    tamanho,
-                  ],
+                  children: [fonte, const SizedBox(height: 10), tamanho],
                 );
               }
 
@@ -1080,10 +1091,7 @@ class _EventoCertificadoConfigDialogState
             builder: (context, constraints) {
               final narrow = constraints.maxWidth < 560;
 
-              final cor = _textoColorButton(
-                campo: campo,
-                config: config,
-              );
+              final cor = _textoColorButton(campo: campo, config: config);
 
               final lineHeight = _lineHeightSlider(
                 campo: campo,
@@ -1092,11 +1100,7 @@ class _EventoCertificadoConfigDialogState
 
               if (narrow) {
                 return Column(
-                  children: [
-                    cor,
-                    const SizedBox(height: 10),
-                    lineHeight,
-                  ],
+                  children: [cor, const SizedBox(height: 10), lineHeight],
                 );
               }
 
@@ -1127,7 +1131,7 @@ class _EventoCertificadoConfigDialogState
                 onTap: () {
                   _atualizarTexto(
                     campo.id,
-                        (atual) => atual.copyWith(negrito: !atual.negrito),
+                    (atual) => atual.copyWith(negrito: !atual.negrito),
                   );
                 },
               ),
@@ -1139,9 +1143,8 @@ class _EventoCertificadoConfigDialogState
                   onTap: () {
                     _atualizarTexto(
                       campo.id,
-                          (atual) => atual.copyWith(
-                        autoAjustar: !atual.autoAjustar,
-                      ),
+                      (atual) =>
+                          atual.copyWith(autoAjustar: !atual.autoAjustar),
                     );
                   },
                 ),
@@ -1156,8 +1159,34 @@ class _EventoCertificadoConfigDialogState
 
   List<double> _fontSizeOptions(double current) {
     final base = <double>[
-      6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-      22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 56, 64, 72,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      22,
+      24,
+      26,
+      28,
+      30,
+      32,
+      36,
+      40,
+      44,
+      48,
+      56,
+      64,
+      72,
     ];
 
     final normalized = current <= 0 ? 12.0 : current;
@@ -1180,15 +1209,16 @@ class _EventoCertificadoConfigDialogState
       isExpanded: true,
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary),
-      decoration: _inputDecoration(
-        label: 'Tamanho',
-        icon: Icons.format_size_rounded,
-        hint: 'pt',
-      ).copyWith(
-        suffixText: 'pt',
-        helperText: 'Tamanho real do PDF',
-        helperStyle: TextStyle(color: t.textMuted, fontSize: 10.5),
-      ),
+      decoration:
+          _inputDecoration(
+            label: 'Tamanho',
+            icon: Icons.format_size_rounded,
+            hint: 'pt',
+          ).copyWith(
+            suffixText: 'pt',
+            helperText: 'Tamanho real do PDF',
+            helperStyle: TextStyle(color: t.textMuted, fontSize: 10.5),
+          ),
       items: values.map((value) {
         final label = value % 1 == 0
             ? value.toInt().toString()
@@ -1209,10 +1239,7 @@ class _EventoCertificadoConfigDialogState
       onChanged: (value) {
         if (value == null) return;
 
-        _atualizarTexto(
-          campo.id,
-              (atual) => atual.copyWith(tamanho: value),
-        );
+        _atualizarTexto(campo.id, (atual) => atual.copyWith(tamanho: value));
       },
     );
   }
@@ -1230,7 +1257,8 @@ class _EventoCertificadoConfigDialogState
       title: campo.mostrarLineHeight
           ? 'Espaçamento entre linhas'
           : 'Altura da linha',
-      subtitle: 'Padrão ${_defaultConfig(campo.id).lineHeight.toStringAsFixed(2)}',
+      subtitle:
+          'Padrão ${_defaultConfig(campo.id).lineHeight.toStringAsFixed(2)}',
       valueLabel: value.toStringAsFixed(2),
       value: value,
       min: 0.75,
@@ -1240,7 +1268,7 @@ class _EventoCertificadoConfigDialogState
       onChanged: (newValue) {
         _atualizarTexto(
           campo.id,
-              (atual) => atual.copyWith(
+          (atual) => atual.copyWith(
             lineHeight: double.parse(newValue.toStringAsFixed(2)),
           ),
         );
@@ -1269,7 +1297,7 @@ class _EventoCertificadoConfigDialogState
       onChanged: (newValue) {
         _atualizarTexto(
           campo.id,
-              (atual) => atual.copyWith(
+          (atual) => atual.copyWith(
             verticalOffsetMm: double.parse(newValue.toStringAsFixed(1)),
           ),
         );
@@ -1387,7 +1415,7 @@ class _EventoCertificadoConfigDialogState
           onColorChanged: (newColor) {
             _atualizarTexto(
               campo.id,
-                  (atual) => atual.copyWith(corHex: _colorToHex(newColor)),
+              (atual) => atual.copyWith(corHex: _colorToHex(newColor)),
             );
           },
         ),
@@ -1446,7 +1474,10 @@ class _EventoCertificadoConfigDialogState
                   ],
                 ),
               ),
-              Icon(Icons.palette_rounded, color: _ensureVisible(t.primary, t.card)),
+              Icon(
+                Icons.palette_rounded,
+                color: _ensureVisible(t.primary, t.card),
+              ),
             ],
           ),
         ),
@@ -1454,10 +1485,7 @@ class _EventoCertificadoConfigDialogState
     );
   }
 
-  Widget _caseSelector(
-      String campoId,
-      CertificadoTextoCampoConfig config,
-      ) {
+  Widget _caseSelector(String campoId, CertificadoTextoCampoConfig config) {
     final t = context.uai;
 
     final items = const [
@@ -1500,7 +1528,7 @@ class _EventoCertificadoConfigDialogState
                   onTap: () {
                     _atualizarTexto(
                       campoId,
-                          (atual) => atual.copyWith(textCase: item.$1),
+                      (atual) => atual.copyWith(textCase: item.$1),
                     );
                   },
                   child: Container(
@@ -1543,10 +1571,12 @@ class _EventoCertificadoConfigDialogState
                 spacing: 7,
                 runSpacing: 7,
                 children: chips
-                    .map((chip) => SizedBox(
-                  width: (constraints.maxWidth - 7) / 2,
-                  child: chip,
-                ))
+                    .map(
+                      (chip) => SizedBox(
+                        width: (constraints.maxWidth - 7) / 2,
+                        child: chip,
+                      ),
+                    )
                     .toList(),
               );
             }
@@ -1570,9 +1600,9 @@ class _EventoCertificadoConfigDialogState
   }
 
   Widget _alignmentSelector(
-      String campoId,
-      CertificadoTextoCampoConfig config,
-      ) {
+    String campoId,
+    CertificadoTextoCampoConfig config,
+  ) {
     final t = context.uai;
 
     final items = const [
@@ -1584,7 +1614,10 @@ class _EventoCertificadoConfigDialogState
     return Row(
       children: items.map((item) {
         final selected = config.alinhamento == item.$1;
-        final accent = _ensureVisible(selected ? t.primary : t.textSecondary, t.cardAlt);
+        final accent = _ensureVisible(
+          selected ? t.primary : t.textSecondary,
+          t.cardAlt,
+        );
 
         return Expanded(
           child: Padding(
@@ -1599,11 +1632,14 @@ class _EventoCertificadoConfigDialogState
                 onTap: () {
                   _atualizarTexto(
                     campoId,
-                        (atual) => atual.copyWith(alinhamento: item.$1),
+                    (atual) => atual.copyWith(alinhamento: item.$1),
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 6,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.inputRadius),
                     border: Border.all(
@@ -1642,7 +1678,10 @@ class _EventoCertificadoConfigDialogState
     required VoidCallback onTap,
   }) {
     final t = context.uai;
-    final accent = _ensureVisible(value ? t.primary : t.textSecondary, t.cardAlt);
+    final accent = _ensureVisible(
+      value ? t.primary : t.textSecondary,
+      t.cardAlt,
+    );
 
     return Material(
       color: value
@@ -1656,7 +1695,9 @@ class _EventoCertificadoConfigDialogState
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: value ? accent.withOpacity(0.30) : t.border),
+            border: Border.all(
+              color: value ? accent.withOpacity(0.30) : t.border,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1679,9 +1720,9 @@ class _EventoCertificadoConfigDialogState
   }
 
   Widget _textoPreviewLinha(
-      _CampoTextoOption campo,
-      CertificadoTextoCampoConfig config,
-      ) {
+    _CampoTextoOption campo,
+    CertificadoTextoCampoConfig config,
+  ) {
     final t = context.uai;
     final color = _hexToColor(config.corHex, t.textPrimary);
     final align = switch (config.alinhamento) {
@@ -1695,13 +1736,13 @@ class _EventoCertificadoConfigDialogState
       CertificadoTextoCampoConfig.campoCpf => 'CPF: 142.760.696-02',
       CertificadoTextoCampoConfig.campoGraduacao => 'MONITORA - AZUL / ROXO',
       CertificadoTextoCampoConfig.campoFrase =>
-      'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO...',
+        'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO...',
       CertificadoTextoCampoConfig.campoAssinaturaNome =>
-      'JOÃO LUCAS SILVA RABELO',
+        'JOÃO LUCAS SILVA RABELO',
       CertificadoTextoCampoConfig.campoAssinaturaApelido =>
-      '(PROFESSOR TICO-TICO)',
+        '(PROFESSOR TICO-TICO)',
       CertificadoTextoCampoConfig.campoLocalData =>
-      'BOCAIUVA-MG, 21 DE JUNHO DE 2026',
+        'BOCAIUVA-MG, 21 DE JUNHO DE 2026',
       _ => 'EXEMPLO DE TEXTO',
     };
 
@@ -1764,11 +1805,9 @@ class _EventoCertificadoConfigDialogState
 
     return ConfiguracoesCertificadoEvento.padrao().assinaturas
         .map(
-          (item) => CertificadoAssinaturaData(
-        nome: item.nome,
-        apelido: item.apelido,
-      ),
-    )
+          (item) =>
+              CertificadoAssinaturaData(nome: item.nome, apelido: item.apelido),
+        )
         .take(5)
         .toList();
   }
@@ -1804,8 +1843,9 @@ class _EventoCertificadoConfigDialogState
     try {
       await Future<void>.delayed(const Duration(milliseconds: 120));
 
-      final boundary = _previewExportKey.currentContext?.findRenderObject()
-      as RenderRepaintBoundary?;
+      final boundary =
+          _previewExportKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
 
       if (boundary == null) {
         throw Exception('Prévia ainda não está pronta para exportar.');
@@ -1875,7 +1915,8 @@ class _EventoCertificadoConfigDialogState
     return _dialogSection(
       icon: Icons.preview_rounded,
       title: 'Prévia ao vivo',
-      subtitle: 'Veja fonte, cor, tamanho, alinhamento, frase e assinaturas sem sair da configuração.',
+      subtitle:
+          'Veja fonte, cor, tamanho, alinhamento, frase e assinaturas sem sair da configuração.',
       color: t.info,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1938,13 +1979,13 @@ class _EventoCertificadoConfigDialogState
         onPressed: _compartilhandoPreview ? null : _compartilharPreviaPdf,
         icon: _compartilhandoPreview
             ? SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: _readableOn(primary),
-          ),
-        )
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _readableOn(primary),
+                ),
+              )
             : const Icon(Icons.picture_as_pdf_rounded),
         label: Text(
           _compartilhandoPreview
@@ -1958,10 +1999,7 @@ class _EventoCertificadoConfigDialogState
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(t.buttonRadius),
           ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
         ),
       ),
     );
@@ -2068,11 +2106,7 @@ class _EventoCertificadoConfigDialogState
 
           if (narrow) {
             return Column(
-              children: [
-                nome,
-                const SizedBox(height: 10),
-                apelido,
-              ],
+              children: [nome, const SizedBox(height: 10), apelido],
             );
           }
 
@@ -2221,7 +2255,6 @@ class _ModeloCertificadoOption {
   });
 }
 
-
 class _CampoTextoOption {
   final String id;
   final String title;
@@ -2239,4 +2272,3 @@ class _CampoTextoOption {
     this.autoAjustarEditavel = true,
   });
 }
-

@@ -17,6 +17,8 @@ import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_servi
 // Services
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 
 class AppDrawer extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -479,6 +481,27 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  Future<void> _sairDoApp(BuildContext context) async {
+    try {
+      final controller = AppThemeController.instance;
+
+      if (!controller.initialized) {
+        await controller.initialize();
+      }
+
+      await controller.apply(
+        preset: UaiThemePreset.uaiClassico,
+        mode: ThemeMode.light,
+      );
+
+      debugPrint('✅ Tema padrão restaurado ao sair do app');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao restaurar tema padrão no logout: $e');
+    }
+
+    onLogout();
+  }
+
   // ========== BOTÃO SAIR ==========
   Widget _buildLogoutButton(BuildContext context) {
     final t = context.uai;
@@ -488,7 +511,9 @@ class AppDrawer extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: onLogout,
+        onPressed: () async {
+          await _sairDoApp(context);
+        },
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
           foregroundColor: fg,

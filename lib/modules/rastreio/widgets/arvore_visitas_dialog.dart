@@ -67,8 +67,8 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
   }
 
   Map<String, dynamic> _converterNotacaoPontoParaArvore(
-      Map<dynamic, dynamic> dados,
-      ) {
+    Map<dynamic, dynamic> dados,
+  ) {
     final Map<String, dynamic> resultado = {};
 
     dados.forEach((chave, valor) {
@@ -113,8 +113,8 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -181,8 +181,8 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                 Expanded(
                   child: _carregando
                       ? Center(
-                    child: CircularProgressIndicator(color: t.primary),
-                  )
+                          child: CircularProgressIndicator(color: t.primary),
+                        )
                       : paises.isEmpty
                       ? _buildVazio()
                       : _buildListaPaises(paises),
@@ -264,11 +264,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.visibility_rounded,
-                  color: onPrimary,
-                  size: 17,
-                ),
+                Icon(Icons.visibility_rounded, color: onPrimary, size: 17),
                 const SizedBox(width: 6),
                 Text(
                   _formatarNumero(totalVisitas),
@@ -402,9 +398,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
             border: Border.all(
-              color: expandido
-                  ? countryAccent.withOpacity(0.28)
-                  : t.border,
+              color: expandido ? countryAccent.withOpacity(0.28) : t.border,
               width: expandido ? 1.4 : 1,
             ),
             boxShadow: expandido ? t.softShadow : null,
@@ -493,9 +487,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                         decoration: BoxDecoration(
                           color: expandido
                               ? Color.alphaBlend(
-                            countryAccent.withOpacity(0.11),
-                            t.cardAlt,
-                          )
+                                  countryAccent.withOpacity(0.11),
+                                  t.cardAlt,
+                                )
                               : t.cardAlt,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: t.border),
@@ -531,10 +525,10 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
   }
 
   Widget _buildEstadoItem(
-      String paisNome,
-      String estadoNome,
-      Map<String, dynamic> estadoData,
-      ) {
+    String paisNome,
+    String estadoNome,
+    Map<String, dynamic> estadoData,
+  ) {
     final t = context.uai;
 
     final totalEstado = _toInt(estadoData['total']);
@@ -566,9 +560,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
             border: Border.all(
-              color: expandido
-                  ? stateAccent.withOpacity(0.26)
-                  : t.border,
+              color: expandido ? stateAccent.withOpacity(0.26) : t.border,
             ),
           ),
           child: Column(
@@ -819,16 +811,14 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
     );
   }
 
-  Widget _buildEstatisticaRodape(
-      _FooterStatData data, {
-        bool compact = false,
-      }) {
+  Widget _buildEstatisticaRodape(_FooterStatData data, {bool compact = false}) {
     final t = context.uai;
     final accent = _ensureVisible(data.color, t.card);
 
     return Row(
-      mainAxisAlignment:
-      compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+      mainAxisAlignment: compact
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(7),
@@ -842,8 +832,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
         const SizedBox(width: 8),
         Flexible(
           child: Column(
-            crossAxisAlignment:
-            compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: compact
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 data.value,
@@ -879,13 +870,13 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
 
     for (final pais in paises.values) {
       final estados =
-      (pais as Map<String, dynamic>)['estados'] as Map<String, dynamic>?;
+          (pais as Map<String, dynamic>)['estados'] as Map<String, dynamic>?;
 
       if (estados != null) {
         for (final estado in estados.values) {
           final cidades =
-          (estado as Map<String, dynamic>)['cidades']
-          as Map<String, dynamic>?;
+              (estado as Map<String, dynamic>)['cidades']
+                  as Map<String, dynamic>?;
 
           if (cidades != null) {
             total += cidades.length;

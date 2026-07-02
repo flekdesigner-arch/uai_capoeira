@@ -38,11 +38,7 @@ class UpdateGate extends StatefulWidget {
   /// no Android APK. O PWA atualiza por deploy/cache/service worker.
   final bool ignorarWeb;
 
-  const UpdateGate({
-    super.key,
-    required this.child,
-    this.ignorarWeb = true,
-  });
+  const UpdateGate({super.key, required this.child, this.ignorarWeb = true});
 
   @override
   State<UpdateGate> createState() => _UpdateGateState();
@@ -50,7 +46,8 @@ class UpdateGate extends StatefulWidget {
 
 class _UpdateGateState extends State<UpdateGate> {
   final AppUpdateCheckService _checkService = AppUpdateCheckService();
-  final AtualizacaoDiretaService _atualizacaoService = AtualizacaoDiretaService();
+  final AtualizacaoDiretaService _atualizacaoService =
+      AtualizacaoDiretaService();
 
   late Future<AppUpdateStatus> _statusFuture;
 
@@ -92,7 +89,8 @@ class _UpdateGateState extends State<UpdateGate> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -203,10 +201,7 @@ class _UpdateGateState extends State<UpdateGate> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildHeaderBloqueio(
-                        danger: danger,
-                        onDanger: onDanger,
-                      ),
+                      _buildHeaderBloqueio(danger: danger, onDanger: onDanger),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
                         child: Column(
@@ -266,11 +261,7 @@ class _UpdateGateState extends State<UpdateGate> {
               borderRadius: BorderRadius.circular(t.buttonRadius + 5),
               border: Border.all(color: onDanger.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.lock_clock_rounded,
-              color: onDanger,
-              size: 34,
-            ),
+            child: Icon(Icons.lock_clock_rounded, color: onDanger, size: 34),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -324,11 +315,7 @@ class _UpdateGateState extends State<UpdateGate> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Icon(
-              Icons.arrow_forward_rounded,
-              color: danger,
-              size: 24,
-            ),
+            child: Icon(Icons.arrow_forward_rounded, color: danger, size: 24),
           ),
           _versionPill(
             label: 'NECESSÁRIA',
@@ -452,10 +439,7 @@ class _UpdateGateState extends State<UpdateGate> {
 
     return Column(
       children: [
-        for (final section in sections) ...[
-          section,
-          const SizedBox(height: 9),
-        ],
+        for (final section in sections) ...[section, const SizedBox(height: 9)],
       ],
     );
   }
@@ -566,20 +550,14 @@ class _UpdateGateState extends State<UpdateGate> {
     );
   }
 
-  Widget _buildRodape(
-      AppUpdateStatus status,
-      Color danger,
-      Color onDanger,
-      ) {
+  Widget _buildRodape(AppUpdateStatus status, Color danger, Color onDanger) {
     final t = context.uai;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 12, 15, 15),
       decoration: BoxDecoration(
         color: t.card,
-        border: Border(
-          top: BorderSide(color: t.border),
-        ),
+        border: Border(top: BorderSide(color: t.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -588,13 +566,13 @@ class _UpdateGateState extends State<UpdateGate> {
             onPressed: _baixando ? null : () => _atualizarAgora(status),
             icon: _baixando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: onDanger,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: onDanger,
+                    ),
+                  )
                 : const Icon(Icons.download_rounded),
             label: Text(_baixando ? 'Preparando...' : 'ATUALIZAR AGORA'),
             style: ElevatedButton.styleFrom(
@@ -604,9 +582,7 @@ class _UpdateGateState extends State<UpdateGate> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.w900,
-              ),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
           const SizedBox(height: 8),

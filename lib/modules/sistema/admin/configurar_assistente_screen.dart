@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/shared/services/assistente_chat_service.dart';
 
@@ -44,8 +44,8 @@ class _ConfigurarAssistenteScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -111,7 +111,10 @@ class _ConfigurarAssistenteScreenState
     final regras = _section('regras');
     final aparencia = _section('aparencia');
 
-    _setController('perfil_nome', perfil['nome']?.toString() ?? 'Assistente UAI');
+    _setController(
+      'perfil_nome',
+      perfil['nome']?.toString() ?? 'Assistente UAI',
+    );
     _setController('perfil_avatar', perfil['avatar']?.toString() ?? '🤖');
     _setController(
       'perfil_mensagem_boas_vindas',
@@ -186,8 +189,10 @@ class _ConfigurarAssistenteScreenState
       informacoes['nome_grupo'] =
           _controllers['info_nome_grupo']?.text.trim() ?? '';
       informacoes['cidade'] = _controllers['info_cidade']?.text.trim() ?? '';
-      informacoes['endereco'] = _controllers['info_endereco']?.text.trim() ?? '';
-      informacoes['telefone'] = _controllers['info_telefone']?.text.trim() ?? '';
+      informacoes['endereco'] =
+          _controllers['info_endereco']?.text.trim() ?? '';
+      informacoes['telefone'] =
+          _controllers['info_telefone']?.text.trim() ?? '';
       informacoes['email'] = _controllers['info_email']?.text.trim() ?? '';
       informacoes['dias_treino'] =
           _controllers['info_dias_treino']?.text.trim() ?? '';
@@ -288,13 +293,13 @@ class _ConfigurarAssistenteScreenState
             IconButton(
               icon: _salvando
                   ? SizedBox(
-                width: 19,
-                height: 19,
-                child: CircularProgressIndicator(
-                  color: _onPrimary(),
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 19,
+                      height: 19,
+                      child: CircularProgressIndicator(
+                        color: _onPrimary(),
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Icon(Icons.save_rounded),
               onPressed: _salvando ? null : _salvarConfiguracoes,
               tooltip: 'Salvar',
@@ -329,7 +334,10 @@ class _ConfigurarAssistenteScreenState
                     Tab(text: 'REGRAS', icon: Icon(Icons.gavel_rounded)),
                     Tab(text: 'AÇÕES', icon: Icon(Icons.touch_app_rounded)),
                     Tab(text: 'APARÊNCIA', icon: Icon(Icons.palette_rounded)),
-                    Tab(text: 'RESPOSTAS', icon: Icon(Icons.quickreply_rounded)),
+                    Tab(
+                      text: 'RESPOSTAS',
+                      icon: Icon(Icons.quickreply_rounded),
+                    ),
                     Tab(text: 'TURMAS', icon: Icon(Icons.school_rounded)),
                   ],
                 ),
@@ -360,13 +368,13 @@ class _ConfigurarAssistenteScreenState
               onPressed: _salvando ? null : _salvarConfiguracoes,
               icon: _salvando
                   ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  color: _readableOn(t.primary),
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: _readableOn(t.primary),
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Icon(Icons.save_rounded),
               label: Text(_salvando ? 'SALVANDO...' : 'SALVAR ASSISTENTE'),
               style: ElevatedButton.styleFrom(
@@ -413,11 +421,16 @@ class _ConfigurarAssistenteScreenState
         icon: Icons.smart_toy_rounded,
         title: 'Assistente Chat',
         subtitle:
-        'Configure identidade, comportamento e informações que o assistente usa no site.',
+            'Configure identidade, comportamento e informações que o assistente usa no site.',
         chips: [
-          _heroChip(Icons.power_settings_new_rounded,
-              _config['ativo'] == true ? 'Ativo' : 'Inativo'),
-          _heroChip(Icons.school_rounded, '${_turmasSelecionadas.length} turmas'),
+          _heroChip(
+            Icons.power_settings_new_rounded,
+            _config['ativo'] == true ? 'Ativo' : 'Inativo',
+          ),
+          _heroChip(
+            Icons.school_rounded,
+            '${_turmasSelecionadas.length} turmas',
+          ),
         ],
       ),
       const SizedBox(height: 14),
@@ -457,7 +470,9 @@ class _ConfigurarAssistenteScreenState
         icon: Icons.power_settings_new_rounded,
         title: 'Status',
         subtitle: 'Ative ou desative o chat no site público.',
-        color: _config['ativo'] == true ? context.uai.success : context.uai.error,
+        color: _config['ativo'] == true
+            ? context.uai.success
+            : context.uai.error,
         children: [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -765,8 +780,9 @@ class _ConfigurarAssistenteScreenState
 
     respostasRapidas['respostas'] = respostas;
 
-    final perguntasSugeridas =
-    List<String>.from(respostasRapidas['perguntas_sugeridas'] ?? []);
+    final perguntasSugeridas = List<String>.from(
+      respostasRapidas['perguntas_sugeridas'] ?? [],
+    );
 
     return _tabScaffold([
       _buildCard(
@@ -779,8 +795,7 @@ class _ConfigurarAssistenteScreenState
             title: 'Perguntas rápidas',
             tags: perguntasSugeridas,
             color: context.uai.info,
-            onChanged: (tags) =>
-            respostasRapidas['perguntas_sugeridas'] = tags,
+            onChanged: (tags) => respostasRapidas['perguntas_sugeridas'] = tags,
           ),
         ],
       ),
@@ -888,11 +903,9 @@ class _ConfigurarAssistenteScreenState
         icon: Icons.school_rounded,
         title: 'Turmas Disponíveis',
         subtitle:
-        'Marque as turmas que o assistente deve mostrar quando perguntarem sobre horários.',
+            'Marque as turmas que o assistente deve mostrar quando perguntarem sobre horários.',
         color: context.uai.inscricoes,
-        children: [
-          ..._turmas.map(_buildTurmaTile),
-        ],
+        children: [..._turmas.map(_buildTurmaTile)],
       ),
       const SizedBox(height: 14),
       _buildInfoBox(
@@ -900,7 +913,7 @@ class _ConfigurarAssistenteScreenState
         color: context.uai.info,
         title: 'Como funciona',
         text:
-        'As turmas marcadas aparecerão quando o usuário perguntar sobre horários de treino. As desmarcadas serão ignoradas pelo assistente.',
+            'As turmas marcadas aparecerão quando o usuário perguntar sobre horários de treino. As desmarcadas serão ignoradas pelo assistente.',
       ),
     ]);
   }
@@ -1058,8 +1071,9 @@ class _ConfigurarAssistenteScreenState
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 title,
@@ -1092,7 +1106,9 @@ class _ConfigurarAssistenteScreenState
           );
 
           if (narrow) {
-            return Column(children: [iconBox, const SizedBox(height: 14), text]);
+            return Column(
+              children: [iconBox, const SizedBox(height: 14), text],
+            );
           }
 
           return Row(
@@ -1248,7 +1264,9 @@ class _ConfigurarAssistenteScreenState
     int maxLines = 1,
     ValueChanged<String>? onChanged,
   }) {
-    final controller = controllerKey != null ? _controllers[controllerKey] : null;
+    final controller = controllerKey != null
+        ? _controllers[controllerKey]
+        : null;
 
     return TextFormField(
       controller: controller,
@@ -1286,22 +1304,23 @@ class _ConfigurarAssistenteScreenState
         child: TextFormField(
           controller: controller,
           style: TextStyle(color: context.uai.textPrimary),
-          decoration: _inputDecoration(
-            label: label,
-            hint: '#B71C1C',
-            icon: Icons.color_lens_rounded,
-          ).copyWith(
-            suffixIcon: Container(
-              margin: const EdgeInsets.all(8),
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: visible,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: context.uai.border),
+          decoration:
+              _inputDecoration(
+                label: label,
+                hint: '#B71C1C',
+                icon: Icons.color_lens_rounded,
+              ).copyWith(
+                suffixIcon: Container(
+                  margin: const EdgeInsets.all(8),
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: visible,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: context.uai.border),
+                  ),
+                ),
               ),
-            ),
-          ),
         ),
       ),
     );
@@ -1651,11 +1670,14 @@ class _ConfigurarAssistenteScreenState
                             if (pergunta.isEmpty || resposta.isEmpty) return;
 
                             setState(() {
-                              final respostasRapidas = _section('respostas_rapidas');
-                              final respostas = respostasRapidas['respostas'] is Map
+                              final respostasRapidas = _section(
+                                'respostas_rapidas',
+                              );
+                              final respostas =
+                                  respostasRapidas['respostas'] is Map
                                   ? Map<String, dynamic>.from(
-                                respostasRapidas['respostas'] as Map,
-                              )
+                                      respostasRapidas['respostas'] as Map,
+                                    )
                                   : <String, dynamic>{};
 
                               respostas[pergunta] = resposta;

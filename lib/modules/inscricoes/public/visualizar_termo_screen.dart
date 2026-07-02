@@ -21,8 +21,8 @@ class VisualizarTermoScreen extends StatelessWidget {
   }
 
   static Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -37,16 +37,20 @@ class VisualizarTermoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMaior = dados['is_maior_idade'] ?? false;
-    final temAssinatura = dados['assinatura_url'] != null &&
+    final temAssinatura =
+        dados['assinatura_url'] != null &&
         dados['assinatura_url'].toString().isNotEmpty;
-    final temTermo = dados['termo_autorizacao'] != null &&
+    final temTermo =
+        dados['termo_autorizacao'] != null &&
         dados['termo_autorizacao'].toString().isNotEmpty;
     final dataInscricao = dados['data_inscricao'] as Timestamp?;
     final dataAprovacao = dados['aprovado_em'] as Timestamp?;
 
     // Cores temáticas para seções
-    final corTituloTermo =
-    _ensureVisible(context.uai.error, context.uai.cardAlt);
+    final corTituloTermo = _ensureVisible(
+      context.uai.error,
+      context.uai.cardAlt,
+    );
     final containerWarnBg = context.uai.warning.withOpacity(0.1);
     final corTextoWarn = _ensureVisible(context.uai.warning, containerWarnBg);
 
@@ -127,10 +131,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Divider(
-                        height: 1,
-                        color: context.uai.border,
-                      ),
+                      Divider(height: 1, color: context.uai.border),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -139,8 +140,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                           _buildInfoChip(
                             icon: Icons.calendar_today,
                             label: dataInscricao != null
-                                ? DateFormat('dd/MM/yyyy')
-                                .format(dataInscricao.toDate())
+                                ? DateFormat(
+                                    'dd/MM/yyyy',
+                                  ).format(dataInscricao.toDate())
                                 : 'Data não informada',
                             color: context.uai.info,
                           ),
@@ -148,12 +150,14 @@ class VisualizarTermoScreen extends StatelessWidget {
                             _buildInfoChip(
                               icon: Icons.check_circle,
                               label:
-                              'Aprovado: ${DateFormat('dd/MM/yyyy').format(dataAprovacao.toDate())}',
+                                  'Aprovado: ${DateFormat('dd/MM/yyyy').format(dataAprovacao.toDate())}',
                               color: context.uai.success,
                             ),
                           _buildInfoChip(
                             icon: Icons.person,
-                            label: isMaior ? 'Maior de idade' : 'Menor de idade',
+                            label: isMaior
+                                ? 'Maior de idade'
+                                : 'Menor de idade',
                             color: isMaior
                                 ? context.uai.success
                                 : context.uai.warning,
@@ -178,8 +182,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: context.uai.cardAlt,
-                      borderRadius:
-                      BorderRadius.circular(context.uai.cardRadius),
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
                       border: Border.all(color: context.uai.border),
                     ),
                     child: Column(
@@ -262,12 +267,11 @@ class VisualizarTermoScreen extends StatelessWidget {
                                     child: Image.network(
                                       dados['assinatura_url']!,
                                       fit: BoxFit.contain,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
+                                      errorBuilder: (context, error, stackTrace) {
                                         return Center(
                                           child: Column(
                                             mainAxisAlignment:
-                                            MainAxisAlignment.center,
+                                                MainAxisAlignment.center,
                                             children: [
                                               Icon(
                                                 Icons.broken_image,
@@ -341,15 +345,12 @@ class VisualizarTermoScreen extends StatelessWidget {
                             ),
                             child: Row(
                               children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  color: corTextoWarn,
-                                ),
+                                Icon(Icons.info_outline, color: corTextoWarn),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Termo sem assinatura digital',
@@ -386,8 +387,9 @@ class VisualizarTermoScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(32),
                     decoration: BoxDecoration(
                       color: context.uai.cardAlt,
-                      borderRadius:
-                      BorderRadius.circular(context.uai.cardRadius),
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
                       border: Border.all(color: context.uai.border),
                     ),
                     child: Column(
@@ -441,11 +443,7 @@ class VisualizarTermoScreen extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 12,
-            color: color,
-          ),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
           Text(
             label,

@@ -185,7 +185,8 @@ class EventoModel {
     final configCertificadoRaw =
         data['configuracoes_certificado'] ?? data['configuracoesCertificado'];
 
-    final valorCamisaBase = (data['valorCamisa'] as num?)?.toDouble() ??
+    final valorCamisaBase =
+        (data['valorCamisa'] as num?)?.toDouble() ??
         (data['valor_camisa'] as num?)?.toDouble();
 
     return EventoModel(
@@ -200,20 +201,22 @@ class EventoModel {
       organizadores: organizadoresList,
       status: data['status'] ?? 'andamento',
 
-      valorInscricao: (data['valorInscricao'] as num?)?.toDouble() ??
+      valorInscricao:
+          (data['valorInscricao'] as num?)?.toDouble() ??
           (data['valor_inscricao'] as num?)?.toDouble() ??
           0,
-      permiteParcelamento: data['permiteParcelamento'] ??
-          data['permite_parcelamento'] ??
-          false,
-      maxParcelas: (data['maxParcelas'] as num?)?.toInt() ??
+      permiteParcelamento:
+          data['permiteParcelamento'] ?? data['permite_parcelamento'] ?? false,
+      maxParcelas:
+          (data['maxParcelas'] as num?)?.toInt() ??
           (data['max_parcelas'] as num?)?.toInt() ??
           1,
-      descontoAVista: (data['descontoAVista'] as num?)?.toInt() ??
+      descontoAVista:
+          (data['descontoAVista'] as num?)?.toInt() ??
           (data['desconto_a_vista'] as num?)?.toInt() ??
           0,
       dataLimitePrimeiraParcela:
-      _timestampToDateTime(data['dataLimitePrimeiraParcela']) ??
+          _timestampToDateTime(data['dataLimitePrimeiraParcela']) ??
           _timestampToDateTime(data['data_limite_primeira_parcela']),
 
       temCamisa: data['temCamisa'] ?? data['tem_camisa'] ?? false,
@@ -241,14 +244,12 @@ class EventoModel {
             data['tipos_disponiveis'],
       ),
       camisaObrigatoria:
-      data['camisaObrigatoria'] ?? data['camisa_obrigatoria'] ?? false,
+          data['camisaObrigatoria'] ?? data['camisa_obrigatoria'] ?? false,
 
-      alteraGraduacao: data['alteraGraduacao'] ??
-          data['altera_graduacao'] ??
-          false,
-      geraCertificado: data['geraCertificado'] ??
-          data['gera_certificado'] ??
-          false,
+      alteraGraduacao:
+          data['alteraGraduacao'] ?? data['altera_graduacao'] ?? false,
+      geraCertificado:
+          data['geraCertificado'] ?? data['gera_certificado'] ?? false,
       tipoPublico: data['tipoPublico'] ?? data['tipo_publico'],
 
       linkBanner: data['linkBanner'] ?? data['link_banner'],
@@ -257,19 +258,22 @@ class EventoModel {
       linkPlaylist: data['linkPlaylist'] ?? data['link_playlist'],
 
       temCertificado:
-      data['tem_certificado'] ?? data['temCertificado'] ?? false,
-      modeloCertificadoId: (data['modelo_certificado_id'] ??
-          data['modeloCertificadoId'] ??
-          ConfiguracoesCertificadoEvento.modeloAutomatico)
-          ?.toString(),
+          data['tem_certificado'] ?? data['temCertificado'] ?? false,
+      modeloCertificadoId:
+          (data['modelo_certificado_id'] ??
+                  data['modeloCertificadoId'] ??
+                  ConfiguracoesCertificadoEvento.modeloAutomatico)
+              ?.toString(),
       modeloCertificadoPath:
-      data['modelo_certificado_path'] ?? data['modeloCertificadoPath'],
+          data['modelo_certificado_path'] ?? data['modeloCertificadoPath'],
       configuracoesCertificado: configCertificadoRaw is Map
           ? Map<String, dynamic>.from(configCertificadoRaw)
           : null,
 
       mostrarNoPortfolioWeb:
-      data['mostrarNoPortfolioWeb'] ?? data['mostrar_no_portfolio_web'] ?? false,
+          data['mostrarNoPortfolioWeb'] ??
+          data['mostrar_no_portfolio_web'] ??
+          false,
 
       criadoEm: data['criado_em'] as Timestamp?,
       atualizadoEm: data['atualizado_em'] as Timestamp?,
@@ -293,8 +297,9 @@ class EventoModel {
       'maxParcelas': maxParcelas,
       'descontoAVista': descontoAVista,
       if (dataLimitePrimeiraParcela != null)
-        'dataLimitePrimeiraParcela':
-        Timestamp.fromDate(dataLimitePrimeiraParcela!),
+        'dataLimitePrimeiraParcela': Timestamp.fromDate(
+          dataLimitePrimeiraParcela!,
+        ),
 
       'temCamisa': temCamisa,
       if (valorCamisa != null) 'valorCamisa': valorCamisa,
@@ -303,10 +308,12 @@ class EventoModel {
         valorPadrao: valorCamisa,
       ),
       'tamanhosDisponiveis': _normalizarListaTamanhos(tamanhosDisponiveis),
-      'modelagensCamisaDisponiveis':
-      _normalizarListaModelagens(modelagensCamisaDisponiveis),
-      'tiposCamisaDisponiveis':
-      _normalizarListaTiposCamisa(tiposCamisaDisponiveis),
+      'modelagensCamisaDisponiveis': _normalizarListaModelagens(
+        modelagensCamisaDisponiveis,
+      ),
+      'tiposCamisaDisponiveis': _normalizarListaTiposCamisa(
+        tiposCamisaDisponiveis,
+      ),
       'camisaObrigatoria': camisaObrigatoria,
 
       'alteraGraduacao': alteraGraduacao,
@@ -319,11 +326,13 @@ class EventoModel {
       if (linkPlaylist != null) 'linkPlaylist': linkPlaylist,
 
       'tem_certificado': temCertificado,
-      'modelo_certificado_id': modeloCertificadoId ??
+      'modelo_certificado_id':
+          modeloCertificadoId ??
           ConfiguracoesCertificadoEvento.modeloAutomatico,
       'modelo_certificado_path': modeloCertificadoPath,
-      'configuracoes_certificado':
-      temCertificado ? configuracoesCertificadoAtualizada : null,
+      'configuracoes_certificado': temCertificado
+          ? configuracoesCertificadoAtualizada
+          : null,
 
       'mostrarNoPortfolioWeb': mostrarNoPortfolioWeb,
 
@@ -391,7 +400,7 @@ class EventoModel {
       maxParcelas: maxParcelas ?? this.maxParcelas,
       descontoAVista: descontoAVista ?? this.descontoAVista,
       dataLimitePrimeiraParcela:
-      dataLimitePrimeiraParcela ?? this.dataLimitePrimeiraParcela,
+          dataLimitePrimeiraParcela ?? this.dataLimitePrimeiraParcela,
       temCamisa: temCamisa ?? this.temCamisa,
       valorCamisa: valorCamisa ?? this.valorCamisa,
       valoresPorTipoCamisa: _normalizarValoresPorTipoCamisa(
@@ -418,11 +427,11 @@ class EventoModel {
       temCertificado: temCertificado ?? this.temCertificado,
       modeloCertificadoId: modeloCertificadoId ?? this.modeloCertificadoId,
       modeloCertificadoPath:
-      modeloCertificadoPath ?? this.modeloCertificadoPath,
+          modeloCertificadoPath ?? this.modeloCertificadoPath,
       configuracoesCertificado:
-      configuracoesCertificado ?? this.configuracoesCertificado,
+          configuracoesCertificado ?? this.configuracoesCertificado,
       mostrarNoPortfolioWeb:
-      mostrarNoPortfolioWeb ?? this.mostrarNoPortfolioWeb,
+          mostrarNoPortfolioWeb ?? this.mostrarNoPortfolioWeb,
       criadoEm: criadoEm ?? this.criadoEm,
       atualizadoEm: atualizadoEm ?? this.atualizadoEm,
     );
@@ -447,9 +456,9 @@ class EventoModel {
   }
 
   static Map<String, double> _normalizarValoresPorTipoCamisa(
-      dynamic value, {
-        double? valorPadrao,
-      }) {
+    dynamic value, {
+    double? valorPadrao,
+  }) {
     final fallback = valorPadrao ?? 0.0;
 
     final result = <String, double>{
@@ -532,10 +541,7 @@ class EventoModel {
     if (result.isEmpty) return List<String>.from(modelagensPadraoCamisa);
 
     result.sort((a, b) {
-      final ordem = {
-        modelagemNormal: 0,
-        modelagemBabyLook: 1,
-      };
+      final ordem = {modelagemNormal: 0, modelagemBabyLook: 1};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -555,11 +561,7 @@ class EventoModel {
     if (result.isEmpty) return List<String>.from(tiposPadraoCamisa);
 
     result.sort((a, b) {
-      final ordem = {
-        tipoManga: 0,
-        tipoMangaLonga: 1,
-        tipoRegata: 2,
-      };
+      final ordem = {tipoManga: 0, tipoMangaLonga: 1, tipoRegata: 2};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -780,7 +782,7 @@ class EventoModel {
 
     try {
       return configuracoesCertificado!.map(
-            (key, value) => MapEntry(key, value?.toString() ?? ''),
+        (key, value) => MapEntry(key, value?.toString() ?? ''),
       );
     } catch (_) {
       return {};
@@ -872,13 +874,14 @@ class ConfiguracoesCertificadoEvento {
           .whereType<Map>()
           .map(
             (item) => AssinaturaCertificadoEvento.fromMap(
-          Map<String, dynamic>.from(item),
-        ),
-      )
+              Map<String, dynamic>.from(item),
+            ),
+          )
           .toList();
     }
 
-    final rawTextos = map['textos'] ??
+    final rawTextos =
+        map['textos'] ??
         map['config_textos'] ??
         map['configuracoes_texto'] ??
         map['texto_config'];
@@ -1007,16 +1010,16 @@ class CertificadoTextoCampoConfig {
   });
 
   static const CertificadoTextoCampoConfig padraoGenerico =
-  CertificadoTextoCampoConfig(
-    fonte: 'Arial',
-    tamanho: 15.0,
-    corHex: '#1A0202',
-    alinhamento: 'center',
-    lineHeight: 1.0,
-    uppercase: true,
-    negrito: false,
-    autoAjustar: true,
-  );
+      CertificadoTextoCampoConfig(
+        fonte: 'Arial',
+        tamanho: 15.0,
+        corHex: '#1A0202',
+        alinhamento: 'center',
+        lineHeight: 1.0,
+        uppercase: true,
+        negrito: false,
+        autoAjustar: true,
+      );
 
   static const Map<String, CertificadoTextoCampoConfig> defaults = {
     campoNome: CertificadoTextoCampoConfig(
@@ -1092,9 +1095,9 @@ class CertificadoTextoCampoConfig {
   };
 
   factory CertificadoTextoCampoConfig.fromMap(
-      Map<String, dynamic>? map, {
-        CertificadoTextoCampoConfig fallback = padraoGenerico,
-      }) {
+    Map<String, dynamic>? map, {
+    CertificadoTextoCampoConfig fallback = padraoGenerico,
+  }) {
     if (map == null || map.isEmpty) return fallback;
 
     return CertificadoTextoCampoConfig(
@@ -1137,8 +1140,8 @@ class CertificadoTextoCampoConfig {
   }
 
   static Map<String, CertificadoTextoCampoConfig> mergeWithDefaults(
-      dynamic raw,
-      ) {
+    dynamic raw,
+  ) {
     final merged = Map<String, CertificadoTextoCampoConfig>.from(defaults);
 
     if (raw is Map) {
@@ -1215,8 +1218,8 @@ class CertificadoTextoCampoConfig {
         return clean;
       case 'upper':
       default:
-      // Mantém compatibilidade: se algum dado antigo vier com uppercase=false,
-      // respeita o antigo como "original".
+        // Mantém compatibilidade: se algum dado antigo vier com uppercase=false,
+        // respeita o antigo como "original".
         return uppercase ? clean.toUpperCase() : clean;
     }
   }
@@ -1226,7 +1229,7 @@ class CertificadoTextoCampoConfig {
 
     return lower.replaceAllMapped(
       RegExp(r'(^|[\s\-/])([a-záàâãäéèêëíìîïóòôõöúùûüç])'),
-          (match) {
+      (match) {
         final prefix = match.group(1) ?? '';
         final letter = match.group(2) ?? '';
         return '$prefix${letter.toUpperCase()}';
@@ -1338,7 +1341,8 @@ class AssinaturaCertificadoEvento {
   factory AssinaturaCertificadoEvento.fromMap(Map<String, dynamic> map) {
     return AssinaturaCertificadoEvento(
       nome: map['nome']?.toString() ?? '',
-      apelido: map['apelido']?.toString() ??
+      apelido:
+          map['apelido']?.toString() ??
           map['titulo']?.toString() ??
           map['cargo']?.toString() ??
           '',

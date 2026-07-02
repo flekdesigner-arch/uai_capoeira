@@ -36,7 +36,8 @@ class MensagemAniversarioService {
       }
 
       // Escolhe um índice aleatório
-      final randomIndex = DateTime.now().millisecondsSinceEpoch % snapshot.docs.length;
+      final randomIndex =
+          DateTime.now().millisecondsSinceEpoch % snapshot.docs.length;
       return MensagemAniversario.fromFirestore(snapshot.docs[randomIndex]);
     } catch (e) {
       print('❌ Erro ao buscar mensagem aleatória: $e');
@@ -45,7 +46,9 @@ class MensagemAniversarioService {
   }
 
   // Buscar mensagens por categoria
-  Future<List<MensagemAniversario>> getMensagensPorCategoria(String categoria) async {
+  Future<List<MensagemAniversario>> getMensagensPorCategoria(
+    String categoria,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection(_collectionPath)
@@ -73,83 +76,103 @@ class MensagemAniversarioService {
     final mensagensPadrao = [
       // Mensagens NEUTRAS (sem menção específica a capoeira)
       {
-        'texto': 'Feliz aniversário, {nome}! Que Deus abençoe sua vida com saúde, paz e muitas alegrias. 🎂',
+        'texto':
+            'Feliz aniversário, {nome}! Que Deus abençoe sua vida com saúde, paz e muitas alegrias. 🎂',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Que seu dia seja especial e seu ano repleto de realizações. 🎉',
+        'texto':
+            'Parabéns, {nome}! Que seu dia seja especial e seu ano repleto de realizações. 🎉',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, hoje é seu dia! Que venham muitos anos de vida pela frente. Feliz aniversário! 🎈',
+        'texto':
+            '{nome}, hoje é seu dia! Que venham muitos anos de vida pela frente. Feliz aniversário! 🎈',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que você continue sendo essa pessoa iluminada. Sucesso sempre! ✨',
+        'texto':
+            'Feliz aniversário, {nome}! Que você continue sendo essa pessoa iluminada. Sucesso sempre! ✨',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Que seu caminho seja sempre de luz e muitas conquistas. 🎊',
+        'texto':
+            'Parabéns, {nome}! Que seu caminho seja sempre de luz e muitas conquistas. 🎊',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Hoje é dia de festa! Feliz aniversário, {nome}! Que Deus realize todos os seus sonhos. 🎂',
+        'texto':
+            'Hoje é dia de festa! Feliz aniversário, {nome}! Que Deus realize todos os seus sonhos. 🎂',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, que seu aniversário seja o início de um ano incrível! Muitas felicidades. 🎁',
+        'texto':
+            '{nome}, que seu aniversário seja o início de um ano incrível! Muitas felicidades. 🎁',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que a alegria e o amor estejam sempre presentes em sua vida. ❤️',
+        'texto':
+            'Feliz aniversário, {nome}! Que a alegria e o amor estejam sempre presentes em sua vida. ❤️',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Mais um ano de vida, mais um ano de bênçãos. Aproveite seu dia! 🎉',
+        'texto':
+            'Parabéns, {nome}! Mais um ano de vida, mais um ano de bênçãos. Aproveite seu dia! 🎉',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, hoje é seu dia especial! Que você seja muito feliz e realizado. Parabéns! 🎈',
+        'texto':
+            '{nome}, hoje é seu dia especial! Que você seja muito feliz e realizado. Parabéns! 🎈',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que Deus continue te abençoando e guiando seus passos. 🙏',
+        'texto':
+            'Feliz aniversário, {nome}! Que Deus continue te abençoando e guiando seus passos. 🙏',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Que seu ano seja cheio de saúde, paz e prosperidade. 🎂',
+        'texto':
+            'Parabéns, {nome}! Que seu ano seja cheio de saúde, paz e prosperidade. 🎂',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, hoje celebramos sua vida! Que venham muitos anos pela frente. Feliz aniversário! 🎊',
+        'texto':
+            '{nome}, hoje celebramos sua vida! Que venham muitos anos pela frente. Feliz aniversário! 🎊',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que você continue sendo essa pessoa incrível. Abraço grande! 🎁',
+        'texto':
+            'Feliz aniversário, {nome}! Que você continue sendo essa pessoa incrível. Abraço grande! 🎁',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Que seu dia seja lindo como você merece. Muita saúde e sucesso! 🎉',
+        'texto':
+            'Parabéns, {nome}! Que seu dia seja lindo como você merece. Muita saúde e sucesso! 🎉',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, hoje é seu grande dia! Que Deus abençoe e ilumine sempre seu caminho. 🎈',
+        'texto':
+            '{nome}, hoje é seu grande dia! Que Deus abençoe e ilumine sempre seu caminho. 🎈',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que a felicidade more no seu coração todos os dias. ❤️',
+        'texto':
+            'Feliz aniversário, {nome}! Que a felicidade more no seu coração todos os dias. ❤️',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Parabéns, {nome}! Mais um ano de histórias e conquistas. Viva essa data especial! 🎂',
+        'texto':
+            'Parabéns, {nome}! Mais um ano de histórias e conquistas. Viva essa data especial! 🎂',
         'categoria': 'neutra',
       },
       {
-        'texto': '{nome}, desejo um aniversário maravilhoso e um ano cheio de coisas boas! 🎉',
+        'texto':
+            '{nome}, desejo um aniversário maravilhoso e um ano cheio de coisas boas! 🎉',
         'categoria': 'neutra',
       },
       {
-        'texto': 'Feliz aniversário, {nome}! Que todos os seus sonhos se realizem. Axé (paz e energia positiva)! 🕊️',
+        'texto':
+            'Feliz aniversário, {nome}! Que todos os seus sonhos se realizem. Axé (paz e energia positiva)! 🕊️',
         'categoria': 'neutra',
       },
     ];

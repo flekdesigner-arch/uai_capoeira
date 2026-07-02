@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -29,9 +29,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     _rastreioService.iniciarTela(
       'biografia',
       origem: 'site',
-      metadata: {
-        'descricao': 'Tela pública biografia',
-      },
+      metadata: {'descricao': 'Tela pública biografia'},
     );
     _rastreioService.marcarTempo('biografia_tempo');
     _scrollController.addListener(_registrarRolagem);
@@ -63,8 +61,8 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -114,8 +112,10 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
 
   Future<void> _carregarBiografia() async {
     try {
-      final doc =
-      await _firestore.collection('site_conteudo').doc('biografia').get();
+      final doc = await _firestore
+          .collection('site_conteudo')
+          .doc('biografia')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -175,7 +175,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         'icone': Icons.auto_stories_rounded,
         'cor': 'primary',
         'conteudo':
-        'O Grupo UAI Capoeira nasceu com o propósito de fortalecer a capoeira como instrumento de educação, cultura, disciplina e transformação social.\n\n'
+            'O Grupo UAI Capoeira nasceu com o propósito de fortalecer a capoeira como instrumento de educação, cultura, disciplina e transformação social.\n\n'
             'Através dos treinos, rodas, eventos e projetos, buscamos formar não apenas capoeiristas, mas cidadãos conscientes, respeitosos e comprometidos com a comunidade.',
       },
       {
@@ -183,7 +183,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         'icone': Icons.flag_rounded,
         'cor': 'success',
         'conteudo':
-        'Promover a capoeira de forma organizada, acessível e responsável, valorizando seus fundamentos, sua musicalidade, sua história e seu papel social.\n\n'
+            'Promover a capoeira de forma organizada, acessível e responsável, valorizando seus fundamentos, sua musicalidade, sua história e seu papel social.\n\n'
             'Nosso compromisso é acolher alunos de diferentes idades, respeitando o tempo de cada um e incentivando a evolução dentro e fora da roda.',
       },
       {
@@ -191,7 +191,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         'icone': Icons.favorite_rounded,
         'cor': 'warning',
         'conteudo':
-        'União, amizade, inteligência, respeito, disciplina, humildade, responsabilidade e amor pela capoeira.\n\n'
+            'União, amizade, inteligência, respeito, disciplina, humildade, responsabilidade e amor pela capoeira.\n\n'
             'Cada treino é uma oportunidade de aprender, ensinar, superar limites e fortalecer os laços entre alunos, professores, famílias e comunidade.',
       },
       {
@@ -199,7 +199,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         'icone': Icons.groups_rounded,
         'cor': 'info',
         'conteudo':
-        'A capoeira é cultura viva. Por isso, o Grupo UAI Capoeira busca estar presente em eventos, apresentações, ações sociais, rodas e atividades educativas.\n\n'
+            'A capoeira é cultura viva. Por isso, o Grupo UAI Capoeira busca estar presente em eventos, apresentações, ações sociais, rodas e atividades educativas.\n\n'
             'Nosso trabalho valoriza a tradição da capoeira e, ao mesmo tempo, utiliza a organização e a tecnologia para melhorar a gestão, a comunicação e o acompanhamento dos alunos.',
       },
     ];
@@ -342,13 +342,10 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
   }
 
   int _totalParagrafos() {
-    return _secoesBiografia.fold<int>(
-      0,
-          (total, secao) {
-        final conteudo = secao['conteudo']?.toString() ?? '';
-        return total + _paragrafos(conteudo).length;
-      },
-    );
+    return _secoesBiografia.fold<int>(0, (total, secao) {
+      final conteudo = secao['conteudo']?.toString() ?? '';
+      return total + _paragrafos(conteudo).length;
+    });
   }
 
   @override
@@ -363,17 +360,17 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
       child: _carregando
           ? _buildLoadingState()
           : RefreshIndicator(
-        color: t.primary,
-        backgroundColor: t.surface,
-        onRefresh: () async {
-          _rastreioService.registrarClique(
-            nome: 'atualizar_biografia',
-            origem: 'biografia',
-          );
-          await _carregarBiografia();
-        },
-        child: _buildContent(),
-      ),
+              color: t.primary,
+              backgroundColor: t.surface,
+              onRefresh: () async {
+                _rastreioService.registrarClique(
+                  nome: 'atualizar_biografia',
+                  origem: 'biografia',
+                );
+                await _carregarBiografia();
+              },
+              child: _buildContent(),
+            ),
     );
   }
 
@@ -463,16 +460,13 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.auto_stories_rounded,
-              color: onPrimary,
-              size: 38,
-            ),
+            child: Icon(Icons.auto_stories_rounded, color: onPrimary, size: 38),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Biografia',
@@ -504,7 +498,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
                   _buildWhiteChip(
                     icon: Icons.article_rounded,
                     label:
-                    '${_secoesBiografia.length} ${_secoesBiografia.length == 1 ? 'seção' : 'seções'}',
+                        '${_secoesBiografia.length} ${_secoesBiografia.length == 1 ? 'seção' : 'seções'}',
                   ),
                   _buildWhiteChip(
                     icon: Icons.favorite_rounded,
@@ -516,13 +510,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -537,10 +525,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     );
   }
 
-  Widget _buildWhiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildWhiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -666,10 +651,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: primary.withOpacity(0.14)),
           ),
-          child: Icon(
-            Icons.menu_book_rounded,
-            color: primary,
-          ),
+          child: Icon(Icons.menu_book_rounded, color: primary),
         ),
         const SizedBox(width: 11),
         Expanded(
@@ -749,10 +731,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     final titulo = _limparTitulo(tituloOriginal);
     final icone = _getIconFromName(secao['icone']);
     final cor = _ensureVisible(
-      _resolveColor(
-        secao['cor'],
-        fallback: _fallbackColor(index),
-      ),
+      _resolveColor(secao['cor'], fallback: _fallbackColor(index)),
       t.card,
     );
     final conteudo = secao['conteudo']?.toString() ?? '';
@@ -831,23 +810,23 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
               padding: EdgeInsets.all(isMobile ? 14 : 16),
               child: paragrafos.isEmpty
                   ? Text(
-                'Conteúdo não informado.',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontStyle: FontStyle.italic,
-                ),
-              )
+                      'Conteúdo não informado.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
                   : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(paragrafos.length, (i) {
-                  return _buildParagrafo(
-                    texto: paragrafos[i],
-                    cor: cor,
-                    isMobile: isMobile,
-                    isFirst: i == 0,
-                  );
-                }),
-              ),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: List.generate(paragrafos.length, (i) {
+                        return _buildParagrafo(
+                          texto: paragrafos[i],
+                          cor: cor,
+                          isMobile: isMobile,
+                          isFirst: i == 0,
+                        );
+                      }),
+                    ),
             ),
           ],
         ),
@@ -892,9 +871,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
             ? Color.alphaBlend(cor.withOpacity(0.06), t.cardAlt)
             : t.cardAlt,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isFirst ? cor.withOpacity(0.12) : t.border,
-        ),
+        border: Border.all(color: isFirst ? cor.withOpacity(0.12) : t.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,11 +885,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cor.withOpacity(0.12)),
               ),
-              child: Icon(
-                Icons.format_quote_rounded,
-                color: cor,
-                size: 17,
-              ),
+              child: Icon(Icons.format_quote_rounded, color: cor, size: 17),
             ),
             const SizedBox(width: 10),
           ],
@@ -945,11 +918,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.auto_stories_outlined,
-                size: 74,
-                color: t.textMuted,
-              ),
+              Icon(Icons.auto_stories_outlined, size: 74, color: t.textMuted),
               const SizedBox(height: 14),
               Text(
                 'Nenhuma seção encontrada',
@@ -964,10 +933,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
               Text(
                 'Cadastre o conteúdo da biografia no painel administrativo.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: t.textSecondary,
-                  height: 1.3,
-                ),
+                style: TextStyle(color: t.textSecondary, height: 1.3),
               ),
             ],
           ),

@@ -8,7 +8,8 @@ class SelecionarAlunoDialog extends StatefulWidget {
 
   const SelecionarAlunoDialog({
     super.key,
-    this.corTema = Colors.green, // Valor padrão será ignorado internamente em favor do tema
+    this.corTema = Colors
+        .green, // Valor padrão será ignorado internamente em favor do tema
   });
 
   @override
@@ -29,7 +30,8 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
     final bgIsDark = background.computeLuminance() < 0.45;
     final hsl = HSLColor.fromColor(color);
@@ -63,7 +65,8 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
       builder: (ctx) => GestureDetector(
         onTap: () => Navigator.pop(ctx),
         child: Container(
-          color: Colors.black87, // overlay escuro fixo para contraste com a foto
+          color:
+              Colors.black87, // overlay escuro fixo para contraste com a foto
           child: InteractiveViewer(
             minScale: 1.0,
             maxScale: 5.0,
@@ -89,7 +92,8 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
     // Para manter a compatibilidade, usaremos widget.corTema como fallback se não houver token equivalente.
     // Porém, como o projeto pede tokens, assumimos que quem chama vai passar a cor do tema.
     // Vamos usar widget.corTema como cor de destaque, mas com contraste seguro.
-    final Color corDestaque = widget.corTema; // pode vir de context.uai.success, etc.
+    final Color corDestaque =
+        widget.corTema; // pode vir de context.uai.success, etc.
     final Color corDestaqueFg = _readableOn(corDestaque);
     final Color textPrimary = context.uai.textPrimary;
     final Color textSecondary = context.uai.textSecondary;
@@ -160,20 +164,33 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                       turmas[turmaId] = turmaNome;
                     }
                   }
-                  _turmasDisponiveis = turmas.entries
-                      .map((e) => {'id': e.key, 'nome': e.value})
-                      .toList()
-                    ..sort((a, b) => (a['nome'] as String).compareTo(b['nome'] as String));
+                  _turmasDisponiveis =
+                      turmas.entries
+                          .map((e) => {'id': e.key, 'nome': e.value})
+                          .toList()
+                        ..sort(
+                          (a, b) => (a['nome'] as String).compareTo(
+                            b['nome'] as String,
+                          ),
+                        );
 
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        _buildTurmaChip(null, 'Todas', corDestaque, corDestaqueFg),
+                        _buildTurmaChip(
+                          null,
+                          'Todas',
+                          corDestaque,
+                          corDestaqueFg,
+                        ),
                         ..._turmasDisponiveis.map((turma) {
                           return _buildTurmaChip(
-                              turma['id'] as String, turma['nome'] as String,
-                              corDestaque, corDestaqueFg);
+                            turma['id'] as String,
+                            turma['nome'] as String,
+                            corDestaque,
+                            corDestaqueFg,
+                          );
                         }),
                       ],
                     ),
@@ -194,25 +211,31 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                   filled: true,
                   fillColor: cardAlt,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: primary, width: 1.4),
                   ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear, color: textMuted),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
+                          icon: Icon(Icons.clear, color: textMuted),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
                       : null,
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
@@ -232,9 +255,16 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.error_outline, size: 50, color: context.uai.error),
+                          Icon(
+                            Icons.error_outline,
+                            size: 50,
+                            color: context.uai.error,
+                          ),
                           const SizedBox(height: 16),
-                          Text('Erro: ${snapshot.error}', style: TextStyle(color: textPrimary)),
+                          Text(
+                            'Erro: ${snapshot.error}',
+                            style: TextStyle(color: textPrimary),
+                          ),
                           ElevatedButton(
                             onPressed: () => Navigator.maybePop(context),
                             style: ElevatedButton.styleFrom(
@@ -249,7 +279,9 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                   }
 
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator(color: primary));
+                    return Center(
+                      child: CircularProgressIndicator(color: primary),
+                    );
                   }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -257,9 +289,16 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.people_outline, size: 50, color: textMuted),
+                          Icon(
+                            Icons.people_outline,
+                            size: 50,
+                            color: textMuted,
+                          ),
                           const SizedBox(height: 16),
-                          Text('Nenhum aluno ativo encontrado', style: TextStyle(color: textSecondary)),
+                          Text(
+                            'Nenhum aluno ativo encontrado',
+                            style: TextStyle(color: textSecondary),
+                          ),
                           const SizedBox(height: 8),
                           ElevatedButton(
                             onPressed: () => Navigator.maybePop(context),
@@ -276,7 +315,8 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
 
                   var alunos = snapshot.data!.docs.where((doc) {
                     var data = doc.data() as Map<String, dynamic>;
-                    if (_selectedTurmaId != null && data['turma_id'] != _selectedTurmaId) {
+                    if (_selectedTurmaId != null &&
+                        data['turma_id'] != _selectedTurmaId) {
                       return false;
                     }
                     if (_searchQuery.isNotEmpty) {
@@ -293,12 +333,19 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                         children: [
                           Icon(Icons.search_off, size: 50, color: textMuted),
                           const SizedBox(height: 16),
-                          Text('Nenhum aluno encontrado', style: TextStyle(color: textSecondary)),
+                          Text(
+                            'Nenhum aluno encontrado',
+                            style: TextStyle(color: textSecondary),
+                          ),
                           const SizedBox(height: 8),
                           if (_selectedTurmaId != null)
                             TextButton(
-                              onPressed: () => setState(() => _selectedTurmaId = null),
-                              child: Text('Mostrar todas as turmas', style: TextStyle(color: primary)),
+                              onPressed: () =>
+                                  setState(() => _selectedTurmaId = null),
+                              child: Text(
+                                'Mostrar todas as turmas',
+                                style: TextStyle(color: primary),
+                              ),
                             )
                           else
                             ElevatedButton(
@@ -326,45 +373,55 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
 
                       Widget avatar = fotoUrl != null && fotoUrl.isNotEmpty
                           ? GestureDetector(
-                        onLongPress: () => _mostrarFotoAmpliada(fotoUrl, nome),
-                        child: CachedNetworkImage(
-                          imageUrl: fotoUrl,
-                          imageBuilder: (context, imageProvider) => CircleAvatar(
-                            backgroundImage: imageProvider,
-                            radius: 24,
-                          ),
-                          placeholder: (_, __) => CircleAvatar(
-                            backgroundColor: corDestaque.withOpacity(0.2),
-                            radius: 24,
-                            child: Text(
-                              nome[0].toUpperCase(),
-                              style: TextStyle(color: corDestaque),
-                            ),
-                          ),
-                          errorWidget: (_, __, ___) => CircleAvatar(
-                            backgroundColor: corDestaque.withOpacity(0.2),
-                            radius: 24,
-                            child: Text(
-                              nome[0].toUpperCase(),
-                              style: TextStyle(color: corDestaque),
-                            ),
-                          ),
-                        ),
-                      )
+                              onLongPress: () =>
+                                  _mostrarFotoAmpliada(fotoUrl, nome),
+                              child: CachedNetworkImage(
+                                imageUrl: fotoUrl,
+                                imageBuilder: (context, imageProvider) =>
+                                    CircleAvatar(
+                                      backgroundImage: imageProvider,
+                                      radius: 24,
+                                    ),
+                                placeholder: (_, __) => CircleAvatar(
+                                  backgroundColor: corDestaque.withOpacity(0.2),
+                                  radius: 24,
+                                  child: Text(
+                                    nome[0].toUpperCase(),
+                                    style: TextStyle(color: corDestaque),
+                                  ),
+                                ),
+                                errorWidget: (_, __, ___) => CircleAvatar(
+                                  backgroundColor: corDestaque.withOpacity(0.2),
+                                  radius: 24,
+                                  child: Text(
+                                    nome[0].toUpperCase(),
+                                    style: TextStyle(color: corDestaque),
+                                  ),
+                                ),
+                              ),
+                            )
                           : CircleAvatar(
-                        backgroundColor: corDestaque.withOpacity(0.2),
-                        radius: 24,
-                        child: Text(
-                          nome[0].toUpperCase(),
-                          style: TextStyle(color: corDestaque),
-                        ),
-                      );
+                              backgroundColor: corDestaque.withOpacity(0.2),
+                              radius: 24,
+                              child: Text(
+                                nome[0].toUpperCase(),
+                                style: TextStyle(color: corDestaque),
+                              ),
+                            );
 
                       return ListTile(
                         leading: avatar,
-                        title: Text(nome, style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary)),
+                        title: Text(
+                          nome,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
                         subtitle: Text(
-                          apelido != null && apelido.isNotEmpty ? '$turma • $apelido' : turma,
+                          apelido != null && apelido.isNotEmpty
+                              ? '$turma • $apelido'
+                              : turma,
                           style: TextStyle(color: textSecondary),
                         ),
                         onTap: () {
@@ -386,7 +443,12 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
     );
   }
 
-  Widget _buildTurmaChip(String? turmaId, String label, Color cor, Color corFg) {
+  Widget _buildTurmaChip(
+    String? turmaId,
+    String label,
+    Color cor,
+    Color corFg,
+  ) {
     final bool isSelected = _selectedTurmaId == turmaId;
     return Padding(
       padding: const EdgeInsets.only(right: 8),

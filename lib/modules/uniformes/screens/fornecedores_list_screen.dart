@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
@@ -32,8 +32,8 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -138,10 +138,7 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
       appBar: AppBar(
         title: const Text(
           'FORNECEDORES',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         actions: [
           IconButton(
@@ -162,37 +159,42 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
               decoration: InputDecoration(
                 hintText: 'Buscar fornecedor...',
                 hintStyle: TextStyle(color: context.uai.textMuted),
-                prefixIcon:
-                Icon(Icons.search, color: context.uai.textSecondary),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: context.uai.textSecondary,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                  icon: Icon(Icons.clear,
-                      color: context.uai.textSecondary),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                )
+                        icon: Icon(
+                          Icons.clear,
+                          color: context.uai.textSecondary,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
                     : null,
                 filled: true,
                 fillColor: context.uai.cardAlt,
-                contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
                   borderSide: BorderSide(color: context.uai.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
                   borderSide: BorderSide(color: context.uai.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
-                  borderSide:
-                  BorderSide(color: context.uai.primary, width: 1.4),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                  borderSide: BorderSide(
+                    color: context.uai.primary,
+                    width: 1.4,
+                  ),
                 ),
               ),
               onChanged: (value) => setState(() => _searchQuery = value),
@@ -220,8 +222,7 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
                 if (_searchQuery.isNotEmpty) {
                   fornecedores = fornecedores.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final nome =
-                        data['nome']?.toString().toLowerCase() ?? '';
+                    final nome = data['nome']?.toString().toLowerCase() ?? '';
                     return nome.contains(_searchQuery.toLowerCase());
                   }).toList();
                 }
@@ -247,23 +248,29 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
                     // Card com ListTile usando sombra do tema
                     return Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(
-                              context.uai.cardRadius),
+                            context.uai.cardRadius,
+                          ),
                           boxShadow: context.uai.cardShadow,
                         ),
                         child: Material(
                           color: context.uai.card,
                           borderRadius: BorderRadius.circular(
-                              context.uai.cardRadius),
+                            context.uai.cardRadius,
+                          ),
                           clipBehavior: Clip.antiAlias,
-                          elevation: 0, // sombra já aplicada no Container externo
+                          elevation:
+                              0, // sombra já aplicada no Container externo
                           child: Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(
-                                  context.uai.cardRadius),
+                                context.uai.cardRadius,
+                              ),
                               border: Border.all(color: context.uai.border),
                             ),
                             child: ListTile(
@@ -277,30 +284,35 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
                               title: Text(
                                 nome,
                                 style: TextStyle(
-                                    color: context.uai.textPrimary),
+                                  color: context.uai.textPrimary,
+                                ),
                               ),
                               subtitle: Text(
                                 '$contato${telefone.isNotEmpty ? ' • $telefone' : ''}',
                                 style: TextStyle(
-                                    color: context.uai.textSecondary),
+                                  color: context.uai.textSecondary,
+                                ),
                               ),
                               trailing: PopupMenuButton<String>(
                                 onSelected: (value) {
                                   if (value == 'editar') {
                                     _abrirFormulario(
-                                        fornecedorId: doc.id,
-                                        fornecedorData: data);
+                                      fornecedorId: doc.id,
+                                      fornecedorData: data,
+                                    );
                                   } else if (value == 'excluir') {
                                     _excluirFornecedor(doc.id, nome);
                                   }
                                 },
                                 itemBuilder: (_) => const [
                                   PopupMenuItem(
-                                      value: 'editar',
-                                      child: Text('Editar')),
+                                    value: 'editar',
+                                    child: Text('Editar'),
+                                  ),
                                   PopupMenuItem(
-                                      value: 'excluir',
-                                      child: Text('Excluir')),
+                                    value: 'excluir',
+                                    child: Text('Excluir'),
+                                  ),
                                 ],
                               ),
                             ),

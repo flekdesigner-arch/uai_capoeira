@@ -44,7 +44,9 @@ class FrequenciaService {
         return;
       }
 
-      final contadorRef = _firestore.collection('contador_presencas_alunos').doc(alunoId);
+      final contadorRef = _firestore
+          .collection('contador_presencas_alunos')
+          .doc(alunoId);
       final contadorDoc = await contadorRef.get();
 
       final diaSemanaAbrev = _getDiaSemanaAbrev(dataPresenca);
@@ -81,7 +83,9 @@ class FrequenciaService {
         dadosContador[diaSemanaAbrev] = 1;
 
         await contadorRef.set(dadosContador);
-        debugPrint('✅ Contador criado e incrementado: $alunoId - $diaSemanaAbrev = 1');
+        debugPrint(
+          '✅ Contador criado e incrementado: $alunoId - $diaSemanaAbrev = 1',
+        );
       }
       // ✅ Se documento EXISTE: apenas incrementar o dia atual
       else {
@@ -93,7 +97,6 @@ class FrequenciaService {
         });
         debugPrint('✅ Contador incrementado: $alunoId - $diaSemanaAbrev +1');
       }
-
     } catch (e) {
       debugPrint('❌ ERRO CRÍTICO em atualizarContadorPresenca: $e');
       rethrow;
@@ -130,7 +133,10 @@ class FrequenciaService {
   /// Busca os dados REAIS de frequência na coleção correta
   Future<Map<String, dynamic>?> buscarDadosContador(String alunoId) async {
     try {
-      final doc = await _firestore.collection('contador_presencas_alunos').doc(alunoId).get();
+      final doc = await _firestore
+          .collection('contador_presencas_alunos')
+          .doc(alunoId)
+          .get();
 
       if (doc.exists) {
         return doc.data()!;
@@ -157,8 +163,8 @@ class FrequenciaService {
   }
 
   List<Map<String, dynamic>> calcularDiferencasEntreAulas(
-      List<QueryDocumentSnapshot> docs,
-      ) {
+    List<QueryDocumentSnapshot> docs,
+  ) {
     if (docs.isEmpty) return [];
 
     final resultados = <Map<String, dynamic>>[];
@@ -197,14 +203,22 @@ class FrequenciaService {
 
   String _getDiaSemanaAbrev(DateTime data) {
     switch (data.weekday) {
-      case DateTime.monday: return 'seg';
-      case DateTime.tuesday: return 'ter';
-      case DateTime.wednesday: return 'qua';
-      case DateTime.thursday: return 'qui';
-      case DateTime.friday: return 'sex';
-      case DateTime.saturday: return 'sab';
-      case DateTime.sunday: return 'dom';
-      default: return 'seg';
+      case DateTime.monday:
+        return 'seg';
+      case DateTime.tuesday:
+        return 'ter';
+      case DateTime.wednesday:
+        return 'qua';
+      case DateTime.thursday:
+        return 'qui';
+      case DateTime.friday:
+        return 'sex';
+      case DateTime.saturday:
+        return 'sab';
+      case DateTime.sunday:
+        return 'dom';
+      default:
+        return 'seg';
     }
   }
 

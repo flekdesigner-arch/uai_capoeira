@@ -190,10 +190,7 @@ class ResumoCards extends StatelessWidget {
             ),
             Text(
               subtitulo,
-              style: TextStyle(
-                fontSize: 9,
-                color: context.uai.textSecondary,
-              ),
+              style: TextStyle(fontSize: 9, color: context.uai.textSecondary),
               overflow: TextOverflow.ellipsis,
             ),
           ],

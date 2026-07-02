@@ -26,11 +26,7 @@ class SyncIndicator extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.sync,
-              size: 14,
-              color: Colors.orange.shade800,
-            ),
+            Icon(Icons.sync, size: 14, color: Colors.orange.shade800),
             const SizedBox(width: 4),
             Text(
               'Aguardando',
@@ -56,11 +52,7 @@ class SyncIndicator extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.sync,
-            size: 16,
-            color: Colors.orange.shade800,
-          ),
+          Icon(Icons.sync, size: 16, color: Colors.orange.shade800),
           const SizedBox(width: 8),
           const Text(
             'Aguardando sincronização',
@@ -79,10 +71,7 @@ class SyncIndicator extends StatelessWidget {
 class GlobalSyncCounter extends StatelessWidget {
   final int pendingCount;
 
-  const GlobalSyncCounter({
-    super.key,
-    required this.pendingCount,
-  });
+  const GlobalSyncCounter({super.key, required this.pendingCount});
 
   @override
   Widget build(BuildContext context) {
@@ -104,11 +93,7 @@ class GlobalSyncCounter extends StatelessWidget {
               color: Colors.amber.shade100,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.sync,
-              size: 18,
-              color: Colors.amber.shade800,
-            ),
+            child: Icon(Icons.sync, size: 18, color: Colors.amber.shade800),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -128,10 +113,7 @@ class GlobalSyncCounter extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Os dados serão salvos automaticamente quando a conexão for restaurada.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.amber.shade700,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.amber.shade700),
                 ),
               ],
             ),

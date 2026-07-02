@@ -30,10 +30,7 @@ class CertificadoSlotModel {
 
   bool get isValid => width > 0 && height > 0;
 
-  CertificadoSlotModel scale({
-    required double scaleX,
-    required double scaleY,
-  }) {
+  CertificadoSlotModel scale({required double scaleX, required double scaleY}) {
     return CertificadoSlotModel(
       id: id,
       x: x * scaleX,
@@ -44,13 +41,7 @@ class CertificadoSlotModel {
   }
 
   Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'x': x,
-      'y': y,
-      'width': width,
-      'height': height,
-    };
+    return {'id': id, 'x': x, 'y': y, 'width': width, 'height': height};
   }
 
   factory CertificadoSlotModel.fromMap(Map<String, dynamic> map) {

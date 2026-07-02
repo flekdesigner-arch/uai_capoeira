@@ -1,4 +1,4 @@
-﻿// screens/turmas/dashboard_turmas_page.dart
+// screens/turmas/dashboard_turmas_page.dart
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -48,7 +48,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -63,7 +64,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
   Color _onGradient() => _readableOn(context.uai.primary);
-
 
   bool get _isWideDashboard {
     final width = MediaQuery.sizeOf(context).width;
@@ -103,10 +103,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   int _dashboardColumns(
-      double width, {
-        double minItemWidth = 360,
-        int maxColumns = 4,
-      }) {
+    double width, {
+    double minItemWidth = 360,
+    int maxColumns = 4,
+  }) {
     if (width <= 0) return 1;
     final columns = (width / minItemWidth).floor().clamp(1, maxColumns);
     return columns;
@@ -137,18 +137,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           spacing: spacing,
           runSpacing: runSpacing,
           children: children
-              .map(
-                (child) => SizedBox(
-              width: itemWidth,
-              child: child,
-            ),
-          )
+              .map((child) => SizedBox(width: itemWidth, child: child))
               .toList(),
         );
       },
     );
   }
-
 
   @override
   bool get wantKeepAlive => true;
@@ -321,7 +315,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (value == null) return 0;
     if (value is int) return value.toDouble();
     if (value is double) return value;
-    if (value is String) return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+    if (value is String)
+      return double.tryParse(value.replaceAll(',', '.')) ?? 0;
     return 0;
   }
 
@@ -490,8 +485,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
@@ -512,8 +507,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       changeColor('cor1', _colorFromHexSeguro(coresGraduacao['hex_cor1']));
       changeColor('cor2', _colorFromHexSeguro(coresGraduacao['hex_cor2']));
-      changeColor('corponta1', _colorFromHexSeguro(coresGraduacao['hex_ponta1']));
-      changeColor('corponta2', _colorFromHexSeguro(coresGraduacao['hex_ponta2']));
+      changeColor(
+        'corponta1',
+        _colorFromHexSeguro(coresGraduacao['hex_ponta1']),
+      );
+      changeColor(
+        'corponta2',
+        _colorFromHexSeguro(coresGraduacao['hex_ponta2']),
+      );
 
       return document.toXmlString();
     } catch (e) {
@@ -620,10 +621,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       final avaliacoes = <String, Map<String, dynamic>>{};
       for (final doc in snapshot.docs) {
-        avaliacoes[doc.id] = {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        avaliacoes[doc.id] = {'id': doc.id, ...doc.data()};
       }
 
       _avaliacoesAlunos = avaliacoes;
@@ -736,7 +734,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         _ultimaSyncLogs = agora;
         _alunosDaTurma = processados;
         anosDisponiveis = anosList;
-        if (anoSelecionado == null || !anosDisponiveis.contains(anoSelecionado)) {
+        if (anoSelecionado == null ||
+            !anosDisponiveis.contains(anoSelecionado)) {
           anoSelecionado = anosDisponiveis.isNotEmpty
               ? anosDisponiveis.first
               : DateTime.now().year.toString();
@@ -841,7 +840,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final primeiraQuinta = primeiraQuintaBase.add(
       Duration(days: 4 - primeiraQuintaBase.weekday),
     );
-    final weekNumber = 1 + (quintaDaSemana.difference(primeiraQuinta).inDays ~/ 7);
+    final weekNumber =
+        1 + (quintaDaSemana.difference(primeiraQuinta).inDays ~/ 7);
     return '$weekYear-W${weekNumber.toString().padLeft(2, '0')}';
   }
 
@@ -897,9 +897,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Map<String, dynamic> _normalizarContador(
-      String alunoId,
-      Map<String, dynamic>? data,
-      ) {
+    String alunoId,
+    Map<String, dynamic>? data,
+  ) {
     final now = DateTime.now();
     final contador = _contadorVazio(alunoId);
     if (data == null) return contador;
@@ -935,7 +935,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     contador['mes_key'] = mesAtual;
     contador['semana_key'] = semanaAtual;
     contador['ultima_sync_logs'] = _toDateTime(data['ultima_sync_logs']);
-    contador['total_logs_processados'] = _parseInt(data['total_logs_processados']);
+    contador['total_logs_processados'] = _parseInt(
+      data['total_logs_processados'],
+    );
     contador['cache_versao'] = _parseInt(data['cache_versao']);
     return contador;
   }
@@ -972,10 +974,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _incrementarContadorComLog(
-      Map<String, dynamic> contador,
-      Map<String, dynamic> log,
-      DateTime now,
-      ) {
+    Map<String, dynamic> contador,
+    Map<String, dynamic> log,
+    DateTime now,
+  ) {
     final presente = log['presente'] == true;
     if (!presente) return;
 
@@ -994,7 +996,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final ano = dataLog.year.toString();
     final mes = _mesKey(dataLog);
     final semana = _semanaKey(dataLog);
-    final diaSemana = (log['dia_semana_abrev']?.toString().toLowerCase() ?? '').replaceAll('.', '');
+    final diaSemana = (log['dia_semana_abrev']?.toString().toLowerCase() ?? '')
+        .replaceAll('.', '');
 
     porAno[ano] = (porAno[ano] ?? 0) + 1;
     porMes[mes] = (porMes[mes] ?? 0) + 1;
@@ -1045,16 +1048,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Map<String, Map<String, dynamic>>> _buscarContadoresAlunos(
-      List<String> idsAlunos,
-      ) async {
+    List<String> idsAlunos,
+  ) async {
     final result = <String, Map<String, dynamic>>{};
     if (idsAlunos.isEmpty) return result;
 
     // Uma leitura pequena por aluno. Bem mais leve que varrer todos os logs sempre.
     final futures = idsAlunos.map((alunoId) async {
-      final doc = await _contadorAlunoRef(alunoId).get(
-        GetOptions(source: Source.server),
-      );
+      final doc = await _contadorAlunoRef(
+        alunoId,
+      ).get(GetOptions(source: Source.server));
       result[alunoId] = _normalizarContador(
         alunoId,
         doc.exists ? doc.data() : null,
@@ -1112,7 +1115,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         if (!cargaCompleta) {
           final syncAluno = contadores[alunoId]?['ultima_sync_logs'];
           final dataLog = _toDateTime(data['data_aula']);
-          if (syncAluno is DateTime && dataLog != null && !dataLog.isAfter(syncAluno)) {
+          if (syncAluno is DateTime &&
+              dataLog != null &&
+              !dataLog.isAfter(syncAluno)) {
             continue;
           }
         }
@@ -1126,9 +1131,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<List<Map<String, dynamic>>> _sincronizarContadoresFrequenciaAlunos(
-      List<Map<String, dynamic>> alunos, {
-        bool forcarRecalculoCompleto = false,
-      }) async {
+    List<Map<String, dynamic>> alunos, {
+    bool forcarRecalculoCompleto = false,
+  }) async {
     final now = DateTime.now();
     final idsAlunos = alunos
         .map((a) => a['id']?.toString() ?? '')
@@ -1152,7 +1157,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       // precisa recalcular do ZERO pelos logs reais.
       // Se o contador antigo nasceu errado com 0 ou 1 presença,
       // o modo incremental nunca corrigiria o passado.
-      final precisaCargaCompleta = forcarRecalculoCompleto ||
+      final precisaCargaCompleta =
+          forcarRecalculoCompleto ||
           ultimaSync == null ||
           _parseInt(contador['cache_versao']) < 5;
 
@@ -1169,7 +1175,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     debugPrint(
       '📊 Dashboard ${widget.turmaNome}: ${idsCargaCompleta.length} alunos em carga completa, '
-          '${idsIncremental.length} alunos incremental. Forçado: $forcarRecalculoCompleto',
+      '${idsIncremental.length} alunos incremental. Forçado: $forcarRecalculoCompleto',
     );
 
     final logsCargaCompleta = await _buscarLogsParaContadores(
@@ -1244,7 +1250,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       if (f is Map) {
         f.forEach((k, v) {
           final key = k.toString();
-          if (key.length == 4 && int.tryParse(key) != null && _parseInt(v) > 0) {
+          if (key.length == 4 &&
+              int.tryParse(key) != null &&
+              _parseInt(v) > 0) {
             anosSet.add(key);
           }
         });
@@ -1264,7 +1272,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         .map((doc) => {'id': doc.id, ...doc.data()})
         .toList();
 
-    final dados = await _sincronizarContadoresFrequenciaAlunos(alunos, forcarRecalculoCompleto: true);
+    final dados = await _sincronizarContadoresFrequenciaAlunos(
+      alunos,
+      forcarRecalculoCompleto: true,
+    );
     final anosList = _extrairAnosDisponiveis(dados);
     final agora = DateTime.now();
 
@@ -1293,7 +1304,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return avaliacao?['conceito']?.toString() ?? 'Sem avaliação';
   }
 
-  double _calcularScoreFrequencia(Map<String, dynamic> aluno, int maiorFrequencia) {
+  double _calcularScoreFrequencia(
+    Map<String, dynamic> aluno,
+    int maiorFrequencia,
+  ) {
     if (maiorFrequencia <= 0) return 0;
     final freq = _getFrequenciaPorFiltro(aluno);
     return ((freq / maiorFrequencia) * 10).clamp(0.0, 10.0);
@@ -1327,36 +1341,43 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   void _processarTodosDados() {
     final now = DateTime.now();
     _alunosOrdenadosPorFrequencia =
-    List<Map<String, dynamic>>.from(_alunosDaTurma)..sort(
+        List<Map<String, dynamic>>.from(_alunosDaTurma)..sort(
           (a, b) =>
-          _getFrequenciaPorFiltro(b).compareTo(_getFrequenciaPorFiltro(a)),
-    );
+              _getFrequenciaPorFiltro(b).compareTo(_getFrequenciaPorFiltro(a)),
+        );
     _alunosFrequentes = _alunosOrdenadosPorFrequencia.take(5).toList();
 
     final maiorFrequencia = _alunosDaTurma.isEmpty
         ? 0
         : _alunosDaTurma
-        .map((a) => _getFrequenciaPorFiltro(a))
-        .fold<int>(0, (maior, valor) => valor > maior ? valor : maior);
+              .map((a) => _getFrequenciaPorFiltro(a))
+              .fold<int>(0, (maior, valor) => valor > maior ? valor : maior);
 
-    _alunosDestaque = _alunosDaTurma.map((aluno) {
-      final notaAvaliacao = _getNotaAvaliacaoAluno(aluno);
-      final scoreFrequencia = _calcularScoreFrequencia(aluno, maiorFrequencia);
-      final notaDestaque = _calcularNotaDestaque(
-        notaAvaliacao: notaAvaliacao,
-        scoreFrequencia: scoreFrequencia,
-      );
+    _alunosDestaque =
+        _alunosDaTurma.map((aluno) {
+          final notaAvaliacao = _getNotaAvaliacaoAluno(aluno);
+          final scoreFrequencia = _calcularScoreFrequencia(
+            aluno,
+            maiorFrequencia,
+          );
+          final notaDestaque = _calcularNotaDestaque(
+            notaAvaliacao: notaAvaliacao,
+            scoreFrequencia: scoreFrequencia,
+          );
 
-      return {
-        ...aluno,
-        'nota_avaliacao': notaAvaliacao,
-        'score_frequencia': scoreFrequencia,
-        'nota_destaque': notaDestaque,
-        'conceito_destaque': _conceitoDestaque(notaDestaque),
-        'conceito_avaliacao': _getConceitoAvaliacaoAluno(aluno),
-      };
-    }).toList()
-      ..sort((a, b) => _parseDouble(b['nota_destaque']).compareTo(_parseDouble(a['nota_destaque'])));
+          return {
+            ...aluno,
+            'nota_avaliacao': notaAvaliacao,
+            'score_frequencia': scoreFrequencia,
+            'nota_destaque': notaDestaque,
+            'conceito_destaque': _conceitoDestaque(notaDestaque),
+            'conceito_avaliacao': _getConceitoAvaliacaoAluno(aluno),
+          };
+        }).toList()..sort(
+          (a, b) => _parseDouble(
+            b['nota_destaque'],
+          ).compareTo(_parseDouble(a['nota_destaque'])),
+        );
 
     final Map<String, int> distGrad = {};
     final Map<String, List<Map<String, dynamic>>> alunosPorGrad = {};
@@ -1398,7 +1419,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       }
     }
     alunosComIdade.sort(
-          (a, b) =>
+      (a, b) =>
           (a['idade_calculada'] ?? 0).compareTo(b['idade_calculada'] ?? 0),
     );
     _alunosOrdenadosPorIdade = alunosComIdade;
@@ -1459,7 +1480,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Color _corTextoContrasteSuave(Color background) {
     final luminance = background.computeLuminance();
-    return luminance > 0.55 ? context.uai.textPrimary : Colors.white.withOpacity(0.92);
+    return luminance > 0.55
+        ? context.uai.textPrimary
+        : Colors.white.withOpacity(0.92);
   }
 
   Color _corTextoChipQuantidade(Color corBase) {
@@ -1504,23 +1527,38 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                color:
+                    Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ),
               ),
             ),
             Text(
               'Dashboard de Desempenho',
               style: TextStyle(
                 fontSize: 11,
-                color: (Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary))
-                    .withOpacity(0.70),
+                color:
+                    (Theme.of(context).appBarTheme.foregroundColor ??
+                            _readableOn(
+                              Theme.of(context).appBarTheme.backgroundColor ??
+                                  context.uai.primary,
+                            ))
+                        .withOpacity(0.70),
               ),
             ),
           ],
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         actions: [
           if (_ultimaAtualizacao != null && !_isAtualizando)
@@ -1547,7 +1585,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         children: [
           // O resumo da turma agora fica dentro da aba Frequência,
           // deixando a barra de abas sempre no topo.
-
           Expanded(
             child: _isLoading
                 ? _buildShimmerLoading()
@@ -1598,12 +1635,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final totalAlunos = _alunosDaTurma.length;
     final soma = _alunosDaTurma.fold<int>(
       0,
-          (sum, a) => sum + _getFrequenciaPorFiltro(a),
+      (sum, a) => sum + _getFrequenciaPorFiltro(a),
     );
     final media = totalAlunos > 0 ? (soma / totalAlunos) : 0.0;
-    final melhor = _alunosFrequentes.isNotEmpty ? _alunosFrequentes.first : null;
+    final melhor = _alunosFrequentes.isNotEmpty
+        ? _alunosFrequentes.first
+        : null;
     final melhorValor = melhor != null ? _getFrequenciaPorFiltro(melhor) : 0;
-    final filtroLabel = filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
+    final filtroLabel =
+        filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
         ? anoSelecionado!
         : filtroTemporalFrequencia;
 
@@ -1641,7 +1681,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     color: context.uai.card.withOpacity(0.14),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(Icons.dashboard_customize_rounded, color: _onGradient(), size: 24),
+                  child: Icon(
+                    Icons.dashboard_customize_rounded,
+                    color: _onGradient(),
+                    size: 24,
+                  ),
                 ),
                 SizedBox(width: 12),
                 Expanded(
@@ -1677,9 +1721,23 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: _onGradient())),
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _onGradient(),
+                          ),
+                        ),
                         SizedBox(width: 6),
-                        Text('Sync', style: TextStyle(color: _onGradient(), fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text(
+                          'Sync',
+                          style: TextStyle(
+                            color: _onGradient(),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1688,11 +1746,32 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _metricHeader(Icons.people_alt_rounded, '$totalAlunos', 'Alunos', Colors.white)),
+                Expanded(
+                  child: _metricHeader(
+                    Icons.people_alt_rounded,
+                    '$totalAlunos',
+                    'Alunos',
+                    Colors.white,
+                  ),
+                ),
                 SizedBox(width: 8),
-                Expanded(child: _metricHeader(Icons.trending_up_rounded, media.toStringAsFixed(1), 'Média', context.uai.warning)),
+                Expanded(
+                  child: _metricHeader(
+                    Icons.trending_up_rounded,
+                    media.toStringAsFixed(1),
+                    'Média',
+                    context.uai.warning,
+                  ),
+                ),
                 SizedBox(width: 8),
-                Expanded(child: _metricHeader(Icons.emoji_events_rounded, melhor?['nome']?.toString().split(' ').first ?? '-', '$melhorValor pres.', context.uai.warning)),
+                Expanded(
+                  child: _metricHeader(
+                    Icons.emoji_events_rounded,
+                    melhor?['nome']?.toString().split(' ').first ?? '-',
+                    '$melhorValor pres.',
+                    context.uai.warning,
+                  ),
+                ),
               ],
             ),
             SizedBox(height: 14),
@@ -1736,7 +1815,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(color: _onGradient().withOpacity(0.76), fontSize: 10),
+            style: TextStyle(
+              color: _onGradient().withOpacity(0.76),
+              fontSize: 10,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1825,9 +1907,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         Container(
           decoration: BoxDecoration(
             color: context.uai.surface,
-            border: Border(
-              bottom: BorderSide(color: context.uai.border),
-            ),
+            border: Border(bottom: BorderSide(color: context.uai.border)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
@@ -1845,7 +1925,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             child: Row(
               children: [
                 SizedBox(width: 12),
-                _filtroChip('Aluno Destaque', Icons.emoji_events_rounded, context.uai.warning),
+                _filtroChip(
+                  'Aluno Destaque',
+                  Icons.emoji_events_rounded,
+                  context.uai.warning,
+                ),
                 _filtroChip('Frequência', Icons.trending_up, context.uai.info),
                 _filtroChip(
                   'Graduação',
@@ -1885,13 +1969,21 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         duration: Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         child: ChoiceChip(
-          avatar: Icon(icon, size: 16, color: ativo ? _readableOn(context.uai.info) : _ensureVisible(cor, context.uai.card)),
+          avatar: Icon(
+            icon,
+            size: 16,
+            color: ativo
+                ? _readableOn(context.uai.info)
+                : _ensureVisible(cor, context.uai.card),
+          ),
           label: Text(
             titulo,
             style: TextStyle(
               fontSize: ativo ? 12.5 : 12,
               fontWeight: ativo ? FontWeight.w900 : FontWeight.w700,
-              color: ativo ? _readableOn(context.uai.info) : context.uai.textSecondary,
+              color: ativo
+                  ? _readableOn(context.uai.info)
+                  : context.uai.textSecondary,
             ),
           ),
           selected: ativo,
@@ -2023,9 +2115,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     ),
   );
 
-
-
-
   String _periodoAtualDestaqueLabel() {
     switch (filtroTemporalFrequencia) {
       case 'Semana':
@@ -2043,7 +2132,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   String _nomeCurtoAlunoDestaque(Map<String, dynamic> aluno) {
     final nome = (aluno['nome']?.toString() ?? 'Aluno').trim();
     if (nome.isEmpty) return 'Aluno';
-    final partes = nome.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final partes = nome
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (partes.length == 1) return partes.first;
     if (partes.length == 2) return '${partes.first} ${partes.last}';
     return '${partes.first} ${partes[1]}';
@@ -2052,9 +2144,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   String _iniciaisAlunoDestaque(Map<String, dynamic> aluno) {
     final nome = (aluno['nome']?.toString() ?? 'Aluno').trim();
     if (nome.isEmpty) return 'A';
-    final partes = nome.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final partes = nome
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (partes.length == 1) return partes.first.substring(0, 1).toUpperCase();
-    return '${partes.first.substring(0, 1)}${partes.last.substring(0, 1)}'.toUpperCase();
+    return '${partes.first.substring(0, 1)}${partes.last.substring(0, 1)}'
+        .toUpperCase();
   }
 
   Future<ui.Image?> _carregarLogoRanking() async {
@@ -2071,17 +2167,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Size _drawCanvasText(
-      Canvas canvas,
-      String text, {
-        required double x,
-        required double y,
-        required double maxWidth,
-        Color color = Colors.black,
-        double fontSize = 22,
-        FontWeight fontWeight = FontWeight.w600,
-        TextAlign textAlign = TextAlign.left,
-        int? maxLines,
-      }) {
+    Canvas canvas,
+    String text, {
+    required double x,
+    required double y,
+    required double maxWidth,
+    Color color = Colors.black,
+    double fontSize = 22,
+    FontWeight fontWeight = FontWeight.w600,
+    TextAlign textAlign = TextAlign.left,
+    int? maxLines,
+  }) {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -2103,15 +2199,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _drawImageContain(
-      Canvas canvas,
-      ui.Image image,
-      Rect dst, {
-        double borderRadius = 0,
-      }) {
+    Canvas canvas,
+    ui.Image image,
+    Rect dst, {
+    double borderRadius = 0,
+  }) {
     final srcSize = Size(image.width.toDouble(), image.height.toDouble());
     final dstSize = dst.size;
 
-    final scale = math.min(dstSize.width / srcSize.width, dstSize.height / srcSize.height);
+    final scale = math.min(
+      dstSize.width / srcSize.width,
+      dstSize.height / srcSize.height,
+    );
     final fittedWidth = srcSize.width * scale;
     final fittedHeight = srcSize.height * scale;
 
@@ -2124,7 +2223,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     if (borderRadius > 0) {
       canvas.save();
-      canvas.clipRRect(RRect.fromRectAndRadius(dst, Radius.circular(borderRadius)));
+      canvas.clipRRect(
+        RRect.fromRectAndRadius(dst, Radius.circular(borderRadius)),
+      );
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
@@ -2143,15 +2244,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _drawImageCover(
-      Canvas canvas,
-      ui.Image image,
-      Rect dst, {
-        double borderRadius = 0,
-      }) {
+    Canvas canvas,
+    ui.Image image,
+    Rect dst, {
+    double borderRadius = 0,
+  }) {
     final srcSize = Size(image.width.toDouble(), image.height.toDouble());
     final dstSize = dst.size;
 
-    final scale = math.max(dstSize.width / srcSize.width, dstSize.height / srcSize.height);
+    final scale = math.max(
+      dstSize.width / srcSize.width,
+      dstSize.height / srcSize.height,
+    );
     final cropWidth = dstSize.width / scale;
     final cropHeight = dstSize.height / scale;
 
@@ -2164,7 +2268,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     canvas.save();
     if (borderRadius > 0) {
-      canvas.clipRRect(RRect.fromRectAndRadius(dst, Radius.circular(borderRadius)));
+      canvas.clipRRect(
+        RRect.fromRectAndRadius(dst, Radius.circular(borderRadius)),
+      );
     } else {
       canvas.clipRect(dst);
     }
@@ -2179,7 +2285,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<ui.Image?> _carregarFotoAlunoRanking(String? url) async {
-    if (url == null || url.trim().isEmpty || !url.startsWith('http')) return null;
+    if (url == null || url.trim().isEmpty || !url.startsWith('http'))
+      return null;
 
     HttpClient? client;
     try {
@@ -2211,13 +2318,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Map<String, ui.Image?>> _precarregarFotosRanking(
-      List<Map<String, dynamic>> alunos,
-      ) async {
+    List<Map<String, dynamic>> alunos,
+  ) async {
     final result = <String, ui.Image?>{};
 
     for (final aluno in alunos) {
-      final id = aluno['id']?.toString() ?? aluno['nome']?.toString() ?? UniqueKey().toString();
-      final url = aluno['foto_perfil_aluno']?.toString() ??
+      final id =
+          aluno['id']?.toString() ??
+          aluno['nome']?.toString() ??
+          UniqueKey().toString();
+      final url =
+          aluno['foto_perfil_aluno']?.toString() ??
           aluno['aluno_foto']?.toString() ??
           aluno['foto_url']?.toString();
 
@@ -2228,20 +2339,24 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _drawAvatarRanking(
-      Canvas canvas,
-      Map<String, dynamic> aluno, {
-        required Offset center,
-        required double radius,
-        required Color backgroundColor,
-        required Color textColor,
-        required Map<String, ui.Image?> fotos,
-        double borderWidth = 5,
-        Color borderColor = Colors.white,
-      }) {
+    Canvas canvas,
+    Map<String, dynamic> aluno, {
+    required Offset center,
+    required double radius,
+    required Color backgroundColor,
+    required Color textColor,
+    required Map<String, ui.Image?> fotos,
+    double borderWidth = 5,
+    Color borderColor = Colors.white,
+  }) {
     final id = aluno['id']?.toString() ?? aluno['nome']?.toString() ?? '';
     final foto = fotos[id];
 
-    canvas.drawCircle(center, radius + borderWidth, Paint()..color = borderColor);
+    canvas.drawCircle(
+      center,
+      radius + borderWidth,
+      Paint()..color = borderColor,
+    );
     canvas.drawCircle(center, radius, Paint()..color = backgroundColor);
 
     if (foto != null) {
@@ -2302,10 +2417,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  String _canvasTextoTiposAula(
-      Map<String, int> tipos, {
-        int maxTipos = 6,
-      }) {
+  String _canvasTextoTiposAula(Map<String, int> tipos, {int maxTipos = 6}) {
     if (tipos.isEmpty) return 'Nenhuma aula encontrada no período';
 
     final ordenados = tipos.entries.toList()
@@ -2316,7 +2428,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         .map((e) => '${e.key}: ${e.value}')
         .toList();
 
-    final restantes = ordenados.skip(maxTipos).fold<int>(0, (soma, e) => soma + e.value);
+    final restantes = ordenados
+        .skip(maxTipos)
+        .fold<int>(0, (soma, e) => soma + e.value);
     if (restantes > 0) {
       principais.add('Outros: $restantes');
     }
@@ -2329,17 +2443,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _drawCanvasTiposAulaBox(
-      Canvas canvas,
-      Map<String, int> tipos, {
-        required Rect rect,
-        double fontSize = 12,
-      }) {
+    Canvas canvas,
+    Map<String, int> tipos, {
+    required Rect rect,
+    double fontSize = 12,
+  }) {
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(18));
 
-    canvas.drawRRect(
-      rrect,
-      Paint()..color = Color(0xFFF0FDF4),
-    );
+    canvas.drawRRect(rrect, Paint()..color = Color(0xFFF0FDF4));
 
     canvas.drawRRect(
       rrect,
@@ -2377,13 +2488,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _drawCanvasInfoLinha(
-      Canvas canvas,
-      List<String> itens, {
-        required double x,
-        required double y,
-        required double fontSize,
-        required Color color,
-      }) {
+    Canvas canvas,
+    List<String> itens, {
+    required double x,
+    required double y,
+    required double fontSize,
+    required Color color,
+  }) {
     double currentX = x;
 
     for (var i = 0; i < itens.length; i++) {
@@ -2421,7 +2532,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     final fotos = await _precarregarFotosRanking(top10);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(top10);
-    debugPrint('🖼️ Imagem Top10: tipos por aluno = ${_tiposAulaPdfCache.length}');
+    debugPrint(
+      '🖼️ Imagem Top10: tipos por aluno = ${_tiposAulaPdfCache.length}',
+    );
 
     double width = 1080;
     double height = 1900;
@@ -2431,11 +2544,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     final bgPaint = Paint()
       ..shader = LinearGradient(
-        colors: [
-          Color(0xFFF8FAFC),
-          Color(0xFFFFF7ED),
-          Color(0xFFFDF2F8),
-        ],
+        colors: [Color(0xFFF8FAFC), Color(0xFFFFF7ED), Color(0xFFFDF2F8)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(Rect.fromLTWH(0, 0, width, height));
@@ -2692,7 +2801,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ..color = Color(0xFFF59E0B).withOpacity(0.38),
       );
 
-      canvas.drawCircle(Offset(124, 570), 22, Paint()..color = Color(0xFFF59E0B));
+      canvas.drawCircle(
+        Offset(124, 570),
+        22,
+        Paint()..color = Color(0xFFF59E0B),
+      );
       _drawCanvasText(
         canvas,
         '1',
@@ -2904,10 +3017,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       _drawCanvasInfoLinha(
         canvas,
-        [
-          'Aval. ${aval.toStringAsFixed(1)}',
-          'Pres. $pres',
-        ],
+        ['Aval. ${aval.toStringAsFixed(1)}', 'Pres. $pres'],
         x: left + 28,
         y: top + 222,
         fontSize: 15,
@@ -3072,7 +3182,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final footerLine = Paint()
       ..color = Color(0xFFE5E7EB)
       ..strokeWidth = 1.2;
-    canvas.drawLine(Offset(112, footerY), Offset(width - 112, footerY), footerLine);
+    canvas.drawLine(
+      Offset(112, footerY),
+      Offset(width - 112, footerY),
+      footerLine,
+    );
 
     _drawCanvasText(
       canvas,
@@ -3106,7 +3220,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return bytes!.buffer.asUint8List();
   }
 
-
   void _abrirLoadingGerandoRanking() {
     showDialog<void>(
       context: context,
@@ -3139,10 +3252,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     duration: Duration(milliseconds: 700),
                     curve: Curves.easeInOut,
                     builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: child,
-                      );
+                      return Transform.scale(scale: value, child: child);
                     },
                     child: Container(
                       width: 82,
@@ -3230,7 +3340,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Uint8List?> _baixarBytesRankingUrl(String? url) async {
-    if (url == null || url.trim().isEmpty || !url.startsWith('http')) return null;
+    if (url == null || url.trim().isEmpty || !url.startsWith('http'))
+      return null;
 
     HttpClient? client;
     try {
@@ -3254,13 +3365,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Map<String, pw.MemoryImage?>> _precarregarFotosPdfRanking(
-      List<Map<String, dynamic>> alunos,
-      ) async {
+    List<Map<String, dynamic>> alunos,
+  ) async {
     final result = <String, pw.MemoryImage?>{};
 
     for (final aluno in alunos) {
-      final id = aluno['id']?.toString() ?? aluno['nome']?.toString() ?? UniqueKey().toString();
-      final url = aluno['foto_perfil_aluno']?.toString() ??
+      final id =
+          aluno['id']?.toString() ??
+          aluno['nome']?.toString() ??
+          UniqueKey().toString();
+      final url =
+          aluno['foto_perfil_aluno']?.toString() ??
           aluno['aluno_foto']?.toString() ??
           aluno['foto_url']?.toString();
 
@@ -3272,14 +3387,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   pw.Widget _pdfAvatarAluno(
-      Map<String, dynamic> aluno,
-      Map<String, pw.MemoryImage?> fotos, {
-        required double size,
-        PdfColor? borderColor,
-        PdfColor? backgroundColor,
-        PdfColor? textColor,
-        double borderWidth = 3,
-      }) {
+    Map<String, dynamic> aluno,
+    Map<String, pw.MemoryImage?> fotos, {
+    required double size,
+    PdfColor? borderColor,
+    PdfColor? backgroundColor,
+    PdfColor? textColor,
+    double borderWidth = 3,
+  }) {
     final id = aluno['id']?.toString() ?? aluno['nome']?.toString() ?? '';
     final foto = fotos[id];
 
@@ -3298,31 +3413,28 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         ),
         child: foto != null
             ? pw.ClipOval(
-          child: pw.Image(
-            foto,
-            fit: pw.BoxFit.cover,
-            width: size - (borderWidth * 2),
-            height: size - (borderWidth * 2),
-          ),
-        )
+                child: pw.Image(
+                  foto,
+                  fit: pw.BoxFit.cover,
+                  width: size - (borderWidth * 2),
+                  height: size - (borderWidth * 2),
+                ),
+              )
             : pw.Center(
-          child: pw.Text(
-            _iniciaisAlunoDestaque(aluno),
-            style: pw.TextStyle(
-              color: textColor ?? PdfColor.fromInt(0xFF92400E),
-              fontSize: size * 0.28,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
-        ),
+                child: pw.Text(
+                  _iniciaisAlunoDestaque(aluno),
+                  style: pw.TextStyle(
+                    color: textColor ?? PdfColor.fromInt(0xFF92400E),
+                    fontSize: size * 0.28,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
       ),
     );
   }
 
-  pw.Widget _pdfBolinhaSeparadora({
-    PdfColor? color,
-    double size = 3.4,
-  }) {
+  pw.Widget _pdfBolinhaSeparadora({PdfColor? color, double size = 3.4}) {
     final resolvedColor = color ?? PdfColor.fromInt(0xFF9CA3AF);
 
     return pw.Container(
@@ -3336,7 +3448,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  pw.Widget _pdfInfoLinha(List<String> itens, {
+  pw.Widget _pdfInfoLinha(
+    List<String> itens, {
     double fontSize = 8.5,
     PdfColor? color,
   }) {
@@ -3360,10 +3473,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       );
     }
 
-    return pw.Row(
-      mainAxisSize: pw.MainAxisSize.min,
-      children: children,
-    );
+    return pw.Row(mainAxisSize: pw.MainAxisSize.min, children: children);
   }
 
   pw.Widget _pdfChipCriterio(String texto) {
@@ -3409,7 +3519,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       case 'Mês':
         return _inicioMesAtual(now);
       case 'Ano':
-        final ano = int.tryParse(anoSelecionado ?? now.year.toString()) ?? now.year;
+        final ano =
+            int.tryParse(anoSelecionado ?? now.year.toString()) ?? now.year;
         return DateTime(ano, 1, 1);
       case 'Total':
       default:
@@ -3426,7 +3537,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       case 'Mês':
         return DateTime(now.year, now.month + 1, 1);
       case 'Ano':
-        final ano = int.tryParse(anoSelecionado ?? now.year.toString()) ?? now.year;
+        final ano =
+            int.tryParse(anoSelecionado ?? now.year.toString()) ?? now.year;
         return DateTime(ano + 1, 1, 1);
       case 'Total':
       default:
@@ -3438,7 +3550,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final raw = valor?.toString().trim();
     if (raw == null || raw.isEmpty) return 'Outro';
 
-    final lower = raw.toLowerCase()
+    final lower = raw
+        .toLowerCase()
         .replaceAll('á', 'a')
         .replaceAll('à', 'a')
         .replaceAll('â', 'a')
@@ -3463,7 +3576,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   bool _logPresencaValidaParaPdf(Map<String, dynamic> data) {
-    final presente = data['presente'] ??
+    final presente =
+        data['presente'] ??
         data['is_presente'] ??
         data['presenca'] ??
         data['status_presenca'] ??
@@ -3524,17 +3638,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         data['tipo'];
   }
 
-
-
-
-
-
-
-
-
   Future<Map<String, Map<String, int>>> _buscarTiposAulaPorAlunoRanking(
-      List<Map<String, dynamic>> alunos,
-      ) async {
+    List<Map<String, dynamic>> alunos,
+  ) async {
     final result = <String, Map<String, int>>{};
 
     final ids = alunos
@@ -3562,11 +3668,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       for (final doc in snap.docs) {
         final data = doc.data();
 
-        final alunoId = (data['aluno_id'] ??
-            data['alunoId'] ??
-            data['id_aluno'] ??
-            data['aluno'])
-            ?.toString() ??
+        final alunoId =
+            (data['aluno_id'] ??
+                    data['alunoId'] ??
+                    data['id_aluno'] ??
+                    data['aluno'])
+                ?.toString() ??
             '';
 
         if (alunoId.isEmpty) continue;
@@ -3586,7 +3693,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     debugPrint(
       '📄 PDF Ranking: tipos por aluno = ${result.length}/${ids.length} alunos | '
-          '$docsUsados logs usados de $docsLidos lidos | filtro $filtroTemporalFrequencia',
+      '$docsUsados logs usados de $docsLidos lidos | filtro $filtroTemporalFrequencia',
     );
 
     return result;
@@ -3597,10 +3704,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return _tiposAulaPdfCache[id] ?? <String, int>{};
   }
 
-  String _pdfTextoTiposAula(
-      Map<String, int> tipos, {
-        int maxTipos = 6,
-      }) {
+  String _pdfTextoTiposAula(Map<String, int> tipos, {int maxTipos = 6}) {
     if (tipos.isEmpty) return 'Nenhuma aula encontrada no período';
 
     final ordenados = tipos.entries.toList()
@@ -3611,7 +3715,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         .map((e) => '${e.key}: ${e.value}')
         .toList();
 
-    final restantes = ordenados.skip(maxTipos).fold<int>(0, (soma, e) => soma + e.value);
+    final restantes = ordenados
+        .skip(maxTipos)
+        .fold<int>(0, (soma, e) => soma + e.value);
     if (restantes > 0) {
       principais.add('Outros: $restantes');
     }
@@ -3624,12 +3730,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   pw.Widget _pdfTiposAulaBox(
-      Map<String, int> tipos, {
-        double width = 178,
-        double height = 38,
-        int maxTipos = 6,
-        double fontSize = 6.7,
-      }) {
+    Map<String, int> tipos, {
+    double width = 178,
+    double height = 38,
+    int maxTipos = 6,
+    double fontSize = 6.7,
+  }) {
     final totalTipos = _pdfTotalTiposAula(tipos);
 
     return pw.Container(
@@ -3639,10 +3745,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       decoration: pw.BoxDecoration(
         color: PdfColor.fromInt(0xFFF0FDF4),
         borderRadius: pw.BorderRadius.circular(11),
-        border: pw.Border.all(
-          color: PdfColor.fromInt(0xFF86EFAC),
-          width: 0.85,
-        ),
+        border: pw.Border.all(color: PdfColor.fromInt(0xFF86EFAC), width: 0.85),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -3696,9 +3799,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   pw.Widget _pdfCardTop1(
-      Map<String, dynamic> aluno,
-      Map<String, pw.MemoryImage?> fotos,
-      ) {
+    Map<String, dynamic> aluno,
+    Map<String, pw.MemoryImage?> fotos,
+  ) {
     final nota = _parseDouble(aluno['nota_destaque']);
     final aval = _parseDouble(aluno['nota_avaliacao']);
     final scoreFreq = _parseDouble(aluno['score_frequencia']);
@@ -3795,7 +3898,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             decoration: pw.BoxDecoration(
               color: PdfColors.white,
               borderRadius: pw.BorderRadius.circular(16),
-              border: pw.Border.all(color: PdfColor.fromInt(0xFFFDE68A), width: 1),
+              border: pw.Border.all(
+                color: PdfColor.fromInt(0xFFFDE68A),
+                width: 1,
+              ),
             ),
             child: pw.Column(
               mainAxisAlignment: pw.MainAxisAlignment.center,
@@ -3961,10 +4067,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   pw.Widget _pdfLinhaRanking(
-      int posicao,
-      Map<String, dynamic> aluno,
-      Map<String, pw.MemoryImage?> fotos,
-      ) {
+    int posicao,
+    Map<String, dynamic> aluno,
+    Map<String, pw.MemoryImage?> fotos,
+  ) {
     final nota = _parseDouble(aluno['nota_destaque']);
     final aval = _parseDouble(aluno['nota_avaliacao']);
     final scoreFreq = _parseDouble(aluno['score_frequencia']);
@@ -4088,8 +4194,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     final fotos = await _precarregarFotosPdfRanking(top10);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(top10);
-    debugPrint('📄 PDF Top10 CARDS MAIORES: top10=${top10.length}, top3=${top3.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}');
-    debugPrint('📄 PDF Top10: top10=${top10.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}');
+    debugPrint(
+      '📄 PDF Top10 CARDS MAIORES: top10=${top10.length}, top3=${top3.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+    );
+    debugPrint(
+      '📄 PDF Top10: top10=${top10.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+    );
 
     Uint8List? logoBytes;
     try {
@@ -4140,7 +4250,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               decoration: pw.BoxDecoration(
                 color: PdfColor.fromInt(0xFFFBFBFB),
                 borderRadius: pw.BorderRadius.circular(22),
-                border: pw.Border.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 1),
+                border: pw.Border.all(
+                  color: PdfColor.fromInt(0xFFE5E7EB),
+                  width: 1,
+                ),
               ),
               padding: pw.EdgeInsets.all(12),
               child: pw.Column(
@@ -4156,20 +4269,29 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         decoration: pw.BoxDecoration(
                           color: PdfColors.white,
                           borderRadius: pw.BorderRadius.circular(14),
-                          border: pw.Border.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 1),
-                        ),
-                        child: logoImage != null
-                            ? pw.Center(child: pw.Image(logoImage, fit: pw.BoxFit.contain, alignment: pw.Alignment.center))
-                            : pw.Center(
-                          child: pw.Text(
-                            'UAI',
-                            style: pw.TextStyle(
-                              color: PdfColor.fromInt(0xFF991B1B),
-                              fontSize: 18,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
+                          border: pw.Border.all(
+                            color: PdfColor.fromInt(0xFFE5E7EB),
+                            width: 1,
                           ),
                         ),
+                        child: logoImage != null
+                            ? pw.Center(
+                                child: pw.Image(
+                                  logoImage,
+                                  fit: pw.BoxFit.contain,
+                                  alignment: pw.Alignment.center,
+                                ),
+                              )
+                            : pw.Center(
+                                child: pw.Text(
+                                  'UAI',
+                                  style: pw.TextStyle(
+                                    color: PdfColor.fromInt(0xFF991B1B),
+                                    fontSize: 18,
+                                    fontWeight: pw.FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                       ),
                       pw.SizedBox(width: 14),
                       pw.Expanded(
@@ -4204,7 +4326,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     children: [
                       pw.Expanded(
                         child: pw.Container(
-                          padding: pw.EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                          padding: pw.EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 6,
+                          ),
                           decoration: pw.BoxDecoration(
                             color: PdfColor.fromInt(0xFFF3F4F6),
                             borderRadius: pw.BorderRadius.circular(14),
@@ -4223,7 +4348,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       pw.SizedBox(width: 8),
                       pw.Container(
                         width: 104,
-                        padding: pw.EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                        padding: pw.EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 6,
+                        ),
                         decoration: pw.BoxDecoration(
                           color: PdfColor.fromInt(0xFFFFF7ED),
                           borderRadius: pw.BorderRadius.circular(14),
@@ -4247,7 +4375,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     decoration: pw.BoxDecoration(
                       color: PdfColor.fromInt(0xFFF9FAFB),
                       borderRadius: pw.BorderRadius.circular(16),
-                      border: pw.Border.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.8),
+                      border: pw.Border.all(
+                        color: PdfColor.fromInt(0xFFE5E7EB),
+                        width: 0.8,
+                      ),
                     ),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -4301,7 +4432,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                             accent: PdfColor.fromInt(0xFF1D4ED8),
                           ),
                         ),
-                      if (top3.length > 1 && top3.length > 2) pw.SizedBox(width: 8),
+                      if (top3.length > 1 && top3.length > 2)
+                        pw.SizedBox(width: 8),
                       if (top3.length > 2)
                         pw.Expanded(
                           child: _pdfCardTopLateral(
@@ -4335,7 +4467,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     padding: pw.EdgeInsets.only(top: 5),
                     decoration: pw.BoxDecoration(
                       border: pw.Border(
-                        top: pw.BorderSide(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.8),
+                        top: pw.BorderSide(
+                          color: PdfColor.fromInt(0xFFE5E7EB),
+                          width: 0.8,
+                        ),
                       ),
                     ),
                     child: pw.Column(
@@ -4405,7 +4540,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       await Printing.sharePdf(
         bytes: pdfBytes,
-        filename: 'ranking_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        filename:
+            'ranking_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
     } catch (e) {
       debugPrint('❌ Erro ao gerar PDF do ranking: $e');
@@ -4437,8 +4573,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Future<Uint8List> _gerarPdfRankingCompletoAlunoDestaque() async {
     final alunosPdf = List<Map<String, dynamic>>.from(_alunosDestaque);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(alunosPdf);
-    debugPrint('📄 PDF Completo LEGÍVEL: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}');
-    debugPrint('📄 PDF Completo: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}');
+    debugPrint(
+      '📄 PDF Completo LEGÍVEL: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+    );
+    debugPrint(
+      '📄 PDF Completo: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+    );
 
     Uint8List? logoBytes;
     try {
@@ -4477,16 +4617,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: pw.EdgeInsets.all(18),
-        theme: pw.ThemeData.withFont(
-          base: pdfFontRegular,
-          bold: pdfFontBold,
-        ),
+        theme: pw.ThemeData.withFont(base: pdfFontRegular, bold: pdfFontBold),
         header: (context) {
           return pw.Container(
             padding: pw.EdgeInsets.only(bottom: 8),
             decoration: pw.BoxDecoration(
               border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.8),
+                bottom: pw.BorderSide(
+                  color: PdfColor.fromInt(0xFFE5E7EB),
+                  width: 0.8,
+                ),
               ),
             ),
             child: pw.Row(
@@ -4498,7 +4638,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   decoration: pw.BoxDecoration(
                     color: PdfColors.white,
                     borderRadius: pw.BorderRadius.circular(12),
-                    border: pw.Border.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 1),
+                    border: pw.Border.all(
+                      color: PdfColor.fromInt(0xFFE5E7EB),
+                      width: 1,
+                    ),
                   ),
                   child: logoImage != null
                       ? pw.Image(logoImage, fit: pw.BoxFit.contain)
@@ -4538,7 +4681,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             padding: pw.EdgeInsets.only(top: 6),
             decoration: pw.BoxDecoration(
               border: pw.Border(
-                top: pw.BorderSide(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.8),
+                top: pw.BorderSide(
+                  color: PdfColor.fromInt(0xFFE5E7EB),
+                  width: 0.8,
+                ),
               ),
             ),
             child: pw.Row(
@@ -4570,7 +4716,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               decoration: pw.BoxDecoration(
                 color: PdfColor.fromInt(0xFFF9FAFB),
                 borderRadius: pw.BorderRadius.circular(14),
-                border: pw.Border.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.8),
+                border: pw.Border.all(
+                  color: PdfColor.fromInt(0xFFE5E7EB),
+                  width: 0.8,
+                ),
               ),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -4584,9 +4733,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     ),
                   ),
                   pw.SizedBox(height: 4),
-                  pw.Wrap(
-                    children: criterios.map(_pdfChipCriterio).toList(),
-                  ),
+                  pw.Wrap(children: criterios.map(_pdfChipCriterio).toList()),
                 ],
               ),
             ),
@@ -4601,7 +4748,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             ),
             pw.SizedBox(height: 6),
             ...alunosPdf.asMap().entries.map((entry) {
-              return _pdfLinhaRanking(entry.key + 1, entry.value, <String, pw.MemoryImage?>{});
+              return _pdfLinhaRanking(
+                entry.key + 1,
+                entry.value,
+                <String, pw.MemoryImage?>{},
+              );
             }),
           ];
         },
@@ -4653,7 +4804,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       await Printing.sharePdf(
         bytes: pdfBytes,
-        filename: 'ranking_completo_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        filename:
+            'ranking_completo_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
     } catch (e) {
       debugPrint('❌ Erro ao gerar PDF completo do ranking: $e');
@@ -4768,13 +4920,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   );
 
   Widget _buildAlunoDestaqueConteudo() {
-    final avaliados = _alunosDestaque.where((a) => _parseDouble(a['nota_avaliacao']) > 0).length;
+    final avaliados = _alunosDestaque
+        .where((a) => _parseDouble(a['nota_avaliacao']) > 0)
+        .length;
     final mediaDestaque = _alunosDestaque.isEmpty
         ? 0.0
         : _alunosDestaque
-        .map((a) => _parseDouble(a['nota_destaque']))
-        .fold<double>(0, (s, n) => s + n) /
-        _alunosDestaque.length;
+                  .map((a) => _parseDouble(a['nota_destaque']))
+                  .fold<double>(0, (s, n) => s + n) /
+              _alunosDestaque.length;
 
     if (_alunosDestaque.isEmpty) {
       return _emptyChart('Sem alunos para calcular destaque');
@@ -4806,16 +4960,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     height: 42,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          context.uai.warning,
-                          context.uai.warning,
-                        ],
+                        colors: [context.uai.warning, context.uai.warning],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(15),
                     ),
-                    child: Icon(Icons.emoji_events_rounded, color: _readableOn(context.uai.warning), size: 24),
+                    child: Icon(
+                      Icons.emoji_events_rounded,
+                      color: _readableOn(context.uai.warning),
+                      size: 24,
+                    ),
                   ),
                   SizedBox(width: 11),
                   Expanded(
@@ -4847,7 +5002,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     decoration: BoxDecoration(
                       color: context.uai.warning.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: context.uai.warning.withOpacity(0.16)),
+                      border: Border.all(
+                        color: context.uai.warning.withOpacity(0.16),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -4908,87 +5065,123 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isGerandoImagemDestaque ? null : _compartilharRankingAlunoDestaque,
+                      onPressed: _isGerandoImagemDestaque
+                          ? null
+                          : _compartilharRankingAlunoDestaque,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: context.uai.warning,
-                        side: BorderSide(color: context.uai.warning.withOpacity(0.16)),
-                        backgroundColor: context.uai.warning.withOpacity(0.10).withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+                        side: BorderSide(
+                          color: context.uai.warning.withOpacity(0.16),
+                        ),
+                        backgroundColor: context.uai.warning
+                            .withOpacity(0.10)
+                            .withOpacity(0.45),
+                        padding: EdgeInsets.symmetric(
+                          vertical: 11,
+                          horizontal: 8,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       icon: _isGerandoImagemDestaque
                           ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: context.uai.warning,
-                        ),
-                      )
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: context.uai.warning,
+                              ),
+                            )
                           : Icon(Icons.image_rounded, size: 18),
                       label: Text(
                         _isGerandoImagemDestaque ? 'Imagem...' : 'Imagem',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
                   SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isGerandoPdfDestaque ? null : _compartilharPdfRankingAlunoDestaque,
+                      onPressed: _isGerandoPdfDestaque
+                          ? null
+                          : _compartilharPdfRankingAlunoDestaque,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: context.uai.primary,
-                        side: BorderSide(color: context.uai.error.withOpacity(0.16)),
-                        backgroundColor: context.uai.error.withOpacity(0.10).withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+                        side: BorderSide(
+                          color: context.uai.error.withOpacity(0.16),
+                        ),
+                        backgroundColor: context.uai.error
+                            .withOpacity(0.10)
+                            .withOpacity(0.45),
+                        padding: EdgeInsets.symmetric(
+                          vertical: 11,
+                          horizontal: 8,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       icon: _isGerandoPdfDestaque
                           ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: context.uai.primary,
-                        ),
-                      )
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: context.uai.primary,
+                              ),
+                            )
                           : Icon(Icons.picture_as_pdf_rounded, size: 18),
                       label: Text(
                         _isGerandoPdfDestaque ? 'PDF...' : 'PDF',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
                   SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isGerandoPdfCompletoDestaque ? null : _compartilharPdfCompletoRankingAlunoDestaque,
+                      onPressed: _isGerandoPdfCompletoDestaque
+                          ? null
+                          : _compartilharPdfCompletoRankingAlunoDestaque,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: context.uai.associacao,
-                        side: BorderSide(color: context.uai.associacao.withOpacity(0.16)),
-                        backgroundColor: context.uai.associacao.withOpacity(0.10).withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(vertical: 11, horizontal: 6),
+                        side: BorderSide(
+                          color: context.uai.associacao.withOpacity(0.16),
+                        ),
+                        backgroundColor: context.uai.associacao
+                            .withOpacity(0.10)
+                            .withOpacity(0.45),
+                        padding: EdgeInsets.symmetric(
+                          vertical: 11,
+                          horizontal: 6,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       icon: _isGerandoPdfCompletoDestaque
                           ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: context.uai.associacao,
-                        ),
-                      )
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: context.uai.associacao,
+                              ),
+                            )
                           : Icon(Icons.groups_rounded, size: 18),
                       label: Text(
                         _isGerandoPdfCompletoDestaque ? 'Tudo...' : 'Todos',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -5019,7 +5212,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _destaqueInfoSlim(String valor, String label, IconData icon, Color color) {
+  Widget _destaqueInfoSlim(
+    String valor,
+    String label,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
@@ -5077,13 +5275,20 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           SizedBox(height: 4),
           Text(
             valor,
-            style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.bold, fontSize: 17),
+            style: TextStyle(
+              color: context.uai.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 17,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           Text(
             label,
-            style: TextStyle(color: context.uai.card.withOpacity(0.78), fontSize: 10),
+            style: TextStyle(
+              color: context.uai.card.withOpacity(0.78),
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -5097,8 +5302,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final notaAvaliacao = _parseDouble(aluno['nota_avaliacao']);
     final scoreFrequencia = _parseDouble(aluno['score_frequencia']);
     final notaDestaque = _parseDouble(aluno['nota_destaque']);
-    final conceito = aluno['conceito_destaque']?.toString() ?? _conceitoDestaque(notaDestaque);
-    final cor = _ensureVisible(_corNotaDestaque(notaDestaque), context.uai.card);
+    final conceito =
+        aluno['conceito_destaque']?.toString() ??
+        _conceitoDestaque(notaDestaque);
+    final cor = _ensureVisible(
+      _corNotaDestaque(notaDestaque),
+      context.uai.card,
+    );
 
     return Container(
       margin: EdgeInsets.only(bottom: 10),
@@ -5122,17 +5332,23 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: posicao <= 3 ? context.uai.warning.withOpacity(0.16) : context.uai.cardAlt,
+                color: posicao <= 3
+                    ? context.uai.warning.withOpacity(0.16)
+                    : context.uai.cardAlt,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: posicao <= 3 ? context.uai.warning : context.uai.border,
+                  color: posicao <= 3
+                      ? context.uai.warning
+                      : context.uai.border,
                 ),
               ),
               child: Center(
                 child: Text(
                   '$posicao',
                   style: TextStyle(
-                    color: posicao <= 3 ? context.uai.warning : context.uai.textSecondary,
+                    color: posicao <= 3
+                        ? context.uai.warning
+                        : context.uai.textSecondary,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -5148,7 +5364,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 children: [
                   Text(
                     nome,
-                    style: TextStyle(color: _onCard(), fontWeight: FontWeight.bold, fontSize: 14.5),
+                    style: TextStyle(
+                      color: _onCard(),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14.5,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -5157,15 +5377,27 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     spacing: 6,
                     runSpacing: 5,
                     children: [
-                      _destaqueChip('Aval.', notaAvaliacao.toStringAsFixed(1), context.uai.associacao),
-                      _destaqueChip('Freq.', scoreFrequencia.toStringAsFixed(1), context.uai.info),
+                      _destaqueChip(
+                        'Aval.',
+                        notaAvaliacao.toStringAsFixed(1),
+                        context.uai.associacao,
+                      ),
+                      _destaqueChip(
+                        'Freq.',
+                        scoreFrequencia.toStringAsFixed(1),
+                        context.uai.info,
+                      ),
                       _destaqueChip('Pres.', '$freq', context.uai.success),
                     ],
                   ),
                   SizedBox(height: 6),
                   Text(
                     conceito,
-                    style: TextStyle(color: cor, fontSize: 11, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: cor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -5185,11 +5417,19 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 children: [
                   Text(
                     notaDestaque.toStringAsFixed(1),
-                    style: TextStyle(color: cor, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      color: cor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   Text(
                     'nota',
-                    style: TextStyle(color: cor.withOpacity(0.82), fontSize: 9, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: cor.withOpacity(0.82),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -5209,19 +5449,19 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         dimension: 48,
         child: url.startsWith('http')
             ? Image.network(
-          url,
-          fit: BoxFit.cover,
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          filterQuality: FilterQuality.medium,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return _avatarDestaqueFallbackBox(letra);
-          },
-        )
+                url,
+                fit: BoxFit.cover,
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                filterQuality: FilterQuality.medium,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return _avatarDestaqueFallbackBox(letra);
+                },
+              )
             : _avatarDestaqueFallbackBox(letra),
       ),
     );
@@ -5243,6 +5483,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       ),
     );
   }
+
   Widget _avatarDestaqueFallback(String letra) {
     return CircleAvatar(
       radius: 24,
@@ -5328,7 +5569,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               Icon(
                 i,
                 size: 14,
-                color: ativo ? _readableOn(context.uai.info) : context.uai.textSecondary,
+                color: ativo
+                    ? _readableOn(context.uai.info)
+                    : context.uai.textSecondary,
               ),
               SizedBox(width: 4),
               Text(
@@ -5336,7 +5579,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: ativo ? _readableOn(context.uai.info) : context.uai.textSecondary,
+                  color: ativo
+                      ? _readableOn(context.uai.info)
+                      : context.uai.textSecondary,
                 ),
               ),
             ],
@@ -5420,10 +5665,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   ),
                 ),
                 Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: context.uai.info.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(12),
@@ -5560,9 +5802,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         return nivelA.compareTo(nivelB);
       });
 
-    final totalAlunos = _distribuicaoGraduacao.values.fold<int>(0, (s, v) => s + v);
-    final totalGraduacoes = ordenadas.where((e) => e.key != 'SEM GRADUAÇÃO').length;
-    final maiorGrupo = ordenadas.isEmpty ? 0 : ordenadas.map((e) => e.value).reduce((a, b) => a > b ? a : b);
+    final totalAlunos = _distribuicaoGraduacao.values.fold<int>(
+      0,
+      (s, v) => s + v,
+    );
+    final totalGraduacoes = ordenadas
+        .where((e) => e.key != 'SEM GRADUAÇÃO')
+        .length;
+    final maiorGrupo = ordenadas.isEmpty
+        ? 0
+        : ordenadas.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final graduacaoDestaque = ordenadas.isEmpty ? '-' : ordenadas.first.key;
 
     return Column(
@@ -5671,7 +5920,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.auto_awesome_rounded, color: context.uai.warning, size: 18),
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      color: context.uai.warning,
+                      size: 18,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -5694,7 +5947,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         SizedBox(height: 14),
         Card(
           elevation: 3,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           child: Padding(
             padding: EdgeInsets.all(16),
             child: Column(
@@ -5702,7 +5957,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               children: [
                 Row(
                   children: [
-                    Icon(Icons.pie_chart_rounded, color: context.uai.associacao, size: 20),
+                    Icon(
+                      Icons.pie_chart_rounded,
+                      color: context.uai.associacao,
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'Distribuição visual',
@@ -5721,12 +5980,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     PieChartData(
                       sections: ordenadas.map((e) {
                         final cache = _graduacoesCache[e.key];
-                        final String hex = cache?['hex_cor1']?.toString() ?? '#CCCCCC';
-                        final percentual = totalAlunos > 0 ? (e.value / totalAlunos) * 100 : 0;
+                        final String hex =
+                            cache?['hex_cor1']?.toString() ?? '#CCCCCC';
+                        final percentual = totalAlunos > 0
+                            ? (e.value / totalAlunos) * 100
+                            : 0;
 
                         return PieChartSectionData(
                           value: e.value.toDouble(),
-                          title: percentual >= 7 ? '${percentual.toStringAsFixed(0)}%' : '',
+                          title: percentual >= 7
+                              ? '${percentual.toStringAsFixed(0)}%'
+                              : '',
                           radius: 72,
                           titleStyle: TextStyle(
                             fontSize: 13,
@@ -5743,7 +6007,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   ),
                 ),
                 SizedBox(height: 16),
-                ...ordenadas.map((e) => _buildGraduacaoMiniLinha(e.key, e.value, totalAlunos)),
+                ...ordenadas.map(
+                  (e) => _buildGraduacaoMiniLinha(e.key, e.value, totalAlunos),
+                ),
               ],
             ),
           ),
@@ -5755,9 +6021,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildGraduacaoCardsResponsive(
-      List<MapEntry<String, int>> ordenadas,
-      int totalAlunos,
-      ) {
+    List<MapEntry<String, int>> ordenadas,
+    int totalAlunos,
+  ) {
     final cards = ordenadas.map((e) {
       return _buildGraduacaoCard(
         nomeGraduacao: e.key,
@@ -5802,7 +6068,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
           Text(
             label,
-            style: TextStyle(color: context.uai.card.withOpacity(0.70), fontSize: 10),
+            style: TextStyle(
+              color: context.uai.card.withOpacity(0.70),
+              fontSize: 10,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -5811,10 +6080,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _buildGraduacaoMiniLinha(String nomeGraduacao, int quantidade, int totalAlunos) {
+  Widget _buildGraduacaoMiniLinha(
+    String nomeGraduacao,
+    int quantidade,
+    int totalAlunos,
+  ) {
     final cache = _graduacoesCache[nomeGraduacao];
     final String hex = cache?['hex_cor1']?.toString() ?? '#CCCCCC';
-    final cor = nomeGraduacao == 'SEM GRADUAÇÃO' ? context.uai.textMuted : _hexToColor(hex);
+    final cor = nomeGraduacao == 'SEM GRADUAÇÃO'
+        ? context.uai.textMuted
+        : _hexToColor(hex);
     final percentual = totalAlunos > 0 ? quantidade / totalAlunos : 0.0;
 
     return Padding(
@@ -5917,7 +6192,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 border: Border.all(color: cor.withOpacity(0.22)),
               ),
               child: isSem
-                  ? Icon(Icons.workspace_premium_outlined, color: context.uai.textMuted)
+                  ? Icon(
+                      Icons.workspace_premium_outlined,
+                      color: context.uai.textMuted,
+                    )
                   : _buildCordaWidget(nomeGraduacao),
             ),
             title: Text(
@@ -5947,7 +6225,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   SizedBox(height: 5),
                   Text(
                     '${(percentual * 100).toStringAsFixed(0)}% da turma',
-                    style: TextStyle(fontSize: 11, color: context.uai.textSecondary),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.uai.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -5957,9 +6238,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               decoration: BoxDecoration(
                 color: _corFundoChipQuantidade(cor),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: _corBordaChipQuantidade(cor),
-                ),
+                border: Border.all(color: _corBordaChipQuantidade(cor)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -5997,7 +6276,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   border: Border.all(color: context.uai.border),
                 ),
                 child: ListTile(
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 2,
+                  ),
                   leading: _buildAlunoAvatar(a),
                   title: Text(
                     nomeAluno,
@@ -6007,7 +6289,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   ),
                   subtitle: Text(
                     _obterNomeGraduacaoAluno(a),
-                    style: TextStyle(fontSize: 10, color: context.uai.textSecondary),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: context.uai.textSecondary,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -6078,19 +6363,19 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         dimension: 40,
         child: foto.startsWith('http')
             ? Image.network(
-          foto,
-          fit: BoxFit.cover,
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          filterQuality: FilterQuality.medium,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => _avatarFallback(letra, 40),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return _avatarFallback(letra, 40);
-          },
-        )
+                foto,
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                filterQuality: FilterQuality.medium,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => _avatarFallback(letra, 40),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _avatarFallback(letra, 40);
+                },
+              )
             : _avatarFallback(letra, 40),
       ),
     );
@@ -6112,6 +6397,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       ),
     );
   }
+
   // ============ IDADE, SEXO, LISTAS ============
   Widget _buildGraficoIdade() {
     if (_alunosOrdenadosPorIdade.isEmpty) {
@@ -6135,10 +6421,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 ),
               ),
               SizedBox(width: 16),
-              Expanded(
-                flex: 6,
-                child: _buildListaIdade(),
-              ),
+              Expanded(flex: 6, child: _buildListaIdade()),
             ],
           );
         }
@@ -6159,7 +6442,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildIdadeDistribuicaoCard() {
     final maxV =
         _distribuicaoIdade.values.reduce((a, b) => a > b ? a : b).toDouble() +
-            1;
+        1;
 
     return Card(
       elevation: 3,
@@ -6216,11 +6499,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         reservedSize: 34,
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
-                          if (idx >= 0 && idx < _distribuicaoIdade.keys.length) {
+                          if (idx >= 0 &&
+                              idx < _distribuicaoIdade.keys.length) {
                             return Padding(
                               padding: EdgeInsets.only(top: 8),
                               child: Text(
-                                _distribuicaoIdade.keys.elementAt(idx).split(' ').first,
+                                _distribuicaoIdade.keys
+                                    .elementAt(idx)
+                                    .split(' ')
+                                    .first,
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: context.uai.textSecondary,
@@ -6406,7 +6693,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     color: context.uai.success.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.sort_rounded, color: context.uai.success, size: 18),
+                  child: Icon(
+                    Icons.sort_rounded,
+                    color: context.uai.success,
+                    size: 18,
+                  ),
                 ),
                 SizedBox(width: 10),
                 Expanded(
@@ -6454,7 +6745,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _buildAlunoIdadeTile(Map<String, dynamic> aluno, int idade, int posicao) {
+  Widget _buildAlunoIdadeTile(
+    Map<String, dynamic> aluno,
+    int idade,
+    int posicao,
+  ) {
     final nome = aluno['nome']?.toString() ?? '?';
     final graduacao = _obterNomeGraduacaoAluno(aluno);
 
@@ -6524,7 +6819,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               decoration: BoxDecoration(
                 color: context.uai.success.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: context.uai.success.withOpacity(0.16)),
+                border: Border.all(
+                  color: context.uai.success.withOpacity(0.16),
+                ),
               ),
               child: Text(
                 '$idade a',
@@ -6564,9 +6861,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 ),
               ),
               SizedBox(width: 16),
-              Expanded(
-                child: _buildListaSexo(filtrados: filtrados),
-              ),
+              Expanded(child: _buildListaSexo(filtrados: filtrados)),
             ],
           );
         }
@@ -6597,7 +6892,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         children: [
           Row(
             children: [
-              Icon(Icons.filter_alt_rounded, color: context.uai.error, size: 18),
+              Icon(
+                Icons.filter_alt_rounded,
+                color: context.uai.error,
+                size: 18,
+              ),
               SizedBox(width: 8),
               Text(
                 'Filtrar por sexo',
@@ -6618,7 +6917,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Icons.people,
                   filtroSexo == null,
                   context.uai.info,
-                      () => setState(() => filtroSexo = null),
+                  () => setState(() => filtroSexo = null),
                 ),
               ),
               SizedBox(width: 8),
@@ -6628,7 +6927,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Icons.male,
                   filtroSexo == 'MASCULINO',
                   context.uai.info,
-                      () => setState(() => filtroSexo = 'MASCULINO'),
+                  () => setState(() => filtroSexo = 'MASCULINO'),
                 ),
               ),
               SizedBox(width: 8),
@@ -6638,7 +6937,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Icons.female,
                   filtroSexo == 'FEMININO',
                   context.uai.error,
-                      () => setState(() => filtroSexo = 'FEMININO'),
+                  () => setState(() => filtroSexo = 'FEMININO'),
                 ),
               ),
             ],
@@ -6649,12 +6948,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _btnSexo(
-      String t,
-      IconData i,
-      bool ativo,
-      Color c,
-      VoidCallback onTap,
-      ) => GestureDetector(
+    String t,
+    IconData i,
+    bool ativo,
+    Color c,
+    VoidCallback onTap,
+  ) => GestureDetector(
     onTap: onTap,
     child: AnimatedContainer(
       duration: Duration(milliseconds: 200),
@@ -6708,7 +7007,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         end: Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(18),
-      boxShadow: [BoxShadow(color: c.withOpacity(0.24), blurRadius: 10, offset: Offset(0, 4))],
+      boxShadow: [
+        BoxShadow(
+          color: c.withOpacity(0.24),
+          blurRadius: 10,
+          offset: Offset(0, 4),
+        ),
+      ],
     ),
     child: Row(
       children: [
@@ -6754,14 +7059,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   );
 
   Widget _buildListaSexo({List<Map<String, dynamic>>? filtrados}) {
-    final alunos = filtrados ?? _alunosDaTurma.where((a) {
-      if (filtroSexo == null) return true;
-      return (a['sexo'] as String?)?.toUpperCase() == filtroSexo;
-    }).toList();
+    final alunos =
+        filtrados ??
+        _alunosDaTurma.where((a) {
+          if (filtroSexo == null) return true;
+          return (a['sexo'] as String?)?.toUpperCase() == filtroSexo;
+        }).toList();
 
     if (alunos.isEmpty) return _emptyChart('Nenhum aluno');
 
-    final totalVisivel = alunos.length > _visibleItems ? _visibleItems : alunos.length;
+    final totalVisivel = alunos.length > _visibleItems
+        ? _visibleItems
+        : alunos.length;
     final cards = List.generate(totalVisivel, (i) {
       final aluno = alunos[i];
       final isM = (aluno['sexo'] as String?)?.toUpperCase() == 'MASCULINO';
@@ -6918,14 +7227,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildRankingAlunoTile(
-      Map<String, dynamic> aluno, {
-        required int posicao,
-        required int valor,
-        required bool destaque,
-      }) {
+    Map<String, dynamic> aluno, {
+    required int posicao,
+    required int valor,
+    required bool destaque,
+  }) {
     final nome = aluno['nome']?.toString() ?? 'Sem nome';
     final graduacao = _obterNomeGraduacaoAluno(aluno);
-    final Color corBase = _ensureVisible(destaque ? context.uai.warning : context.uai.info, context.uai.card);
+    final Color corBase = _ensureVisible(
+      destaque ? context.uai.warning : context.uai.info,
+      context.uai.card,
+    );
     final Color medalColor = posicao == 1
         ? context.uai.warning
         : posicao == 2
@@ -6940,10 +7252,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       child: Container(
         padding: EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: destaque ? Color.alphaBlend(context.uai.warning.withOpacity(0.08), context.uai.cardAlt) : context.uai.cardAlt,
+          color: destaque
+              ? Color.alphaBlend(
+                  context.uai.warning.withOpacity(0.08),
+                  context.uai.cardAlt,
+                )
+              : context.uai.cardAlt,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: destaque ? context.uai.warning.withOpacity(0.16) : context.uai.border,
+            color: destaque
+                ? context.uai.warning.withOpacity(0.16)
+                : context.uai.border,
           ),
         ),
         child: Row(
@@ -7048,7 +7367,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       color: context.uai.warning.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.workspace_premium_rounded, color: context.uai.warning, size: 20),
+                    child: Icon(
+                      Icons.workspace_premium_rounded,
+                      color: context.uai.warning,
+                      size: 20,
+                    ),
                   ),
                   SizedBox(width: 10),
                   Expanded(
@@ -7072,7 +7395,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 itemBuilder: (ctx, i) {
                   final a = _alunosFrequentes[i];
                   final v = _getFrequenciaPorFiltro(a);
-                  return _buildRankingAlunoTile(a, posicao: i + 1, valor: v, destaque: true);
+                  return _buildRankingAlunoTile(
+                    a,
+                    posicao: i + 1,
+                    valor: v,
+                    destaque: true,
+                  );
                 },
               ),
             ],
@@ -7109,7 +7437,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     color: context.uai.info.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.format_list_numbered_rounded, color: context.uai.info, size: 20),
+                  child: Icon(
+                    Icons.format_list_numbered_rounded,
+                    color: context.uai.info,
+                    size: 20,
+                  ),
                 ),
                 SizedBox(width: 10),
                 Expanded(
@@ -7124,7 +7456,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 ),
                 Text(
                   '$totalVisivel/${_alunosOrdenadosPorFrequencia.length}',
-                  style: TextStyle(fontSize: 11, color: _onCardMuted(), fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -7137,7 +7473,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               itemBuilder: (ctx, i) {
                 final a = _alunosOrdenadosPorFrequencia[i];
                 final v = _getFrequenciaPorFiltro(a);
-                return _buildRankingAlunoTile(a, posicao: i + 1, valor: v, destaque: false);
+                return _buildRankingAlunoTile(
+                  a,
+                  posicao: i + 1,
+                  valor: v,
+                  destaque: false,
+                );
               },
             ),
             if (_alunosOrdenadosPorFrequencia.length > _visibleItems)
@@ -7151,8 +7492,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     label: Text('Ver mais alunos'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.uai.info,
-                      side: BorderSide(color: context.uai.info.withOpacity(0.16)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      side: BorderSide(
+                        color: context.uai.info.withOpacity(0.16),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),
@@ -7184,13 +7529,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   String _getTituloLista() =>
       filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
-          ? 'Todos os alunos - $anoSelecionado'
-          : 'Todos os alunos ($filtroTemporalFrequencia)';
+      ? 'Todos os alunos - $anoSelecionado'
+      : 'Todos os alunos ($filtroTemporalFrequencia)';
 
   String _getTituloTop5() =>
       filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
-          ? 'Top 5 - $anoSelecionado'
-          : 'Top 5 ($filtroTemporalFrequencia)';
+      ? 'Top 5 - $anoSelecionado'
+      : 'Top 5 ($filtroTemporalFrequencia)';
 
   Widget _emptyChart(String msg) => Center(
     child: Padding(
@@ -7227,7 +7572,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       padding: EdgeInsets.all(32),
       child: Column(
         children: [
-          Icon(Icons.error_outline, size: 64, color: context.uai.error.withOpacity(0.55)),
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: context.uai.error.withOpacity(0.55),
+          ),
           SizedBox(height: 16),
           Text(_erro!, style: TextStyle(color: context.uai.textSecondary)),
           SizedBox(height: 16),
@@ -7236,8 +7585,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             icon: Icon(Icons.refresh),
             label: Text('Tentar novamente'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-              foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+              backgroundColor:
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+              foregroundColor:
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                  _readableOn(
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                        context.uai.primary,
+                  ),
             ),
           ),
         ],
@@ -7259,8 +7615,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             icon: Icon(Icons.refresh),
             label: Text('Verificar alunos'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-              foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+              backgroundColor:
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+              foregroundColor:
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                  _readableOn(
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                        context.uai.primary,
+                  ),
             ),
           ),
         ],
@@ -7280,7 +7643,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return '${horas}h${minutos > 0 ? '${minutos}m' : ''}';
   }
 }
-
 
 // ============================================
 // 🔥 DETALHE DE FREQUÊNCIA DO ALUNO NO DASHBOARD
@@ -7462,7 +7824,9 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     }
   }
 
-  Future<void> _carregarLogsAluno(Map<String, Map<String, dynamic>> mapa) async {
+  Future<void> _carregarLogsAluno(
+    Map<String, Map<String, dynamic>> mapa,
+  ) async {
     Query<Map<String, dynamic>> query = _firestore
         .collection('log_presenca_alunos')
         .where('aluno_id', isEqualTo: widget.alunoId);
@@ -7472,13 +7836,13 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     if (range != null) {
       query = query
           .where(
-        'data_aula',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(range.start),
-      )
+            'data_aula',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(range.start),
+          )
           .where(
-        'data_aula',
-        isLessThanOrEqualTo: Timestamp.fromDate(range.end),
-      );
+            'data_aula',
+            isLessThanOrEqualTo: Timestamp.fromDate(range.end),
+          );
     }
 
     final snapshot = await query
@@ -7498,11 +7862,13 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       mapa[key] = {
         'id': doc.id,
         'data': dataAula,
-        'data_formatada': data['data_formatada']?.toString() ??
+        'data_formatada':
+            data['data_formatada']?.toString() ??
             (dataAula != null ? _dateFormat.format(dataAula) : ''),
         'presente': data['presente'] == true,
         'tipo_aula': tipo,
-        'professor_nome': data['professor_nome']?.toString() ??
+        'professor_nome':
+            data['professor_nome']?.toString() ??
             data['professor']?.toString() ??
             data['registrado_por']?.toString() ??
             'Não informado',
@@ -7515,9 +7881,9 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   }
 
   Future<void> _carregarChamadasTurma(
-      Map<String, Map<String, dynamic>> mapa,
-      String collection,
-      ) async {
+    Map<String, Map<String, dynamic>> mapa,
+    String collection,
+  ) async {
     Query<Map<String, dynamic>> query = _firestore
         .collection(collection)
         .where('turma_id', isEqualTo: widget.turmaId);
@@ -7540,7 +7906,8 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         if (raw is! Map) continue;
 
         final aluno = Map<String, dynamic>.from(raw);
-        final alunoId = aluno['aluno_id']?.toString() ??
+        final alunoId =
+            aluno['aluno_id']?.toString() ??
             aluno['id']?.toString() ??
             aluno['alunoId']?.toString() ??
             '';
@@ -7554,13 +7921,16 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       if (alunoNaChamada == null) continue;
 
       final presente = _parsePresente(alunoNaChamada);
-      final dataFormatada = data['data_formatada']?.toString() ??
+      final dataFormatada =
+          data['data_formatada']?.toString() ??
           alunoNaChamada['data_formatada']?.toString() ??
           (dataAula != null ? _dateFormat.format(dataAula) : '');
-      final tipo = data['tipo_aula']?.toString() ??
+      final tipo =
+          data['tipo_aula']?.toString() ??
           alunoNaChamada['tipo_aula']?.toString() ??
           'Aula';
-      final professor = data['professor_nome']?.toString() ??
+      final professor =
+          data['professor_nome']?.toString() ??
           data['professor']?.toString() ??
           data['registrado_por_nome']?.toString() ??
           data['registrado_por']?.toString() ??
@@ -7585,7 +7955,8 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         'presente': presente,
         'tipo_aula': tipo,
         'professor_nome': professor,
-        'observacao': alunoNaChamada['observacao']?.toString() ??
+        'observacao':
+            alunoNaChamada['observacao']?.toString() ??
             data['observacao']?.toString() ??
             '',
         'turma_id': widget.turmaId,
@@ -7606,7 +7977,8 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   }
 
   bool _parsePresente(Map<String, dynamic> data) {
-    final value = data['presente'] ??
+    final value =
+        data['presente'] ??
         data['is_presente'] ??
         data['presenca'] ??
         data['status_presenca'] ??
@@ -7756,9 +8128,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   Widget _buildHeader() {
     return Container(
       padding: EdgeInsets.fromLTRB(16, 16, 8, 14),
-      decoration: BoxDecoration(
-        gradient: context.uai.primaryGradient,
-      ),
+      decoration: BoxDecoration(gradient: context.uai.primaryGradient),
       child: SafeArea(
         bottom: false,
         child: Row(
@@ -7840,7 +8210,11 @@ class _DetalheFrequenciaAlunoDashboardDialogState
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline_rounded, size: 74, color: context.uai.error.withOpacity(0.55)),
+              Icon(
+                Icons.error_outline_rounded,
+                size: 74,
+                color: context.uai.error.withOpacity(0.55),
+              ),
               SizedBox(height: 12),
               Text(
                 'Erro ao carregar',
@@ -7858,8 +8232,15 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                 icon: Icon(Icons.refresh_rounded),
                 label: Text('TENTAR NOVAMENTE'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                  foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                  backgroundColor:
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                      context.uai.primary,
+                  foregroundColor:
+                      Theme.of(context).appBarTheme.foregroundColor ??
+                      _readableOn(
+                        Theme.of(context).appBarTheme.backgroundColor ??
+                            context.uai.primary,
+                      ),
                 ),
               ),
             ],
@@ -7876,12 +8257,12 @@ class _DetalheFrequenciaAlunoDashboardDialogState
           child: _listaAtual.isEmpty
               ? _buildVazio()
               : ListView.builder(
-            padding: EdgeInsets.fromLTRB(14, 10, 14, 20),
-            itemCount: _listaAtual.length,
-            itemBuilder: (context, index) {
-              return _buildItem(_listaAtual[index]);
-            },
-          ),
+                  padding: EdgeInsets.fromLTRB(14, 10, 14, 20),
+                  itemCount: _listaAtual.length,
+                  itemBuilder: (context, index) {
+                    return _buildItem(_listaAtual[index]);
+                  },
+                ),
         ),
       ],
     );
@@ -8047,12 +8428,16 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, color: context.uai.cardAlt, size: 18),
+          Icon(
+            Icons.info_outline_rounded,
+            color: context.uai.cardAlt,
+            size: 18,
+          ),
           SizedBox(width: 8),
           Expanded(
             child: Text(
               'Presenças e ausências calculadas por logs + chamadas. '
-                  'Logs: $logs • Chamadas: $chamadas',
+              'Logs: $logs • Chamadas: $chamadas',
               style: TextStyle(
                 color: context.uai.textPrimary,
                 fontSize: 11.5,
@@ -8095,7 +8480,12 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   Widget _buildAbas() {
     final items = [
       ['Todos', _todos.length, Icons.list_alt_rounded, context.uai.textMuted],
-      ['Presenças', _presencas.length, Icons.check_circle_rounded, context.uai.success],
+      [
+        'Presenças',
+        _presencas.length,
+        Icons.check_circle_rounded,
+        context.uai.success,
+      ],
       ['Ausências', _ausencias.length, Icons.cancel_rounded, context.uai.error],
     ];
 
@@ -8120,7 +8510,9 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                     color: selected ? color.withOpacity(0.12) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: selected ? color.withOpacity(0.30) : context.uai.border,
+                      color: selected
+                          ? color.withOpacity(0.30)
+                          : context.uai.border,
                     ),
                   ),
                   child: Row(
@@ -8154,7 +8546,8 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   Widget _buildItem(Map<String, dynamic> item) {
     final presente = item['presente'] == true;
     final data = item['data'] as DateTime?;
-    final dataFormatada = item['data_formatada']?.toString() ??
+    final dataFormatada =
+        item['data_formatada']?.toString() ??
         (data != null ? _dateFormat.format(data) : '--/--/----');
     final tipo = item['tipo_aula']?.toString() ?? 'Aula';
     final professor = item['professor_nome']?.toString() ?? 'Não informado';
@@ -8183,10 +8576,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                   color: color,
                   shape: BoxShape.circle,
                   boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.24),
-                      blurRadius: 6,
-                    ),
+                    BoxShadow(color: color.withOpacity(0.24), blurRadius: 6),
                   ],
                 ),
               ),
@@ -8207,7 +8597,10 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                           ),
                         ),
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: color.withOpacity(0.09),
                             borderRadius: BorderRadius.circular(30),
@@ -8316,5 +8709,3 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     );
   }
 }
-
-

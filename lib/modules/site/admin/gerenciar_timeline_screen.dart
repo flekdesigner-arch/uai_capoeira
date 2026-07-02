@@ -11,7 +11,8 @@ class GerenciarTimelineScreen extends StatefulWidget {
   const GerenciarTimelineScreen({super.key});
 
   @override
-  State<GerenciarTimelineScreen> createState() => _GerenciarTimelineScreenState();
+  State<GerenciarTimelineScreen> createState() =>
+      _GerenciarTimelineScreenState();
 }
 
 class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
@@ -23,7 +24,13 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
   final TextEditingController _descricaoController = TextEditingController();
   final TextEditingController _linkController = TextEditingController();
 
-  final List<String> _tipos = ['evento', 'treino', 'roda', 'formatura', 'noticia'];
+  final List<String> _tipos = [
+    'evento',
+    'treino',
+    'roda',
+    'formatura',
+    'noticia',
+  ];
 
   List<XFile> _imagensSelecionadas = [];
   List<String> _imagensUrls = [];
@@ -58,7 +65,8 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -74,14 +82,19 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
 
   Future<void> _carregarConfiguracaoPortfolio() async {
     try {
-      final doc = await _firestore.collection('configuracoes').doc('portfolio_site').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('portfolio_site')
+          .get();
 
       if (doc.exists) {
         if (mounted) {
           setState(() => _exibirPortfolioNoSite = doc['exibir'] ?? true);
         }
       } else {
-        await _firestore.collection('configuracoes').doc('portfolio_site').set({'exibir': true});
+        await _firestore.collection('configuracoes').doc('portfolio_site').set({
+          'exibir': true,
+        });
       }
     } catch (e) {
       debugPrint('Erro ao carregar configuração do portfólio: $e');
@@ -95,7 +108,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
         'ultima_atualizacao': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      _mostrarSnackBar(valor ? '✅ Portfólio visível no site' : '❌ Portfólio oculto no site');
+      _mostrarSnackBar(
+        valor ? '✅ Portfólio visível no site' : '❌ Portfólio oculto no site',
+      );
     } catch (e) {
       _mostrarSnackBar('Erro ao salvar configuração: $e', isErro: true);
     }
@@ -137,7 +152,8 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
     for (final imagem in _imagensSelecionadas) {
       try {
         final file = File(imagem.path);
-        final fileName = '$pasta/${DateTime.now().millisecondsSinceEpoch}_${imagem.name}';
+        final fileName =
+            '$pasta/${DateTime.now().millisecondsSinceEpoch}_${imagem.name}';
         final ref = _storage.ref().child(fileName);
 
         final uploadTask = ref.putFile(file);
@@ -182,12 +198,17 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
         'imagens': todasUrls,
         'data_publicacao': FieldValue.serverTimestamp(),
         'data_atualizacao': FieldValue.serverTimestamp(),
-        'data_evento': _tipoSelecionado == 'evento' ? FieldValue.serverTimestamp() : null,
+        'data_evento': _tipoSelecionado == 'evento'
+            ? FieldValue.serverTimestamp()
+            : null,
         'ativo': true,
       };
 
       if (_editandoId != null) {
-        await _firestore.collection('timeline_publicacoes').doc(_editandoId).update(dados);
+        await _firestore
+            .collection('timeline_publicacoes')
+            .doc(_editandoId)
+            .update(dados);
         _mostrarSnackBar('Publicação atualizada com sucesso!');
       } else {
         await _firestore.collection('timeline_publicacoes').add(dados);
@@ -226,7 +247,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
         return AlertDialog(
           backgroundColor: t.surface,
           insetPadding: const EdgeInsets.all(18),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.cardRadius),
+          ),
           title: Row(
             children: [
               Icon(Icons.warning_rounded, color: error),
@@ -412,9 +435,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
               onPressed: _uploading
                   ? null
                   : () {
-                _limparFormulario();
-                setState(() => _modoCriacao = false);
-              },
+                      _limparFormulario();
+                      setState(() => _modoCriacao = false);
+                    },
               icon: const Icon(Icons.close_rounded),
               tooltip: 'Fechar',
             ),
@@ -423,18 +446,18 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
       body: _modoCriacao ? _buildFormulario() : _buildListaPublicacoes(),
       floatingActionButton: !_modoCriacao
           ? FloatingActionButton.extended(
-        onPressed: () {
-          _limparFormulario();
-          setState(() => _modoCriacao = true);
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'NOVA',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        backgroundColor: t.primary,
-        foregroundColor: _onPrimary(),
-      )
+              onPressed: () {
+                _limparFormulario();
+                setState(() => _modoCriacao = true);
+              },
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'NOVA',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              backgroundColor: t.primary,
+              foregroundColor: _onPrimary(),
+            )
           : null,
     );
   }
@@ -509,8 +532,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 isEditando ? 'Editar publicação' : 'Nova publicação',
@@ -537,13 +561,7 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -575,7 +593,10 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
             runSpacing: 8,
             children: _tipos.map((tipo) {
               final selected = _tipoSelecionado == tipo;
-              final cor = _ensureVisible(_getCorPorTipo(tipo), context.uai.card);
+              final cor = _ensureVisible(
+                _getCorPorTipo(tipo),
+                context.uai.card,
+              );
               final selectedFg = _readableOn(cor);
 
               return ChoiceChip(
@@ -587,7 +608,10 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                   color: selected ? selectedFg : cor,
                 ),
                 selectedColor: cor,
-                backgroundColor: Color.alphaBlend(cor.withOpacity(0.07), context.uai.card),
+                backgroundColor: Color.alphaBlend(
+                  cor.withOpacity(0.07),
+                  context.uai.card,
+                ),
                 labelStyle: TextStyle(
                   color: selected ? selectedFg : cor,
                   fontWeight: FontWeight.w900,
@@ -680,7 +704,10 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
             icon: const Icon(Icons.add_photo_alternate_rounded),
             label: const Text('ADICIONAR IMAGENS'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: _ensureVisible(context.uai.primary, context.uai.card),
+              foregroundColor: _ensureVisible(
+                context.uai.primary,
+                context.uai.card,
+              ),
               side: BorderSide(color: context.uai.primary.withOpacity(0.30)),
               padding: const EdgeInsets.symmetric(vertical: 14),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
@@ -810,9 +837,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                 onPressed: _uploading
                     ? null
                     : () {
-                  _limparFormulario();
-                  setState(() => _modoCriacao = false);
-                },
+                        _limparFormulario();
+                        setState(() => _modoCriacao = false);
+                      },
                 icon: const Icon(Icons.close_rounded),
                 label: const Text('CANCELAR'),
                 style: OutlinedButton.styleFrom(
@@ -832,13 +859,13 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                 onPressed: _uploading ? null : _salvarPublicacao,
                 icon: _uploading
                     ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    color: _onPrimary(),
-                    strokeWidth: 2,
-                  ),
-                )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          color: _onPrimary(),
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.publish_rounded),
                 label: Text(
                   _uploading
@@ -889,7 +916,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final maxWidth = constraints.maxWidth > 1120 ? 1120.0 : constraints.maxWidth;
+            final maxWidth = constraints.maxWidth > 1120
+                ? 1120.0
+                : constraints.maxWidth;
             final isWide = constraints.maxWidth >= 940;
 
             return ListView(
@@ -940,10 +969,7 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
     );
   }
 
-  Widget _buildDashboardHeader({
-    required int total,
-    required int filtradas,
-  }) {
+  Widget _buildDashboardHeader({required int total, required int filtradas}) {
     final t = context.uai;
     final onPrimary = _onPrimary();
 
@@ -966,16 +992,13 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.timeline_rounded,
-              color: onPrimary,
-              size: 34,
-            ),
+            child: Icon(Icons.timeline_rounded, color: onPrimary, size: 34),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Gerenciar Timeline',
@@ -1033,13 +1056,7 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -1099,10 +1116,7 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final onPrimary = _onPrimary();
 
     return Container(
@@ -1155,7 +1169,8 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                   child: Image.network(
                     imagens.first,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _buildImagemFallback(tipo, corTipo),
+                    errorBuilder: (_, __, ___) =>
+                        _buildImagemFallback(tipo, corTipo),
                   ),
                 )
               else
@@ -1173,10 +1188,14 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                       runSpacing: 8,
                       children: [
                         _typeChip(tipo),
-                        if (_formatarDataRelativa(data['data_publicacao']).isNotEmpty)
+                        if (_formatarDataRelativa(
+                          data['data_publicacao'],
+                        ).isNotEmpty)
                           _infoChip(
                             icon: Icons.schedule_rounded,
-                            label: _formatarDataRelativa(data['data_publicacao']),
+                            label: _formatarDataRelativa(
+                              data['data_publicacao'],
+                            ),
                             color: t.textMuted,
                           ),
                         if (imagens.isNotEmpty)
@@ -1233,9 +1252,13 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                               foregroundColor: _ensureVisible(t.info, t.card),
                               side: BorderSide(color: t.info.withOpacity(0.22)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                           ),
@@ -1250,9 +1273,13 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                               backgroundColor: t.error,
                               foregroundColor: _readableOn(t.error),
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                           ),
@@ -1442,7 +1469,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                     prefixIcon: Icon(Icons.search_rounded, color: accent),
                     filled: true,
                     fillColor: t.cardAlt,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(t.inputRadius),
+                    ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(t.inputRadius),
                       borderSide: BorderSide(color: t.border),
@@ -1531,11 +1560,15 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                             color: tipoTemp == 'todos' ? primaryFg : primary,
                             fontWeight: FontWeight.w900,
                           ),
-                          onSelected: (_) => setStateDialog(() => tipoTemp = 'todos'),
+                          onSelected: (_) =>
+                              setStateDialog(() => tipoTemp = 'todos'),
                         ),
                         ..._tipos.map((tipo) {
                           final selected = tipoTemp == tipo;
-                          final cor = _ensureVisible(_getCorPorTipo(tipo), t.surface);
+                          final cor = _ensureVisible(
+                            _getCorPorTipo(tipo),
+                            t.surface,
+                          );
                           final selectedFg = _readableOn(cor);
 
                           return ChoiceChip(
@@ -1547,13 +1580,17 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
                               color: selected ? selectedFg : cor,
                             ),
                             selectedColor: cor,
-                            backgroundColor: Color.alphaBlend(cor.withOpacity(0.07), t.cardAlt),
+                            backgroundColor: Color.alphaBlend(
+                              cor.withOpacity(0.07),
+                              t.cardAlt,
+                            ),
                             side: BorderSide(color: cor.withOpacity(0.16)),
                             labelStyle: TextStyle(
                               color: selected ? selectedFg : cor,
                               fontWeight: FontWeight.w900,
                             ),
-                            onSelected: (_) => setStateDialog(() => tipoTemp = tipo),
+                            onSelected: (_) =>
+                                setStateDialog(() => tipoTemp = tipo),
                           );
                         }),
                       ],
@@ -1637,7 +1674,9 @@ class _GerenciarTimelineScreenState extends State<GerenciarTimelineScreen> {
         ),
         filled: true,
         fillColor: t.cardAlt,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(t.inputRadius),
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.inputRadius),
           borderSide: BorderSide(color: t.border),

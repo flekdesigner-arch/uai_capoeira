@@ -192,7 +192,7 @@ class AtualizacaoDiretaService {
               context: context,
               titulo: 'Permissão necessária',
               mensagem:
-              'Para instalar o aplicativo, precisamos de permissão para instalar apps desconhecidos.\n\n'
+                  'Para instalar o aplicativo, precisamos de permissão para instalar apps desconhecidos.\n\n'
                   'Deseja abrir as configurações e conceder a permissão manualmente?',
             );
 
@@ -223,7 +223,7 @@ class AtualizacaoDiretaService {
               context: context,
               titulo: 'Permissão necessária',
               mensagem:
-              'Para baixar o APK, precisamos de permissão para acessar o armazenamento.\n\n'
+                  'Para baixar o APK, precisamos de permissão para acessar o armazenamento.\n\n'
                   'Deseja abrir as configurações e conceder a permissão manualmente?',
             );
 
@@ -373,7 +373,7 @@ class AtualizacaoDiretaService {
 
       debugPrint(
         '✅ APK versão ${info.versao} encontrado em ${info.storagePath} '
-            '- Tamanho: ${metadata.size} bytes',
+        '- Tamanho: ${metadata.size} bytes',
       );
 
       return true;
@@ -429,7 +429,9 @@ class AtualizacaoDiretaService {
   }) async {
     try {
       if (!Platform.isAndroid) {
-        throw Exception('Atualização direta por APK está disponível apenas no Android.');
+        throw Exception(
+          'Atualização direta por APK está disponível apenas no Android.',
+        );
       }
 
       if (Firebase.apps.isEmpty) {
@@ -439,13 +441,17 @@ class AtualizacaoDiretaService {
       onStatus('🔍 Verificando conexão...');
 
       if (!await _verificarInternet()) {
-        throw Exception('Sem conexão com a internet. Verifique sua rede e tente novamente.');
+        throw Exception(
+          'Sem conexão com a internet. Verifique sua rede e tente novamente.',
+        );
       }
 
       onStatus('🔍 Verificando permissões...');
 
       if (!await _solicitarPermissoes(context)) {
-        throw Exception('Permissões necessárias negadas. Conceda as permissões nas configurações.');
+        throw Exception(
+          'Permissões necessárias negadas. Conceda as permissões nas configurações.',
+        );
       }
 
       onStatus('🔍 Verificando disponibilidade...');
@@ -495,11 +501,13 @@ class AtualizacaoDiretaService {
         final task = ref.writeToFile(file);
 
         task.snapshotEvents.listen(
-              (event) {
+          (event) {
             if (event.totalBytes > 0) {
               final progress = event.bytesTransferred / event.totalBytes;
               onProgress(progress.clamp(0.0, 1.0));
-              debugPrint('📊 Download: ${(progress * 100).toStringAsFixed(1)}%');
+              debugPrint(
+                '📊 Download: ${(progress * 100).toStringAsFixed(1)}%',
+              );
             }
           },
           onError: (error) {
@@ -621,7 +629,7 @@ class AtualizacaoDiretaService {
 
       throw Exception(
         'Não foi possível abrir o instalador. '
-            'Tente abrir manualmente o arquivo em: $filePath',
+        'Tente abrir manualmente o arquivo em: $filePath',
       );
     }
   }
@@ -635,7 +643,8 @@ class AtualizacaoDiretaService {
       if (!await _verificarInternet()) {
         return {
           'podeAtualizar': false,
-          'mensagem': 'Sem conexão com a internet. Não foi possível verificar atualizações.',
+          'mensagem':
+              'Sem conexão com a internet. Não foi possível verificar atualizações.',
           'erro': 'no_internet',
         };
       }
@@ -670,11 +679,14 @@ class AtualizacaoDiretaService {
         };
       }
 
-      final versoesDisponiveis = apks.map((nome) {
-        final regex = RegExp(r'uai_capoeira_(\d+\.\d+\.\d+)\.apk');
-        final match = regex.firstMatch(nome);
-        return match?.group(1) ?? '';
-      }).where((v) => v.isNotEmpty).toList();
+      final versoesDisponiveis = apks
+          .map((nome) {
+            final regex = RegExp(r'uai_capoeira_(\d+\.\d+\.\d+)\.apk');
+            final match = regex.firstMatch(nome);
+            return match?.group(1) ?? '';
+          })
+          .where((v) => v.isNotEmpty)
+          .toList();
 
       if (versoesDisponiveis.isEmpty) {
         return {
@@ -712,7 +724,9 @@ class AtualizacaoDiretaService {
             : 'App está atualizado (versão $versaoAtual)',
       };
     } on FirebaseException catch (e) {
-      debugPrint('❌ Erro Firebase ao verificar atualização: ${e.code} - ${e.message}');
+      debugPrint(
+        '❌ Erro Firebase ao verificar atualização: ${e.code} - ${e.message}',
+      );
 
       return {
         'podeAtualizar': false,
@@ -724,7 +738,8 @@ class AtualizacaoDiretaService {
 
       return {
         'podeAtualizar': false,
-        'mensagem': 'Erro ao verificar atualizações. Tente novamente mais tarde.',
+        'mensagem':
+            'Erro ao verificar atualizações. Tente novamente mais tarde.',
         'erro': e.toString(),
       };
     }
@@ -734,16 +749,14 @@ class AtualizacaoDiretaService {
   // 🔥 MÉTODO COM FEEDBACK VISUAL
   // =====================================================
   Future<void> baixarEInstalarComFeedback(
-      BuildContext context,
-      String versao,
-      ) async {
+    BuildContext context,
+    String versao,
+  ) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _DownloadProgressDialog(
-        versao: versao,
-        service: this,
-      ),
+      builder: (context) =>
+          _DownloadProgressDialog(versao: versao, service: this),
     );
   }
 
@@ -781,13 +794,11 @@ class _DownloadProgressDialog extends StatefulWidget {
   final String versao;
   final AtualizacaoDiretaService service;
 
-  const _DownloadProgressDialog({
-    required this.versao,
-    required this.service,
-  });
+  const _DownloadProgressDialog({required this.versao, required this.service});
 
   @override
-  State<_DownloadProgressDialog> createState() => _DownloadProgressDialogState();
+  State<_DownloadProgressDialog> createState() =>
+      _DownloadProgressDialogState();
 }
 
 class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
@@ -849,7 +860,8 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -868,7 +880,11 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
     final primary = _ensureVisible(t.primary, t.card);
     final success = _ensureVisible(t.success, t.card);
     final error = _ensureVisible(t.error, t.card);
-    final currentColor = _erro ? error : _concluido ? success : primary;
+    final currentColor = _erro
+        ? error
+        : _concluido
+        ? success
+        : primary;
 
     return Dialog(
       backgroundColor: Colors.transparent,

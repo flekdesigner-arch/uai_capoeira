@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -52,8 +52,8 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -120,8 +120,8 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
         ),
         content: Text(
           'Tem certeza que deseja excluir esta venda?\n\n'
-              'Aluno: ${widget.data['aluno_nome']}\n'
-              'Valor: ${widget.realFormat.format(widget.data['valor_total'] ?? 0)}',
+          'Aluno: ${widget.data['aluno_nome']}\n'
+          'Valor: ${widget.realFormat.format(widget.data['valor_total'] ?? 0)}',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -200,8 +200,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: context.uai.surface,
-            borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,10 +228,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       color: context.uai.success.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      Icons.receipt,
-                      color: context.uai.success,
-                    ),
+                    child: Icon(Icons.receipt, color: context.uai.success),
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -269,8 +265,9 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content:
-                          const Text('Funcionalidade em desenvolvimento'),
+                          content: const Text(
+                            'Funcionalidade em desenvolvimento',
+                          ),
                           backgroundColor: context.uai.warning,
                         ),
                       );
@@ -291,8 +288,11 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       title: 'ALUNO',
                       icon: Icons.person,
                       children: [
-                        _buildInfoRow(context,
-                            'Nome', widget.data['aluno_nome'] ?? 'N/I'),
+                        _buildInfoRow(
+                          context,
+                          'Nome',
+                          widget.data['aluno_nome'] ?? 'N/I',
+                        ),
                       ],
                     ),
 
@@ -304,14 +304,15 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       title: 'INFORMAÇÕES DA VENDA',
                       icon: Icons.sell,
                       children: [
-                        _buildInfoRow(context, 'Data',
-                            _formatarData(widget.data['data_venda'])),
+                        _buildInfoRow(
+                          context,
+                          'Data',
+                          _formatarData(widget.data['data_venda']),
+                        ),
                         _buildInfoRow(
                           context,
                           'Vendedor',
-                          _carregandoVendedor
-                              ? 'Carregando...'
-                              : _nomeVendedor,
+                          _carregandoVendedor ? 'Carregando...' : _nomeVendedor,
                         ),
                         _buildInfoRow(
                           context,
@@ -335,14 +336,12 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                             color: statusColor.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: statusColor.withOpacity(0.3)),
+                              color: statusColor.withOpacity(0.3),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                _statusIcon(status),
-                                color: statusColor,
-                              ),
+                              Icon(_statusIcon(status), color: statusColor),
                               const SizedBox(width: 8),
                               Text(
                                 status.toUpperCase(),
@@ -355,15 +354,24 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _buildInfoRow(context, 'Total',
-                            widget.realFormat.format(total),
-                            isBold: true),
-                        _buildInfoRow(context, 'Pago',
-                            widget.realFormat.format(pago),
-                            color: context.uai.success),
-                        _buildInfoRow(context, 'Restante',
-                            widget.realFormat.format(restante),
-                            color: context.uai.error),
+                        _buildInfoRow(
+                          context,
+                          'Total',
+                          widget.realFormat.format(total),
+                          isBold: true,
+                        ),
+                        _buildInfoRow(
+                          context,
+                          'Pago',
+                          widget.realFormat.format(pago),
+                          color: context.uai.success,
+                        ),
+                        _buildInfoRow(
+                          context,
+                          'Restante',
+                          widget.realFormat.format(restante),
+                          color: context.uai.error,
+                        ),
                       ],
                     ),
 
@@ -372,8 +380,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                     // Itens da venda
                     _buildInfoSection(
                       context,
-                      title:
-                      'ITENS (${widget.data['itens']?.length ?? 0})',
+                      title: 'ITENS (${widget.data['itens']?.length ?? 0})',
                       icon: Icons.shopping_bag,
                       children: [
                         ...(widget.data['itens'] as List? ?? []).map((item) {
@@ -382,15 +389,16 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: context.uai.cardAlt,
-                              borderRadius:
-                              BorderRadius.circular(context.uai.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                context.uai.inputRadius,
+                              ),
                             ),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         item['nome'] ?? 'Item',
@@ -411,8 +419,9 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                                 ),
                                 Text(
                                   widget.realFormat.format(
-                                      (item['quantidade'] ?? 1) *
-                                          (item['preco_unitario'] ?? 0)),
+                                    (item['quantidade'] ?? 1) *
+                                        (item['preco_unitario'] ?? 0),
+                                  ),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: context.uai.success,
@@ -435,15 +444,17 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                         title: 'HISTÓRICO DE PAGAMENTOS',
                         icon: Icons.history,
                         children: [
-                          ...(widget.data['pagamentos'] as List)
-                              .map((pagamento) {
+                          ...(widget.data['pagamentos'] as List).map((
+                            pagamento,
+                          ) {
                             return Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: context.uai.cardAlt,
                                 borderRadius: BorderRadius.circular(
-                                    context.uai.inputRadius),
+                                  context.uai.inputRadius,
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -456,11 +467,12 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           widget.realFormat.format(
-                                              pagamento['valor']),
+                                            pagamento['valor'],
+                                          ),
                                           style: TextStyle(
                                             fontWeight: FontWeight.w500,
                                             color: context.uai.textPrimary,
@@ -483,13 +495,12 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: context.uai.info.withOpacity(0.15),
-                                      borderRadius:
-                                      BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
                                       pagamento['forma']
-                                          ?.toUpperCase()
-                                          .replaceAll('_', ' ') ??
+                                              ?.toUpperCase()
+                                              .replaceAll('_', ' ') ??
                                           '',
                                       style: TextStyle(
                                         fontSize: 10,
@@ -515,7 +526,10 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                           onPressed: () {
                             Navigator.pop(context);
                             widget.onRegistrarPagamento(
-                                widget.docId, widget.data, restante);
+                              widget.docId,
+                              widget.data,
+                              restante,
+                            );
                           },
                           icon: const Icon(Icons.payment),
                           label: Text(
@@ -525,8 +539,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: context.uai.success,
-                            foregroundColor:
-                            _readableOn(context.uai.success),
+                            foregroundColor: _readableOn(context.uai.success),
                             minimumSize: const Size(double.infinity, 50),
                           ),
                         ),
@@ -545,11 +558,11 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
   // Widgets auxiliares já tematizados
   // ---------------------------------------------------------------------------
   Widget _buildInfoSection(
-      BuildContext context, {
-        required String title,
-        required IconData icon,
-        required List<Widget> children,
-      }) {
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -574,12 +587,12 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
   }
 
   Widget _buildInfoRow(
-      BuildContext context,
-      String label,
-      String value, {
-        bool isBold = false,
-        Color? color,
-      }) {
+    BuildContext context,
+    String label,
+    String value, {
+    bool isBold = false,
+    Color? color,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -589,10 +602,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
             width: 100,
             child: Text(
               label,
-              style: TextStyle(
-                color: context.uai.textMuted,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: context.uai.textMuted, fontSize: 12),
             ),
           ),
           Expanded(

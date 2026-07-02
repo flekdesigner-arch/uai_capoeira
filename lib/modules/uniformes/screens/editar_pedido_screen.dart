@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,7 +22,10 @@ class EditarPedidoScreen extends StatefulWidget {
 }
 
 class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   final RemessaService _remessaService = RemessaService();
   final UniformesService _uniformesService = UniformesService();
 
@@ -50,7 +53,8 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -65,8 +69,12 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
   @override
   void initState() {
     super.initState();
-    _observacoesController = TextEditingController(text: widget.pedidoData['observacoes'] ?? '');
-    _dataPrevisaoController = TextEditingController(text: widget.pedidoData['data_previsao'] ?? '');
+    _observacoesController = TextEditingController(
+      text: widget.pedidoData['observacoes'] ?? '',
+    );
+    _dataPrevisaoController = TextEditingController(
+      text: widget.pedidoData['data_previsao'] ?? '',
+    );
     _status = widget.pedidoData['status'] ?? 'pendente';
     _statusPagamento = widget.pedidoData['status_pagamento'] ?? 'pendente';
     _valorPago = (widget.pedidoData['valor_pago'] ?? 0).toDouble();
@@ -92,7 +100,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
   Future<void> _carregarNomeRemessa() async {
     if (_remessaId == null) return;
     try {
-      final doc = await FirebaseFirestore.instance.collection('remessas').doc(_remessaId!).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('remessas')
+          .doc(_remessaId!)
+          .get();
       if (doc.exists) {
         final data = doc.data()!;
         _remessaNome = data['nome'] ?? 'Remessa ${_remessaId!.substring(0, 5)}';
@@ -107,7 +118,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
     final alunoId = widget.pedidoData['aluno_id'] as String?;
     if (alunoId == null) return;
     try {
-      final doc = await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
       if (doc.exists) {
         final data = doc.data()!;
         _fotoAlunoUrl = data['foto_perfil_aluno'] as String?;
@@ -152,13 +166,21 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Remover Item', style: TextStyle(color: context.uai.textPrimary)),
-        content: Text('Deseja remover "${_itens[index]['nome']}" do pedido?',
-            style: TextStyle(color: context.uai.textSecondary)),
+        title: Text(
+          'Remover Item',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
+        content: Text(
+          'Deseja remover "${_itens[index]['nome']}" do pedido?',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar', style: TextStyle(color: context.uai.primary)),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(color: context.uai.primary),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -203,8 +225,12 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
         _itens.add(novoItem);
 
         final novoIndex = _itens.length - 1;
-        _quantidadeControllers[novoIndex] = TextEditingController(text: novoItem['quantidade'].toString());
-        _quantidadeControllers[novoIndex]!.addListener(() => _atualizarQuantidade(novoIndex));
+        _quantidadeControllers[novoIndex] = TextEditingController(
+          text: novoItem['quantidade'].toString(),
+        );
+        _quantidadeControllers[novoIndex]!.addListener(
+          () => _atualizarQuantidade(novoIndex),
+        );
 
         _calcularTotal();
       });
@@ -223,7 +249,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
 
         final dataPrevista = result['data_prevista'] as Timestamp?;
         if (dataPrevista != null) {
-          _dataPrevisaoController.text = DateFormat('dd/MM/yyyy', 'pt_BR').format(dataPrevista.toDate());
+          _dataPrevisaoController.text = DateFormat(
+            'dd/MM/yyyy',
+            'pt_BR',
+          ).format(dataPrevista.toDate());
         }
       });
     }
@@ -275,7 +304,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
       final remessaAtual = widget.pedidoData['remessa_id'];
       if (remessaAtual != _remessaId) {
         if (remessaAtual != null && remessaAtual.isNotEmpty) {
-          await _remessaService.desvincularPedido(widget.pedidoId, remessaAtual);
+          await _remessaService.desvincularPedido(
+            widget.pedidoId,
+            remessaAtual,
+          );
         }
         if (_remessaId != null && _remessaId!.isNotEmpty) {
           await _remessaService.vincularPedido(widget.pedidoId, _remessaId!);
@@ -285,8 +317,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Pedido atualizado com sucesso!',
-                style: TextStyle(color: _readableOn(context.uai.success))),
+            content: Text(
+              '✅ Pedido atualizado com sucesso!',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
             backgroundColor: context.uai.success,
           ),
         );
@@ -296,8 +330,10 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Erro ao atualizar: $e',
-                style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              '❌ Erro ao atualizar: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -318,22 +354,28 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
     final textSecondary = context.uai.textSecondary;
     final textMuted = context.uai.textMuted;
     final cardAlt = context.uai.cardAlt;
-    final alunoNome = widget.pedidoData['aluno_nome'] ?? 'Aluno não identificado';
+    final alunoNome =
+        widget.pedidoData['aluno_nome'] ?? 'Aluno não identificado';
 
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: const Text('EDITAR PEDIDO',
-            style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text(
+          'EDITAR PEDIDO',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           TextButton.icon(
             onPressed: _isLoading ? null : _salvar,
             icon: _isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(color: onPrimary, strokeWidth: 2),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: onPrimary,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(Icons.save, color: onPrimary),
             label: Text(
               _isLoading ? 'SALVANDO...' : 'SALVAR',
@@ -345,439 +387,556 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primary))
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Aluno
-            Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Row(
-                children: [
-                  if (_fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty)
-                    CachedNetworkImage(
-                      imageUrl: _fotoAlunoUrl!,
-                      imageBuilder: (ctx, imageProvider) =>
-                          CircleAvatar(backgroundImage: imageProvider, radius: 20),
-                      placeholder: (_, __) => CircleAvatar(
-                        radius: 20,
-                        backgroundColor: cardAlt,
-                        child: Icon(Icons.person, color: textMuted),
-                      ),
-                      errorWidget: (_, __, ___) => CircleAvatar(
-                        radius: 20,
-                        backgroundColor: cardAlt,
-                        child: Icon(Icons.person, color: textMuted),
-                      ),
-                    )
-                  else
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: cardAlt,
-                      child: Icon(Icons.person, color: textMuted),
-                    ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(alunoNome,
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: textPrimary)),
-                        Text(
-                          'Pedido: ${widget.pedidoData['id_pedido'] ?? 'N/I'}',
-                          style: TextStyle(color: textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Itens
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('ITENS DO PEDIDO',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, color: textPrimary)),
-                      IconButton(
-                        icon: Icon(Icons.add_circle, color: primary),
-                        onPressed: _selecionarItem,
+                  // Aluno
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_itens.isEmpty)
-                    Center(
-                      child: Text('Nenhum item',
-                          style: TextStyle(color: textMuted)),
-                    )
-                  else
-                    ..._itens.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final item = entry.value;
-                      final tamanho = item['tamanho'] as String?;
-                      final descricao = tamanho != null
-                          ? '${item['nome']} - Tam. $tamanho'
-                          : item['nome'];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: cardAlt,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(descricao ?? '',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: textPrimary)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Preço: ${_realFormat.format(item['preco_unitario'])}',
-                                    style: TextStyle(
-                                        color: primary,
-                                        fontSize: 12),
-                                  ),
-                                ],
-                              ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Row(
+                      children: [
+                        if (_fotoAlunoUrl != null && _fotoAlunoUrl!.isNotEmpty)
+                          CachedNetworkImage(
+                            imageUrl: _fotoAlunoUrl!,
+                            imageBuilder: (ctx, imageProvider) => CircleAvatar(
+                              backgroundImage: imageProvider,
+                              radius: 20,
                             ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 70,
-                              child: TextFormField(
-                                controller: _quantidadeControllers[index],
-                                keyboardType: TextInputType.number,
-                                style: TextStyle(color: textPrimary),
-                                decoration: InputDecoration(
-                                  labelText: 'Qtd',
-                                  isDense: true,
-                                  labelStyle: TextStyle(color: textSecondary),
-                                  filled: true,
-                                  fillColor: cardBg,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                                    borderSide: BorderSide(color: border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                                    borderSide: BorderSide(color: border),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                                    borderSide: BorderSide(color: primary, width: 1.4),
-                                  ),
+                            placeholder: (_, __) => CircleAvatar(
+                              radius: 20,
+                              backgroundColor: cardAlt,
+                              child: Icon(Icons.person, color: textMuted),
+                            ),
+                            errorWidget: (_, __, ___) => CircleAvatar(
+                              radius: 20,
+                              backgroundColor: cardAlt,
+                              child: Icon(Icons.person, color: textMuted),
+                            ),
+                          )
+                        else
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: cardAlt,
+                            child: Icon(Icons.person, color: textMuted),
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                alunoNome,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: textPrimary,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _realFormat.format(item['quantidade'] * item['preco_unitario']),
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: textPrimary),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.delete, color: context.uai.error),
-                              onPressed: () => _removerItem(index),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  if (_itens.isNotEmpty) ...[
-                    Divider(color: border),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('TOTAL',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: textPrimary)),
-                        Text(
-                          _realFormat.format(_valorTotal),
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: primary),
+                              Text(
+                                'Pedido: ${widget.pedidoData['id_pedido'] ?? 'N/I'}',
+                                style: TextStyle(color: textSecondary),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Remessa (opcional)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('REMESSA (opcional)',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: textPrimary)),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: _selecionarRemessa,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: border),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.local_shipping, color: primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _remessaNome ?? 'Vincular a uma remessa',
-                              style: TextStyle(
-                                color: _remessaNome == null
-                                    ? textMuted
-                                    : textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (_remessaId != null)
-                            IconButton(
-                              icon: Icon(Icons.close, color: context.uai.error),
-                              onPressed: _removerRemessa,
-                            )
-                          else
-                            Icon(Icons.arrow_drop_down, color: textMuted),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Status do Pedido
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('STATUS',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: textPrimary)),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment(
-                        value: 'pendente',
-                        label: Text('Pendente', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.pending, color: context.uai.warning),
-                      ),
-                      ButtonSegment(
-                        value: 'em_confeccao',
-                        label: Text('Em Confecção', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.build, color: context.uai.info),
-                      ),
-                      ButtonSegment(
-                        value: 'finalizado',
-                        label: Text('Finalizado', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.check_circle, color: context.uai.success),
-                      ),
-                    ],
-                    selected: {_status},
-                    onSelectionChanged: (Set<String> selected) =>
-                        setState(() => _status = selected.first),
-                    style: ButtonStyle(
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                            (states) {
-                          if (states.contains(WidgetState.selected)) {
-                            return primary.withOpacity(0.1);
-                          }
-                          return cardAlt;
-                        },
-                      ),
-                      foregroundColor: WidgetStateProperty.all(textPrimary),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text('PAGAMENTO',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: textPrimary)),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment(
-                        value: 'pendente',
-                        label: Text('Pendente', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.pending, color: context.uai.warning),
+
+                  // Itens
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
                       ),
-                      ButtonSegment(
-                        value: 'pago',
-                        label: Text('Pago', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.check_circle, color: context.uai.success),
-                      ),
-                      ButtonSegment(
-                        value: 'parcial',
-                        label: Text('Parcial', style: TextStyle(color: textPrimary)),
-                        icon: Icon(Icons.money_off, color: context.uai.info),
-                      ),
-                    ],
-                    selected: {_statusPagamento},
-                    onSelectionChanged: (Set<String> selected) =>
-                        setState(() => _statusPagamento = selected.first),
-                    style: ButtonStyle(
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                            (states) {
-                          if (states.contains(WidgetState.selected)) {
-                            return primary.withOpacity(0.1);
-                          }
-                          return cardAlt;
-                        },
-                      ),
-                      foregroundColor: WidgetStateProperty.all(textPrimary),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'ITENS DO PEDIDO',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.add_circle, color: primary),
+                              onPressed: _selecionarItem,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (_itens.isEmpty)
+                          Center(
+                            child: Text(
+                              'Nenhum item',
+                              style: TextStyle(color: textMuted),
+                            ),
+                          )
+                        else
+                          ..._itens.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final item = entry.value;
+                            final tamanho = item['tamanho'] as String?;
+                            final descricao = tamanho != null
+                                ? '${item['nome']} - Tam. $tamanho'
+                                : item['nome'];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: cardAlt,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          descricao ?? '',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Preço: ${_realFormat.format(item['preco_unitario'])}',
+                                          style: TextStyle(
+                                            color: primary,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 70,
+                                    child: TextFormField(
+                                      controller: _quantidadeControllers[index],
+                                      keyboardType: TextInputType.number,
+                                      style: TextStyle(color: textPrimary),
+                                      decoration: InputDecoration(
+                                        labelText: 'Qtd',
+                                        isDense: true,
+                                        labelStyle: TextStyle(
+                                          color: textSecondary,
+                                        ),
+                                        filled: true,
+                                        fillColor: cardBg,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            context.uai.inputRadius,
+                                          ),
+                                          borderSide: BorderSide(color: border),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            context.uai.inputRadius,
+                                          ),
+                                          borderSide: BorderSide(color: border),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            context.uai.inputRadius,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: primary,
+                                            width: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _realFormat.format(
+                                      item['quantidade'] *
+                                          item['preco_unitario'],
+                                    ),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: textPrimary,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete,
+                                      color: context.uai.error,
+                                    ),
+                                    onPressed: () => _removerItem(index),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        if (_itens.isNotEmpty) ...[
+                          Divider(color: border),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'TOTAL',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: textPrimary,
+                                ),
+                              ),
+                              Text(
+                                _realFormat.format(_valorTotal),
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (_statusPagamento == 'parcial') ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      keyboardType: TextInputType.number,
+                  const SizedBox(height: 16),
+
+                  // Remessa (opcional)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'REMESSA (opcional)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _selecionarRemessa,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: border),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.local_shipping, color: primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _remessaNome ?? 'Vincular a uma remessa',
+                                    style: TextStyle(
+                                      color: _remessaNome == null
+                                          ? textMuted
+                                          : textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                if (_remessaId != null)
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.close,
+                                      color: context.uai.error,
+                                    ),
+                                    onPressed: _removerRemessa,
+                                  )
+                                else
+                                  Icon(Icons.arrow_drop_down, color: textMuted),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Status do Pedido
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'STATUS',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                          segments: [
+                            ButtonSegment(
+                              value: 'pendente',
+                              label: Text(
+                                'Pendente',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(
+                                Icons.pending,
+                                color: context.uai.warning,
+                              ),
+                            ),
+                            ButtonSegment(
+                              value: 'em_confeccao',
+                              label: Text(
+                                'Em Confecção',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(Icons.build, color: context.uai.info),
+                            ),
+                            ButtonSegment(
+                              value: 'finalizado',
+                              label: Text(
+                                'Finalizado',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(
+                                Icons.check_circle,
+                                color: context.uai.success,
+                              ),
+                            ),
+                          ],
+                          selected: {_status},
+                          onSelectionChanged: (Set<String> selected) =>
+                              setState(() => _status = selected.first),
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStateProperty.resolveWith((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.selected)) {
+                                return primary.withOpacity(0.1);
+                              }
+                              return cardAlt;
+                            }),
+                            foregroundColor: WidgetStateProperty.all(
+                              textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'PAGAMENTO',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                          segments: [
+                            ButtonSegment(
+                              value: 'pendente',
+                              label: Text(
+                                'Pendente',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(
+                                Icons.pending,
+                                color: context.uai.warning,
+                              ),
+                            ),
+                            ButtonSegment(
+                              value: 'pago',
+                              label: Text(
+                                'Pago',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(
+                                Icons.check_circle,
+                                color: context.uai.success,
+                              ),
+                            ),
+                            ButtonSegment(
+                              value: 'parcial',
+                              label: Text(
+                                'Parcial',
+                                style: TextStyle(color: textPrimary),
+                              ),
+                              icon: Icon(
+                                Icons.money_off,
+                                color: context.uai.info,
+                              ),
+                            ),
+                          ],
+                          selected: {_statusPagamento},
+                          onSelectionChanged: (Set<String> selected) =>
+                              setState(() => _statusPagamento = selected.first),
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStateProperty.resolveWith((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.selected)) {
+                                return primary.withOpacity(0.1);
+                              }
+                              return cardAlt;
+                            }),
+                            foregroundColor: WidgetStateProperty.all(
+                              textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (_statusPagamento == 'parcial') ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: textPrimary),
+                            decoration: InputDecoration(
+                              labelText: 'Valor pago',
+                              labelStyle: TextStyle(color: textSecondary),
+                              prefixText: 'R\$ ',
+                              filled: true,
+                              fillColor: cardAlt,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(
+                                  context.uai.inputRadius,
+                                ),
+                                borderSide: BorderSide(color: border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(
+                                  context.uai.inputRadius,
+                                ),
+                                borderSide: BorderSide(color: border),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(
+                                  context.uai.inputRadius,
+                                ),
+                                borderSide: BorderSide(
+                                  color: primary,
+                                  width: 1.4,
+                                ),
+                              ),
+                            ),
+                            onChanged: (v) => _valorPago =
+                                double.tryParse(v.replaceAll(',', '.')) ?? 0,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Previsão
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: InkWell(
+                      onTap: _selecionarDataPrevisao,
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Data de previsão',
+                          labelStyle: TextStyle(color: textSecondary),
+                          border: InputBorder.none,
+                        ),
+                        child: Text(
+                          _dataPrevisaoController.text.isEmpty
+                              ? 'Selecionar data'
+                              : _dataPrevisaoController.text,
+                          style: TextStyle(color: textPrimary),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Observações
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: TextField(
+                      controller: _observacoesController,
+                      maxLines: 3,
                       style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                        labelText: 'Valor pago',
+                        labelText: 'Observações',
                         labelStyle: TextStyle(color: textSecondary),
-                        prefixText: 'R\$ ',
                         filled: true,
                         fillColor: cardAlt,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
                           borderSide: BorderSide(color: border),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
                           borderSide: BorderSide(color: border),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.inputRadius,
+                          ),
                           borderSide: BorderSide(color: primary, width: 1.4),
                         ),
+                        alignLabelWithHint: true,
                       ),
-                      onChanged: (v) =>
-                      _valorPago = double.tryParse(v.replaceAll(',', '.')) ?? 0,
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-
-            // Previsão
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: InkWell(
-                onTap: _selecionarDataPrevisao,
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Data de previsão',
-                    labelStyle: TextStyle(color: textSecondary),
-                    border: InputBorder.none,
-                  ),
-                  child: Text(
-                    _dataPrevisaoController.text.isEmpty
-                        ? 'Selecionar data'
-                        : _dataPrevisaoController.text,
-                    style: TextStyle(color: textPrimary),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Observações
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: TextField(
-                controller: _observacoesController,
-                maxLines: 3,
-                style: TextStyle(color: textPrimary),
-                decoration: InputDecoration(
-                  labelText: 'Observações',
-                  labelStyle: TextStyle(color: textSecondary),
-                  filled: true,
-                  fillColor: cardAlt,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                    borderSide: BorderSide(color: primary, width: 1.4),
-                  ),
-                  alignLabelWithHint: true,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -787,7 +946,8 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
 // ──────────────────────────────────────────────────────────────────────────────
 class _SelecionarRemessaDialog extends StatefulWidget {
   @override
-  State<_SelecionarRemessaDialog> createState() => _SelecionarRemessaDialogState();
+  State<_SelecionarRemessaDialog> createState() =>
+      _SelecionarRemessaDialogState();
 }
 
 class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
@@ -857,23 +1017,39 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     .orderBy('criado_em', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: primary));
+                  if (!snapshot.hasData)
+                    return Center(
+                      child: CircularProgressIndicator(color: primary),
+                    );
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
-                      final nome = (d.data() as Map<String, dynamic>)['nome'] ?? '';
+                      final nome =
+                          (d.data() as Map<String, dynamic>)['nome'] ?? '';
                       return nome.toLowerCase().contains(_search);
                     }).toList();
                   }
-                  if (docs.isEmpty) return Center(child: Text('Nenhuma remessa encontrada', style: TextStyle(color: textMuted)));
+                  if (docs.isEmpty)
+                    return Center(
+                      child: Text(
+                        'Nenhuma remessa encontrada',
+                        style: TextStyle(color: textMuted),
+                      ),
+                    );
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
                       final data = docs[i].data() as Map<String, dynamic>;
                       return ListTile(
                         leading: Icon(Icons.local_shipping, color: primary),
-                        title: Text(data['nome'] ?? 'Sem nome', style: TextStyle(color: textPrimary)),
-                        subtitle: Text('Status: ${data['status']}', style: TextStyle(color: textSecondary)),
+                        title: Text(
+                          data['nome'] ?? 'Sem nome',
+                          style: TextStyle(color: textPrimary),
+                        ),
+                        subtitle: Text(
+                          'Status: ${data['status']}',
+                          style: TextStyle(color: textSecondary),
+                        ),
                         onTap: () {
                           Navigator.pop(context, {
                             'id': docs[i].id,
@@ -901,13 +1077,18 @@ class SelecionarItemPedidoDialog extends StatefulWidget {
   const SelecionarItemPedidoDialog({super.key});
 
   @override
-  State<SelecionarItemPedidoDialog> createState() => _SelecionarItemPedidoDialogState();
+  State<SelecionarItemPedidoDialog> createState() =>
+      _SelecionarItemPedidoDialogState();
 }
 
-class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog> {
+class _SelecionarItemPedidoDialogState
+    extends State<SelecionarItemPedidoDialog> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   @override
   void dispose() {
@@ -922,11 +1103,11 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
   }
 
   void _showQuantidadeDialog(
-      BuildContext context,
-      String itemId,
-      Map<String, dynamic> data, {
-        String? tamanho,
-      }) {
+    BuildContext context,
+    String itemId,
+    Map<String, dynamic> data, {
+    String? tamanho,
+  }) {
     final quantidadeController = TextEditingController();
     final primary = context.uai.primary;
     final textPrimary = context.uai.textPrimary;
@@ -935,13 +1116,19 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(data['nome'] ?? 'Item', style: TextStyle(color: textPrimary)),
+          title: Text(
+            data['nome'] ?? 'Item',
+            style: TextStyle(color: textPrimary),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                  style: TextStyle(color: textPrimary)),
-              if (tamanho != null) Text('Tamanho: $tamanho', style: TextStyle(color: textPrimary)),
+              Text(
+                'Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}',
+                style: TextStyle(color: textPrimary),
+              ),
+              if (tamanho != null)
+                Text('Tamanho: $tamanho', style: TextStyle(color: textPrimary)),
               const SizedBox(height: 16),
               TextField(
                 controller: quantidadeController,
@@ -951,15 +1138,21 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                   labelText: 'Quantidade',
                   labelStyle: TextStyle(color: context.uai.textSecondary),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: primary, width: 1.4),
                   ),
                 ),
@@ -997,77 +1190,100 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
     );
   }
 
-  void _mostrarDialogoVariacoes(BuildContext context, String baseId, Map<String, dynamic> baseData) {
+  void _mostrarDialogoVariacoes(
+    BuildContext context,
+    String baseId,
+    Map<String, dynamic> baseData,
+  ) {
     FirebaseFirestore.instance
         .collection('uniformes_estoque')
         .where('item_base_id', isEqualTo: baseId)
         .get()
         .then((snapshot) {
-      if (!mounted) return;
+          if (!mounted) return;
 
-      if (snapshot.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Nenhuma variação encontrada para este item'),
-            backgroundColor: context.uai.warning,
-          ),
-        );
-        return;
-      }
+          if (snapshot.docs.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Nenhuma variação encontrada para este item',
+                ),
+                backgroundColor: context.uai.warning,
+              ),
+            );
+            return;
+          }
 
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Tamanhos disponíveis - ${baseData['nome']}',
-              style: TextStyle(color: context.uai.textPrimary)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: snapshot.docs.length,
-              itemBuilder: (_, i) {
-                final variacao = snapshot.docs[i].data();
-                final tamanho = variacao['tamanho'] ?? '?';
-                final quantidadeEstoque = variacao['quantidade'] ?? 0;
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: context.uai.primary.withOpacity(0.1),
-                    child: Text(tamanho.toString().toUpperCase(),
-                        style: TextStyle(
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: Text(
+                'Tamanhos disponíveis - ${baseData['nome']}',
+                style: TextStyle(color: context.uai.textPrimary),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: snapshot.docs.length,
+                  itemBuilder: (_, i) {
+                    final variacao = snapshot.docs[i].data();
+                    final tamanho = variacao['tamanho'] ?? '?';
+                    final quantidadeEstoque = variacao['quantidade'] ?? 0;
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: context.uai.primary.withOpacity(0.1),
+                        child: Text(
+                          tamanho.toString().toUpperCase(),
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: context.uai.primary)),
-                  ),
-                  title: Text('Tamanho $tamanho',
-                      style: TextStyle(color: context.uai.textPrimary)),
-                  subtitle: Text('Estoque: $quantidadeEstoque un',
-                      style: TextStyle(color: context.uai.textSecondary)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showQuantidadeDialog(context, snapshot.docs[i].id, variacao,
-                        tamanho: tamanho.toString());
+                            color: context.uai.primary,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        'Tamanho $tamanho',
+                        style: TextStyle(color: context.uai.textPrimary),
+                      ),
+                      subtitle: Text(
+                        'Estoque: $quantidadeEstoque un',
+                        style: TextStyle(color: context.uai.textSecondary),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showQuantidadeDialog(
+                          context,
+                          snapshot.docs[i].id,
+                          variacao,
+                          tamanho: tamanho.toString(),
+                        );
+                      },
+                    );
                   },
-                );
-              },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(color: context.uai.primary),
+                  ),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancelar', style: TextStyle(color: context.uai.primary)),
-            ),
-          ],
-        ),
-      );
-    }).catchError((e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao carregar variações: $e'),
-            backgroundColor: context.uai.error,
-          ),
-        );
-      }
-    });
+          );
+        })
+        .catchError((e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erro ao carregar variações: $e'),
+                backgroundColor: context.uai.error,
+              ),
+            );
+          }
+        });
   }
 
   @override
@@ -1134,25 +1350,31 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                   filled: true,
                   fillColor: cardAlt,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: primary, width: 1.4),
                   ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear, color: textMuted),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
+                          icon: Icon(Icons.clear, color: textMuted),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
                       : null,
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
@@ -1166,7 +1388,9 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(child: CircularProgressIndicator(color: primary));
+                    return Center(
+                      child: CircularProgressIndicator(color: primary),
+                    );
 
                   var docs = snapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
@@ -1187,10 +1411,16 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.inventory_2_outlined, size: 50, color: textMuted),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 50,
+                            color: textMuted,
+                          ),
                           const SizedBox(height: 16),
                           Text(
-                            _searchQuery.isEmpty ? 'Nenhum item cadastrado' : 'Nenhum item encontrado',
+                            _searchQuery.isEmpty
+                                ? 'Nenhum item cadastrado'
+                                : 'Nenhum item encontrado',
                             style: TextStyle(color: textSecondary),
                           ),
                           const SizedBox(height: 8),
@@ -1212,7 +1442,8 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                     itemBuilder: (context, index) {
                       var doc = docs[index];
                       var data = doc.data() as Map<String, dynamic>;
-                      final bool possuiVariacoes = data['possui_variacoes'] == true;
+                      final bool possuiVariacoes =
+                          data['possui_variacoes'] == true;
                       final String? fotoUrl = data['foto_url'];
 
                       return ListTile(
@@ -1225,25 +1456,36 @@ class _SelecionarItemPedidoDialogState extends State<SelecionarItemPedidoDialog>
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
                               ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: fotoUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) =>
-                                  Icon(Icons.shopping_bag, color: primary),
-                              errorWidget: (_, __, ___) =>
-                                  Icon(Icons.shopping_bag, color: primary),
-                            ),
-                          )
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: fotoUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Icon(
+                                      Icons.shopping_bag,
+                                      color: primary,
+                                    ),
+                                    errorWidget: (_, __, ___) => Icon(
+                                      Icons.shopping_bag,
+                                      color: primary,
+                                    ),
+                                  ),
+                                )
                               : Icon(Icons.shopping_bag, color: primary),
                         ),
-                        title: Text(data['nome'] ?? 'Sem nome',
-                            style: TextStyle(color: textPrimary)),
+                        title: Text(
+                          data['nome'] ?? 'Sem nome',
+                          style: TextStyle(color: textPrimary),
+                        ),
                         subtitle: Text(
-                            'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                            style: TextStyle(color: textSecondary)),
+                          'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
+                          style: TextStyle(color: textSecondary),
+                        ),
                         trailing: possuiVariacoes
-                            ? Icon(Icons.arrow_forward_ios, size: 14, color: textMuted)
+                            ? Icon(
+                                Icons.arrow_forward_ios,
+                                size: 14,
+                                color: textMuted,
+                              )
                             : null,
                         onTap: () {
                           if (possuiVariacoes) {

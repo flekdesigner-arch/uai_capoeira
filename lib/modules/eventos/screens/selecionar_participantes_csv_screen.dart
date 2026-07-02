@@ -1,6 +1,8 @@
-﻿// lib/screens/eventos/selecionar_participantes_csv_screen.dart
+// lib/screens/eventos/selecionar_participantes_csv_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
@@ -22,10 +24,12 @@ class SelecionarParticipantesCsvScreen extends StatefulWidget {
   });
 
   @override
-  State<SelecionarParticipantesCsvScreen> createState() => _SelecionarParticipantesCsvScreenState();
+  State<SelecionarParticipantesCsvScreen> createState() =>
+      _SelecionarParticipantesCsvScreenState();
 }
 
-class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipantesCsvScreen> {
+class _SelecionarParticipantesCsvScreenState
+    extends State<SelecionarParticipantesCsvScreen> {
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -33,7 +37,8 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -84,9 +89,13 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
     );
   }
 
-
   final Map<String, Map<String, dynamic>> _participantes = {};
+  final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
   bool _isLoading = true;
+  bool _acessoNegado = false;
   bool _isGerandoCsv = false;
   bool _isEnviando = false;
   String _searchQuery = '';
@@ -95,17 +104,38 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
 
   // Estatísticas
   int get _totalParticipantes => _participantes.length;
-  int get _selecionadosCount => _participantes.values.where((p) => p['selecionado'] == true).length;
-  bool get _todosSelecionados => _participantes.isNotEmpty && _participantes.values.every((p) => p['selecionado'] == true);
-  int get _totalComGraduacao => _participantes.values.where((p) => p['graduacao_nova'].isNotEmpty).length;
+  int get _selecionadosCount =>
+      _participantes.values.where((p) => p['selecionado'] == true).length;
+  bool get _todosSelecionados =>
+      _participantes.isNotEmpty &&
+      _participantes.values.every((p) => p['selecionado'] == true);
+  int get _totalComGraduacao =>
+      _participantes.values.where((p) => p['graduacao_nova'].isNotEmpty).length;
 
   @override
   void initState() {
     super.initState();
-    _carregarParticipantes();
+    _inicializarComPermissao();
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerar_certificados_evento',
+    );
+    if (!mounted) return;
+
+    if (!permitido) {
+      setState(() {
+        _acessoNegado = true;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    await _carregarParticipantes();
   }
 
   Future<void> _carregarParticipantes() async {
@@ -141,7 +171,9 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           'selecionado': false,
           'cpf': '',
           'foto': fotoUrl,
-          'link_certificado': data['link_certificado']?.toString() ?? '', // 👈 JÁ CARREGA SE TIVER
+          'link_certificado':
+              data['link_certificado']?.toString() ??
+              '', // 👈 JÁ CARREGA SE TIVER
         };
       }
       setState(() {});
@@ -155,7 +187,10 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
   Future<String> _buscarCpf(String alunoId) async {
     if (_cacheCpf.containsKey(alunoId)) return _cacheCpf[alunoId]!;
     try {
-      final doc = await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
       final cpf = doc.data()?['cpf']?.toString() ?? '0';
       _cacheCpf[alunoId] = cpf;
       return cpf;
@@ -188,17 +223,27 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
   // AÇÕES PRINCIPAIS
   // ============================================================
   Future<void> _enviarViaAPI() async {
-    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+    final selecionados = _participantes.values
+        .where((p) => p['selecionado'] == true)
+        .toList();
     if (selecionados.isEmpty) {
-      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      _mostrarMensagem(
+        'Selecione pelo menos um participante',
+        context.uai.warning,
+      );
       return;
     }
 
     setState(() => _isEnviando = true);
     try {
       for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
-      final resultado = await GoogleSheetsOAuthService().adicionarParticipantes(selecionados);
-      _mostrarMensagem(resultado['mensagem'], resultado['sucesso'] ? context.uai.success : context.uai.error);
+      final resultado = await GoogleSheetsOAuthService().adicionarParticipantes(
+        selecionados,
+      );
+      _mostrarMensagem(
+        resultado['mensagem'],
+        resultado['sucesso'] ? context.uai.success : context.uai.error,
+      );
       if (resultado['sucesso']) _selecionarTodos(false);
     } finally {
       setState(() => _isEnviando = false);
@@ -206,9 +251,14 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
   }
 
   Future<void> _gerarCsv() async {
-    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+    final selecionados = _participantes.values
+        .where((p) => p['selecionado'] == true)
+        .toList();
     if (selecionados.isEmpty) {
-      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      _mostrarMensagem(
+        'Selecione pelo menos um participante',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -216,29 +266,49 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
     try {
       for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
 
-      List<List<String>> linhas = [['NOME', 'CPF', 'GRADUAÇÃO']];
+      List<List<String>> linhas = [
+        ['NOME', 'CPF', 'GRADUAÇÃO'],
+      ];
       for (var p in selecionados) {
-        linhas.add([p['aluno_nome'], p['cpf'], p['graduacao_nova'].isEmpty ? 'SEM GRADUAÇÃO' : p['graduacao_nova']]);
+        linhas.add([
+          p['aluno_nome'],
+          p['cpf'],
+          p['graduacao_nova'].isEmpty ? 'SEM GRADUAÇÃO' : p['graduacao_nova'],
+        ]);
       }
 
-      String csv = linhas.map((linha) => linha.map((campo) {
-        if (campo.contains(',') || campo.contains('"') || campo.contains('\n')) {
-          return '"${campo.replaceAll('"', '""')}"';
-        }
-        return campo;
-      }).join(',')).join('\n');
+      String csv = linhas
+          .map(
+            (linha) => linha
+                .map((campo) {
+                  if (campo.contains(',') ||
+                      campo.contains('"') ||
+                      campo.contains('\n')) {
+                    return '"${campo.replaceAll('"', '""')}"';
+                  }
+                  return campo;
+                })
+                .join(','),
+          )
+          .join('\n');
 
       final bom = [0xEF, 0xBB, 0xBF];
       List<int> bytes = [...bom, ...csv.codeUnits];
 
       final tempDir = await getTemporaryDirectory();
       final dataHora = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'participantes_${widget.eventoNome.replaceAll(' ', '_')}_$dataHora.csv';
+      final fileName =
+          'participantes_${widget.eventoNome.replaceAll(' ', '_')}_$dataHora.csv';
       final file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(bytes);
-      await Share.shareXFiles([XFile(file.path)], text: 'Lista de participantes');
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Lista de participantes');
 
-      _mostrarMensagem('✅ CSV gerado com ${selecionados.length} participantes!', context.uai.success);
+      _mostrarMensagem(
+        '✅ CSV gerado com ${selecionados.length} participantes!',
+        context.uai.success,
+      );
       _selecionarTodos(false);
     } catch (e) {
       _mostrarMensagem('Erro ao gerar CSV', context.uai.error);
@@ -249,10 +319,15 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
 
   // 👇 NOVO MÉTODO: Abrir tela de vincular certificados
   void _abrirVincularCertificados() {
-    final selecionados = _participantes.values.where((p) => p['selecionado'] == true).toList();
+    final selecionados = _participantes.values
+        .where((p) => p['selecionado'] == true)
+        .toList();
 
     if (selecionados.isEmpty) {
-      _mostrarMensagem('Selecione pelo menos um participante', context.uai.warning);
+      _mostrarMensagem(
+        'Selecione pelo menos um participante',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -274,6 +349,14 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
 
   @override
   Widget build(BuildContext context) {
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Certificados CSV',
+        message: 'Você não tem permissão para gerar certificados do evento.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -286,7 +369,10 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
             ),
             Text(
               'Selecionar participantes',
-              style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.9)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withOpacity(0.9),
+              ),
             ),
           ],
         ),
@@ -334,155 +420,168 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : Column(
-        children: [
-          // 🔝 PAINEL DE ESTATÍSTICAS
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.uai.card,
-              boxShadow: [
-                BoxShadow(
-                  color: context.uai.textMuted.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
               children: [
-                Expanded(
-                  child: _buildStatCard(
-                    icon: Icons.people,
-                    value: '$_totalParticipantes',
-                    label: 'Total',
-                    color: context.uai.info,
+                // 🔝 PAINEL DE ESTATÍSTICAS
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: context.uai.card,
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.uai.textMuted.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ),
-                Expanded(
-                  child: _buildStatCard(
-                    icon: Icons.check_circle,
-                    value: '$_selecionadosCount',
-                    label: 'Selecionados',
-                    color: context.uai.success,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatCard(
-                    icon: Icons.school,
-                    value: '$_totalComGraduacao',
-                    label: 'Com graduação',
-                    color: context.uai.associacao,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 🔍 BARRA DE PESQUISA
-          Container(
-            padding: EdgeInsets.all(16),
-            color: context.uai.card,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Buscar participante...',
-                prefixIcon: Icon(Icons.search, color: context.uai.error),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: context.uai.cardAlt,
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                  icon: Icon(Icons.clear, color: context.uai.error),
-                  onPressed: () => _searchController.clear(),
-                )
-                    : null,
-              ),
-            ),
-          ),
-
-          // 🎯 BOTÕES DE AÇÃO (só aparecem se houver selecionados)
-          if (_selecionadosCount > 0)
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
+                  child: Row(
                     children: [
                       Expanded(
-                        child: _buildActionButton(
-                          onPressed: _gerarCsv,
-                          isLoading: _isGerandoCsv,
-                          icon: Icons.file_download,
-                          label: 'BAIXAR CSV',
+                        child: _buildStatCard(
+                          icon: Icons.people,
+                          value: '$_totalParticipantes',
+                          label: 'Total',
                           color: context.uai.info,
                         ),
                       ),
-                      SizedBox(width: 12),
                       Expanded(
-                        child: _buildActionButton(
-                          onPressed: _enviarViaAPI,
-                          isLoading: _isEnviando,
-                          icon: Icons.cloud_upload,
-                          label: 'ENVIAR PLANILHA',
+                        child: _buildStatCard(
+                          icon: Icons.check_circle,
+                          value: '$_selecionadosCount',
+                          label: 'Selecionados',
                           color: context.uai.success,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: Icons.school,
+                          value: '$_totalComGraduacao',
+                          label: 'Com graduação',
+                          color: context.uai.associacao,
                         ),
                       ),
                     ],
                   ),
+                ),
 
-                  // 👇 BOTÃO EXTRA DE CERTIFICADO (opcional, pode manter ou remover)
-                  SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _abrirVincularCertificados,
-                      icon: Icon(Icons.drive_folder_upload),
-                      label: Text(
-                        'VINCULAR CERTIFICADOS DO DRIVE (${_selecionadosCount})',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                // 🔍 BARRA DE PESQUISA
+                Container(
+                  padding: EdgeInsets.all(16),
+                  color: context.uai.card,
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar participante...',
+                      prefixIcon: Icon(Icons.search, color: context.uai.error),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.uai.associacao,
-                        foregroundColor: _appBarFg(),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                      filled: true,
+                      fillColor: context.uai.cardAlt,
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.clear, color: context.uai.error),
+                              onPressed: () => _searchController.clear(),
+                            )
+                          : null,
                     ),
                   ),
-                ],
-              ),
+                ),
+
+                // 🎯 BOTÕES DE AÇÃO (só aparecem se houver selecionados)
+                if (_selecionadosCount > 0)
+                  Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildActionButton(
+                                onPressed: _gerarCsv,
+                                isLoading: _isGerandoCsv,
+                                icon: Icons.file_download,
+                                label: 'BAIXAR CSV',
+                                color: context.uai.info,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: _buildActionButton(
+                                onPressed: _enviarViaAPI,
+                                isLoading: _isEnviando,
+                                icon: Icons.cloud_upload,
+                                label: 'ENVIAR PLANILHA',
+                                color: context.uai.success,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // 👇 BOTÃO EXTRA DE CERTIFICADO (opcional, pode manter ou remover)
+                        SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _abrirVincularCertificados,
+                            icon: Icon(Icons.drive_folder_upload),
+                            label: Text(
+                              'VINCULAR CERTIFICADOS DO DRIVE (${_selecionadosCount})',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: context.uai.associacao,
+                              foregroundColor: _appBarFg(),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // 👥 LISTA DE PARTICIPANTES
+                Expanded(
+                  child: _participantes.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _participantes.length,
+                          itemBuilder: (context, index) {
+                            final entry = _participantes.entries.elementAt(
+                              index,
+                            );
+                            final p = entry.value;
+
+                            if (_searchQuery.isNotEmpty &&
+                                !p['aluno_nome'].toLowerCase().contains(
+                                  _searchQuery,
+                                )) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return _buildParticipantCard(p, index);
+                          },
+                        ),
+                ),
+              ],
             ),
-
-          // 👥 LISTA DE PARTICIPANTES
-          Expanded(
-            child: _participantes.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _participantes.length,
-              itemBuilder: (context, index) {
-                final entry = _participantes.entries.elementAt(index);
-                final p = entry.value;
-
-                if (_searchQuery.isNotEmpty && !p['aluno_nome'].toLowerCase().contains(_searchQuery)) {
-                  return const SizedBox.shrink();
-                }
-
-                return _buildParticipantCard(p, index);
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildStatCard({required IconData icon, required String value, required String label, required Color color}) {
+  Widget _buildStatCard({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+  }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(12),
@@ -505,10 +604,7 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           ),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 11,
-              color: color.withOpacity(0.8),
-            ),
+            style: TextStyle(fontSize: 11, color: color.withOpacity(0.8)),
           ),
         ],
       ),
@@ -532,21 +628,36 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
         elevation: 2,
       ),
       child: isLoading
-          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: context.uai.card, strokeWidth: 2))
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: context.uai.card,
+                strokeWidth: 2,
+              ),
+            )
           : Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
   Widget _buildParticipantCard(Map<String, dynamic> p, int index) {
     final temGraduacao = p['graduacao_nova'].isNotEmpty;
-    final temCertificado = p['link_certificado'] != null && p['link_certificado'].toString().isNotEmpty;
+    final temCertificado =
+        p['link_certificado'] != null &&
+        p['link_certificado'].toString().isNotEmpty;
 
     return Card(
       margin: EdgeInsets.only(bottom: 8),
@@ -572,7 +683,9 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: p['selecionado'] ? context.uai.primary : context.uai.border,
+                    color: p['selecionado']
+                        ? context.uai.primary
+                        : context.uai.border,
                     width: 2,
                   ),
                   boxShadow: [
@@ -586,35 +699,37 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
                 child: ClipOval(
                   child: p['foto'] != null && p['foto'].toString().isNotEmpty
                       ? CachedNetworkImage(
-                    imageUrl: p['foto'],
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: context.uai.cardAlt,
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: context.uai.error.withOpacity(0.08),
-                      child: Icon(
-                        Icons.person,
-                        color: context.uai.error.withOpacity(0.24),
-                        size: 30,
-                      ),
-                    ),
-                  )
+                          imageUrl: p['foto'],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: context.uai.cardAlt,
+                            child: Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: context.uai.error.withOpacity(0.08),
+                            child: Icon(
+                              Icons.person,
+                              color: context.uai.error.withOpacity(0.24),
+                              size: 30,
+                            ),
+                          ),
+                        )
                       : Container(
-                    color: context.uai.error.withOpacity(0.08),
-                    child: Icon(
-                      Icons.person,
-                      color: context.uai.error.withOpacity(0.24),
-                      size: 30,
-                    ),
-                  ),
+                          color: context.uai.error.withOpacity(0.08),
+                          child: Icon(
+                            Icons.person,
+                            color: context.uai.error.withOpacity(0.24),
+                            size: 30,
+                          ),
+                        ),
                 ),
               ),
               SizedBox(width: 16),
@@ -655,9 +770,14 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
                     Row(
                       children: [
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: temGraduacao ? context.uai.success.withOpacity(0.08) : context.uai.cardAlt,
+                            color: temGraduacao
+                                ? context.uai.success.withOpacity(0.08)
+                                : context.uai.cardAlt,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -666,14 +786,20 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
                               Icon(
                                 Icons.school,
                                 size: 12,
-                                color: temGraduacao ? context.uai.success : context.uai.textSecondary,
+                                color: temGraduacao
+                                    ? context.uai.success
+                                    : context.uai.textSecondary,
                               ),
                               SizedBox(width: 4),
                               Text(
-                                temGraduacao ? p['graduacao_nova'] : 'Sem graduação',
+                                temGraduacao
+                                    ? p['graduacao_nova']
+                                    : 'Sem graduação',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: temGraduacao ? context.uai.success : context.uai.textSecondary,
+                                  color: temGraduacao
+                                      ? context.uai.success
+                                      : context.uai.textSecondary,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -689,15 +815,20 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
               // Checkbox personalizado
               Container(
                 decoration: BoxDecoration(
-                  color: p['selecionado'] ? context.uai.primary : context.uai.cardAlt,
+                  color: p['selecionado']
+                      ? context.uai.primary
+                      : context.uai.cardAlt,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Checkbox(
                   value: p['selecionado'],
-                  onChanged: (value) => setState(() => p['selecionado'] = value ?? false),
+                  onChanged: (value) =>
+                      setState(() => p['selecionado'] = value ?? false),
                   activeColor: context.uai.primary,
                   checkColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
             ],
@@ -727,7 +858,11 @@ class _SelecionarParticipantesCsvScreenState extends State<SelecionarParticipant
           SizedBox(height: 16),
           Text(
             'Nenhum participante no evento',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.uai.textMuted),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: context.uai.textMuted,
+            ),
           ),
           SizedBox(height: 8),
           Text(

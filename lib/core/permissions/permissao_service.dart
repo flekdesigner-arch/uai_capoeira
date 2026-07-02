@@ -40,18 +40,50 @@ class PermissaoService {
   static const String chaveEditarEvento = 'pode_editar_evento';
   static const String chaveExcluirEvento = 'pode_excluir_evento';
   static const String chaveFinalizarEvento = 'pode_finalizar_evento';
+  static const String chaveReabrirEvento = 'pode_reabrir_evento';
 
   // Eventos - participantes.
   static const String chaveGerenciarParticipantesEvento =
       'pode_gerenciar_participantes_evento';
+  static const String chaveVerParticipantesEvento =
+      'pode_ver_participantes_evento';
+  static const String chaveVerDetalheParticipacaoEvento =
+      'pode_ver_detalhe_participacao_evento';
   static const String chaveAdicionarParticipanteEvento =
       'pode_adicionar_participante_evento';
   static const String chaveEditarParticipanteEvento =
       'pode_editar_participante_evento';
+  static const String chaveEditarDadosParticipacaoEvento =
+      'pode_editar_dados_participacao_evento';
+  static const String chaveEditarCamisaParticipacaoEvento =
+      'pode_editar_camisa_participacao_evento';
+  static const String chaveEditarGraduacaoParticipacaoEvento =
+      'pode_editar_graduacao_participacao_evento';
+  static const String chaveEditarStatusPagamentoParticipacaoEvento =
+      'pode_editar_status_pagamento_participacao_evento';
+  static const String chaveEditarObservacoesParticipacaoEvento =
+      'pode_editar_observacoes_participacao_evento';
+  static const String chaveEditarStatusParticipacaoEvento =
+      'pode_editar_status_participacao_evento';
   static const String chaveRemoverParticipanteEvento =
       'pode_remover_participante_evento';
+  static const String chaveCancelarParticipacaoEvento =
+      'pode_cancelar_participacao_evento';
   static const String chaveConcluirParticipacaoEvento =
       'pode_concluir_participacao_evento';
+  static const String chaveDesfazerConclusaoParticipacaoEvento =
+      'pode_desfazer_conclusao_participacao_evento';
+
+  // Eventos - pagamentos.
+  static const String chaveRegistrarPagamentoEvento =
+      'pode_registrar_pagamento_evento';
+  static const String chaveEditarPagamentoEvento =
+      'pode_editar_pagamento_evento';
+  static const String chaveExcluirPagamentoEvento =
+      'pode_excluir_pagamento_evento';
+  static const String chaveMarcarPatrocinioEvento =
+      'pode_marcar_patrocinio_evento';
+  static const String chaveVerFinanceiroEvento = 'pode_ver_financeiro_evento';
 
   // Eventos - financeiro/módulos.
   static const String chaveGerenciarCamisasEvento =
@@ -63,6 +95,8 @@ class PermissaoService {
   static const String chaveVerRelatorioEvento = 'pode_ver_relatorio_evento';
   static const String chaveGerarCertificadosEvento =
       'pode_gerar_certificados_evento';
+  static const String chaveConfigurarCertificadosEvento =
+      'pode_configurar_certificados_evento';
 
   /// Aliases/compatibilidade.
   ///
@@ -80,13 +114,19 @@ class PermissaoService {
     chaveCriarEvento: ['pode_cadastrar_evento'],
     chaveEditarEvento: ['pode_alterar_evento'],
     chaveFinalizarEvento: ['pode_concluir_evento'],
+    chaveReabrirEvento: ['pode_iniciar_evento'],
 
     chaveGerenciarParticipantesEvento: [
       'pode_gerenciar_participantes',
       'pode_gerenciar_participantes_eventos',
-      'pode_adcionar_aluno_a_eventos',
-      'pode_adicionar_aluno_a_eventos',
-      'pode_remover_alunos_de_eventos',
+    ],
+    chaveVerParticipantesEvento: [
+      chaveGerenciarParticipantesEvento,
+      'pode_visualizar_participantes_evento',
+    ],
+    chaveVerDetalheParticipacaoEvento: [
+      chaveGerenciarParticipantesEvento,
+      'pode_visualizar_detalhe_participacao_evento',
     ],
     chaveAdicionarParticipanteEvento: [
       'pode_adcionar_aluno_a_eventos', // chave antiga com erro de digitação.
@@ -97,13 +137,47 @@ class PermissaoService {
       'pode_editar_participacao_evento',
       'pode_editar_participante',
     ],
+    chaveEditarDadosParticipacaoEvento: [
+      chaveEditarParticipanteEvento,
+      'pode_editar_participacao_evento',
+    ],
+    chaveEditarCamisaParticipacaoEvento: [
+      'pode_editar_camisa_evento',
+      'pode_editar_camisa_participacao',
+    ],
+    chaveEditarGraduacaoParticipacaoEvento: [
+      'pode_editar_graduacao_evento',
+      'pode_editar_graduacao_participacao',
+    ],
+    chaveEditarStatusPagamentoParticipacaoEvento: [
+      'pode_editar_status_pagamento_evento',
+    ],
+    chaveEditarObservacoesParticipacaoEvento: [
+      'pode_editar_observacoes_evento',
+    ],
+    chaveEditarStatusParticipacaoEvento: [
+      'pode_alterar_status_participacao_evento',
+    ],
     chaveRemoverParticipanteEvento: [
       'pode_remover_alunos_de_eventos',
       'pode_remover_aluno_evento',
     ],
+    chaveCancelarParticipacaoEvento: ['pode_cancelar_participacao'],
     chaveConcluirParticipacaoEvento: [
       'pode_concluir_participacao',
       'pode_confirmar_participacao_evento',
+    ],
+    chaveDesfazerConclusaoParticipacaoEvento: [
+      'pode_desfazer_conclusao_participacao',
+    ],
+
+    chaveRegistrarPagamentoEvento: ['pode_registrar_pagamento'],
+    chaveEditarPagamentoEvento: ['pode_editar_pagamento'],
+    chaveExcluirPagamentoEvento: ['pode_excluir_pagamento'],
+    chaveMarcarPatrocinioEvento: ['pode_marcar_patrocinio'],
+    chaveVerFinanceiroEvento: [
+      chaveVerRelatorioEvento,
+      'pode_visualizar_financeiro_evento',
     ],
 
     chaveGerenciarCamisasEvento: [
@@ -129,6 +203,10 @@ class PermissaoService {
       'pode_gerar_certificados',
       'pode_emitir_certificados',
       'pode_gerar_certificado_evento',
+    ],
+    chaveConfigurarCertificadosEvento: [
+      'pode_configurar_certificados',
+      'pode_configurar_certificado_evento',
     ],
   };
 
@@ -426,16 +504,33 @@ class PermissaoService {
     chaveEditarEvento,
     chaveExcluirEvento,
     chaveFinalizarEvento,
+    chaveReabrirEvento,
     chaveGerenciarParticipantesEvento,
+    chaveVerParticipantesEvento,
+    chaveVerDetalheParticipacaoEvento,
     chaveAdicionarParticipanteEvento,
     chaveEditarParticipanteEvento,
+    chaveEditarDadosParticipacaoEvento,
+    chaveEditarCamisaParticipacaoEvento,
+    chaveEditarGraduacaoParticipacaoEvento,
+    chaveEditarStatusPagamentoParticipacaoEvento,
+    chaveEditarObservacoesParticipacaoEvento,
+    chaveEditarStatusParticipacaoEvento,
     chaveRemoverParticipanteEvento,
+    chaveCancelarParticipacaoEvento,
     chaveConcluirParticipacaoEvento,
+    chaveDesfazerConclusaoParticipacaoEvento,
+    chaveRegistrarPagamentoEvento,
+    chaveEditarPagamentoEvento,
+    chaveExcluirPagamentoEvento,
+    chaveMarcarPatrocinioEvento,
+    chaveVerFinanceiroEvento,
     chaveGerenciarCamisasEvento,
     chaveGerenciarPatrocinadoresEvento,
     chaveGerenciarGastosEvento,
     chaveVerRelatorioEvento,
     chaveGerarCertificadosEvento,
+    chaveConfigurarCertificadosEvento,
   ];
 
   // Lista pronta para a próxima fase: tela de usuário entregar as chaves.

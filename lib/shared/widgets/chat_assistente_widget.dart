@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/shared/services/assistente_chat_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -107,7 +107,8 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
         break;
       case 'maps':
         final endereco = _config['informacoes']['endereco'] ?? '';
-        final url = 'https://maps.google.com/?q=${Uri.encodeComponent(endereco)}';
+        final url =
+            'https://maps.google.com/?q=${Uri.encodeComponent(endereco)}';
         final Uri uri = Uri.parse(url);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -136,7 +137,9 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
   Widget build(BuildContext context) {
     if (!_ativo) return const SizedBox.shrink();
 
-    final corPrimaria = _parseColor(_config['aparencia']['cor_primaria'] ?? '#FF0000');
+    final corPrimaria = _parseColor(
+      _config['aparencia']['cor_primaria'] ?? '#FF0000',
+    );
 
     return Stack(
       children: [
@@ -161,12 +164,17 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: corPrimaria,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
                       ),
                       child: Row(
                         children: [
                           if (_config['aparencia']['mostrar_avatar'] == true)
-                            Text(_config['perfil']['avatar'], style: const TextStyle(fontSize: 28)),
+                            Text(
+                              _config['perfil']['avatar'],
+                              style: const TextStyle(fontSize: 28),
+                            ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -174,11 +182,18 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                               children: [
                                 Text(
                                   _config['perfil']['nome'],
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
                                 ),
                                 Text(
                                   _config['perfil']['status'],
-                                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
@@ -192,24 +207,41 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                     ),
 
                     // Perguntas Rápidas (se houver)
-                    if (_config['respostas_rapidas']?['perguntas_sugeridas'] != null &&
-                        (_config['respostas_rapidas']['perguntas_sugeridas'] as List).isNotEmpty)
+                    if (_config['respostas_rapidas']?['perguntas_sugeridas'] !=
+                            null &&
+                        (_config['respostas_rapidas']['perguntas_sugeridas']
+                                as List)
+                            .isNotEmpty)
                       Container(
                         height: 50,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         child: ListView(
                           scrollDirection: Axis.horizontal,
-                          children: (_config['respostas_rapidas']['perguntas_sugeridas'] as List)
-                              .map<Widget>((pergunta) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ActionChip(
-                              label: Text(pergunta, style: const TextStyle(fontSize: 12)),
-                              onPressed: () => _enviarPerguntaRapida(pergunta),
-                              backgroundColor: corPrimaria.withOpacity(0.1),
-                              side: BorderSide(color: corPrimaria.withOpacity(0.3)),
-                            ),
-                          ))
-                              .toList(),
+                          children:
+                              (_config['respostas_rapidas']['perguntas_sugeridas']
+                                      as List)
+                                  .map<Widget>(
+                                    (pergunta) => Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: ActionChip(
+                                        label: Text(
+                                          pergunta,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        onPressed: () =>
+                                            _enviarPerguntaRapida(pergunta),
+                                        backgroundColor: corPrimaria
+                                            .withOpacity(0.1),
+                                        side: BorderSide(
+                                          color: corPrimaria.withOpacity(0.3),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
                         ),
                       ),
 
@@ -233,7 +265,9 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                        border: Border(
+                          top: BorderSide(color: Colors.grey.shade200),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -248,7 +282,10 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                                 ),
                                 filled: true,
                                 fillColor: Colors.grey.shade100,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
                               ),
                               onSubmitted: _enviarMensagem,
                             ),
@@ -257,8 +294,13 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                           CircleAvatar(
                             backgroundColor: corPrimaria,
                             child: IconButton(
-                              icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                              onPressed: () => _enviarMensagem(_inputController.text),
+                              icon: const Icon(
+                                Icons.send,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              onPressed: () =>
+                                  _enviarMensagem(_inputController.text),
                             ),
                           ),
                         ],
@@ -277,7 +319,10 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
           child: FloatingActionButton(
             onPressed: () => setState(() => _aberto = !_aberto),
             backgroundColor: corPrimaria,
-            child: Icon(_aberto ? Icons.close : Icons.chat, color: Colors.white),
+            child: Icon(
+              _aberto ? Icons.close : Icons.chat,
+              color: Colors.white,
+            ),
           ),
         ),
       ],
@@ -298,8 +343,12 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
         decoration: BoxDecoration(
           color: isUsuario ? corPrimaria : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(16).copyWith(
-            bottomRight: isUsuario ? const Radius.circular(4) : const Radius.circular(16),
-            bottomLeft: isUsuario ? const Radius.circular(16) : const Radius.circular(4),
+            bottomRight: isUsuario
+                ? const Radius.circular(4)
+                : const Radius.circular(16),
+            bottomLeft: isUsuario
+                ? const Radius.circular(16)
+                : const Radius.circular(4),
           ),
         ),
         child: Column(
@@ -309,7 +358,8 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
               msg['texto'],
               style: TextStyle(
                 color: isUsuario ? Colors.white : Colors.black87,
-                fontSize: (_config['aparencia']['tamanho_fonte'] ?? 14).toDouble(),
+                fontSize: (_config['aparencia']['tamanho_fonte'] ?? 14)
+                    .toDouble(),
               ),
             ),
             if (msg['acao'] != null && msg['acao'].isNotEmpty) ...[
@@ -319,9 +369,13 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: corPrimaria,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
-                child: Text(_config['acoes'][msg['acao']]?['texto_botao'] ?? 'AÇÃO'),
+                child: Text(
+                  _config['acoes'][msg['acao']]?['texto_botao'] ?? 'AÇÃO',
+                ),
               ),
             ],
           ],

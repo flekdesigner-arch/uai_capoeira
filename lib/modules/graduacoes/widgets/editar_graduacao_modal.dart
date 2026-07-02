@@ -50,7 +50,8 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -123,7 +124,9 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
         _graduacaoAtualTexto = widget.aluno!['graduacao'];
 
         if (widget.aluno!['data_nascimento'] != null) {
-          final dataNascimento = _converterData(widget.aluno!['data_nascimento']);
+          final dataNascimento = _converterData(
+            widget.aluno!['data_nascimento'],
+          );
 
           if (dataNascimento != null) {
             _idadeAluno = _calcularIdade(dataNascimento);
@@ -134,7 +137,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       if (widget.graduacaoAtualId != null &&
           widget.graduacaoAtualId!.isNotEmpty) {
         final graduacaoAtual = _todasGraduacoes.firstWhere(
-              (g) => g['id'] == widget.graduacaoAtualId,
+          (g) => g['id'] == widget.graduacaoAtualId,
           orElse: () => {},
         );
 
@@ -177,7 +180,9 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
           .get();
 
       final tipoEvento = eventoDoc.data()?['tipo'] ?? '';
-      final isBatizado = tipoEvento.toString().toUpperCase().contains('BATIZADO');
+      final isBatizado = tipoEvento.toString().toUpperCase().contains(
+        'BATIZADO',
+      );
 
       if (!isBatizado) {
         if (mounted) setState(() => _isLoading = false);
@@ -207,23 +212,25 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       } else {
         debugPrint('📌 Aluno COM graduação');
 
-        final graduacoesInfantis = _todasGraduacoes
-            .where((g) => g['tipo_publico'] == 'INFANTIL')
-            .toList()
-          ..sort(
+        final graduacoesInfantis =
+            _todasGraduacoes
+                .where((g) => g['tipo_publico'] == 'INFANTIL')
+                .toList()
+              ..sort(
                 (a, b) => (a['nivel_graduacao'] ?? 0).compareTo(
-              b['nivel_graduacao'] ?? 0,
-            ),
-          );
+                  b['nivel_graduacao'] ?? 0,
+                ),
+              );
 
-        final graduacoesAdultas = _todasGraduacoes
-            .where((g) => g['tipo_publico'] == 'ADULTO')
-            .toList()
-          ..sort(
+        final graduacoesAdultas =
+            _todasGraduacoes
+                .where((g) => g['tipo_publico'] == 'ADULTO')
+                .toList()
+              ..sort(
                 (a, b) => (a['nivel_graduacao'] ?? 0).compareTo(
-              b['nivel_graduacao'] ?? 0,
-            ),
-          );
+                  b['nivel_graduacao'] ?? 0,
+                ),
+              );
 
         final resultados = <Map<String, dynamic>>[];
 
@@ -326,10 +333,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       insetPadding: const EdgeInsets.all(12),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: maxWidth,
-          maxHeight: maxHeight,
-        ),
+        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
         child: Material(
           color: t.surface,
           borderRadius: BorderRadius.circular(t.cardRadius + 4),
@@ -451,19 +455,18 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
           ),
           const SizedBox(height: 8),
         ],
-        if ((_nivelAtual == null || _nivelAtual == 0) && _idadeAluno != null) ...[
+        if ((_nivelAtual == null || _nivelAtual == 0) &&
+            _idadeAluno != null) ...[
           _buildInfoBanner(
             icon: Icons.cake_rounded,
             color: context.uai.success,
             text:
-            'Idade: $_idadeAluno anos • Categoria: ${_determinarCategoriaPorIdade()}',
+                'Idade: $_idadeAluno anos • Categoria: ${_determinarCategoriaPorIdade()}',
           ),
           const SizedBox(height: 8),
         ],
         if (_graduacoes.isEmpty)
-          Expanded(
-            child: _buildEmptyState(),
-          )
+          Expanded(child: _buildEmptyState())
         else
           Flexible(
             child: ListView.builder(
@@ -525,11 +528,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.info_outline_rounded,
-              size: 52,
-              color: t.textMuted,
-            ),
+            Icon(Icons.info_outline_rounded, size: 52, color: t.textMuted),
             const SizedBox(height: 14),
             Text(
               _tituloVazio(),
@@ -582,10 +581,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _buildNivelAvatar(
-                  color: cor,
-                  nivel: nivel,
-                ),
+                _buildNivelAvatar(color: cor, nivel: nivel),
                 const SizedBox(width: 11),
                 Expanded(
                   child: _buildGraduacaoInfo(
@@ -613,10 +609,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
     );
   }
 
-  Widget _buildNivelAvatar({
-    required Color color,
-    required String nivel,
-  }) {
+  Widget _buildNivelAvatar({required Color color, required String nivel}) {
     return Container(
       width: 43,
       height: 43,
@@ -786,11 +779,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
             if (narrow) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  saveButton,
-                  const SizedBox(height: 8),
-                  cancelButton,
-                ],
+                children: [saveButton, const SizedBox(height: 8), cancelButton],
               );
             }
 

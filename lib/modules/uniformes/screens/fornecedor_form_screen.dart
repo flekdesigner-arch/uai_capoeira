@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
@@ -7,7 +7,11 @@ class FornecedorFormScreen extends StatefulWidget {
   final String? fornecedorId;
   final Map<String, dynamic>? fornecedorData;
 
-  const FornecedorFormScreen({super.key, this.fornecedorId, this.fornecedorData});
+  const FornecedorFormScreen({
+    super.key,
+    this.fornecedorId,
+    this.fornecedorData,
+  });
 
   @override
   State<FornecedorFormScreen> createState() => _FornecedorFormScreenState();
@@ -85,7 +89,10 @@ class _FornecedorFormScreenState extends State<FornecedorFormScreen> {
           );
         }
       } else {
-        await _fornecedorService.atualizarFornecedor(widget.fornecedorId!, dados);
+        await _fornecedorService.atualizarFornecedor(
+          widget.fornecedorId!,
+          dados,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -142,10 +149,13 @@ class _FornecedorFormScreenState extends State<FornecedorFormScreen> {
             onPressed: _isLoading ? null : _salvar,
             icon: _isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(color: onPrimary, strokeWidth: 2),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: onPrimary,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(Icons.save, color: onPrimary),
             label: Text(
               _isLoading ? 'SALVANDO...' : 'SALVAR',
@@ -157,69 +167,71 @@ class _FornecedorFormScreenState extends State<FornecedorFormScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primary))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _buildTextField(
-              controller: _nomeController,
-              label: 'Nome / Fantasia *',
-              icon: Icons.business,
-              validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _contatoController,
-              label: 'Contato (pessoa)',
-              icon: Icons.person,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _telefoneController,
-              label: 'Telefone',
-              icon: Icons.phone,
-              keyboard: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _emailController,
-              label: 'E-mail',
-              icon: Icons.email,
-              keyboard: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _cnpjController,
-              label: 'CNPJ',
-              icon: Icons.badge,
-              keyboard: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _observacoesController,
-              label: 'Observações',
-              icon: Icons.notes,
-              maxLines: 3,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _salvar,
-              icon: Icon(Icons.save, color: onPrimary),
-              label: Text(
-                'SALVAR FORNECEDOR',
-                style: TextStyle(color: onPrimary),
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildTextField(
+                    controller: _nomeController,
+                    label: 'Nome / Fantasia *',
+                    icon: Icons.business,
+                    validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _contatoController,
+                    label: 'Contato (pessoa)',
+                    icon: Icons.person,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _telefoneController,
+                    label: 'Telefone',
+                    icon: Icons.phone,
+                    keyboard: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _emailController,
+                    label: 'E-mail',
+                    icon: Icons.email,
+                    keyboard: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _cnpjController,
+                    label: 'CNPJ',
+                    icon: Icons.badge,
+                    keyboard: TextInputType.number,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _observacoesController,
+                    label: 'Observações',
+                    icon: Icons.notes,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _salvar,
+                    icon: Icon(Icons.save, color: onPrimary),
+                    label: Text(
+                      'SALVAR FORNECEDOR',
+                      style: TextStyle(color: onPrimary),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      backgroundColor: primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          context.uai.buttonRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-                backgroundColor: primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-                ),
-              ),
             ),
-          ],
-        ),
-      ),
     );
   }
 

@@ -28,8 +28,10 @@ class _AreaAlunoCertificadosScreenState
     extends State<AreaAlunoCertificadosScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
-  final DateFormat _longDateFormat =
-  DateFormat("dd 'de' MMMM 'de' yyyy", 'pt_BR');
+  final DateFormat _longDateFormat = DateFormat(
+    "dd 'de' MMMM 'de' yyyy",
+    'pt_BR',
+  );
 
   bool _loading = true;
   String? _erro;
@@ -40,7 +42,8 @@ class _AreaAlunoCertificadosScreenState
   final Map<String, String?> _cordasCache = {};
 
   String get _alunoId {
-    final value = widget.aluno['aluno_id'] ??
+    final value =
+        widget.aluno['aluno_id'] ??
         widget.aluno['id'] ??
         widget.aluno['doc_id'] ??
         widget.aluno['docId'] ??
@@ -65,8 +68,8 @@ class _AreaAlunoCertificadosScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -99,8 +102,9 @@ class _AreaAlunoCertificadosScreenState
 
   Future<void> _carregarSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       _svgContent = content;
     } catch (e) {
@@ -143,8 +147,10 @@ class _AreaAlunoCertificadosScreenState
 
       if (eventoId.isNotEmpty) {
         try {
-          final eventoDoc =
-          await _firestore.collection('eventos').doc(eventoId).get();
+          final eventoDoc = await _firestore
+              .collection('eventos')
+              .doc(eventoId)
+              .get();
 
           if (eventoDoc.exists) {
             evento = Map<String, dynamic>.from(eventoDoc.data() ?? {});
@@ -289,9 +295,9 @@ class _AreaAlunoCertificadosScreenState
   }
 
   Future<Map<String, dynamic>> _buscarCoresGraduacao(
-      String nomeGraduacao,
-      Map<String, dynamic> participacao,
-      ) async {
+    String nomeGraduacao,
+    Map<String, dynamic> participacao,
+  ) async {
     final direto = _coresDiretas(participacao);
 
     if (direto.isNotEmpty) return direto;
@@ -332,18 +338,24 @@ class _AreaAlunoCertificadosScreenState
 
     final cores = encontrado != null
         ? {
-      'hex_cor1':
-      encontrado['hex_cor1'] ?? encontrado['graduacao_cor1'] ?? '#BDBDBD',
-      'hex_cor2':
-      encontrado['hex_cor2'] ?? encontrado['graduacao_cor2'] ?? '#9E9E9E',
-      'hex_ponta1': encontrado['hex_ponta1'] ??
-          encontrado['graduacao_ponta1'] ??
-          '#757575',
-      'hex_ponta2': encontrado['hex_ponta2'] ??
-          encontrado['graduacao_ponta2'] ??
-          '#616161',
-      'nome_graduacao': encontrado['nome_graduacao'] ?? nomeGraduacao,
-    }
+            'hex_cor1':
+                encontrado['hex_cor1'] ??
+                encontrado['graduacao_cor1'] ??
+                '#BDBDBD',
+            'hex_cor2':
+                encontrado['hex_cor2'] ??
+                encontrado['graduacao_cor2'] ??
+                '#9E9E9E',
+            'hex_ponta1':
+                encontrado['hex_ponta1'] ??
+                encontrado['graduacao_ponta1'] ??
+                '#757575',
+            'hex_ponta2':
+                encontrado['hex_ponta2'] ??
+                encontrado['graduacao_ponta2'] ??
+                '#616161',
+            'nome_graduacao': encontrado['nome_graduacao'] ?? nomeGraduacao,
+          }
         : _coresPadraoPorNome(nomeGraduacao);
 
     _graduacoesCache[nomeGraduacao] = cores;
@@ -353,10 +365,16 @@ class _AreaAlunoCertificadosScreenState
   Map<String, dynamic> _coresDiretas(Map<String, dynamic> data) {
     final cor1 = _pegarCor(data, ['hex_cor1', 'graduacao_cor1', 'cor1']);
     final cor2 = _pegarCor(data, ['hex_cor2', 'graduacao_cor2', 'cor2']);
-    final ponta1 =
-    _pegarCor(data, ['hex_ponta1', 'graduacao_ponta1', 'ponta1']);
-    final ponta2 =
-    _pegarCor(data, ['hex_ponta2', 'graduacao_ponta2', 'ponta2']);
+    final ponta1 = _pegarCor(data, [
+      'hex_ponta1',
+      'graduacao_ponta1',
+      'ponta1',
+    ]);
+    final ponta2 = _pegarCor(data, [
+      'hex_ponta2',
+      'graduacao_ponta2',
+      'ponta2',
+    ]);
 
     if ([cor1, cor2, ponta1, ponta2].every((e) => e == null)) return {};
 
@@ -421,12 +439,7 @@ class _AreaAlunoCertificadosScreenState
   }
 
   Map<String, dynamic> _cores(String c1, String c2, String p1, String p2) {
-    return {
-      'hex_cor1': c1,
-      'hex_cor2': c2,
-      'hex_ponta1': p1,
-      'hex_ponta2': p2,
-    };
+    return {'hex_cor1': c1, 'hex_cor2': c2, 'hex_ponta1': p1, 'hex_ponta2': p2};
   }
 
   String? _montarCordaSvg(Map<String, dynamic> cores) {
@@ -453,16 +466,13 @@ class _AreaAlunoCertificadosScreenState
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
         final style = element.getAttribute('style') ?? '';
-        final newStyle = style.replaceAll(
-          RegExp(r'fill:#[0-9a-fA-F]{6}'),
-          '',
-        );
+        final newStyle = style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
         element.setAttribute('style', 'fill:$hex;$newStyle');
       }
 
@@ -561,8 +571,9 @@ class _AreaAlunoCertificadosScreenState
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth =
-          constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 980
+              ? 980.0
+              : constraints.maxWidth;
 
           return Center(
             child: ConstrainedBox(
@@ -615,11 +626,7 @@ class _AreaAlunoCertificadosScreenState
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 70),
-            Icon(
-              Icons.card_membership_rounded,
-              size: 96,
-              color: t.textMuted,
-            ),
+            Icon(Icons.card_membership_rounded, size: 96, color: t.textMuted),
             const SizedBox(height: 16),
             Text(
               'Nenhum certificado encontrado',
@@ -719,8 +726,9 @@ class _AreaAlunoCertificadosScreenState
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
-    final totalCertificados =
-        _participacoes.where((e) => e.certificadoUrl.trim().isNotEmpty).length;
+    final totalCertificados = _participacoes
+        .where((e) => e.certificadoUrl.trim().isNotEmpty)
+        .length;
     final ultima = _participacoes.isNotEmpty ? _participacoes.last : null;
 
     return Container(
@@ -737,8 +745,9 @@ class _AreaAlunoCertificadosScreenState
           final avatar = _buildAlunoAvatar();
           final info = Expanded(
             child: Column(
-              crossAxisAlignment:
-              narrow ? CrossAxisAlignment.start : CrossAxisAlignment.start,
+              crossAxisAlignment: narrow
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   'Linha do tempo de graduações',
@@ -785,13 +794,7 @@ class _AreaAlunoCertificadosScreenState
           );
 
           if (narrow) {
-            return Row(
-              children: [
-                avatar,
-                const SizedBox(width: 13),
-                info,
-              ],
-            );
+            return Row(children: [avatar, const SizedBox(width: 13), info]);
           }
 
           return Row(
@@ -972,10 +975,10 @@ class _AreaAlunoCertificadosScreenState
   }
 
   Widget _buildCenterLine(
-      _ParticipacaoTimeline item,
-      bool isFirst,
-      bool isLast,
-      ) {
+    _ParticipacaoTimeline item,
+    bool isFirst,
+    bool isLast,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(t.warning, t.background);
 
@@ -1013,19 +1016,19 @@ class _AreaAlunoCertificadosScreenState
               child: ClipOval(
                 child: item.logoUrl.isNotEmpty
                     ? Image.network(
-                  item.logoUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
-                    return Icon(
-                      Icons.emoji_events_rounded,
-                      color: _readableOn(accent),
-                    );
-                  },
-                )
+                        item.logoUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                          return Icon(
+                            Icons.emoji_events_rounded,
+                            color: _readableOn(accent),
+                          );
+                        },
+                      )
                     : Icon(
-                  Icons.emoji_events_rounded,
-                  color: _readableOn(accent),
-                ),
+                        Icons.emoji_events_rounded,
+                        color: _readableOn(accent),
+                      ),
               ),
             ),
           ),
@@ -1041,9 +1044,9 @@ class _AreaAlunoCertificadosScreenState
   }
 
   Widget _buildEventCard(
-      _ParticipacaoTimeline item, {
-        required bool alignRight,
-      }) {
+    _ParticipacaoTimeline item, {
+    required bool alignRight,
+  }) {
     final t = context.uai;
     final hasCertificado = item.certificadoUrl.trim().isNotEmpty;
     final accent = _ensureVisible(t.warning, t.card);
@@ -1066,12 +1069,14 @@ class _AreaAlunoCertificadosScreenState
               boxShadow: t.softShadow,
             ),
             child: Column(
-              crossAxisAlignment:
-              alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: alignRight
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Row(
-                  textDirection:
-                  alignRight ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+                  textDirection: alignRight
+                      ? ui.TextDirection.rtl
+                      : ui.TextDirection.ltr,
                   children: [
                     _buildLogoBox(item),
                     const SizedBox(width: 11),
@@ -1083,8 +1088,9 @@ class _AreaAlunoCertificadosScreenState
                         children: [
                           Text(
                             item.nomeEvento,
-                            textAlign:
-                            alignRight ? TextAlign.right : TextAlign.left,
+                            textAlign: alignRight
+                                ? TextAlign.right
+                                : TextAlign.left,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1129,8 +1135,9 @@ class _AreaAlunoCertificadosScreenState
                   const SizedBox(height: 12),
                 ],
                 Row(
-                  mainAxisAlignment:
-                  alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  mainAxisAlignment: alignRight
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start,
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
@@ -1198,25 +1205,22 @@ class _AreaAlunoCertificadosScreenState
         borderRadius: BorderRadius.circular(18),
         child: item.logoUrl.isNotEmpty
             ? Image.network(
-          item.logoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
-            return Icon(
-              Icons.emoji_events_rounded,
-              color: accent,
-              size: 30,
-            );
-          },
-        )
+                item.logoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  return Icon(
+                    Icons.emoji_events_rounded,
+                    color: accent,
+                    size: 30,
+                  );
+                },
+              )
             : Icon(Icons.emoji_events_rounded, color: accent, size: 30),
       ),
     );
   }
 
-  Widget _buildEventoComumBlock(
-      _ParticipacaoTimeline item,
-      bool alignRight,
-      ) {
+  Widget _buildEventoComumBlock(_ParticipacaoTimeline item, bool alignRight) {
     final t = context.uai;
     final accent = _ensureVisible(t.info, t.cardAlt);
 
@@ -1231,11 +1235,7 @@ class _AreaAlunoCertificadosScreenState
       child: Row(
         textDirection: alignRight ? ui.TextDirection.rtl : ui.TextDirection.ltr,
         children: [
-          Icon(
-            Icons.event_available_rounded,
-            color: accent,
-            size: 22,
-          ),
+          Icon(Icons.event_available_rounded, color: accent, size: 22),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1253,10 +1253,7 @@ class _AreaAlunoCertificadosScreenState
     );
   }
 
-  Widget _buildGraduacaoBlock(
-      _ParticipacaoTimeline item,
-      bool alignRight,
-      ) {
+  Widget _buildGraduacaoBlock(_ParticipacaoTimeline item, bool alignRight) {
     final t = context.uai;
 
     return Container(
@@ -1268,8 +1265,9 @@ class _AreaAlunoCertificadosScreenState
         border: Border.all(color: t.border),
       ),
       child: Column(
-        crossAxisAlignment:
-        alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: alignRight
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Text(
             'Graduação no evento',
@@ -1386,7 +1384,10 @@ class _AreaAlunoCertificadosScreenState
                       icon: Icons.event_available_rounded,
                       children: [
                         _detailTile('Evento', item.nomeEvento),
-                        _detailTile('Data', _formatarDataLonga(item.dataEvento)),
+                        _detailTile(
+                          'Data',
+                          _formatarDataLonga(item.dataEvento),
+                        ),
                         _detailTile('Tipo', item.tipoEvento),
                         _detailTile('Status', item.status),
                       ],
@@ -1521,16 +1522,16 @@ class _AreaAlunoCertificadosScreenState
         borderRadius: BorderRadius.circular(18),
         child: item.logoUrl.isNotEmpty
             ? Image.network(
-          item.logoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
-            return Icon(
-              Icons.emoji_events_rounded,
-              color: onColor,
-              size: 30,
-            );
-          },
-        )
+                item.logoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  return Icon(
+                    Icons.emoji_events_rounded,
+                    color: onColor,
+                    size: 30,
+                  );
+                },
+              )
             : Icon(Icons.emoji_events_rounded, color: onColor, size: 30),
       ),
     );

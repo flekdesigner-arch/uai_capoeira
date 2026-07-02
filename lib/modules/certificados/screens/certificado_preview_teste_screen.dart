@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/certificados/data/certificado_template_assets.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_preview_data.dart';
@@ -18,8 +19,9 @@ class CertificadoPreviewTesteScreen extends StatefulWidget {
 class _CertificadoPreviewTesteScreenState
     extends State<CertificadoPreviewTesteScreen> {
   final GlobalKey _exportPreviewKey = GlobalKey();
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
   final CertificadoExportService _exportService =
-  const CertificadoExportService();
+      const CertificadoExportService();
 
   CertificadoTemplateTipo _tipoSelecionado =
       CertificadoTemplateTipo.certificadoSemCpf;
@@ -28,6 +30,8 @@ class _CertificadoPreviewTesteScreenState
   Color _cor2 = const Color(0xFF0000FF);
   Color _corContorno = const Color(0xFF1A0202);
   bool _mostrarTextos = true;
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _exportando = false;
   String? _acaoAtual;
 
@@ -68,8 +72,41 @@ class _CertificadoPreviewTesteScreenState
         : const Color(0xFFFFFFFF);
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_certificados',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_certificados',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      _mostrarErro('Você não tem permissão para configurar certificados.');
+    }
+
+    return permitido;
+  }
+
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -84,7 +121,8 @@ class _CertificadoPreviewTesteScreenState
   Color _onPrimary() {
     final t = context.uai;
     final temaEscuro =
-        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+        t.background.computeLuminance() < 0.45 ||
+        t.surface.computeLuminance() < 0.45;
 
     if (temaEscuro) return Colors.white;
 
@@ -126,10 +164,7 @@ class _CertificadoPreviewTesteScreenState
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -146,10 +181,11 @@ class _CertificadoPreviewTesteScreenState
   }
 
   Future<void> _executarExportacao(
-      String label,
-      Future<void> Function() action,
-      ) async {
+    String label,
+    Future<void> Function() action,
+  ) async {
     if (_exportando) return;
+    if (!await _revalidarAcesso()) return;
 
     setState(() {
       _exportando = true;
@@ -162,12 +198,12 @@ class _CertificadoPreviewTesteScreenState
     } catch (e) {
       _mostrarErro(e);
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _exportando = false;
-        _acaoAtual = null;
-      });
+      if (mounted) {
+        setState(() {
+          _exportando = false;
+          _acaoAtual = null;
+        });
+      }
     }
   }
 
@@ -177,10 +213,7 @@ class _CertificadoPreviewTesteScreenState
       pixelRatio: 4.0,
     );
 
-    await _exportService.salvarPng(
-      bytes: png,
-      nomeBase: _nomeArquivoBase(),
-    );
+    await _exportService.salvarPng(bytes: png, nomeBase: _nomeArquivoBase());
   }
 
   Future<void> _gerarPdf() async {
@@ -191,10 +224,7 @@ class _CertificadoPreviewTesteScreenState
 
     final pdf = await _exportService.gerarPdfA4Paisagem(png);
 
-    await _exportService.salvarPdf(
-      bytes: pdf,
-      nomeBase: _nomeArquivoBase(),
-    );
+    await _exportService.salvarPdf(bytes: pdf, nomeBase: _nomeArquivoBase());
   }
 
   Future<void> _imprimirPdf() async {
@@ -223,6 +253,21 @@ class _CertificadoPreviewTesteScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Configurar Certificados',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Configurar Certificados',
+        message: 'Você não tem permissão para configurar certificados.',
+      );
+    }
+
     final t = context.uai;
 
     return Scaffold(
@@ -320,16 +365,13 @@ class _CertificadoPreviewTesteScreenState
               borderRadius: BorderRadius.circular(t.cardRadius - 2),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.history_edu_rounded,
-              color: onPrimary,
-              size: 35,
-            ),
+            child: Icon(Icons.history_edu_rounded, color: onPrimary, size: 35),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Templates de Certificados',
@@ -367,13 +409,7 @@ class _CertificadoPreviewTesteScreenState
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -584,7 +620,10 @@ class _CertificadoPreviewTesteScreenState
           boxShadow: t.softShadow,
         ),
         child: SwitchListTile.adaptive(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 13,
+            vertical: 4,
+          ),
           value: _mostrarTextos,
           onChanged: (value) => setState(() => _mostrarTextos = value),
           activeColor: t.primary,
@@ -815,10 +854,7 @@ class _CertificadoPreviewTesteScreenState
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(
-                    accent.withOpacity(0.11),
-                    t.cardAlt,
-                  ),
+                  color: Color.alphaBlend(accent.withOpacity(0.11), t.cardAlt),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                   border: Border.all(color: accent.withOpacity(0.13)),
                 ),
@@ -880,10 +916,7 @@ class _DoubleColorDot extends StatelessWidget {
   final Color cor1;
   final Color cor2;
 
-  const _DoubleColorDot({
-    required this.cor1,
-    required this.cor2,
-  });
+  const _DoubleColorDot({required this.cor1, required this.cor2});
 
   @override
   Widget build(BuildContext context) {

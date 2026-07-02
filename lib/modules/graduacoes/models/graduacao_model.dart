@@ -22,7 +22,9 @@ class GraduacaoModel {
     required this.titulo,
   });
 
-  factory GraduacaoModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory GraduacaoModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data()!;
     return GraduacaoModel(
       id: doc.id,

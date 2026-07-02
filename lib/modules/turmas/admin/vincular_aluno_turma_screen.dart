@@ -16,10 +16,12 @@ class VincularAlunoInativoTurmaScreen extends StatefulWidget {
   });
 
   @override
-  State<VincularAlunoInativoTurmaScreen> createState() => _VincularAlunoInativoTurmaScreenState();
+  State<VincularAlunoInativoTurmaScreen> createState() =>
+      _VincularAlunoInativoTurmaScreenState();
 }
 
-class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTurmaScreen> {
+class _VincularAlunoInativoTurmaScreenState
+    extends State<VincularAlunoInativoTurmaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = false;
   bool _carregandoAlunos = false;
@@ -107,7 +109,9 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_alunosSelecionadosIds.length} aluno(s) vinculado(s) e ativado(s)!'),
+            content: Text(
+              '${_alunosSelecionadosIds.length} aluno(s) vinculado(s) e ativado(s)!',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -161,7 +165,9 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
       }
 
       // Atualizar estado no array de alunos
-      final index = _alunosInativos.indexWhere((aluno) => aluno['id'] == alunoId);
+      final index = _alunosInativos.indexWhere(
+        (aluno) => aluno['id'] == alunoId,
+      );
       if (index != -1) {
         _alunosInativos[index]['selecionado'] = selecionado;
       }
@@ -170,7 +176,9 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
 
   void _selecionarTodos() {
     setState(() {
-      _alunosSelecionadosIds = _alunosInativos.map((aluno) => aluno['id'].toString()).toList();
+      _alunosSelecionadosIds = _alunosInativos
+          .map((aluno) => aluno['id'].toString())
+          .toList();
       for (var aluno in _alunosInativos) {
         aluno['selecionado'] = true;
       }
@@ -222,7 +230,8 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
           child: CircleAvatar(
             radius: 24,
             backgroundColor: Colors.grey.shade200,
-            backgroundImage: aluno['foto_url'] != null && aluno['foto_url'].isNotEmpty
+            backgroundImage:
+                aluno['foto_url'] != null && aluno['foto_url'].isNotEmpty
                 ? NetworkImage(aluno['foto_url'])
                 : null,
             child: aluno['foto_url'] != null && aluno['foto_url'].isNotEmpty
@@ -262,14 +271,14 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
           onChanged: (value) {
             _toggleSelecaoAluno(aluno['id'], value ?? false);
           },
-          fillColor: MaterialStateProperty.resolveWith<Color>(
-                (Set<MaterialState> states) {
-              if (states.contains(MaterialState.selected)) {
-                return Colors.red.shade900;
-              }
-              return Colors.grey;
-            },
-          ),
+          fillColor: MaterialStateProperty.resolveWith<Color>((
+            Set<MaterialState> states,
+          ) {
+            if (states.contains(MaterialState.selected)) {
+              return Colors.red.shade900;
+            }
+            return Colors.grey;
+          }),
         ),
         onTap: () {
           _toggleSelecaoAluno(aluno['id'], !selecionado);
@@ -295,7 +304,10 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
             ),
             Text(
               'Turma: ${widget.turmaNome}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -323,111 +335,117 @@ class _VincularAlunoInativoTurmaScreenState extends State<VincularAlunoInativoTu
       body: _carregandoAlunos
           ? const Center(child: CircularProgressIndicator())
           : Column(
-        children: [
-          // Cabeçalho com informações e contadores
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade50,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ALUNOS INATIVOS: ${_alunosInativos.length}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade700,
+                // Cabeçalho com informações e contadores
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.grey.shade50,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ALUNOS INATIVOS: ${_alunosInativos.length}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          Text(
+                            'SELECIONADOS: ${_alunosSelecionadosIds.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.red.shade900,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    Text(
-                      'SELECIONADOS: ${_alunosSelecionadosIds.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.red.shade900,
-                        fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: _alunosInativos.isNotEmpty
+                                ? _selecionarTodos
+                                : null,
+                            child: const Text('SELECIONAR TODOS'),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: _alunosSelecionadosIds.isNotEmpty
+                                ? _limparSelecao
+                                : null,
+                            child: const Text('LIMPAR'),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: _alunosInativos.isNotEmpty ? _selecionarTodos : null,
-                      child: const Text('SELECIONAR TODOS'),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: _alunosSelecionadosIds.isNotEmpty ? _limparSelecao : null,
-                      child: const Text('LIMPAR'),
-                    ),
-                  ],
+
+                // Lista de alunos inativos
+                Expanded(
+                  child: _alunosInativos.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.person_off,
+                                size: 80,
+                                color: Colors.grey.shade300,
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Nenhum aluno inativo',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _carregarAlunosInativos,
+                                child: const Text('RECARREGAR'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _carregarAlunosInativos,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 80),
+                            itemCount: alunosFiltrados.length,
+                            itemBuilder: (context, index) {
+                              return _buildAlunoCard(alunosFiltrados[index]);
+                            },
+                          ),
+                        ),
                 ),
               ],
             ),
-          ),
-
-          // Lista de alunos inativos
-          Expanded(
-            child: _alunosInativos.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.person_off,
-                    size: 80,
-                    color: Colors.grey.shade300,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Nenhum aluno inativo',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _carregarAlunosInativos,
-                    child: const Text('RECARREGAR'),
-                  ),
-                ],
-              ),
-            )
-                : RefreshIndicator(
-              onRefresh: _carregarAlunosInativos,
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 80),
-                itemCount: alunosFiltrados.length,
-                itemBuilder: (context, index) {
-                  return _buildAlunoCard(alunosFiltrados[index]);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
       // Botão flutuante para vincular
       floatingActionButton: _alunosSelecionadosIds.isNotEmpty
           ? FloatingActionButton.extended(
-        onPressed: _isLoading ? null : _vincularAlunosSelecionados,
-        backgroundColor: Colors.red.shade900,
-        foregroundColor: Colors.white,
-        icon: _isLoading
-            ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(color: Colors.white),
-        )
-            : const Icon(Icons.check),
-        label: Text(
-          _isLoading ? 'PROCESSANDO...' : 'VINCULAR (${_alunosSelecionadosIds.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      )
+              onPressed: _isLoading ? null : _vincularAlunosSelecionados,
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : const Icon(Icons.check),
+              label: Text(
+                _isLoading
+                    ? 'PROCESSANDO...'
+                    : 'VINCULAR (${_alunosSelecionadosIds.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );

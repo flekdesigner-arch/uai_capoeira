@@ -45,7 +45,8 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -56,7 +57,6 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
-
 
   final _formKey = GlobalKey<FormState>();
 
@@ -81,7 +81,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   };
 
   final TextEditingController _enderecoCompletoController =
-  TextEditingController();
+      TextEditingController();
 
   String? _sexo;
   String? _graduacaoId;
@@ -214,13 +214,13 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     // Ao aprovar, reaproveitamos essa mesma URL como foto de perfil do aluno,
     // mas o usuário ainda pode tocar na foto e tirar/carregar outra.
     final fotoInscricao =
-    (dados['foto_url'] ??
-        dados['foto_perfil_aluno'] ??
-        dados['foto_aluno_url'] ??
-        dados['imagem_url'] ??
-        '')
-        .toString()
-        .trim();
+        (dados['foto_url'] ??
+                dados['foto_perfil_aluno'] ??
+                dados['foto_aluno_url'] ??
+                dados['imagem_url'] ??
+                '')
+            .toString()
+            .trim();
 
     if (fotoInscricao.isNotEmpty) {
       _networkImageUrl = fotoInscricao;
@@ -295,9 +295,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
 
       final Map<String, Map<String, dynamic>> dataMap = {};
       final items = <DropdownMenuItem<String>>[];
-      items.add(
-        DropdownMenuItem(value: null, child: Text('Não informado')),
-      );
+      items.add(DropdownMenuItem(value: null, child: Text('Não informado')));
 
       for (var doc in snapshot.docs) {
         final id = doc.id;
@@ -319,7 +317,10 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
                       colors: [cor2, cor1],
                       stops: [0.5, 0.5],
                     ),
-                    border: Border.all(color: context.uai.textPrimary.withOpacity(0.38), width: 1),
+                    border: Border.all(
+                      color: context.uai.textPrimary.withOpacity(0.38),
+                      width: 1,
+                    ),
                   ),
                 ),
                 SizedBox(width: 12),
@@ -432,9 +433,9 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   }
 
   Future<void> _selectDate(
-      BuildContext context,
-      TextEditingController controller,
-      ) async {
+    BuildContext context,
+    TextEditingController controller,
+  ) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _parseDate(controller.text) ?? DateTime.now(),
@@ -443,7 +444,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     );
     if (picked != null && _isMounted) {
       _safeSetState(
-            () => controller.text = DateFormat('dd/MM/yyyy').format(picked),
+        () => controller.text = DateFormat('dd/MM/yyyy').format(picked),
       );
     }
   }
@@ -453,7 +454,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
 
     final bool temFotoAtual =
         _pickedImage != null ||
-            (_networkImageUrl != null && _networkImageUrl!.isNotEmpty);
+        (_networkImageUrl != null && _networkImageUrl!.isNotEmpty);
 
     showModalBottomSheet(
       context: context,
@@ -502,28 +503,20 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
               ),
               if (temFotoAtual)
                 ListTile(
-                  leading: Icon(
-                    Icons.check_circle,
-                    color: context.uai.success,
-                  ),
+                  leading: Icon(Icons.check_circle, color: context.uai.success),
                   title: Text(
                     _fotoVeioDaInscricao
                         ? 'Usar foto da inscrição'
                         : 'Manter foto atual',
                   ),
-                  subtitle: Text(
-                    'Salvar usando a foto que já está na tela',
-                  ),
+                  subtitle: Text('Salvar usando a foto que já está na tela'),
                   onTap: () {
                     Navigator.of(context).pop();
                   },
                 ),
               if (temFotoAtual)
                 ListTile(
-                  leading: Icon(
-                    Icons.crop_rounded,
-                    color: context.uai.success,
-                  ),
+                  leading: Icon(Icons.crop_rounded, color: context.uai.success),
                   title: Text('Editar foto atual'),
                   subtitle: Text(
                     _fotoVeioDaInscricao
@@ -791,8 +784,8 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     // Mensagem padrão
     return _aplicarVariaveisConvite(
       '🥋 SEJA BEM-VINDO(A) AO GRUPO UAI CAPOEIRA! 🥋\n\n'
-          'Olá {nome_aluno}, seja muito bem-vindo(a)! 👊\n'
-          'Este é o canal oficial da Turma {turma_nome}.',
+      'Olá {nome_aluno}, seja muito bem-vindo(a)! 👊\n'
+      'Este é o canal oficial da Turma {turma_nome}.',
     );
   }
 
@@ -910,7 +903,8 @@ No site, toque em *Área do Aluno* e preencha:
 ✅ Depois de entrar, será possível consultar dados, turma, frequência, eventos e certificados.
 
 ⚠️ Não compartilhe esses dados com outras pessoas.
-'''.trim();
+'''
+        .trim();
   }
 
   bool _dadosAcessoAreaAlunoValidos() {
@@ -946,7 +940,9 @@ No site, toque em *Área do Aluno* e preencha:
     if (!temContatoAluno && !temContatoResponsavel) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Aluno cadastrado com sucesso! Nenhum contato válido para WhatsApp.'),
+          content: Text(
+            '✅ Aluno cadastrado com sucesso! Nenhum contato válido para WhatsApp.',
+          ),
           backgroundColor: context.uai.success,
         ),
       );
@@ -965,8 +961,9 @@ No site, toque em *Área do Aluno* e preencha:
 
     final bool areaAlunoAtiva = await _areaAlunoEstaAtivaNoSite();
     final bool dadosAreaAlunoOk = _dadosAcessoAreaAlunoValidos();
-    final String mensagemAreaAluno =
-    areaAlunoAtiva && dadosAreaAlunoOk ? _montarMensagemAcessoAreaAluno() : '';
+    final String mensagemAreaAluno = areaAlunoAtiva && dadosAreaAlunoOk
+        ? _montarMensagemAcessoAreaAluno()
+        : '';
 
     if (!temGrupo && !areaAlunoAtiva) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1004,15 +1001,16 @@ No site, toque em *Área do Aluno* e preencha:
           icon: Icon(icon, size: 19),
           label: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: color,
-            foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+            foregroundColor:
+                Theme.of(context).appBarTheme.foregroundColor ??
+                _readableOn(
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                      context.uai.primary,
+                ),
             padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
@@ -1088,7 +1086,9 @@ No site, toque em *Área do Aluno* e preencha:
                 decoration: BoxDecoration(
                   color: context.uai.warning.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: context.uai.warning.withOpacity(0.16)),
+                  border: Border.all(
+                    color: context.uai.warning.withOpacity(0.16),
+                  ),
                 ),
                 child: Text(
                   aviso,
@@ -1104,10 +1104,8 @@ No site, toque em *Área do Aluno* e preencha:
             if (botoes.isNotEmpty) ...[
               SizedBox(height: 12),
               ...botoes.map(
-                    (botao) => Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: botao,
-                ),
+                (botao) =>
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: botao),
               ),
             ],
           ],
@@ -1130,7 +1128,9 @@ No site, toque em *Área do Aluno* e preencha:
       );
     }
 
-    if (temGrupo && temContatoResponsavel && contatoResponsavel != contatoAluno) {
+    if (temGrupo &&
+        temContatoResponsavel &&
+        contatoResponsavel != contatoAluno) {
       botoesGrupo.add(
         buildBotaoEnvio(
           label: 'Convidar responsável',
@@ -1180,7 +1180,9 @@ No site, toque em *Área do Aluno* e preencha:
       builder: (context) {
         return AlertDialog(
           insetPadding: EdgeInsets.all(14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           titlePadding: EdgeInsets.fromLTRB(18, 18, 18, 8),
           contentPadding: EdgeInsets.fromLTRB(18, 8, 18, 0),
           actionsPadding: EdgeInsets.fromLTRB(18, 0, 18, 16),
@@ -1216,7 +1218,7 @@ No site, toque em *Área do Aluno* e preencha:
                       color: context.uai.success,
                       titulo: 'Grupo do WhatsApp',
                       descricao:
-                      'Envie o link do grupo com a mensagem personalizada da turma.',
+                          'Envie o link do grupo com a mensagem personalizada da turma.',
                       botoes: botoesGrupo,
                     )
                   else
@@ -1224,7 +1226,8 @@ No site, toque em *Área do Aluno* e preencha:
                       icon: Icons.group_off_rounded,
                       color: context.uai.textMuted,
                       titulo: 'Grupo do WhatsApp',
-                      descricao: 'Essa turma não possui link de grupo cadastrado.',
+                      descricao:
+                          'Essa turma não possui link de grupo cadastrado.',
                       botoes: [],
                     ),
                   if (areaAlunoAtiva)
@@ -1233,7 +1236,7 @@ No site, toque em *Área do Aluno* e preencha:
                       color: context.uai.primary,
                       titulo: 'Área do Aluno',
                       descricao:
-                      'Envie os dados de acesso para o aluno ou responsável.',
+                          'Envie os dados de acesso para o aluno ou responsável.',
                       aviso: dadosAreaAlunoOk
                           ? 'Para crianças, o ideal é enviar para o responsável.'
                           : 'Não foi possível montar os dados de acesso. Confira data de nascimento, nome e telefone.',
@@ -1245,7 +1248,7 @@ No site, toque em *Área do Aluno* e preencha:
                       color: context.uai.textMuted,
                       titulo: 'Área do Aluno',
                       descricao:
-                      'A Área do Aluno está desativada no site, por isso os botões de acesso não aparecem.',
+                          'A Área do Aluno está desativada no site, por isso os botões de acesso não aparecem.',
                       botoes: [],
                     ),
                 ],
@@ -1379,8 +1382,8 @@ No site, toque em *Área do Aluno* e preencha:
 
       final graduacaoRef = _graduacaoId != null
           ? FirebaseFirestore.instance
-          .collection('graduacoes')
-          .doc(_graduacaoId)
+                .collection('graduacoes')
+                .doc(_graduacaoId)
           : null;
       final graduacaoData = _graduacaoId != null
           ? _graduacoesData[_graduacaoId]
@@ -1483,10 +1486,10 @@ No site, toque em *Área do Aluno* e preencha:
           .collection('turmas')
           .doc(widget.turmaId)
           .update({
-        'alunos_count': alunosCount,
-        'alunos_ativos': alunosCount,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+            'alunos_count': alunosCount,
+            'alunos_ativos': alunosCount,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       debugPrint('Erro ao atualizar contador da turma: $e');
     }
@@ -1562,13 +1565,13 @@ No site, toque em *Área do Aluno* e preencha:
   Widget _buildFotoSection() {
     final bool temFotoAtual =
         _pickedImage != null ||
-            (_networkImageUrl != null && _networkImageUrl!.isNotEmpty);
+        (_networkImageUrl != null && _networkImageUrl!.isNotEmpty);
 
     final ImageProvider? imageProvider = _pickedImage != null
         ? FileImage(File(_pickedImage!.path))
         : (_networkImageUrl != null && _networkImageUrl!.isNotEmpty
-        ? CachedNetworkImageProvider(_networkImageUrl!)
-        : null);
+              ? CachedNetworkImageProvider(_networkImageUrl!)
+              : null);
 
     return Column(
       children: [
@@ -1583,18 +1586,18 @@ No site, toque em *Área do Aluno* e preencha:
                 backgroundImage: imageProvider,
                 child: imageProvider == null
                     ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.camera_alt, size: 40),
-                    Text(
-                      'Adicionar Foto',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: context.uai.textSecondary,
-                      ),
-                    ),
-                  ],
-                )
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.camera_alt, size: 40),
+                          Text(
+                            'Adicionar Foto',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.uai.textSecondary,
+                            ),
+                          ),
+                        ],
+                      )
                     : null,
               ),
               Positioned(
@@ -1605,9 +1608,16 @@ No site, toque em *Área do Aluno* e preencha:
                   decoration: BoxDecoration(
                     color: context.uai.primary,
                     shape: BoxShape.circle,
-                    border: Border.all(color: context.uai.textPrimary, width: 2),
+                    border: Border.all(
+                      color: context.uai.textPrimary,
+                      width: 2,
+                    ),
                   ),
-                  child: Icon(Icons.edit, color: context.uai.textPrimary, size: 18),
+                  child: Icon(
+                    Icons.edit,
+                    color: context.uai.textPrimary,
+                    size: 18,
+                  ),
                 ),
               ),
             ],
@@ -1648,7 +1658,9 @@ No site, toque em *Área do Aluno* e preencha:
     final faixaEtaria = _turmaData['faixa_etaria'] ?? '';
 
     return Card(
-      color: _turmaCheia ? context.uai.error.withOpacity(0.10) : context.uai.info.withOpacity(0.10),
+      color: _turmaCheia
+          ? context.uai.error.withOpacity(0.10)
+          : context.uai.info.withOpacity(0.10),
       child: Padding(
         padding: EdgeInsets.all(12),
         child: Column(
@@ -1669,7 +1681,9 @@ No site, toque em *Área do Aluno* e preencha:
                         widget.academiaNome,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: _turmaCheia ? context.uai.error : context.uai.info,
+                          color: _turmaCheia
+                              ? context.uai.error
+                              : context.uai.info,
                           fontSize: 14,
                         ),
                       ),
@@ -1697,7 +1711,10 @@ No site, toque em *Área do Aluno* e preencha:
                   SizedBox(width: 6),
                   Text(
                     horario,
-                    style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.uai.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1710,7 +1727,10 @@ No site, toque em *Área do Aluno* e preencha:
                   SizedBox(width: 6),
                   Text(
                     nivel,
-                    style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.uai.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1719,11 +1739,18 @@ No site, toque em *Área do Aluno* e preencha:
               SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(Icons.people, size: 16, color: context.uai.textSecondary),
+                  Icon(
+                    Icons.people,
+                    size: 16,
+                    color: context.uai.textSecondary,
+                  ),
                   SizedBox(width: 6),
                   Text(
                     faixaEtaria,
-                    style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.uai.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1741,7 +1768,9 @@ No site, toque em *Área do Aluno* e preencha:
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: _turmaCheia ? context.uai.error : context.uai.success,
+                    color: _turmaCheia
+                        ? context.uai.error
+                        : context.uai.success,
                   ),
                 ),
               ],
@@ -1796,11 +1825,7 @@ No site, toque em *Área do Aluno* e preencha:
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: context.uai.info,
-                  ),
+                  Icon(Icons.info_outline, size: 16, color: context.uai.info),
                   SizedBox(width: 8),
                   Text(
                     'Endereço da inscrição:',
@@ -1885,12 +1910,12 @@ No site, toque em *Área do Aluno* e preencha:
         selectedItemBuilder: (context) => _graduacaoItems
             .map(
               (item) => Text(
-            item.value == null
-                ? "Não informado"
-                : (_graduacoesData[item.value!]?['nome_graduacao'] ?? ''),
-            overflow: TextOverflow.ellipsis,
-          ),
-        )
+                item.value == null
+                    ? "Não informado"
+                    : (_graduacoesData[item.value!]?['nome_graduacao'] ?? ''),
+                overflow: TextOverflow.ellipsis,
+              ),
+            )
             .toList(),
       ),
       SizedBox(height: 16),
@@ -1921,7 +1946,10 @@ No site, toque em *Área do Aluno* e preencha:
         SizedBox(width: 8),
         Text(
           'Status: ATIVO(A)',
-          style: TextStyle(color: context.uai.success, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: context.uai.success,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     ),
@@ -1961,10 +1989,10 @@ No site, toque em *Área do Aluno* e preencha:
   );
 
   Widget _buildPhoneField(
-      TextEditingController controller,
-      String label, {
-        bool isRequired = true,
-      }) => TextFormField(
+    TextEditingController controller,
+    String label, {
+    bool isRequired = true,
+  }) => TextFormField(
     controller: controller,
     readOnly: _salvando,
     decoration: InputDecoration(
@@ -1990,13 +2018,13 @@ No site, toque em *Área do Aluno* e preencha:
   );
 
   TextFormField _buildTextField(
-      TextEditingController controller,
-      String label, {
-        TextInputType keyboardType = TextInputType.text,
-        bool isRequired = true,
-        bool isNumberOnly = false,
-        int maxLines = 1,
-      }) => TextFormField(
+    TextEditingController controller,
+    String label, {
+    TextInputType keyboardType = TextInputType.text,
+    bool isRequired = true,
+    bool isNumberOnly = false,
+    int maxLines = 1,
+  }) => TextFormField(
     controller: controller,
     readOnly: _salvando,
     maxLines: maxLines,
@@ -2014,10 +2042,10 @@ No site, toque em *Área do Aluno* e preencha:
   );
 
   TextFormField _buildDateField(
-      TextEditingController controller,
-      String label, {
-        bool isRequired = true,
-      }) => TextFormField(
+    TextEditingController controller,
+    String label, {
+    bool isRequired = true,
+  }) => TextFormField(
     controller: controller,
     readOnly: _salvando,
     decoration: InputDecoration(
@@ -2041,8 +2069,15 @@ No site, toque em *Área do Aluno* e preencha:
         backgroundColor: context.uai.background,
         appBar: AppBar(
           title: Text(_isEditing ? 'Editar Aluno' : 'Cadastrar Novo Aluno'),
-          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-          foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+          backgroundColor:
+              Theme.of(context).appBarTheme.backgroundColor ??
+              context.uai.primary,
+          foregroundColor:
+              Theme.of(context).appBarTheme.foregroundColor ??
+              _readableOn(
+                Theme.of(context).appBarTheme.backgroundColor ??
+                    context.uai.primary,
+              ),
         ),
         body: Center(
           child: Column(
@@ -2055,15 +2090,15 @@ No site, toque em *Área do Aluno* e preencha:
               SizedBox(height: 24),
               Text(
                 _isEditing ? 'Salvando alterações...' : 'Cadastrando aluno...',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               SizedBox(height: 8),
               Text(
                 'Por favor, aguarde',
-                style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: context.uai.textSecondary,
+                ),
               ),
             ],
           ),
@@ -2075,8 +2110,15 @@ No site, toque em *Área do Aluno* e preencha:
       backgroundColor: context.uai.background,
       appBar: AppBar(
         title: Text(_isEditing ? 'Editar Aluno' : 'Cadastrar Novo Aluno'),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         actions: [
           IconButton(
             icon: Icon(Icons.save),
@@ -2180,9 +2222,9 @@ No site, toque em *Área do Aluno* e preencha:
 class _CpfInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     String formatted = '';
@@ -2192,10 +2234,10 @@ class _CpfInputFormatter extends TextInputFormatter {
       formatted = '${digits.substring(0, 3)}.${digits.substring(3)}';
     else if (digits.length <= 9)
       formatted =
-      '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
     else
       formatted =
-      '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -2206,9 +2248,9 @@ class _CpfInputFormatter extends TextInputFormatter {
 class _PhoneInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     String formatted = '';
@@ -2218,10 +2260,10 @@ class _PhoneInputFormatter extends TextInputFormatter {
       formatted = '(${digits.substring(0, 2)}) ${digits.substring(2)}';
     else if (digits.length <= 10)
       formatted =
-      '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
     else
       formatted =
-      '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -2234,10 +2276,7 @@ class _EditorFotoAlunoDialog extends StatefulWidget {
   final File imageFile;
   final String nomeAluno;
 
-  _EditorFotoAlunoDialog({
-    required this.imageFile,
-    required this.nomeAluno,
-  });
+  _EditorFotoAlunoDialog({required this.imageFile, required this.nomeAluno});
 
   @override
   State<_EditorFotoAlunoDialog> createState() => _EditorFotoAlunoDialogState();
@@ -2473,21 +2512,32 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
                                   ? null
                                   : _salvarImagemEditada,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                                foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-                                padding: EdgeInsets.symmetric(
-                                  vertical: 13,
-                                ),
+                                backgroundColor:
+                                    Theme.of(
+                                      context,
+                                    ).appBarTheme.backgroundColor ??
+                                    context.uai.primary,
+                                foregroundColor:
+                                    Theme.of(
+                                      context,
+                                    ).appBarTheme.foregroundColor ??
+                                    _readableOn(
+                                      Theme.of(
+                                            context,
+                                          ).appBarTheme.backgroundColor ??
+                                          context.uai.primary,
+                                    ),
+                                padding: EdgeInsets.symmetric(vertical: 13),
                               ),
                               icon: _salvando
                                   ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: context.uai.textPrimary,
-                                ),
-                              )
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: context.uai.textPrimary,
+                                      ),
+                                    )
                                   : Icon(Icons.check_rounded),
                               label: Text(
                                 _salvando ? 'Salvando...' : 'Aplicar',

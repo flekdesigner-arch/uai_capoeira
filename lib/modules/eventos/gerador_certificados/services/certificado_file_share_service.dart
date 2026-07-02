@@ -48,11 +48,7 @@ class CertificadoFileShareService {
     final location = await fs.getSaveLocation(
       suggestedName: nome,
       acceptedTypeGroups: [
-        fs.XTypeGroup(
-          label: label,
-          extensions: [ext],
-          mimeTypes: mimeTypes,
-        ),
+        fs.XTypeGroup(label: label, extensions: [ext], mimeTypes: mimeTypes),
       ],
     );
 
@@ -80,29 +76,20 @@ class CertificadoFileShareService {
   Future<void> _revelarArquivoNoDesktop(File file) async {
     try {
       if (defaultTargetPlatform == TargetPlatform.windows) {
-        await Process.start(
-          'explorer.exe',
-          ['/select,', file.path],
-          runInShell: false,
-        );
+        await Process.start('explorer.exe', [
+          '/select,',
+          file.path,
+        ], runInShell: false);
         return;
       }
 
       if (defaultTargetPlatform == TargetPlatform.macOS) {
-        await Process.start(
-          'open',
-          ['-R', file.path],
-          runInShell: false,
-        );
+        await Process.start('open', ['-R', file.path], runInShell: false);
         return;
       }
 
       if (defaultTargetPlatform == TargetPlatform.linux) {
-        await Process.start(
-          'xdg-open',
-          [file.parent.path],
-          runInShell: false,
-        );
+        await Process.start('xdg-open', [file.parent.path], runInShell: false);
       }
     } catch (_) {
       // Se o sistema não conseguir abrir o explorador, o arquivo já foi salvo.
@@ -150,11 +137,7 @@ class CertificadoFileShareService {
         mimeType: MimeType.pdf,
       );
     } catch (_) {
-      await compartilharPdf(
-        bytes: bytes,
-        nomeArquivo: nome,
-        texto: texto,
-      );
+      await compartilharPdf(bytes: bytes, nomeArquivo: nome, texto: texto);
     }
   }
 
@@ -198,11 +181,7 @@ class CertificadoFileShareService {
         mimeType: MimeType.png,
       );
     } catch (_) {
-      await compartilharPng(
-        bytes: bytes,
-        nomeArquivo: nome,
-        texto: texto,
-      );
+      await compartilharPng(bytes: bytes, nomeArquivo: nome, texto: texto);
     }
   }
 
@@ -242,19 +221,10 @@ class CertificadoFileShareService {
       return;
     }
 
-    final file = await _gravarTemporario(
-      bytes: bytes,
-      nomeArquivo: nome,
-    );
+    final file = await _gravarTemporario(bytes: bytes, nomeArquivo: nome);
 
     await Share.shareXFiles(
-      [
-        XFile(
-          file.path,
-          name: nome,
-          mimeType: 'application/pdf',
-        ),
-      ],
+      [XFile(file.path, name: nome, mimeType: 'application/pdf')],
       text: texto ?? 'Certificado em PDF.',
       subject: nome,
     );
@@ -294,19 +264,10 @@ class CertificadoFileShareService {
       return;
     }
 
-    final file = await _gravarTemporario(
-      bytes: bytes,
-      nomeArquivo: nome,
-    );
+    final file = await _gravarTemporario(bytes: bytes, nomeArquivo: nome);
 
     await Share.shareXFiles(
-      [
-        XFile(
-          file.path,
-          name: nome,
-          mimeType: 'image/png',
-        ),
-      ],
+      [XFile(file.path, name: nome, mimeType: 'image/png')],
       text: texto ?? 'Certificado em PNG.',
       subject: nome,
     );

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
@@ -87,7 +87,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -225,7 +226,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
     final palavras = termoNormalizado.split(RegExp(r'\s+'));
     return palavras.every((palavra) {
-      if (palavra.length <= 2 && !RegExp(r'^\d+$').hasMatch(palavra)) return true;
+      if (palavra.length <= 2 && !RegExp(r'^\d+$').hasMatch(palavra))
+        return true;
       return campos.any((c) => c.contains(palavra));
     });
   }
@@ -239,14 +241,15 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   // =====================================================================
 
   void _monitorarConectividade() {
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-          (List<ConnectivityResult> results) {
-        if (!mounted) return;
-        final isOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
-        setState(() => _isOnline = isOnline);
-        debugPrint('📡 Status de conexão: ${isOnline ? 'ONLINE' : 'OFFLINE'}');
-      },
-    );
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      if (!mounted) return;
+      final isOnline =
+          results.isNotEmpty && results.first != ConnectivityResult.none;
+      setState(() => _isOnline = isOnline);
+      debugPrint('📡 Status de conexão: ${isOnline ? 'ONLINE' : 'OFFLINE'}');
+    });
     _verificarConectividadeInicial();
   }
 
@@ -255,7 +258,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       var results = await _connectivity.checkConnectivity();
       if (mounted) {
         setState(() {
-          _isOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
+          _isOnline =
+              results.isNotEmpty && results.first != ConnectivityResult.none;
         });
       }
     } catch (e) {
@@ -277,7 +281,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   Future<void> _forcarRecarregamento() async {
     if (!_isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('🌐 Você precisa estar conectado à internet para recarregar.'), backgroundColor: context.uai.warning),
+        SnackBar(
+          content: Text(
+            '🌐 Você precisa estar conectado à internet para recarregar.',
+          ),
+          backgroundColor: context.uai.warning,
+        ),
       );
       return;
     }
@@ -296,19 +305,41 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       await _preloadGraduacoes();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Row(children: [Icon(Icons.check_circle, color: _readableOn(context.uai.success)), SizedBox(width: 12), Expanded(child: Text('Dados recarregados do servidor com sucesso!'))]), backgroundColor: context.uai.success, duration: const Duration(seconds: 3), behavior: SnackBarBehavior.floating),
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: _readableOn(context.uai.success),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('Dados recarregados do servidor com sucesso!'),
+                ),
+              ],
+            ),
+            backgroundColor: context.uai.success,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       debugPrint('❌ Erro ao recarregar: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao recarregar: $e'), backgroundColor: context.uai.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao recarregar: $e'),
+            backgroundColor: context.uai.error,
+          ),
+        );
       }
     } finally {
-      if (mounted) setState(() {
-        _isRefreshing = false;
-        _isLoading = false;
-      });
+      if (mounted)
+        setState(() {
+          _isRefreshing = false;
+          _isLoading = false;
+        });
     }
   }
 
@@ -334,20 +365,23 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           .where('turma_id', isEqualTo: widget.turmaId)
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .snapshots(includeMetadataChanges: true)
-          .listen((snapshot) {
-        if (!mounted) return;
-        final alunos = snapshot.docs;
-        alunos.sort((a, b) {
-          final nomeA = (a.data()['nome'] ?? '').toLowerCase();
-          final nomeB = (b.data()['nome'] ?? '').toLowerCase();
-          return nomeA.compareTo(nomeB);
-        });
-        _syncService.updatePendingCount(snapshot);
-        setState(() => _alunosCache = alunos);
-      }, onError: (error) {
-        debugPrint('❌ ERRO no snapshot: $error');
-        if (mounted) setState(() => _hasError = true);
-      });
+          .listen(
+            (snapshot) {
+              if (!mounted) return;
+              final alunos = snapshot.docs;
+              alunos.sort((a, b) {
+                final nomeA = (a.data()['nome'] ?? '').toLowerCase();
+                final nomeB = (b.data()['nome'] ?? '').toLowerCase();
+                return nomeA.compareTo(nomeB);
+              });
+              _syncService.updatePendingCount(snapshot);
+              setState(() => _alunosCache = alunos);
+            },
+            onError: (error) {
+              debugPrint('❌ ERRO no snapshot: $error');
+              if (mounted) setState(() => _hasError = true);
+            },
+          );
     } catch (e) {
       debugPrint('❌ Erro ao carregar alunos do servidor: $e');
       rethrow;
@@ -385,10 +419,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
               'pode_editar_chamada': data['pode_editar_chamada'] ?? false,
               'pode_excluir_aluno': data['pode_excluir_aluno'] ?? false,
               'pode_fazer_chamada': data['pode_fazer_chamada'] ?? false,
-              'pode_gerenciar_usuarios': data['pode_gerenciar_usuarios'] ?? false,
+              'pode_gerenciar_usuarios':
+                  data['pode_gerenciar_usuarios'] ?? false,
               'pode_mudar_turma': data['pode_mudar_turma'] ?? false,
               'pode_visualizar_alunos': data['pode_visualizar_alunos'] ?? false,
-              'pode_visualizar_relatorios': data['pode_visualizar_relatorios'] ?? false,
+              'pode_visualizar_relatorios':
+                  data['pode_visualizar_relatorios'] ?? false,
             };
             _carregandoPermissoes = false;
           });
@@ -410,7 +446,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context).loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
       if (mounted) setState(() => _svgContent = content);
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar SVG: $e');
@@ -490,7 +528,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     }
   }
 
-
   Future<void> _carregarConfiguracoesIndicadoresAusencia() async {
     try {
       DocumentSnapshot<Map<String, dynamic>> doc;
@@ -556,7 +593,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
       debugPrint(
         '✅ Configuração de indicadores carregada na tela de alunos: '
-            '${_faixasIndicadoresAusencia.length} faixas',
+        '${_faixasIndicadoresAusencia.length} faixas',
       );
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar indicadores de ausência: $e');
@@ -564,10 +601,11 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Future<void> _carregarAlunos() async {
-    if (mounted) setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
+    if (mounted)
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
     try {
       _alunosSubscription?.cancel();
       _alunosSubscription = _firestore
@@ -575,33 +613,38 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           .where('turma_id', isEqualTo: widget.turmaId)
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .snapshots(includeMetadataChanges: true)
-          .listen((snapshot) {
-        if (!mounted) return;
-        final alunos = snapshot.docs;
-        alunos.sort((a, b) {
-          final nomeA = (a.data()['nome'] ?? '').toLowerCase();
-          final nomeB = (b.data()['nome'] ?? '').toLowerCase();
-          return nomeA.compareTo(nomeB);
-        });
-        _syncService.updatePendingCount(snapshot);
+          .listen(
+            (snapshot) {
+              if (!mounted) return;
+              final alunos = snapshot.docs;
+              alunos.sort((a, b) {
+                final nomeA = (a.data()['nome'] ?? '').toLowerCase();
+                final nomeB = (b.data()['nome'] ?? '').toLowerCase();
+                return nomeA.compareTo(nomeB);
+              });
+              _syncService.updatePendingCount(snapshot);
+              setState(() {
+                _alunosCache = alunos;
+                _isLoading = false;
+              });
+              debugPrint('✅ ${_alunosCache.length} alunos carregados');
+            },
+            onError: (error) {
+              debugPrint('❌ ERRO no snapshot: $error');
+              if (mounted)
+                setState(() {
+                  _hasError = true;
+                  _isLoading = false;
+                });
+            },
+          );
+    } catch (e) {
+      debugPrint('❌ ERRO ao configurar snapshot: $e');
+      if (mounted)
         setState(() {
-          _alunosCache = alunos;
-          _isLoading = false;
-        });
-        debugPrint('✅ ${_alunosCache.length} alunos carregados');
-      }, onError: (error) {
-        debugPrint('❌ ERRO no snapshot: $error');
-        if (mounted) setState(() {
           _hasError = true;
           _isLoading = false;
         });
-      });
-    } catch (e) {
-      debugPrint('❌ ERRO ao configurar snapshot: $e');
-      if (mounted) setState(() {
-        _hasError = true;
-        _isLoading = false;
-      });
     }
   }
 
@@ -610,10 +653,11 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final today = DateTime.now();
     final birth = birthDate.toDate();
     int age = today.year - birth.year;
-    if (today.month < birth.month || (today.month == birth.month && today.day < birth.day)) age--;
+    if (today.month < birth.month ||
+        (today.month == birth.month && today.day < birth.day))
+      age--;
     return age;
   }
-
 
   DateTime? _normalizarDataUltimaPresenca(dynamic value) {
     if (value == null) return null;
@@ -756,9 +800,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Widget _buildIndicadorAusencia(
-      Map<String, dynamic> data, {
-        bool cantoCard = false,
-      }) {
+    Map<String, dynamic> data, {
+    bool cantoCard = false,
+  }) {
     if (!_indicadoresAusenciaAtivos) return const SizedBox.shrink();
 
     final dias = _diasSemPresenca(data);
@@ -783,10 +827,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       ),
     );
 
-    return Tooltip(
-      message: _descricaoAusenciaPorDias(dias),
-      child: badge,
-    );
+    return Tooltip(message: _descricaoAusenciaPorDias(dias), child: badge);
   }
 
   Widget _buildLinhaUltimaPresenca(Map<String, dynamic> data) {
@@ -822,11 +863,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   void _salvarGraduacaoNoCache(
-      String docId,
-      Map<String, dynamic> data, {
-        String? nomeForcado,
-      }) {
-    final nomeGraduacao = nomeForcado ??
+    String docId,
+    Map<String, dynamic> data, {
+    String? nomeForcado,
+  }) {
+    final nomeGraduacao =
+        nomeForcado ??
         data['nome_graduacao']?.toString() ??
         data['nome']?.toString() ??
         data['titulo']?.toString() ??
@@ -841,7 +883,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       'hex_ponta1': data['hex_ponta1'],
       'hex_ponta2': data['hex_ponta2'],
       'nome_graduacao': nomeGraduacao,
-      'nivel_graduacao': data['nivel_graduacao'] ?? data['nivel'] ?? data['ordem'] ?? 9999,
+      'nivel_graduacao':
+          data['nivel_graduacao'] ?? data['nivel'] ?? data['ordem'] ?? 9999,
     };
 
     _graduacoesCache[nomeGraduacao] = item;
@@ -971,7 +1014,11 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
         if (snapshot.docs.isNotEmpty) {
           final doc = snapshot.docs.first;
-          _salvarGraduacaoNoCache(doc.id, doc.data(), nomeForcado: nomeGraduacao);
+          _salvarGraduacaoNoCache(
+            doc.id,
+            doc.data(),
+            nomeForcado: nomeGraduacao,
+          );
           coresGraduacao = _graduacoesCache[_graduacaoKey(nomeGraduacao)];
         }
       } catch (e) {
@@ -987,7 +1034,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final document = xml.XmlDocument.parse(_svgContent!);
 
     Color colorFromHex(String? hexColor) {
-      if (hexColor == null || hexColor.trim().isEmpty) return context.uai.textMuted;
+      if (hexColor == null || hexColor.trim().isEmpty)
+        return context.uai.textMuted;
 
       try {
         final cleaned = hexColor.replaceAll('#', '').trim();
@@ -1010,12 +1058,13 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           .whereType<xml.XmlElement>()
           .firstWhere(
             (e) => e.getAttribute('id') == id,
-        orElse: () => xml.XmlElement(xml.XmlName('')),
-      );
+            orElse: () => xml.XmlElement(xml.XmlName('')),
+          );
 
       if (element.name.local.isEmpty) return;
 
-      final hex = '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+      final hex =
+          '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
       final oldStyle = element.getAttribute('style') ?? '';
 
       if (oldStyle.contains('fill:')) {
@@ -1033,8 +1082,14 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
     changeColor('cor1', colorFromHex(coresGraduacao['hex_cor1']?.toString()));
     changeColor('cor2', colorFromHex(coresGraduacao['hex_cor2']?.toString()));
-    changeColor('corponta1', colorFromHex(coresGraduacao['hex_ponta1']?.toString()));
-    changeColor('corponta2', colorFromHex(coresGraduacao['hex_ponta2']?.toString()));
+    changeColor(
+      'corponta1',
+      colorFromHex(coresGraduacao['hex_ponta1']?.toString()),
+    );
+    changeColor(
+      'corponta2',
+      colorFromHex(coresGraduacao['hex_ponta2']?.toString()),
+    );
 
     final svgString = document.toXmlString();
     _svgCache[cacheKey] = svgString;
@@ -1046,36 +1101,58 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return svg != null;
   }
 
-  String _getGraduacaoNome(Map<String, dynamic> data) => _obterNomeGraduacaoAluno(data);
+  String _getGraduacaoNome(Map<String, dynamic> data) =>
+      _obterNomeGraduacaoAluno(data);
 
   void _abrirDetalhesAluno(String alunoId) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => AlunoDetalheScreen(alunoId: alunoId)));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AlunoDetalheScreen(alunoId: alunoId),
+      ),
+    );
   }
 
-  bool _podeAdicionarAluno() => _permissoes['pode_adicionar_aluno'] == true && _isOnline;
+  bool _podeAdicionarAluno() =>
+      _permissoes['pode_adicionar_aluno'] == true && _isOnline;
 
   Future<void> _abrirCadastroAluno() async {
-    debugPrint('🔑 Verificando permissão: pode_adicionar_aluno = ${_permissoes['pode_adicionar_aluno']}');
+    debugPrint(
+      '🔑 Verificando permissão: pode_adicionar_aluno = ${_permissoes['pode_adicionar_aluno']}',
+    );
     debugPrint('📡 Status online: $_isOnline');
 
     if (!_isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('🌐 Você precisa estar conectado à internet para cadastrar um novo aluno.'), backgroundColor: context.uai.warning),
+        SnackBar(
+          content: Text(
+            '🌐 Você precisa estar conectado à internet para cadastrar um novo aluno.',
+          ),
+          backgroundColor: context.uai.warning,
+        ),
       );
       return;
     }
     if (_permissoes['pode_adicionar_aluno'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⛔ Você não tem permissão para cadastrar alunos.'), backgroundColor: context.uai.error),
+        SnackBar(
+          content: Text('⛔ Você não tem permissão para cadastrar alunos.'),
+          backgroundColor: context.uai.error,
+        ),
       );
       return;
     }
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => CadastroAlunoTurmaScreen(
-      turmaId: widget.turmaId,
-      turmaNome: widget.turmaNome,
-      academiaId: widget.academiaId,
-      academiaNome: widget.academiaNome,
-    )));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CadastroAlunoTurmaScreen(
+          turmaId: widget.turmaId,
+          turmaNome: widget.turmaNome,
+          academiaId: widget.academiaId,
+          academiaNome: widget.academiaNome,
+        ),
+      ),
+    );
     _carregarAlunos();
   }
 
@@ -1243,29 +1320,51 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final podeAdicionar = _podeAdicionarAluno();
     final t = context.uai;
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
     final searchBg = appBarFg.withOpacity(0.13);
     final searchBorder = appBarFg.withOpacity(0.18);
 
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: _buildAppBarTitle(
-          appBarFg: appBarFg,
-          appBarBg: appBarBg,
-        ),
+        title: _buildAppBarTitle(appBarFg: appBarFg, appBarBg: appBarBg),
         backgroundColor: appBarBg,
         foregroundColor: appBarFg,
         actions: [
-          IconButton(icon: Icon(_viewModeIcons[_viewMode], color: appBarFg), tooltip: _viewModeTooltips[_viewMode], onPressed: () => setState(() => _viewMode = (_viewMode + 1) % 4)),
           IconButton(
-            icon: Icon(Icons.person_add, color: podeAdicionar ? appBarFg : appBarFg.withOpacity(0.35)),
-            tooltip: podeAdicionar ? 'Cadastrar Novo Aluno' : (_isOnline ? 'Sem permissão' : 'Offline - Conecte-se para cadastrar'),
+            icon: Icon(_viewModeIcons[_viewMode], color: appBarFg),
+            tooltip: _viewModeTooltips[_viewMode],
+            onPressed: () => setState(() => _viewMode = (_viewMode + 1) % 4),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.person_add,
+              color: podeAdicionar ? appBarFg : appBarFg.withOpacity(0.35),
+            ),
+            tooltip: podeAdicionar
+                ? 'Cadastrar Novo Aluno'
+                : (_isOnline
+                      ? 'Sem permissão'
+                      : 'Offline - Conecte-se para cadastrar'),
             onPressed: podeAdicionar ? _abrirCadastroAluno : null,
           ),
           IconButton(
-            icon: _isRefreshing ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: appBarFg)) : Icon(Icons.refresh, color: appBarFg),
-            tooltip: _isRefreshing ? 'Recarregando...' : (_isOnline ? 'Recarregar do servidor (limpa cache)' : 'Offline - Conecte-se para recarregar'),
+            icon: _isRefreshing
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: appBarFg,
+                    ),
+                  )
+                : Icon(Icons.refresh, color: appBarFg),
+            tooltip: _isRefreshing
+                ? 'Recarregando...'
+                : (_isOnline
+                      ? 'Recarregar do servidor (limpa cache)'
+                      : 'Offline - Conecte-se para recarregar'),
             onPressed: _isRefreshing ? null : _forcarRecarregamento,
           ),
         ],
@@ -1273,8 +1372,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           preferredSize: const Size.fromHeight(60.0),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final maxSearchWidth =
-              constraints.maxWidth >= 1200 ? 1180.0 : double.infinity;
+              final maxSearchWidth = constraints.maxWidth >= 1200
+                  ? 1180.0
+                  : double.infinity;
 
               return Center(
                 child: ConstrainedBox(
@@ -1292,10 +1392,13 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                          icon: Icon(Icons.clear_rounded, color: appBarFg),
-                          onPressed: () =>
-                              setState(() => _searchQuery = ''),
-                        )
+                                icon: Icon(
+                                  Icons.clear_rounded,
+                                  color: appBarFg,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _searchQuery = ''),
+                              )
                             : null,
                         filled: true,
                         fillColor: searchBg,
@@ -1323,10 +1426,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         if (_searchDebounce?.isActive ?? false) {
                           _searchDebounce!.cancel();
                         }
-                        _searchDebounce =
-                            Timer(const Duration(milliseconds: 300), () {
-                              setState(() => _searchQuery = value);
-                            });
+                        _searchDebounce = Timer(
+                          const Duration(milliseconds: 300),
+                          () {
+                            setState(() => _searchQuery = value);
+                          },
+                        );
                       },
                     ),
                   ),
@@ -1345,23 +1450,20 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           : alunosFiltrados.isEmpty
           ? _buildNoSearchResultsView()
           : Column(
-        children: [
-          StreamBuilder<int>(
-            stream: _syncService.pendingCountStream,
-            initialData: _syncService.currentPendingCount,
-            builder: (context, snapshot) => GlobalSyncCounter(pendingCount: snapshot.data ?? 0),
-          ),
-          Expanded(child: _getCurrentView(alunosFiltrados)),
-        ],
-      ),
+              children: [
+                StreamBuilder<int>(
+                  stream: _syncService.pendingCountStream,
+                  initialData: _syncService.currentPendingCount,
+                  builder: (context, snapshot) =>
+                      GlobalSyncCounter(pendingCount: snapshot.data ?? 0),
+                ),
+                Expanded(child: _getCurrentView(alunosFiltrados)),
+              ],
+            ),
     );
   }
 
-
-  Widget _buildAppBarTitle({
-    required Color appBarFg,
-    required Color appBarBg,
-  }) {
+  Widget _buildAppBarTitle({required Color appBarFg, required Color appBarBg}) {
     final t = context.uai;
     final alunosAtivos = _alunosCache.length;
     final capacidade = _capacidadeMaximaTurma;
@@ -1514,7 +1616,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _getCurrentView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _getCurrentView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     switch (_viewMode) {
       case 0:
         return _buildVisualPrincipalResponsivo(docs);
@@ -1545,8 +1649,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Widget _buildVisualPrincipalResponsivo(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -1561,7 +1665,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildListView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildListView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -1577,9 +1683,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Widget _buildGridView(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
-        required int crossAxisCount,
-      }) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    required int crossAxisCount,
+  }) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -1590,7 +1696,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           final maxWidth = _larguraMaximaConteudo(width);
           final horizontalPadding = width >= 960 ? 18.0 : 12.0;
           final spacing = width >= 1280 ? 14.0 : 12.0;
-          final usableWidth = (maxWidth.isFinite ? maxWidth : width) -
+          final usableWidth =
+              (maxWidth.isFinite ? maxWidth : width) -
               (horizontalPadding * 2) -
               (spacing * (crossAxisCount - 1));
           final tileWidth = usableWidth / crossAxisCount;
@@ -1615,7 +1722,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                   childAspectRatio: tileWidth / tileHeight,
                 ),
                 itemCount: docs.length,
-                itemBuilder: (context, index) => _buildAlunoGridCard(docs[index]),
+                itemBuilder: (context, index) =>
+                    _buildAlunoGridCard(docs[index]),
               ),
             ),
           );
@@ -1624,7 +1732,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildCompactView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildCompactView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -1652,8 +1762,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   List<_GrupoGraduacaoAlunos> _agruparAlunosPorGraduacao(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final grupos = <String, _GrupoGraduacaoAlunos>{};
 
     for (final doc in docs) {
@@ -1666,11 +1776,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
       grupos.putIfAbsent(
         key,
-            () => _GrupoGraduacaoAlunos(
-          titulo: nome,
-          ordem: ordem,
-          alunos: [],
-        ),
+        () => _GrupoGraduacaoAlunos(titulo: nome, ordem: ordem, alunos: []),
       );
 
       grupos[key]!.alunos.add(doc);
@@ -1694,7 +1800,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return lista;
   }
 
-  Widget _buildGraduacoesView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildGraduacoesView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final grupos = _agruparAlunosPorGraduacao(docs);
 
     return RefreshIndicator(
@@ -1706,7 +1814,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
         itemCount: grupos.length,
-        itemBuilder: (context, index) => _buildGraduacaoGrupoCard(grupos[index]),
+        itemBuilder: (context, index) =>
+            _buildGraduacaoGrupoCard(grupos[index]),
       ),
     );
   }
@@ -1716,12 +1825,17 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final isSemGraduacao = grupo.titulo == 'SEM GRADUAÇÃO';
     final key = _graduacaoKey(grupo.titulo);
     final expandido = _graduacaoExpandidaKey == key;
-    final primeiroAluno = grupo.alunos.isNotEmpty ? grupo.alunos.first.data() : <String, dynamic>{};
+    final primeiroAluno = grupo.alunos.isNotEmpty
+        ? grupo.alunos.first.data()
+        : <String, dynamic>{};
 
     Color corBase = t.associacao;
     final cache = _graduacoesCache[grupo.titulo] ?? _graduacoesCache[key];
     if (cache != null && !isSemGraduacao) {
-      corBase = _colorFromHexSeguro(cache['hex_cor1']?.toString(), t.associacao);
+      corBase = _colorFromHexSeguro(
+        cache['hex_cor1']?.toString(),
+        t.associacao,
+      );
     }
     final cor = _ensureVisible(corBase, t.card);
 
@@ -1755,36 +1869,48 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       height: 58,
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: isSemGraduacao ? t.cardAlt : cor.withOpacity(0.08),
+                        color: isSemGraduacao
+                            ? t.cardAlt
+                            : cor.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: cor.withOpacity(0.22)),
                       ),
                       child: isSemGraduacao
-                          ? Icon(Icons.workspace_premium_outlined, color: t.textMuted)
+                          ? Icon(
+                              Icons.workspace_premium_outlined,
+                              color: t.textMuted,
+                            )
                           : FutureBuilder<String?>(
-                        future: _getModifiedSvg(primeiroAluno),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return Center(
-                              child: SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: cor,
-                                ),
-                              ),
-                            );
-                          }
+                              future: _getModifiedSvg(primeiroAluno),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return Center(
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: cor,
+                                      ),
+                                    ),
+                                  );
+                                }
 
-                          final svg = snapshot.data;
-                          if (svg == null || svg.isEmpty) {
-                            return Icon(Icons.workspace_premium_rounded, color: cor);
-                          }
+                                final svg = snapshot.data;
+                                if (svg == null || svg.isEmpty) {
+                                  return Icon(
+                                    Icons.workspace_premium_rounded,
+                                    color: cor,
+                                  );
+                                }
 
-                          return SvgPicture.string(svg, fit: BoxFit.contain);
-                        },
-                      ),
+                                return SvgPicture.string(
+                                  svg,
+                                  fit: BoxFit.contain,
+                                );
+                              },
+                            ),
                     ),
                     const SizedBox(width: 11),
                     Expanded(
@@ -1808,7 +1934,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                             child: LinearProgressIndicator(
                               value: _alunosCache.isEmpty
                                   ? 0
-                                  : ((grupo.alunos.length / _alunosCache.length).clamp(0.0, 1.0)).toDouble(),
+                                  : ((grupo.alunos.length / _alunosCache.length)
+                                            .clamp(0.0, 1.0))
+                                        .toDouble(),
                               minHeight: 6,
                               backgroundColor: t.border,
                               valueColor: AlwaysStoppedAnimation<Color>(cor),
@@ -1830,7 +1958,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                     AnimatedRotation(
                       turns: expandido ? 0.5 : 0,
                       duration: const Duration(milliseconds: 180),
-                      child: Icon(Icons.keyboard_arrow_down_rounded, color: cor),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: cor,
+                      ),
                     ),
                   ],
                 ),
@@ -1845,8 +1976,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                 children: grupo.alunos.map(_buildAlunoCompactCard).toList(),
               ),
             ),
-            crossFadeState:
-            expandido ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: expandido
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
             sizeCurve: Curves.easeOutCubic,
           ),
@@ -1856,8 +1988,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   List<_GrupoIndicadorAlunos> _agruparAlunosPorIndicador(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final grupos = <String, _GrupoIndicadorAlunos>{};
 
     for (final doc in docs) {
@@ -1868,8 +2000,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       final titulo = dias == null
           ? 'Sem presença registrada'
           : (faixa?['label']?.toString().trim().isNotEmpty == true
-          ? faixa!['label'].toString().trim()
-          : 'Indicador');
+                ? faixa!['label'].toString().trim()
+                : 'Indicador');
 
       final ateDias = faixa == null
           ? 999999
@@ -1887,7 +2019,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
       grupos.putIfAbsent(
         key,
-            () => _GrupoIndicadorAlunos(
+        () => _GrupoIndicadorAlunos(
           titulo: titulo,
           subtitulo: subtitulo,
           cor: cor,
@@ -1917,7 +2049,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return lista;
   }
 
-  Widget _buildIndicadoresView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildIndicadoresView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final grupos = _agruparAlunosPorIndicador(docs);
 
     return RefreshIndicator(
@@ -1929,7 +2063,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
         itemCount: grupos.length,
-        itemBuilder: (context, index) => _buildIndicadorGrupoCard(grupos[index]),
+        itemBuilder: (context, index) =>
+            _buildIndicadorGrupoCard(grupos[index]),
       ),
     );
   }
@@ -2022,7 +2157,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: cor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(999),
@@ -2041,7 +2179,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                     AnimatedRotation(
                       turns: expandido ? 0.5 : 0,
                       duration: const Duration(milliseconds: 180),
-                      child: Icon(Icons.keyboard_arrow_down_rounded, color: cor),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: cor,
+                      ),
                     ),
                   ],
                 ),
@@ -2056,8 +2197,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                 children: grupo.alunos.map(_buildAlunoCompactCard).toList(),
               ),
             ),
-            crossFadeState:
-            expandido ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: expandido
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
             sizeCurve: Curves.easeOutCubic,
           ),
@@ -2066,7 +2208,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildAlunoListCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoListCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = (data['nome'] ?? 'Nome não informado').toString();
@@ -2078,7 +2222,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       future: _getModifiedSvg(data),
       builder: (context, svgSnapshot) {
         final modifiedSvg = svgSnapshot.data;
-        final isLoadingSvg = svgSnapshot.connectionState == ConnectionState.waiting;
+        final isLoadingSvg =
+            svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
         return Padding(
@@ -2102,10 +2247,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       Positioned(
                         top: 0,
                         right: 0,
-                        child: _buildIndicadorAusencia(
-                          data,
-                          cantoCard: true,
-                        ),
+                        child: _buildIndicadorAusencia(data, cantoCard: true),
                       ),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2117,11 +2259,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                               children: [
                                 fotoUrl != null && fotoUrl.isNotEmpty
                                     ? CachedNetworkImage(
-                                  imageUrl: fotoUrl,
-                                  fit: BoxFit.cover,
-                                  alignment: Alignment.center,
-                                  errorWidget: (c, u, e) => _placeholderIcon(),
-                                )
+                                        imageUrl: fotoUrl,
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.center,
+                                        errorWidget: (c, u, e) =>
+                                            _placeholderIcon(),
+                                      )
                                     : _placeholderIcon(),
                                 Positioned(
                                   bottom: 0,
@@ -2150,7 +2293,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                               padding: EdgeInsets.fromLTRB(
                                 12,
                                 graduacaoNome.isNotEmpty &&
-                                    graduacaoNome != 'SEM GRADUAÇÃO'
+                                        graduacaoNome != 'SEM GRADUAÇÃO'
                                     ? 7
                                     : 10,
                                 8,
@@ -2190,7 +2333,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   _buildLinhaUltimaPresenca(data),
                                   const SizedBox(height: 3),
                                   SyncIndicator(
-                                    isPending: _syncService.isDocumentPending(aluno),
+                                    isPending: _syncService.isDocumentPending(
+                                      aluno,
+                                    ),
                                     isCompact: true,
                                   ),
                                 ],
@@ -2205,18 +2350,18 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                 child: Center(
                                   child: isLoadingSvg
                                       ? SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: t.primary,
-                                    ),
-                                  )
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: t.primary,
+                                          ),
+                                        )
                                       : SvgPicture.string(
-                                    modifiedSvg!,
-                                    height: 58,
-                                    fit: BoxFit.contain,
-                                  ),
+                                          modifiedSvg!,
+                                          height: 58,
+                                          fit: BoxFit.contain,
+                                        ),
                                 ),
                               ),
                             ),
@@ -2234,7 +2379,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildAlunoGridCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoGridCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = (data['nome'] ?? 'Nome não informado').toString();
@@ -2246,7 +2393,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       future: _getModifiedSvg(data),
       builder: (context, svgSnapshot) {
         final modifiedSvg = svgSnapshot.data;
-        final isLoadingSvg = svgSnapshot.connectionState == ConnectionState.waiting;
+        final isLoadingSvg =
+            svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
         return Material(
@@ -2266,10 +2414,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                   Positioned(
                     top: 0,
                     right: 0,
-                    child: _buildIndicadorAusencia(
-                      data,
-                      cantoCard: true,
-                    ),
+                    child: _buildIndicadorAusencia(data, cantoCard: true),
                   ),
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -2289,12 +2434,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                               children: [
                                 fotoUrl != null && fotoUrl.isNotEmpty
                                     ? CachedNetworkImage(
-                                  imageUrl: fotoUrl,
-                                  fit: BoxFit.cover,
-                                  alignment: Alignment.center,
-                                  errorWidget: (c, u, e) =>
-                                      _placeholderIcon(size: 42),
-                                )
+                                        imageUrl: fotoUrl,
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.center,
+                                        errorWidget: (c, u, e) =>
+                                            _placeholderIcon(size: 42),
+                                      )
                                     : _placeholderIcon(size: 42),
                                 Positioned(
                                   bottom: 0,
@@ -2360,8 +2505,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   _buildLinhaUltimaPresenca(data),
                                   const SizedBox(height: 3),
                                   SyncIndicator(
-                                    isPending:
-                                    _syncService.isDocumentPending(aluno),
+                                    isPending: _syncService.isDocumentPending(
+                                      aluno,
+                                    ),
                                     isCompact: true,
                                   ),
                                 ],
@@ -2376,18 +2522,18 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                 child: Center(
                                   child: isLoadingSvg
                                       ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: t.primary,
-                                    ),
-                                  )
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: t.primary,
+                                          ),
+                                        )
                                       : SvgPicture.string(
-                                    modifiedSvg!,
-                                    height: cardWidth < 340 ? 42 : 50,
-                                    fit: BoxFit.contain,
-                                  ),
+                                          modifiedSvg!,
+                                          height: cardWidth < 340 ? 42 : 50,
+                                          fit: BoxFit.contain,
+                                        ),
                                 ),
                               ),
                             ),
@@ -2405,7 +2551,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildAlunoCompactCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoCompactCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = data['nome'] ?? 'Nome não informado';
@@ -2415,7 +2563,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       future: _getModifiedSvg(data),
       builder: (context, svgSnapshot) {
         final modifiedSvg = svgSnapshot.data;
-        final isLoadingSvg = svgSnapshot.connectionState == ConnectionState.waiting;
+        final isLoadingSvg =
+            svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
         return Padding(
@@ -2438,16 +2587,27 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                     Container(
                       width: 44,
                       height: 44,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: t.cardAlt),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: t.cardAlt,
+                      ),
                       child: fotoUrl != null && fotoUrl.isNotEmpty
                           ? ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: fotoUrl,
-                          fit: BoxFit.cover,
-                          errorWidget: (c, u, e) => Icon(Icons.person_rounded, size: 28, color: t.textMuted),
-                        ),
-                      )
-                          : Icon(Icons.person_rounded, size: 28, color: t.textMuted),
+                              child: CachedNetworkImage(
+                                imageUrl: fotoUrl,
+                                fit: BoxFit.cover,
+                                errorWidget: (c, u, e) => Icon(
+                                  Icons.person_rounded,
+                                  size: 28,
+                                  color: t.textMuted,
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              Icons.person_rounded,
+                              size: 28,
+                              color: t.textMuted,
+                            ),
                     ),
                     const SizedBox(width: 11),
                     Expanded(
@@ -2474,11 +2634,11 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         height: 38,
                         child: isLoadingSvg
                             ? Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: t.primary,
-                          ),
-                        )
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: t.primary,
+                                ),
+                              )
                             : SvgPicture.string(modifiedSvg!, height: 36),
                       ),
                     ],
@@ -2494,10 +2654,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _placeholderIcon({double size = 50}) => Center(child: Icon(Icons.person_rounded, size: size, color: context.uai.textMuted));
+  Widget _placeholderIcon({double size = 50}) => Center(
+    child: Icon(Icons.person_rounded, size: size, color: context.uai.textMuted),
+  );
 }
-
-
 
 class _GrupoGraduacaoAlunos {
   final String titulo;

@@ -15,7 +15,10 @@ class RemessaService {
     return docRef.id;
   }
 
-  Future<void> atualizarRemessa(String remessaId, Map<String, dynamic> dados) async {
+  Future<void> atualizarRemessa(
+    String remessaId,
+    Map<String, dynamic> dados,
+  ) async {
     dados['atualizado_em'] = FieldValue.serverTimestamp();
     dados['atualizado_por'] = currentUser?.uid;
     await _firestore.collection('remessas').doc(remessaId).update(dados);

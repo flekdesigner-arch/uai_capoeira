@@ -41,8 +41,8 @@ class PedidoCard extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -172,9 +172,9 @@ class PedidoCard extends StatelessWidget {
         ),
         content: Text(
           'Tem certeza que deseja excluir este pedido?\n\n'
-              'Pedido: ${data['id_pedido'] ?? 'N/I'}\n'
-              'Aluno: ${data['aluno_nome']}\n'
-              'Valor: ${realFormat.format(data['valor_total'] ?? 0)}',
+          'Pedido: ${data['id_pedido'] ?? 'N/I'}\n'
+          'Aluno: ${data['aluno_nome']}\n'
+          'Valor: ${realFormat.format(data['valor_total'] ?? 0)}',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -229,7 +229,8 @@ class PedidoCard extends StatelessWidget {
       ),
       color: context.uai.card,
       elevation: 2,
-      shadowColor: Colors.transparent, // sombra controlada pelo tema via boxShadow?
+      shadowColor:
+          Colors.transparent, // sombra controlada pelo tema via boxShadow?
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
@@ -239,7 +240,10 @@ class PedidoCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(context.uai.cardRadius),
           child: ExpansionTile(
             // tilePadding ajustado para alinhamento
-            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 0,
+            ),
             leading: CircleAvatar(
               backgroundColor: statusColor.withOpacity(0.15),
               child: Icon(statusIcon, color: statusColor, size: 20),
@@ -264,15 +268,21 @@ class PedidoCard extends StatelessWidget {
                       children: [
                         if (podeEditar)
                           Icon(Icons.edit, size: 14, color: context.uai.info),
-                        if (podeEditar && podeExcluir)
-                          const SizedBox(width: 4),
+                        if (podeEditar && podeExcluir) const SizedBox(width: 4),
                         if (podeExcluir)
-                          Icon(Icons.delete, size: 14, color: context.uai.error),
+                          Icon(
+                            Icons.delete,
+                            size: 14,
+                            color: context.uai.error,
+                          ),
                       ],
                     ),
                   ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: pagColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
@@ -344,8 +354,9 @@ class PedidoCard extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               realFormat.format(
-                                  (item['quantidade'] ?? 1) *
-                                      (item['preco_unitario'] ?? 0)),
+                                (item['quantidade'] ?? 1) *
+                                    (item['preco_unitario'] ?? 0),
+                              ),
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
@@ -404,7 +415,9 @@ class PedidoCard extends StatelessWidget {
                         value: progresso,
                         backgroundColor: context.uai.border,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          pago >= total ? context.uai.success : context.uai.warning,
+                          pago >= total
+                              ? context.uai.success
+                              : context.uai.warning,
                         ),
                       ),
                     ],
@@ -421,7 +434,11 @@ class PedidoCard extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.note, size: 16, color: context.uai.textMuted),
+                            Icon(
+                              Icons.note,
+                              size: 16,
+                              color: context.uai.textMuted,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -505,16 +522,25 @@ class PedidoCard extends StatelessWidget {
 
                         if (data['status'] == 'finalizado')
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: context.uai.success.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: context.uai.success.withOpacity(0.3)),
+                              border: Border.all(
+                                color: context.uai.success.withOpacity(0.3),
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check_circle, size: 16, color: context.uai.success),
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 16,
+                                  color: context.uai.success,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'FINALIZADO',
@@ -549,15 +575,20 @@ class PedidoCard extends StatelessWidget {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 4),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: context.uai.cardAlt,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
                             children: [
-                              Icon(Icons.payment,
-                                  size: 12, color: context.uai.primary),
+                              Icon(
+                                Icons.payment,
+                                size: 12,
+                                color: context.uai.primary,
+                              ),
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
@@ -569,9 +600,10 @@ class PedidoCard extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                pagamento['forma']
-                                    ?.toUpperCase()
-                                    .replaceAll('_', ' ') ??
+                                pagamento['forma']?.toUpperCase().replaceAll(
+                                      '_',
+                                      ' ',
+                                    ) ??
                                     '',
                                 style: TextStyle(
                                   fontSize: 10,

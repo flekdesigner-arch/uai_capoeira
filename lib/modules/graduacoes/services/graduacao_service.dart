@@ -10,12 +10,15 @@ class GraduacaoService {
   DateTime? _cacheTimestamp;
 
   /// Busca todas as graduações
-  Future<List<Map<String, dynamic>>> buscarTodasGraduacoes({bool forceRefresh = false}) async {
+  Future<List<Map<String, dynamic>>> buscarTodasGraduacoes({
+    bool forceRefresh = false,
+  }) async {
     // Se tem cache e não passou 5 minutos, usa cache
     if (!forceRefresh &&
         _cacheTodasGraduacoes != null &&
         _cacheTimestamp != null &&
-        DateTime.now().difference(_cacheTimestamp!) < const Duration(minutes: 5)) {
+        DateTime.now().difference(_cacheTimestamp!) <
+            const Duration(minutes: 5)) {
       return _cacheTodasGraduacoes!;
     }
 
@@ -26,10 +29,7 @@ class GraduacaoService {
           .get();
 
       _cacheTodasGraduacoes = snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        return {'id': doc.id, ...doc.data()};
       }).toList();
 
       _cacheTimestamp = DateTime.now();
@@ -47,10 +47,7 @@ class GraduacaoService {
       final doc = await _firestore.collection(_collection).doc(id).get();
 
       if (doc.exists) {
-        return {
-          'id': doc.id,
-          ...doc.data()!,
-        };
+        return {'id': doc.id, ...doc.data()!};
       }
       return null;
     } catch (e) {
@@ -60,12 +57,18 @@ class GraduacaoService {
   }
 
   /// Busca graduações por tipo (ADULTO/INFANTIL)
-  Future<List<Map<String, dynamic>>> buscarGraduacoesPorTipo(String tipo) async {
+  Future<List<Map<String, dynamic>>> buscarGraduacoesPorTipo(
+    String tipo,
+  ) async {
     try {
       final todas = await buscarTodasGraduacoes();
-      return todas.where((g) =>
-      g['tipo_publico']?.toString().toUpperCase() == tipo.toUpperCase()
-      ).toList();
+      return todas
+          .where(
+            (g) =>
+                g['tipo_publico']?.toString().toUpperCase() ==
+                tipo.toUpperCase(),
+          )
+          .toList();
     } catch (e) {
       debugPrint('Erro ao buscar graduações por tipo: $e');
       return [];
@@ -74,14 +77,14 @@ class GraduacaoService {
 
   /// Busca próximas graduações baseado no nível atual
   Future<List<Map<String, dynamic>>> buscarProximasGraduacoes(
-      int nivelAtual,
-      String tipo,
-      ) async {
+    int nivelAtual,
+    String tipo,
+  ) async {
     try {
       final todas = await buscarGraduacoesPorTipo(tipo);
-      return todas.where((g) =>
-      (g['nivel_graduacao'] ?? 0) > nivelAtual
-      ).toList();
+      return todas
+          .where((g) => (g['nivel_graduacao'] ?? 0) > nivelAtual)
+          .toList();
     } catch (e) {
       debugPrint('Erro ao buscar próximas graduações: $e');
       return [];

@@ -35,21 +35,33 @@ class ViewModeSelector extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildButton(context, Icons.view_list, 'Lista', ViewMode.list, onPrimary),
+          _buildButton(
+            context,
+            Icons.view_list,
+            'Lista',
+            ViewMode.list,
+            onPrimary,
+          ),
           const SizedBox(width: 8),
-          _buildButton(context, Icons.grid_view, 'Grade', ViewMode.grid, onPrimary),
+          _buildButton(
+            context,
+            Icons.grid_view,
+            'Grade',
+            ViewMode.grid,
+            onPrimary,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildButton(
-      BuildContext context,
-      IconData icon,
-      String label,
-      ViewMode mode,
-      Color onPrimary,
-      ) {
+    BuildContext context,
+    IconData icon,
+    String label,
+    ViewMode mode,
+    Color onPrimary,
+  ) {
     final t = context.uai;
     final isSelected = currentMode == mode;
 
@@ -169,7 +181,8 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -179,7 +192,6 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
-
 
   int _parseIntIndicador(dynamic value, {required int fallback}) {
     if (value is int) return value;
@@ -220,9 +232,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       final faixasRaw = data?['faixas'];
       final faixas = faixasRaw is List
           ? faixasRaw
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : _faixasIndicadoresPadrao();
 
       faixas.sort((a, b) {
@@ -359,16 +371,21 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   }
 
   String _formatarDiaSemana(DateTime data) {
-    final diaSemanaOriginal = DateFormat('EEEE', 'pt_BR').format(data).toLowerCase();
+    final diaSemanaOriginal = DateFormat(
+      'EEEE',
+      'pt_BR',
+    ).format(data).toLowerCase();
 
     if (diaSemanaOriginal.contains('segunda')) return 'SEGUNDA';
-    if (diaSemanaOriginal.contains('terça') || diaSemanaOriginal.contains('terca')) {
+    if (diaSemanaOriginal.contains('terça') ||
+        diaSemanaOriginal.contains('terca')) {
       return 'TERCA';
     }
     if (diaSemanaOriginal.contains('quarta')) return 'QUARTA';
     if (diaSemanaOriginal.contains('quinta')) return 'QUINTA';
     if (diaSemanaOriginal.contains('sexta')) return 'SEXTA';
-    if (diaSemanaOriginal.contains('sábado') || diaSemanaOriginal.contains('sabado')) {
+    if (diaSemanaOriginal.contains('sábado') ||
+        diaSemanaOriginal.contains('sabado')) {
       return 'SABADO';
     }
     if (diaSemanaOriginal.contains('domingo')) return 'DOMINGO';
@@ -383,23 +400,31 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       final diaSemanaFormatado = _formatarDiaSemana(widget.dataSelecionada);
       final diaSemanaAbrev = _getDiaAbreviado(diaSemanaFormatado);
 
-      final turmaDoc = await _firestore.collection('turmas').doc(widget.turmaId).get();
+      final turmaDoc = await _firestore
+          .collection('turmas')
+          .doc(widget.turmaId)
+          .get();
       String tipoAula = 'OBJETIVA';
 
       if (turmaDoc.exists) {
         final turmaData = turmaDoc.data() ?? {};
-        final diasConfiguracao = turmaData['dias_configuracao'] as Map<String, dynamic>?;
+        final diasConfiguracao =
+            turmaData['dias_configuracao'] as Map<String, dynamic>?;
         final configuracaoDia = diasConfiguracao?[diaSemanaFormatado];
         if (configuracaoDia is Map<String, dynamic>) {
           tipoAula = configuracaoDia['tipoAula']?.toString() ?? 'OBJETIVA';
         }
       }
 
-      final userDoc = await _firestore.collection('usuarios').doc(widget.usuarioId).get();
+      final userDoc = await _firestore
+          .collection('usuarios')
+          .doc(widget.usuarioId)
+          .get();
       String professorNome = 'Professor';
       if (userDoc.exists) {
         final userData = userDoc.data() ?? {};
-        professorNome = userData['nome_completo']?.toString() ??
+        professorNome =
+            userData['nome_completo']?.toString() ??
             userData['nome']?.toString() ??
             'Professor';
       }
@@ -407,7 +432,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       final alunosSnapshot = await _firestore
           .collection('alunos')
           .where('turma_id', isEqualTo: widget.turmaId)
-          .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO(A) ', 'ATIVO'])
+          .where(
+            'status_atividade',
+            whereIn: ['ATIVO(A)', 'ATIVO(A) ', 'ATIVO'],
+          )
           .get();
 
       final alunosList = alunosSnapshot.docs.map((doc) {
@@ -416,7 +444,8 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           'id': doc.id,
           'nome': data['nome'] ?? 'Sem nome',
           'foto': data['foto_perfil_aluno'] as String?,
-          'ultimo_dia_presente': data['ultimo_dia_presente'] ??
+          'ultimo_dia_presente':
+              data['ultimo_dia_presente'] ??
               data['ultimoDiaPresente'] ??
               data['ultima_presenca'] ??
               data['ultimaPresenca'] ??
@@ -430,7 +459,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       }).toList();
 
       alunosList.sort(
-            (a, b) => (a['nome'] as String).compareTo(b['nome'] as String),
+        (a, b) => (a['nome'] as String).compareTo(b['nome'] as String),
       );
 
       final presencasIniciais = <String, bool>{};
@@ -450,7 +479,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       });
 
       debugPrint('📅 Chamada especial: $diaSemanaFormatado / $diaSemanaAbrev');
-      debugPrint('✅ ${alunosList.length} alunos carregados para chamada especial');
+      debugPrint(
+        '✅ ${alunosList.length} alunos carregados para chamada especial',
+      );
     } catch (e) {
       debugPrint('❌ Erro ao carregar dados da chamada especial: $e');
       if (mounted) {
@@ -491,10 +522,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           ),
           title: Text(
             'Observação para $nomeAluno',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: TextField(
             controller: _observacaoController,
@@ -620,11 +648,19 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
 
     final alunosPayload = _alunos.map((aluno) {
       final alunoId = aluno['id']?.toString() ?? '';
+      final fotoPerfilAluno = (aluno['foto']?.toString() ?? '').trim();
+
       return {
         'id': alunoId,
         'nome': aluno['nome']?.toString() ?? 'Sem nome',
         'presente': _presencas[alunoId] ?? false,
         'observacao': _observacoes[alunoId] ?? '',
+
+        // Snapshot econômico para a lista/histórico de chamada.
+        // Assim a tela não precisa consultar alunos/{id} só para exibir foto.
+        'foto_perfil_aluno': fotoPerfilAluno,
+        'foto': fotoPerfilAluno,
+        'ultimo_dia_presente': aluno['ultimo_dia_presente'],
       };
     }).toList();
 
@@ -739,8 +775,14 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                DateFormat('dd/MM/yyyy', 'pt_BR').format(widget.dataSelecionada),
-                style: TextStyle(fontSize: 16, color: onSuccess.withOpacity(0.78)),
+                DateFormat(
+                  'dd/MM/yyyy',
+                  'pt_BR',
+                ).format(widget.dataSelecionada),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: onSuccess.withOpacity(0.78),
+                ),
               ),
               const SizedBox(height: 20),
               Container(
@@ -752,16 +794,37 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildResumoItem('${dados['presentes']}', 'Presentes', Icons.check_circle),
-                    _buildResumoItem('${dados['ausentes']}', 'Ausentes', Icons.cancel),
-                    _buildResumoItem('${dados['porcentagem_frequencia']}%', 'Frequência', Icons.trending_up),
+                    _buildResumoItem(
+                      '${dados['presentes']}',
+                      'Presentes',
+                      Icons.check_circle,
+                    ),
+                    _buildResumoItem(
+                      '${dados['ausentes']}',
+                      'Ausentes',
+                      Icons.cancel,
+                    ),
+                    _buildResumoItem(
+                      '${dados['porcentagem_frequencia']}%',
+                      'Frequência',
+                      Icons.trending_up,
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Professor: $_professorNome', style: TextStyle(fontSize: 14, color: onSuccess)),
+              Text(
+                'Professor: $_professorNome',
+                style: TextStyle(fontSize: 14, color: onSuccess),
+              ),
               const SizedBox(height: 8),
-              Text('Tipo de aula: $_tipoAula', style: TextStyle(fontSize: 12, color: onSuccess.withOpacity(0.78))),
+              Text(
+                'Tipo de aula: $_tipoAula',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: onSuccess.withOpacity(0.78),
+                ),
+              ),
               const SizedBox(height: 22),
               TextButton(
                 onPressed: () {
@@ -770,7 +833,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 },
                 child: Text(
                   'FECHAR',
-                  style: TextStyle(color: onSuccess, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: onSuccess,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -831,7 +897,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
             const SizedBox(height: 16),
             Text(
               _statusMensagem,
-              style: TextStyle(fontSize: 14, color: _onPrimary().withOpacity(0.90)),
+              style: TextStyle(
+                fontSize: 14,
+                color: _onPrimary().withOpacity(0.90),
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
@@ -842,7 +911,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     );
   }
 
-  Widget _buildIndicadorBolinha(Map<String, dynamic> aluno, {double size = 13}) {
+  Widget _buildIndicadorBolinha(
+    Map<String, dynamic> aluno, {
+    double size = 13,
+  }) {
     if (!_indicadoresAusenciaAtivo) return const SizedBox.shrink();
 
     final color = _corIndicadorAusencia(aluno);
@@ -877,13 +949,18 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       color: estaPresente
-          ? Color.alphaBlend(context.uai.success.withOpacity(0.08), context.uai.card)
+          ? Color.alphaBlend(
+              context.uai.success.withOpacity(0.08),
+              context.uai.card,
+            )
           : context.uai.card,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: estaPresente ? context.uai.success.withOpacity(0.45) : context.uai.border,
+          color: estaPresente
+              ? context.uai.success.withOpacity(0.45)
+              : context.uai.border,
         ),
       ),
       child: ListTile(
@@ -897,12 +974,18 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               backgroundColor: estaPresente
                   ? context.uai.success.withOpacity(0.10)
                   : context.uai.border,
-              backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? NetworkImage(fotoUrl) : null,
+              backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
+                  ? NetworkImage(fotoUrl)
+                  : null,
               child: fotoUrl == null || fotoUrl.isEmpty
                   ? Icon(Icons.person, size: 18, color: context.uai.textMuted)
                   : null,
             ),
-            Positioned(right: -1, bottom: -1, child: _buildIndicadorBolinha(aluno, size: 12)),
+            Positioned(
+              right: -1,
+              bottom: -1,
+              child: _buildIndicadorBolinha(aluno, size: 12),
+            ),
           ],
         ),
         title: Text(
@@ -910,7 +993,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: estaPresente ? context.uai.textPrimary : context.uai.textSecondary,
+            color: estaPresente
+                ? context.uai.textPrimary
+                : context.uai.textSecondary,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -919,7 +1004,8 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_indicadoresAusenciaAtivo && _mostrarTextoUltimaPresencaIndicador)
+            if (_indicadoresAusenciaAtivo &&
+                _mostrarTextoUltimaPresencaIndicador)
               Text(
                 _textoUltimaPresenca(aluno),
                 style: TextStyle(
@@ -956,7 +1042,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                   icon: Icon(
                     Icons.note_add,
                     size: 14,
-                    color: observacao != null ? context.uai.warning : context.uai.info,
+                    color: observacao != null
+                        ? context.uai.warning
+                        : context.uai.info,
                   ),
                   padding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
@@ -1006,7 +1094,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         onTap: () => _togglePresenca(alunoId),
         child: Container(
           decoration: BoxDecoration(
-            color: estaPresente ? context.uai.success.withOpacity(0.18) : context.uai.card,
+            color: estaPresente
+                ? context.uai.success.withOpacity(0.18)
+                : context.uai.card,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1019,18 +1109,25 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                         color: context.uai.cardAlt,
                         child: fotoUrl != null && fotoUrl.isNotEmpty
                             ? CachedNetworkImage(
-                          imageUrl: fotoUrl,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          memCacheWidth: 600,
-                          fadeInDuration: const Duration(milliseconds: 120),
-                          errorWidget: (c, u, e) => _placeholderIcon(size: 80),
-                        )
+                                imageUrl: fotoUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                memCacheWidth: 600,
+                                fadeInDuration: const Duration(
+                                  milliseconds: 120,
+                                ),
+                                errorWidget: (c, u, e) =>
+                                    _placeholderIcon(size: 80),
+                              )
                             : _placeholderIcon(size: 80),
                       ),
                     ),
-                    Positioned(top: 8, left: 8, child: _buildIndicadorBolinha(aluno, size: 14)),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: _buildIndicadorBolinha(aluno, size: 14),
+                    ),
                     if (estaPresente)
                       Positioned(
                         top: 8,
@@ -1041,7 +1138,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                             color: context.uai.success,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.check, size: 14, color: _readableOn(context.uai.success)),
+                          child: Icon(
+                            Icons.check,
+                            size: 14,
+                            color: _readableOn(context.uai.success),
+                          ),
                         ),
                       ),
                     Positioned(
@@ -1062,7 +1163,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                               ),
                             ],
                           ),
-                          child: Icon(Icons.note_add, size: 16, color: context.uai.info),
+                          child: Icon(
+                            Icons.note_add,
+                            size: 16,
+                            color: context.uai.info,
+                          ),
                         ),
                       ),
                     ),
@@ -1080,13 +1185,16 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                         height: 1.2,
-                        color: estaPresente ? context.uai.success : context.uai.textPrimary,
+                        color: estaPresente
+                            ? context.uai.success
+                            : context.uai.textPrimary,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
-                    if (_indicadoresAusenciaAtivo && _mostrarTextoUltimaPresencaIndicador) ...[
+                    if (_indicadoresAusenciaAtivo &&
+                        _mostrarTextoUltimaPresencaIndicador) ...[
                       Text(
                         _textoUltimaPresenca(aluno),
                         style: TextStyle(
@@ -1193,7 +1301,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                     ),
                     Container(
                       margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: context.uai.primary,
                         borderRadius: BorderRadius.circular(4),
@@ -1211,7 +1322,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: context.uai.cardAlt,
                   borderRadius: BorderRadius.circular(16),
@@ -1219,7 +1333,11 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.person, size: 12, color: context.uai.textSecondary),
+                    Icon(
+                      Icons.person,
+                      size: 12,
+                      color: context.uai.textSecondary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       _professorNome.split(' ').first,
@@ -1239,9 +1357,24 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStatItem(value: '$presentes', label: 'Presentes', color: context.uai.success, icon: Icons.check_circle),
-              _buildStatItem(value: '${total - presentes}', label: 'Ausentes', color: context.uai.error, icon: Icons.cancel),
-              _buildStatItem(value: '$porcentagem%', label: 'Frequência', color: context.uai.info, icon: Icons.trending_up),
+              _buildStatItem(
+                value: '$presentes',
+                label: 'Presentes',
+                color: context.uai.success,
+                icon: Icons.check_circle,
+              ),
+              _buildStatItem(
+                value: '${total - presentes}',
+                label: 'Ausentes',
+                color: context.uai.error,
+                icon: Icons.cancel,
+              ),
+              _buildStatItem(
+                value: '$porcentagem%',
+                label: 'Frequência',
+                color: context.uai.info,
+                icon: Icons.trending_up,
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1280,7 +1413,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
             const Text('CHAMADA ESPECIAL', style: TextStyle(fontSize: 14)),
             Text(
               '${widget.turmaNome} - ${DateFormat('dd/MM/yyyy').format(widget.dataSelecionada)}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -1298,64 +1434,74 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           : _isSaving && _mostrarProgresso
           ? _buildTelaProgresso()
           : Column(
-        children: [
-          _buildHeaderResumo(),
-          Expanded(
-            child: _viewMode == ViewMode.list
-                ? ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _alunos.length,
-              itemBuilder: (context, index) => _buildAlunoListTile(_alunos[index]),
-            )
-                : GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 0.75,
-              ),
-              itemCount: _alunos.length,
-              itemBuilder: (context, index) => _buildAlunoGridItem(_alunos[index]),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: context.uai.surface,
-                border: Border(top: BorderSide(color: context.uai.border)),
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _isSaving ? null : _salvarChamada,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _appBarBg(),
-                  foregroundColor: _appBarFg(),
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              children: [
+                _buildHeaderResumo(),
+                Expanded(
+                  child: _viewMode == ViewMode.list
+                      ? ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _alunos.length,
+                          itemBuilder: (context, index) =>
+                              _buildAlunoListTile(_alunos[index]),
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 0.75,
+                              ),
+                          itemCount: _alunos.length,
+                          itemBuilder: (context, index) =>
+                              _buildAlunoGridItem(_alunos[index]),
+                        ),
                 ),
-                icon: _isSaving
-                    ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: _appBarFg(),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: context.uai.surface,
+                      border: Border(
+                        top: BorderSide(color: context.uai.border),
+                      ),
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _isSaving ? null : _salvarChamada,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _appBarBg(),
+                        foregroundColor: _appBarFg(),
+                        minimumSize: const Size(double.infinity, 55),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: _isSaving
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _appBarFg(),
+                              ),
+                            )
+                          : const Icon(Icons.save, size: 24),
+                      label: _isSaving
+                          ? const Text('SALVANDO...')
+                          : Text(
+                              '✅ SALVAR • $presentes P / $ausentes A',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
                   ),
-                )
-                    : const Icon(Icons.save, size: 24),
-                label: _isSaving
-                    ? const Text('SALVANDO...')
-                    : Text(
-                  '✅ SALVAR • $presentes P / $ausentes A',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

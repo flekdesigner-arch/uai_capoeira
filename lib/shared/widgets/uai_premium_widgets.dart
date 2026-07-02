@@ -45,8 +45,9 @@ class UaiGradientHeader extends StatelessWidget {
           );
 
           final text = Column(
-            crossAxisAlignment:
-                narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 title,
@@ -72,7 +73,9 @@ class UaiGradientHeader extends StatelessWidget {
               if (chips.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Wrap(
-                  alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                  alignment: narrow
+                      ? WrapAlignment.center
+                      : WrapAlignment.start,
                   spacing: 8,
                   runSpacing: 8,
                   children: chips,
@@ -82,10 +85,18 @@ class UaiGradientHeader extends StatelessWidget {
           );
 
           if (narrow) {
-            return Column(children: [iconBox, const SizedBox(height: 14), text]);
+            return Column(
+              children: [iconBox, const SizedBox(height: 14), text],
+            );
           }
 
-          return Row(children: [iconBox, const SizedBox(width: 16), Expanded(child: text)]);
+          return Row(
+            children: [
+              iconBox,
+              const SizedBox(width: 16),
+              Expanded(child: text),
+            ],
+          );
         },
       ),
     );
@@ -96,11 +107,7 @@ class UaiWhiteChip extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const UaiWhiteChip({
-    super.key,
-    required this.icon,
-    required this.label,
-  });
+  const UaiWhiteChip({super.key, required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -189,13 +196,24 @@ class UaiSectionTitle extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900, color: t.textPrimary)),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w900,
+                  color: t.textPrimary,
+                ),
+              ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: t.textSecondary, fontSize: 11.5, height: 1.25),
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 11.5,
+                  height: 1.25,
+                ),
               ),
             ],
           ),
@@ -261,9 +279,27 @@ class UaiPremiumActionCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 14.5)),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14.5,
+                        ),
+                      ),
                       const SizedBox(height: 3),
-                      Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.textSecondary, fontSize: 11.5, height: 1.24)),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 11.5,
+                          height: 1.24,
+                        ),
+                      ),
                     ],
                   ),
                 ),

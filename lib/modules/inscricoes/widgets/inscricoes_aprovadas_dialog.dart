@@ -22,8 +22,8 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
   }
 
   static Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -157,8 +157,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           color: context.uai.card,
-                          borderRadius:
-                          BorderRadius.circular(context.uai.cardRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.cardRadius,
+                          ),
                           border: Border.all(color: context.uai.border),
                           boxShadow: context.uai.softShadow,
                         ),
@@ -167,8 +168,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                             Navigator.pop(context);
                             _mostrarTermo(context, data, doc.id);
                           },
-                          borderRadius:
-                          BorderRadius.circular(context.uai.cardRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.cardRadius,
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Row(
@@ -190,7 +192,7 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         data['aluno_nome'] ??
@@ -223,9 +225,11 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                           const SizedBox(width: 4),
                                           Text(
                                             dataAprovacao != null
-                                                ? DateFormat('dd/MM/yyyy')
-                                                .format(
-                                                dataAprovacao.toDate())
+                                                ? DateFormat(
+                                                    'dd/MM/yyyy',
+                                                  ).format(
+                                                    dataAprovacao.toDate(),
+                                                  )
                                                 : 'Data não informada',
                                             style: TextStyle(
                                               fontSize: 11,
@@ -255,7 +259,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                       ),
                                       if (data['assinatura_url'] != null)
                                         Padding(
-                                          padding: const EdgeInsets.only(top: 4),
+                                          padding: const EdgeInsets.only(
+                                            top: 4,
+                                          ),
                                           child: Row(
                                             children: [
                                               Icon(
@@ -302,9 +308,7 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                   bottomLeft: Radius.circular(context.uai.cardRadius),
                   bottomRight: Radius.circular(context.uai.cardRadius),
                 ),
-                border: Border(
-                  top: BorderSide(color: context.uai.border),
-                ),
+                border: Border(top: BorderSide(color: context.uai.border)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -326,11 +330,16 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
   }
 
   void _mostrarTermo(
-      BuildContext context, Map<String, dynamic> dados, String inscricaoId) {
+    BuildContext context,
+    Map<String, dynamic> dados,
+    String inscricaoId,
+  ) {
     final isMaior = dados['is_maior_idade'] ?? false;
-    final temAssinatura = dados['assinatura_url'] != null &&
+    final temAssinatura =
+        dados['assinatura_url'] != null &&
         dados['assinatura_url'].toString().isNotEmpty;
-    final temTermo = dados['termo_autorizacao'] != null &&
+    final temTermo =
+        dados['termo_autorizacao'] != null &&
         dados['termo_autorizacao'].toString().isNotEmpty;
     final dataInscricao = dados['data_inscricao'] as Timestamp?;
     final dataAprovacao = dados['aprovado_em'] as Timestamp?;
@@ -408,8 +417,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: context.uai.cardAlt,
-                          borderRadius:
-                          BorderRadius.circular(context.uai.cardRadius),
+                          borderRadius: BorderRadius.circular(
+                            context.uai.cardRadius,
+                          ),
                           border: Border.all(color: context.uai.border),
                         ),
                         child: Column(
@@ -435,10 +445,7 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                 ),
                               ],
                             ),
-                            Divider(
-                              height: 16,
-                              color: context.uai.border,
-                            ),
+                            Divider(height: 16, color: context.uai.border),
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
@@ -446,16 +453,18 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                 _buildInfoChip(
                                   icon: Icons.calendar_today,
                                   label: dataInscricao != null
-                                      ? DateFormat('dd/MM/yyyy')
-                                      .format(dataInscricao.toDate())
+                                      ? DateFormat(
+                                          'dd/MM/yyyy',
+                                        ).format(dataInscricao.toDate())
                                       : 'Data não informada',
                                   color: context.uai.info,
                                 ),
                                 _buildInfoChip(
                                   icon: Icons.check_circle,
                                   label: dataAprovacao != null
-                                      ? DateFormat('dd/MM/yyyy')
-                                      .format(dataAprovacao.toDate())
+                                      ? DateFormat(
+                                          'dd/MM/yyyy',
+                                        ).format(dataAprovacao.toDate())
                                       : 'Aprovada',
                                   color: context.uai.success,
                                 ),
@@ -485,8 +494,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: context.uai.card,
-                            borderRadius:
-                            BorderRadius.circular(context.uai.cardRadius),
+                            borderRadius: BorderRadius.circular(
+                              context.uai.cardRadius,
+                            ),
                             border: Border.all(color: context.uai.border),
                           ),
                           child: Column(
@@ -550,8 +560,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                     color: context.uai.card,
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color:
-                                      context.uai.success.withOpacity(0.3),
+                                      color: context.uai.success.withOpacity(
+                                        0.3,
+                                      ),
                                     ),
                                   ),
                                   child: Column(
@@ -562,43 +573,51 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                         width: double.infinity,
                                         decoration: BoxDecoration(
                                           color: context.uai.cardAlt,
-                                          borderRadius:
-                                          BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           border: Border.all(
-                                              color: context.uai.border),
+                                            color: context.uai.border,
+                                          ),
                                         ),
                                         child: ClipRRect(
-                                          borderRadius:
-                                          BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           child: Image.network(
                                             dados['assinatura_url']!,
                                             fit: BoxFit.contain,
                                             errorBuilder:
                                                 (context, error, stackTrace) {
-                                              return Center(
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                                  children: [
-                                                    Icon(
-                                                      Icons.broken_image,
-                                                      size: 48,
-                                                      color: context
-                                                          .uai.textMuted,
+                                                  return Center(
+                                                    child: Column(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.broken_image,
+                                                          size: 48,
+                                                          color: context
+                                                              .uai
+                                                              .textMuted,
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 8,
+                                                        ),
+                                                        Text(
+                                                          'Erro ao carregar assinatura',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: context
+                                                                .uai
+                                                                .textMuted,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(height: 8),
-                                                    Text(
-                                                      'Erro ao carregar assinatura',
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: context
-                                                            .uai.textMuted,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
+                                                  );
+                                                },
                                           ),
                                         ),
                                       ),
@@ -613,8 +632,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                         decoration: BoxDecoration(
                                           color: context.uai.success
                                               .withOpacity(0.1),
-                                          borderRadius:
-                                          BorderRadius.circular(20),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -648,12 +668,12 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: context.uai.warning
-                                        .withOpacity(0.1),
+                                    color: context.uai.warning.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color: context.uai.warning
-                                          .withOpacity(0.2),
+                                      color: context.uai.warning.withOpacity(
+                                        0.2,
+                                      ),
                                     ),
                                   ),
                                   child: Row(
@@ -662,15 +682,14 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                                         Icons.info_outline,
                                         color: _ensureVisible(
                                           context.uai.warning,
-                                          context.uai.warning
-                                              .withOpacity(0.1),
+                                          context.uai.warning.withOpacity(0.1),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               'Termo sem assinatura digital',
@@ -715,8 +734,9 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                           padding: const EdgeInsets.all(32),
                           decoration: BoxDecoration(
                             color: context.uai.cardAlt,
-                            borderRadius:
-                            BorderRadius.circular(context.uai.cardRadius),
+                            borderRadius: BorderRadius.circular(
+                              context.uai.cardRadius,
+                            ),
                             border: Border.all(color: context.uai.border),
                           ),
                           child: Column(
@@ -762,9 +782,7 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
                     bottomLeft: Radius.circular(context.uai.cardRadius),
                     bottomRight: Radius.circular(context.uai.cardRadius),
                   ),
-                  border: Border(
-                    top: BorderSide(color: context.uai.border),
-                  ),
+                  border: Border(top: BorderSide(color: context.uai.border)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -800,11 +818,7 @@ class _InscricoesAprovadasDialogState extends State<InscricoesAprovadasDialog> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 12,
-            color: color,
-          ),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
           Text(
             label,

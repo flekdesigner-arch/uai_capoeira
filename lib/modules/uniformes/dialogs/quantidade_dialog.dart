@@ -24,7 +24,10 @@ class QuantidadeDialog extends StatefulWidget {
 
 class _QuantidadeDialogState extends State<QuantidadeDialog> {
   final TextEditingController _quantidadeController = TextEditingController();
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   int _quantidade = 1;
 
   // Helpers de contraste
@@ -86,7 +89,10 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
               children: [
                 Text(
                   'Item: ${widget.itemNome}',
-                  style: TextStyle(fontWeight: FontWeight.w500, color: textPrimary),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: textPrimary,
+                  ),
                 ),
                 if (widget.precoUnitario != null) ...[
                   const SizedBox(height: 4),
@@ -156,7 +162,8 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
                   onChanged: (value) {
                     int? novaQuantidade = int.tryParse(value);
                     if (novaQuantidade != null && novaQuantidade > 0) {
-                      if (widget.maxQuantidade == null || novaQuantidade <= widget.maxQuantidade!) {
+                      if (widget.maxQuantidade == null ||
+                          novaQuantidade <= widget.maxQuantidade!) {
                         setState(() {
                           _quantidade = novaQuantidade;
                         });
@@ -170,12 +177,16 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
               Expanded(
                 flex: 2,
                 child: IconButton(
-                  onPressed: widget.maxQuantidade == null || _quantidade < widget.maxQuantidade!
+                  onPressed:
+                      widget.maxQuantidade == null ||
+                          _quantidade < widget.maxQuantidade!
                       ? _aumentar
                       : null,
                   icon: Icon(
                     Icons.add_circle,
-                    color: widget.maxQuantidade == null || _quantidade < widget.maxQuantidade!
+                    color:
+                        widget.maxQuantidade == null ||
+                            _quantidade < widget.maxQuantidade!
                         ? tema.success
                         : tema.textMuted,
                   ),
@@ -198,7 +209,10 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
                 children: [
                   Text(
                     'Total:',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
                   ),
                   Text(
                     _realFormat.format(_quantidade * widget.precoUnitario!),
@@ -213,7 +227,8 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
             ),
           ],
 
-          if (widget.maxQuantidade != null && _quantidade > widget.maxQuantidade!) ...[
+          if (widget.maxQuantidade != null &&
+              _quantidade > widget.maxQuantidade!) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
@@ -228,10 +243,7 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
                   Expanded(
                     child: Text(
                       'Quantidade maior que o disponível em estoque!',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: errorColor,
-                      ),
+                      style: TextStyle(fontSize: 12, color: errorColor),
                     ),
                   ),
                 ],

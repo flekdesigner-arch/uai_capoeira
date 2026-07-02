@@ -43,8 +43,8 @@ class CertificadoLoteStatusCard extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -79,9 +79,7 @@ class CertificadoLoteStatusCard extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: t.primaryGradient,
-              ),
+              decoration: BoxDecoration(gradient: t.primaryGradient),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final narrow = constraints.maxWidth < 520;
@@ -96,17 +94,17 @@ class CertificadoLoteStatusCard extends StatelessWidget {
                     ),
                     child: carregando
                         ? Padding(
-                      padding: const EdgeInsets.all(13),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
-                        color: onPrimary,
-                      ),
-                    )
+                            padding: const EdgeInsets.all(13),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: onPrimary,
+                            ),
+                          )
                         : Icon(
-                      Icons.workspace_premium_rounded,
-                      color: onPrimary,
-                      size: 29,
-                    ),
+                            Icons.workspace_premium_rounded,
+                            color: onPrimary,
+                            size: 29,
+                          ),
                   );
 
                   final text = Column(
@@ -141,11 +139,7 @@ class CertificadoLoteStatusCard extends StatelessWidget {
 
                   if (narrow) {
                     return Column(
-                      children: [
-                        icon,
-                        const SizedBox(height: 12),
-                        text,
-                      ],
+                      children: [icon, const SizedBox(height: 12), text],
                     );
                   }
 
@@ -220,13 +214,12 @@ class CertificadoLoteStatusCard extends StatelessWidget {
                           children: cards
                               .map(
                                 (card) => SizedBox(
-                              width:
-                              (constraints.maxWidth - 9) / 2 < 160
-                                  ? constraints.maxWidth
-                                  : (constraints.maxWidth - 9) / 2,
-                              child: card,
-                            ),
-                          )
+                                  width: (constraints.maxWidth - 9) / 2 < 160
+                                      ? constraints.maxWidth
+                                      : (constraints.maxWidth - 9) / 2,
+                                  child: card,
+                                ),
+                              )
                               .toList(),
                         );
                       }
@@ -235,12 +228,7 @@ class CertificadoLoteStatusCard extends StatelessWidget {
                         spacing: 9,
                         runSpacing: 9,
                         children: cards
-                            .map(
-                              (card) => SizedBox(
-                            width: 145,
-                            child: card,
-                          ),
-                        )
+                            .map((card) => SizedBox(width: 145, child: card))
                             .toList(),
                       );
                     },
@@ -285,8 +273,8 @@ class _StatusMiniCard extends StatelessWidget {
   });
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -374,8 +362,8 @@ class _ProgressLine extends StatelessWidget {
   });
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 

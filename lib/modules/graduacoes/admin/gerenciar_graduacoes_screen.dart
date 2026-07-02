@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:xml/xml.dart' as xml;
 
@@ -17,13 +18,54 @@ class GerenciarGraduacoesScreen extends StatefulWidget {
 
 class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   String? _svgContent;
 
   @override
   void initState() {
     super.initState();
-    _loadSvg();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_graduacoes',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _loadSvg();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_graduacoes',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Você não tem permissão para gerenciar graduações.',
+          ),
+          backgroundColor: context.uai.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    return permitido;
   }
 
   Color _readableOn(Color background) {
@@ -33,8 +75,8 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -50,8 +92,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (mounted) {
         setState(() => _svgContent = content);
@@ -96,14 +139,16 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isNotEmpty) {
           final style = element.getAttribute('style') ?? '';
           final hex = colorToHex(color).toLowerCase();
-          final newStyle =
-          style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
+          final newStyle = style.replaceAll(
+            RegExp(r'fill:#[0-9a-fA-F]{6}'),
+            '',
+          );
 
           element.setAttribute('style', 'fill:$hex;$newStyle');
         }
@@ -125,6 +170,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
     required String docId,
     required String nome,
   }) async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     final t = context.uai;
     final confirmar = await showDialog<bool>(
       context: context,
@@ -162,10 +210,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text(
-                'CANCELAR',
-                style: TextStyle(color: t.textSecondary),
-              ),
+              child: Text('CANCELAR', style: TextStyle(color: t.textSecondary)),
             ),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context, true),
@@ -185,6 +230,8 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
     );
 
     if (confirmar == true) {
+      if (!await _revalidarAcesso()) return;
+
       try {
         await _firestore.collection('graduacoes').doc(docId).delete();
 
@@ -212,6 +259,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Future<void> _abrirCriacao() async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const EditarGraduacaoScreen()),
@@ -219,6 +269,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Future<void> _abrirEdicao(String id) async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -228,6 +281,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Future<void> _abrirDetalhe(String id) async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -285,6 +341,21 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Gerenciar Graduações',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gerenciar Graduações',
+        message: 'Você não tem permissão para gerenciar graduações.',
+      );
+    }
+
     final t = context.uai;
 
     return Scaffold(
@@ -310,9 +381,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting ||
               _svgContent == null) {
-            return Center(
-              child: CircularProgressIndicator(color: t.primary),
-            );
+            return Center(child: CircularProgressIndicator(color: t.primary));
           }
 
           if (snapshot.hasError) {
@@ -397,8 +466,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Gerenciar Graduações',
@@ -444,13 +514,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -465,10 +529,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
     );
   }
 
-  Widget _buildHeroChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildHeroChip({required IconData icon, required String label}) {
     final onPrimary = _onPrimary();
 
     return Container(
@@ -497,8 +558,8 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Widget _buildGraduacoesList(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 860;
@@ -532,9 +593,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
   }
 
   Widget _buildGraduacaoCard(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc, {
-        required bool compact,
-      }) {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc, {
+    required bool compact,
+  }) {
     final t = context.uai;
     final data = doc.data();
     final modifiedSvg = _getModifiedSvg(data);
@@ -569,58 +630,58 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           ),
           child: compact
               ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildCardTop(
-                modifiedSvg: modifiedSvg,
-                color1: color1,
-                color2: color2,
-                data: data,
-                compact: true,
-              ),
-              const SizedBox(height: 12),
-              _buildCardText(
-                nome: nome,
-                titulo: titulo,
-                corda: corda,
-                tipoPublico: tipoPublico,
-                descricao: descricao,
-                nivel: nivel,
-                centered: true,
-              ),
-              const SizedBox(height: 12),
-              _buildCardActions(doc.id, nome),
-            ],
-          )
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildCardTop(
+                      modifiedSvg: modifiedSvg,
+                      color1: color1,
+                      color2: color2,
+                      data: data,
+                      compact: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCardText(
+                      nome: nome,
+                      titulo: titulo,
+                      corda: corda,
+                      tipoPublico: tipoPublico,
+                      descricao: descricao,
+                      nivel: nivel,
+                      centered: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCardActions(doc.id, nome),
+                  ],
+                )
               : Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 150,
-                child: _buildCardTop(
-                  modifiedSvg: modifiedSvg,
-                  color1: color1,
-                  color2: color2,
-                  data: data,
-                  compact: false,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      child: _buildCardTop(
+                        modifiedSvg: modifiedSvg,
+                        color1: color1,
+                        color2: color2,
+                        data: data,
+                        compact: false,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _buildCardText(
+                        nome: nome,
+                        titulo: titulo,
+                        corda: corda,
+                        tipoPublico: tipoPublico,
+                        descricao: descricao,
+                        nivel: nivel,
+                        centered: false,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildPopupMenu(doc.id, nome),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _buildCardText(
-                  nome: nome,
-                  titulo: titulo,
-                  corda: corda,
-                  tipoPublico: tipoPublico,
-                  descricao: descricao,
-                  nivel: nivel,
-                  centered: false,
-                ),
-              ),
-              const SizedBox(width: 8),
-              _buildPopupMenu(doc.id, nome),
-            ],
-          ),
         ),
       ),
     );
@@ -650,10 +711,10 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
               child: modifiedSvg.isNotEmpty
                   ? SvgPicture.string(modifiedSvg, fit: BoxFit.contain)
                   : Icon(
-                Icons.image_not_supported_rounded,
-                color: t.textMuted,
-                size: 46,
-              ),
+                      Icons.image_not_supported_rounded,
+                      color: t.textMuted,
+                      size: 46,
+                    ),
             ),
           ),
           const SizedBox(height: 10),
@@ -667,7 +728,10 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           ),
           const SizedBox(height: 7),
           Text(
-            _nivelTexto(data['nivel_graduacao'], data['tipo_publico']?.toString() ?? ''),
+            _nivelTexto(
+              data['nivel_graduacao'],
+              data['tipo_publico']?.toString() ?? '',
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -700,8 +764,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
     ].join(' • ');
 
     return Column(
-      crossAxisAlignment:
-      centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Text(
           nome,

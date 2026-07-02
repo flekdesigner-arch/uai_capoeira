@@ -66,10 +66,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
   String _normalizeString(String text) {
     if (text.isEmpty) return '';
 
-    const withAccents =
-        'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
-    const withoutAccents =
-        'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
 
     var normalized = text;
     for (var i = 0; i < withAccents.length; i++) {
@@ -110,8 +108,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content =
-      await DefaultAssetBundle.of(context).loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (mounted) {
         setState(() => _svgContent = content);
@@ -123,8 +122,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
   Future<void> _preloadGraduacoes() async {
     try {
-      final snapshot =
-      await FirebaseFirestore.instance.collection('graduacoes').get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('graduacoes')
+          .get();
 
       for (final doc in snapshot.docs) {
         final nomeGraduacao = doc['nome_graduacao']?.toString();
@@ -252,15 +252,17 @@ class _AlunosScreenState extends State<AlunosScreen> {
     }
 
     void changeColor(String id, Color color) {
-      final element =
-      document.rootElement.descendants.whereType<xml.XmlElement>().firstWhere(
+      final element = document.rootElement.descendants
+          .whereType<xml.XmlElement>()
+          .firstWhere(
             (e) => e.getAttribute('id') == id,
-        orElse: () => xml.XmlElement(xml.XmlName('')),
-      );
+            orElse: () => xml.XmlElement(xml.XmlName('')),
+          );
 
       if (element.name.local.isNotEmpty) {
         final style = element.getAttribute('style') ?? '';
-        final hex = '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+        final hex =
+            '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
         final newStyle = style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
         element.setAttribute('style', 'fill:$hex;$newStyle');
       }
@@ -339,19 +341,20 @@ class _AlunosScreenState extends State<AlunosScreen> {
   void _abrirCadastroAluno() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => EditarAlunoScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => EditarAlunoScreen()),
     );
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _alunosStream() {
-    return FirebaseFirestore.instance.collection('alunos').orderBy('nome').snapshots();
+    return FirebaseFirestore.instance
+        .collection('alunos')
+        .orderBy('nome')
+        .snapshots();
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filtrarAlunos(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return docs.where((doc) {
       final data = doc.data();
       final status = data['status_atividade'] as String? ?? '';
@@ -367,7 +370,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
   PreferredSizeWidget _buildAppBar() {
     final t = context.uai;
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
 
     return AppBar(
       backgroundColor: appBarBg,
@@ -376,10 +380,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
       titleSpacing: 16,
       title: Text(
         'Alunos',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-        ),
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
       ),
       actions: [
         IconButton(
@@ -412,16 +413,16 @@ class _AlunosScreenState extends State<AlunosScreen> {
                       decoration: InputDecoration(
                         hintText: narrow ? 'Buscar...' : 'Buscar por nome...',
                         hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
-                        prefixIcon:
-                        Icon(Icons.search_rounded, color: appBarFg),
+                        prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                          icon: Icon(
-                            Icons.clear_rounded,
-                            color: appBarFg,
-                          ),
-                          onPressed: () => setState(() => _searchQuery = ''),
-                        )
+                                icon: Icon(
+                                  Icons.clear_rounded,
+                                  color: appBarFg,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _searchQuery = ''),
+                              )
                             : null,
                         filled: true,
                         fillColor: appBarFg.withOpacity(0.12),
@@ -443,10 +444,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
-                          borderSide: BorderSide(
-                            color: appBarFg,
-                            width: 1.2,
-                          ),
+                          borderSide: BorderSide(color: appBarFg, width: 1.2),
                         ),
                       ),
                       onChanged: (value) {
@@ -456,7 +454,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
                         _searchDebounce = Timer(
                           const Duration(milliseconds: 300),
-                              () => setState(() => _searchQuery = value),
+                          () => setState(() => _searchQuery = value),
                         );
                       },
                     ),
@@ -467,7 +465,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
                     icon: Icon(Icons.filter_list_rounded, color: appBarFg),
                     color: t.surface,
                     surfaceTintColor: Colors.transparent,
-                    onSelected: (value) => setState(() => _statusFilter = value),
+                    onSelected: (value) =>
+                        setState(() => _statusFilter = value),
                     itemBuilder: (context) {
                       return ['ATIVO(A)', 'INATIVO(A)', 'TODOS'].map((choice) {
                         final selected = choice == _statusFilter;
@@ -488,8 +487,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
                                 choice,
                                 style: TextStyle(
                                   color: selected ? t.primary : t.textPrimary,
-                                  fontWeight:
-                                  selected ? FontWeight.w900 : FontWeight.w600,
+                                  fontWeight: selected
+                                      ? FontWeight.w900
+                                      : FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -706,7 +706,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _getCurrentView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _getCurrentView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     switch (_viewMode) {
       case 0:
         return _buildListView(docs);
@@ -719,7 +721,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     }
   }
 
-  Widget _buildListView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildListView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -734,7 +738,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _buildGridView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildGridView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -768,7 +774,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _buildCompactView(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildCompactView(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     return RefreshIndicator(
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
@@ -783,7 +791,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _buildAlunoListCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoListCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = data['nome'] ?? 'Nome não informado';
@@ -797,7 +807,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
         final hasValidGraduation = graduationSnapshot.data ?? false;
 
         return FutureBuilder<String?>(
-          future: hasValidGraduation ? _getModifiedSvg(data) : Future.value(null),
+          future: hasValidGraduation
+              ? _getModifiedSvg(data)
+              : Future.value(null),
           builder: (context, svgSnapshot) {
             final modifiedSvg = svgSnapshot.data;
             final isLoadingSvg =
@@ -826,11 +838,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               height: 92,
                               child: fotoUrl != null && fotoUrl.isNotEmpty
                                   ? CachedNetworkImage(
-                                imageUrl: fotoUrl,
-                                fit: BoxFit.cover,
-                                errorWidget: (context, url, error) =>
-                                    _placeholderIcon(),
-                              )
+                                      imageUrl: fotoUrl,
+                                      fit: BoxFit.cover,
+                                      errorWidget: (context, url, error) =>
+                                          _placeholderIcon(),
+                                    )
                                   : _placeholderIcon(),
                             ),
                             Positioned(
@@ -898,11 +910,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                             padding: const EdgeInsets.only(right: 8),
                             child: isLoadingSvg
                                 ? Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: t.primary,
-                              ),
-                            )
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: t.primary,
+                                    ),
+                                  )
                                 : modifiedSvg != null
                                 ? SvgPicture.string(modifiedSvg, height: 62)
                                 : SizedBox.shrink(),
@@ -920,7 +932,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _buildAlunoGridCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoGridCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = data['nome'] ?? 'Nome não informado';
@@ -934,7 +948,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
         final hasValidGraduation = graduationSnapshot.data ?? false;
 
         return FutureBuilder<String?>(
-          future: hasValidGraduation ? _getModifiedSvg(data) : Future.value(null),
+          future: hasValidGraduation
+              ? _getModifiedSvg(data)
+              : Future.value(null),
           builder: (context, svgSnapshot) {
             final modifiedSvg = svgSnapshot.data;
             final isLoadingSvg =
@@ -961,11 +977,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                             Positioned.fill(
                               child: fotoUrl != null && fotoUrl.isNotEmpty
                                   ? CachedNetworkImage(
-                                imageUrl: fotoUrl,
-                                fit: BoxFit.cover,
-                                errorWidget: (context, url, error) =>
-                                    _placeholderIcon(size: 74),
-                              )
+                                      imageUrl: fotoUrl,
+                                      fit: BoxFit.cover,
+                                      errorWidget: (context, url, error) =>
+                                          _placeholderIcon(size: 74),
+                                    )
                                   : _placeholderIcon(size: 74),
                             ),
                             Positioned(
@@ -1036,11 +1052,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                                 height: 46,
                                 child: isLoadingSvg
                                     ? Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: t.primary,
-                                  ),
-                                )
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: t.primary,
+                                        ),
+                                      )
                                     : modifiedSvg != null
                                     ? SvgPicture.string(modifiedSvg, height: 44)
                                     : SizedBox.shrink(),
@@ -1060,7 +1076,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     );
   }
 
-  Widget _buildAlunoCompactCard(QueryDocumentSnapshot<Map<String, dynamic>> aluno) {
+  Widget _buildAlunoCompactCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
     final t = context.uai;
     final data = aluno.data();
     final nomeAluno = data['nome'] ?? 'Nome não informado';
@@ -1072,7 +1090,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
         final hasValidGraduation = graduationSnapshot.data ?? false;
 
         return FutureBuilder<String?>(
-          future: hasValidGraduation ? _getModifiedSvg(data) : Future.value(null),
+          future: hasValidGraduation
+              ? _getModifiedSvg(data)
+              : Future.value(null),
           builder: (context, svgSnapshot) {
             final modifiedSvg = svgSnapshot.data;
             final isLoadingSvg =
@@ -1104,21 +1124,21 @@ class _AlunosScreenState extends State<AlunosScreen> {
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
                               ? ClipOval(
-                            child: CachedNetworkImage(
-                              imageUrl: fotoUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) => Icon(
-                                Icons.person_rounded,
-                                size: 28,
-                                color: t.textMuted,
-                              ),
-                            ),
-                          )
+                                  child: CachedNetworkImage(
+                                    imageUrl: fotoUrl,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) => Icon(
+                                      Icons.person_rounded,
+                                      size: 28,
+                                      color: t.textMuted,
+                                    ),
+                                  ),
+                                )
                               : Icon(
-                            Icons.person_rounded,
-                            size: 28,
-                            color: t.textMuted,
-                          ),
+                                  Icons.person_rounded,
+                                  size: 28,
+                                  color: t.textMuted,
+                                ),
                         ),
                         const SizedBox(width: 11),
                         Expanded(
@@ -1140,11 +1160,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                             height: 38,
                             child: isLoadingSvg
                                 ? Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: t.primary,
-                              ),
-                            )
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: t.primary,
+                                    ),
+                                  )
                                 : modifiedSvg != null
                                 ? SvgPicture.string(modifiedSvg, height: 36)
                                 : SizedBox.shrink(),

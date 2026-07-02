@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_model.dart'; // 👈 IMPORT CORRETO!
@@ -17,7 +17,8 @@ class ListaCompetidoresScreen extends StatefulWidget {
   });
 
   @override
-  State<ListaCompetidoresScreen> createState() => _ListaCompetidoresScreenState();
+  State<ListaCompetidoresScreen> createState() =>
+      _ListaCompetidoresScreenState();
 }
 
 class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
@@ -38,7 +39,9 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final competidores = await _campeonatoService.getCompetidoresPorCategoria(widget.categoriaNome);
+      final competidores = await _campeonatoService.getCompetidoresPorCategoria(
+        widget.categoriaNome,
+      );
 
       if (mounted) {
         setState(() {
@@ -73,9 +76,15 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
       if (_searchQuery.isEmpty) return true;
 
       // 👇 CORREÇÃO: verificações de segurança para evitar null
-      final nomeMatch = c.nome.toLowerCase().contains(_searchQuery.toLowerCase());
-      final apelidoMatch = c.apelido.toLowerCase().contains(_searchQuery.toLowerCase());
-      final grupoMatch = c.grupo.toLowerCase().contains(_searchQuery.toLowerCase());
+      final nomeMatch = c.nome.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+      final apelidoMatch = c.apelido.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+      final grupoMatch = c.grupo.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
 
       return nomeMatch || apelidoMatch || grupoMatch;
     }).toList();
@@ -88,7 +97,8 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
     return resultado;
   }
 
-  int get _totalPresentes => _competidores.length; // TODO: Implementar quando tiver campo presente
+  int get _totalPresentes =>
+      _competidores.length; // TODO: Implementar quando tiver campo presente
   int get _totalAusentes => 0; // TODO: Implementar quando tiver campo presente
 
   @override
@@ -112,9 +122,9 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                     prefixIcon: const Icon(Icons.search, color: Colors.white),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.white),
-                      onPressed: () => setState(() => _searchQuery = ''),
-                    )
+                            icon: const Icon(Icons.clear, color: Colors.white),
+                            onPressed: () => setState(() => _searchQuery = ''),
+                          )
                         : null,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -133,9 +143,21 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildFiltroPresenca('todos', 'Todos', _competidores.length),
-                    _buildFiltroPresenca('presentes', 'Presentes', _totalPresentes),
-                    _buildFiltroPresenca('ausentes', 'Ausentes', _totalAusentes),
+                    _buildFiltroPresenca(
+                      'todos',
+                      'Todos',
+                      _competidores.length,
+                    ),
+                    _buildFiltroPresenca(
+                      'presentes',
+                      'Presentes',
+                      _totalPresentes,
+                    ),
+                    _buildFiltroPresenca(
+                      'ausentes',
+                      'Ausentes',
+                      _totalAusentes,
+                    ),
                   ],
                 ),
               ),
@@ -257,9 +279,7 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => FichaCompetidorScreen(
-                  competidor: comp,
-                ),
+                builder: (context) => FichaCompetidorScreen(competidor: comp),
               ),
             );
           }
@@ -277,41 +297,43 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                   color: Colors.amber.shade100,
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(
-                    color: comp.isMaiorIdade ? Colors.green.shade400 : Colors.orange.shade400,
+                    color: comp.isMaiorIdade
+                        ? Colors.green.shade400
+                        : Colors.orange.shade400,
                     width: 2,
                   ),
                 ),
                 child: comp.fotoUrl != null && comp.fotoUrl!.isNotEmpty
                     ? ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
-                  child: CachedNetworkImage(
-                    imageUrl: comp.fotoUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    errorWidget: (context, url, error) => Center(
-                      child: Text(
-                        primeiraLetra,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber.shade900,
+                        borderRadius: BorderRadius.circular(30),
+                        child: CachedNetworkImage(
+                          imageUrl: comp.fotoUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          errorWidget: (context, url, error) => Center(
+                            child: Text(
+                              primeiraLetra,
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          primeiraLetra,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber.shade900,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                )
-                    : Center(
-                  child: Text(
-                    primeiraLetra,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.amber.shade900,
-                    ),
-                  ),
-                ),
               ),
               const SizedBox(width: 16),
 
@@ -367,7 +389,11 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.group, size: 12, color: Colors.grey.shade500),
+                        Icon(
+                          Icons.group,
+                          size: 12,
+                          color: Colors.grey.shade500,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -384,7 +410,11 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Icon(Icons.grade, size: 12, color: Colors.grey.shade500),
+                        Icon(
+                          Icons.grade,
+                          size: 12,
+                          color: Colors.grey.shade500,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -403,10 +433,7 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
               ),
 
               // Seta
-              const Icon(
-                Icons.chevron_right,
-                color: Colors.amber,
-              ),
+              const Icon(Icons.chevron_right, color: Colors.amber),
             ],
           ),
         ),
@@ -438,9 +465,7 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                 _gerarCSV();
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('CSV'),
           ),
           ElevatedButton(
@@ -450,9 +475,7 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
                 _gerarPDF();
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             child: const Text('PDF'),
           ),
         ],

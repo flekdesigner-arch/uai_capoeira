@@ -103,10 +103,7 @@ class AppVersionModel {
     required this.criadoPorNome,
   });
 
-  factory AppVersionModel.empty({
-    String versao = '',
-    int build = 1,
-  }) {
+  factory AppVersionModel.empty({String versao = '', int build = 1}) {
     final id = gerarVersionId(versao);
 
     return AppVersionModel(
@@ -138,20 +135,17 @@ class AppVersionModel {
   }
 
   factory AppVersionModel.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data() ?? {};
 
-    return AppVersionModel.fromMap(
-      data,
-      fallbackId: doc.id,
-    );
+    return AppVersionModel.fromMap(data, fallbackId: doc.id);
   }
 
   factory AppVersionModel.fromMap(
-      Map<String, dynamic> map, {
-        String? fallbackId,
-      }) {
+    Map<String, dynamic> map, {
+    String? fallbackId,
+  }) {
     final versao = _asString(map['versao']);
 
     return AppVersionModel(
@@ -207,8 +201,12 @@ class AppVersionModel {
       'removidos': removidos,
       'observacoes': observacoes,
       'criadoEm': criadoEm == null ? null : Timestamp.fromDate(criadoEm!),
-      'publicadoEm': publicadoEm == null ? null : Timestamp.fromDate(publicadoEm!),
-      'atualizadoEm': atualizadoEm == null ? null : Timestamp.fromDate(atualizadoEm!),
+      'publicadoEm': publicadoEm == null
+          ? null
+          : Timestamp.fromDate(publicadoEm!),
+      'atualizadoEm': atualizadoEm == null
+          ? null
+          : Timestamp.fromDate(atualizadoEm!),
       'criadoPor': criadoPor,
       'criadoPorNome': criadoPorNome,
     };
@@ -326,7 +324,8 @@ class AppVersionModel {
     );
   }
 
-  bool get temApk => storagePath.trim().isNotEmpty && downloadUrl.trim().isNotEmpty;
+  bool get temApk =>
+      storagePath.trim().isNotEmpty && downloadUrl.trim().isNotEmpty;
 
   bool get podePublicar {
     return versao.trim().isNotEmpty &&

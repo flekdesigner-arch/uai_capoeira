@@ -11,19 +11,9 @@ import 'package:flutter/material.dart';
 /// - Decidir pela largura REAL disponível no LayoutBuilder.
 /// - No Windows/Web, uma janela pequena deve se comportar como celular.
 /// - Uma janela grande deve virar layout administrativo.
-enum UaiDeviceClass {
-  phone,
-  tablet,
-  desktop,
-  wide,
-}
+enum UaiDeviceClass { phone, tablet, desktop, wide }
 
-enum UaiLayoutMode {
-  compact,
-  comfortable,
-  admin,
-  ultraWide,
-}
+enum UaiLayoutMode { compact, comfortable, admin, ultraWide }
 
 @immutable
 class UaiResponsive {
@@ -59,9 +49,9 @@ class UaiResponsive {
   /// Assim o layout considera a largura real disponível no painel,
   /// não a largura total do monitor.
   factory UaiResponsive.fromConstraints(
-      BuildContext context,
-      BoxConstraints constraints,
-      ) {
+    BuildContext context,
+    BoxConstraints constraints,
+  ) {
     final media = MediaQuery.of(context);
     final resolvedWidth = constraints.maxWidth.isFinite
         ? constraints.maxWidth
@@ -116,13 +106,13 @@ class UaiResponsive {
   bool get isWindows => !kIsWeb && platform == TargetPlatform.windows;
   bool get isDesktopPlatform =>
       !kIsWeb &&
-          (platform == TargetPlatform.windows ||
-              platform == TargetPlatform.macOS ||
-              platform == TargetPlatform.linux);
+      (platform == TargetPlatform.windows ||
+          platform == TargetPlatform.macOS ||
+          platform == TargetPlatform.linux);
 
   bool get isMobilePlatform =>
       !kIsWeb &&
-          (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
+      (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
 
   /// Desktop real ou web grande.
   bool get wantsAdminLayout => width >= 1000;
@@ -257,9 +247,7 @@ class UaiResponsive {
 
   /// Altura do banner do evento.
   /// O segredo é controlar no tablet/desktop para o banner não comer a tela.
-  double eventBannerHeight({
-    double? imageAspectRatio,
-  }) {
+  double eventBannerHeight({double? imageAspectRatio}) {
     if (isPhone) {
       return width < 380 ? 245 : 275;
     }
@@ -334,7 +322,8 @@ class UaiPageContainer extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final r = UaiResponsive.fromConstraints(context, constraints);
-        final resolvedMaxWidth = maxWidth ??
+        final resolvedMaxWidth =
+            maxWidth ??
             (useAdminWidth ? r.maxAdminContentWidth : r.maxContentWidth);
 
         final content = Padding(
@@ -345,10 +334,7 @@ class UaiPageContainer extends StatelessWidget {
           ),
         );
 
-        return Align(
-          alignment: alignment,
-          child: content,
-        );
+        return Align(alignment: alignment, child: content);
       },
     );
   }
@@ -384,12 +370,7 @@ class UaiAdaptiveWrap extends StatelessWidget {
           spacing: spacing,
           runSpacing: runSpacing,
           children: children
-              .map(
-                (child) => SizedBox(
-              width: itemWidth,
-              child: child,
-            ),
-          )
+              .map((child) => SizedBox(width: itemWidth, child: child))
               .toList(),
         );
       },
@@ -465,10 +446,7 @@ class UaiSliverMaxExtentGrid extends StatelessWidget {
         crossAxisSpacing: spacing,
         mainAxisSpacing: spacing,
       ),
-      delegate: SliverChildBuilderDelegate(
-        itemBuilder,
-        childCount: itemCount,
-      ),
+      delegate: SliverChildBuilderDelegate(itemBuilder, childCount: itemCount),
     );
   }
 }
@@ -500,9 +478,9 @@ class ResponsiveUtils {
   }
 
   static double getResponsiveFontSize(
-      BuildContext context, {
-        required double baseSize,
-      }) {
+    BuildContext context, {
+    required double baseSize,
+  }) {
     return UaiResponsive.of(context).font(baseSize);
   }
 

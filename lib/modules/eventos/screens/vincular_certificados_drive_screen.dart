@@ -1,6 +1,8 @@
 // lib/screens/eventos/vincular_certificados_drive_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -22,10 +24,12 @@ class VincularCertificadosDriveScreen extends StatefulWidget {
   });
 
   @override
-  State<VincularCertificadosDriveScreen> createState() => _VincularCertificadosDriveScreenState();
+  State<VincularCertificadosDriveScreen> createState() =>
+      _VincularCertificadosDriveScreenState();
 }
 
-class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDriveScreen> {
+class _VincularCertificadosDriveScreenState
+    extends State<VincularCertificadosDriveScreen> {
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -33,7 +37,8 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -84,11 +89,16 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
     );
   }
 
-
   final TextEditingController _pastaUrlController = TextEditingController();
+  final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
   bool _isVinculando = false;
   bool _isBuscando = false;
   bool _isSalvandoPasta = false;
+  bool _checkingAccess = true;
+  bool _accessDenied = false;
   Map<String, dynamic>? _resultadosBusca;
   List<Map<String, dynamic>> _participantesComCertificado = [];
   Map<String, dynamic>? _pastaSalva;
@@ -102,6 +112,23 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   @override
   void initState() {
     super.initState();
+    _inicializarComPermissao();
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerar_certificados_evento',
+    );
+    if (!mounted) return;
+
+    if (!permitido) {
+      setState(() {
+        _accessDenied = true;
+        _checkingAccess = false;
+      });
+      return;
+    }
+
     _participantesComCertificado = widget.participantes.map((p) {
       return {
         ...p,
@@ -113,6 +140,15 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
 
     _carregarPastaSalva();
     _verificarLinksExistentes();
+    if (mounted) setState(() => _checkingAccess = false);
+  }
+
+  Future<bool> _revalidarGeracao() {
+    return _accessGuard.revalidate(
+      context,
+      permission: 'pode_gerar_certificados_evento',
+      message: 'Você não tem permissão para gerar certificados do evento.',
+    );
   }
 
   // ============================================================
@@ -131,7 +167,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
           final pastaData = data['pasta_certificados'];
           if (mounted) {
             setState(() {
-              _pastaSalva = pastaData is Map<String, dynamic> ? pastaData : null;
+              _pastaSalva = pastaData is Map<String, dynamic>
+                  ? pastaData
+                  : null;
               if (_pastaSalva != null) {
                 _pastaUrlController.text = _pastaSalva!['url'] ?? '';
               }
@@ -149,6 +187,8 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   // SALVAR PASTA NO FIRESTORE
   // ============================================================
   Future<void> _salvarPastaNoFirestore() async {
+    if (!await _revalidarGeracao()) return;
+
     if (_pastaUrlController.text.isEmpty) {
       _mostrarMensagem('Digite a URL da pasta primeiro', context.uai.warning);
       return;
@@ -181,9 +221,7 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
       await FirebaseFirestore.instance
           .collection('eventos')
           .doc(widget.eventoId)
-          .set({
-        'pasta_certificados': pastaData,
-      }, SetOptions(merge: true));
+          .set({'pasta_certificados': pastaData}, SetOptions(merge: true));
 
       setState(() {
         _pastaSalva = pastaData;
@@ -191,7 +229,6 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
 
       _adicionarLog('✅ Pasta salva com sucesso!');
       _mostrarMensagem('✅ Pasta salva no evento!', context.uai.success);
-
     } catch (e) {
       _adicionarLog('❌ Erro ao salvar pasta: $e');
       _mostrarMensagem('Erro ao salvar pasta', context.uai.error);
@@ -203,21 +240,27 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   void _verificarLinksExistentes() {
     int comLink = 0;
     for (var p in _participantesComCertificado) {
-      if (p['link_encontrado'] != null && p['link_encontrado'].toString().isNotEmpty) {
+      if (p['link_encontrado'] != null &&
+          p['link_encontrado'].toString().isNotEmpty) {
         p['status'] = 'encontrado';
         comLink++;
       }
     }
     if (comLink > 0 && mounted) {
       setState(() {});
-      _adicionarLog('📎 $comLink participantes já possuem certificados vinculados');
+      _adicionarLog(
+        '📎 $comLink participantes já possuem certificados vinculados',
+      );
     }
   }
 
   void _adicionarLog(String mensagem) {
     if (mounted) {
       setState(() {
-        _logs.insert(0, '${DateFormat('HH:mm:ss').format(DateTime.now())} - $mensagem');
+        _logs.insert(
+          0,
+          '${DateFormat('HH:mm:ss').format(DateTime.now())} - $mensagem',
+        );
       });
     }
     debugPrint('📝 LOG: $mensagem');
@@ -271,7 +314,10 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   void _abrirPreviewCertificado(Map<String, dynamic> participante) {
     String? link = participante['link_encontrado'];
     if (link == null || link.isEmpty) {
-      _mostrarMensagem('Este participante não tem certificado vinculado', context.uai.warning);
+      _mostrarMensagem(
+        'Este participante não tem certificado vinculado',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -320,6 +366,8 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   // FUNÇÃO PARA BUSCAR ARQUIVOS NA PASTA
   // ============================================================
   Future<void> _buscarArquivosNaPasta() async {
+    if (!await _revalidarGeracao()) return;
+
     if (_pastaUrlController.text.isEmpty) {
       _mostrarMensagem('Digite a URL da pasta do Drive', context.uai.warning);
       return;
@@ -345,7 +393,8 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
     try {
       const String apiKey = 'AIzaSyDIpd0CiOsY-07BWXkDPbOsvmlOZsLofRk';
 
-      String url = 'https://www.googleapis.com/drive/v3/files'
+      String url =
+          'https://www.googleapis.com/drive/v3/files'
           '?q="$pastaId" in parents and trashed=false'
           '&fields=files(id,name,mimeType,webViewLink)'
           '&key=$apiKey';
@@ -360,10 +409,13 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
         var data = json.decode(response.body);
         List<dynamic> arquivos = data['files'] ?? [];
 
-        List<dynamic> arquivosPdf = arquivos.where((a) =>
-        a['mimeType'] == 'application/pdf' ||
-            a['name'].toString().toLowerCase().endsWith('.pdf')
-        ).toList();
+        List<dynamic> arquivosPdf = arquivos
+            .where(
+              (a) =>
+                  a['mimeType'] == 'application/pdf' ||
+                  a['name'].toString().toLowerCase().endsWith('.pdf'),
+            )
+            .toList();
 
         _adicionarLog('✅ Encontrados ${arquivos.length} arquivos totais');
         _adicionarLog('📄 ${arquivosPdf.length} são PDFs');
@@ -371,7 +423,10 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
         Map<String, Map<String, dynamic>> arquivosPorNome = {};
         for (var arquivo in arquivosPdf) {
           String nome = arquivo['name'] ?? '';
-          String nomeSemExtensao = nome.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '').toUpperCase().trim();
+          String nomeSemExtensao = nome
+              .replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '')
+              .toUpperCase()
+              .trim();
 
           arquivosPorNome[nomeSemExtensao] = {
             'id': arquivo['id'],
@@ -385,7 +440,10 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
         int naoEncontrados = 0;
 
         for (var p in widget.participantes) {
-          String nomeAluno = (p['aluno_nome'] ?? '').toString().toUpperCase().trim();
+          String nomeAluno = (p['aluno_nome'] ?? '')
+              .toString()
+              .toUpperCase()
+              .trim();
           String nomeAlunoSimplificado = _removerAcentos(nomeAluno);
 
           Map<String, dynamic>? arquivoEncontrado;
@@ -393,13 +451,14 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
           if (arquivosPorNome.containsKey(nomeAluno)) {
             arquivoEncontrado = arquivosPorNome[nomeAluno];
             _adicionarLog('✅ ENCONTRADO: $nomeAluno');
-          }
-          else {
+          } else {
             for (var entry in arquivosPorNome.entries) {
               String nomeArquivoSimplificado = _removerAcentos(entry.key);
               if (nomeArquivoSimplificado == nomeAlunoSimplificado) {
                 arquivoEncontrado = entry.value;
-                _adicionarLog('✅ ENCONTRADO (sem acentos): ${entry.key} para $nomeAluno');
+                _adicionarLog(
+                  '✅ ENCONTRADO (sem acentos): ${entry.key} para $nomeAluno',
+                );
                 break;
               }
             }
@@ -418,7 +477,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
             participantesAtualizados.add({
               ...p,
               'link_encontrado': p['link_certificado'] ?? '',
-              'status': p['link_certificado']?.isNotEmpty == true ? 'encontrado' : 'nao_encontrado',
+              'status': p['link_certificado']?.isNotEmpty == true
+                  ? 'encontrado'
+                  : 'nao_encontrado',
             });
           }
         }
@@ -446,10 +507,14 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
         if (_pastaSalva == null && mounted) {
           _perguntarSalvarPasta();
         }
-
       } else {
-        _adicionarLog('❌ Erro na API: ${response.statusCode} - ${response.body}');
-        _mostrarMensagem('Erro ao acessar Drive: ${response.statusCode}', context.uai.error);
+        _adicionarLog(
+          '❌ Erro na API: ${response.statusCode} - ${response.body}',
+        );
+        _mostrarMensagem(
+          'Erro ao acessar Drive: ${response.statusCode}',
+          context.uai.error,
+        );
       }
     } catch (e) {
       _adicionarLog('❌ Erro: $e');
@@ -467,7 +532,7 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
       builder: (context) => AlertDialog(
         title: Text('💾 Salvar pasta?'),
         content: Text(
-            'Deseja salvar esta pasta no evento "${widget.eventoNome}" para usar depois?'
+          'Deseja salvar esta pasta no evento "${widget.eventoNome}" para usar depois?',
         ),
         actions: [
           TextButton(
@@ -508,8 +573,14 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
   // FUNÇÃO PARA SALVAR LINKS NO FIRESTORE
   // ============================================================
   Future<void> _salvarLinksNoFirestore() async {
+    if (!await _revalidarGeracao()) return;
+
     final paraSalvar = _participantesComCertificado
-        .where((p) => p['status'] == 'encontrado' && p['link_encontrado']?.isNotEmpty == true)
+        .where(
+          (p) =>
+              p['status'] == 'encontrado' &&
+              p['link_encontrado']?.isNotEmpty == true,
+        )
         .toList();
 
     if (paraSalvar.isEmpty) {
@@ -525,7 +596,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
     if (!confirmar) return;
 
     if (mounted) setState(() => _isVinculando = true);
-    _adicionarLog('💾 Salvando ${paraSalvar.length} certificados no Firestore...');
+    _adicionarLog(
+      '💾 Salvando ${paraSalvar.length} certificados no Firestore...',
+    );
 
     try {
       int salvos = 0;
@@ -537,9 +610,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
               .collection('participacoes_eventos_em_andamento')
               .doc(p['id'])
               .update({
-            'link_certificado': p['link_encontrado'],
-            'certificado_atualizado_em': FieldValue.serverTimestamp(),
-          });
+                'link_certificado': p['link_encontrado'],
+                'certificado_atualizado_em': FieldValue.serverTimestamp(),
+              });
 
           _adicionarLog('✅ Salvo: ${p['aluno_nome']}');
           salvos++;
@@ -561,7 +634,6 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
       if (erros == 0 && mounted) {
         Navigator.pop(context, true);
       }
-
     } catch (e) {
       _adicionarLog('❌ Erro geral: $e');
       _mostrarMensagem('Erro ao salvar: $e', context.uai.error);
@@ -603,7 +675,10 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                       String link = linkController.text;
                       if (link.isNotEmpty) {
                         Navigator.pop(context);
-                        _abrirPreviewCertificado({'link_encontrado': link, 'aluno_nome': participante['aluno_nome']});
+                        _abrirPreviewCertificado({
+                          'link_encontrado': link,
+                          'aluno_nome': participante['aluno_nome'],
+                        });
                       }
                     },
                     icon: Icon(Icons.visibility),
@@ -627,7 +702,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
             onPressed: () {
               setState(() {
                 participante['link_encontrado'] = linkController.text;
-                participante['status'] = linkController.text.isNotEmpty ? 'encontrado' : 'nao_encontrado';
+                participante['status'] = linkController.text.isNotEmpty
+                    ? 'encontrado'
+                    : 'nao_encontrado';
               });
               Navigator.pop(context);
             },
@@ -640,25 +717,25 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
 
   Future<bool> _mostrarConfirmacao(String titulo, String mensagem) async {
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(titulo),
-        content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('CANCELAR'),
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(titulo),
+            content: Text(mensagem),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('CANCELAR'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.uai.success,
+                ),
+                child: const Text('CONFIRMAR'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: context.uai.success,
-            ),
-            child: const Text('CONFIRMAR'),
-          ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
   }
 
@@ -675,7 +752,23 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
 
   @override
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> participantesFiltrados = _participantesComCertificado;
+    if (_checkingAccess) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Vincular certificados',
+      );
+    }
+
+    if (_accessDenied) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Vincular certificados',
+        message: 'Você não tem permissão para gerar certificados do evento.',
+      );
+    }
+
+    List<Map<String, dynamic>> participantesFiltrados =
+        _participantesComCertificado;
     if (_buscaManualController.text.isNotEmpty) {
       String query = _buscaManualController.text.toUpperCase().trim();
       participantesFiltrados = _participantesComCertificado.where((p) {
@@ -689,13 +782,13 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.eventoNome,
-              style: TextStyle(fontSize: 14),
-            ),
+            Text(widget.eventoNome, style: TextStyle(fontSize: 14)),
             Text(
               'Vincular certificados do Drive',
-              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.9)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
             ),
           ],
         ),
@@ -715,7 +808,10 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                 children: [
                   Icon(Icons.check, color: context.uai.card, size: 16),
                   SizedBox(width: 4),
-                  Text('Pasta salva', style: TextStyle(color: context.uai.card, fontSize: 12)),
+                  Text(
+                    'Pasta salva',
+                    style: TextStyle(color: context.uai.card, fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -734,21 +830,30 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                   children: [
                     Text(
                       '📁 URL da pasta do Google Drive',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                     SizedBox(width: 8),
                     if (_pastaSalva != null)
                       Tooltip(
                         message: 'Pasta salva no evento',
                         child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: context.uai.success.withOpacity(0.14),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             '✓ Salva',
-                            style: TextStyle(fontSize: 10, color: context.uai.success),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: context.uai.success,
+                            ),
                           ),
                         ),
                       ),
@@ -761,8 +866,12 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                       child: TextField(
                         controller: _pastaUrlController,
                         decoration: InputDecoration(
-                          hintText: 'https://drive.google.com/drive/folders/...',
-                          prefixIcon: Icon(Icons.folder, color: context.uai.associacao),
+                          hintText:
+                              'https://drive.google.com/drive/folders/...',
+                          prefixIcon: Icon(
+                            Icons.folder,
+                            color: context.uai.associacao,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -777,17 +886,23 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                       style: ElevatedButton.styleFrom(
                         backgroundColor: context.uai.associacao,
                         foregroundColor: _appBarFg(),
-                        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       child: _isBuscando
                           ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(color: context.uai.card, strokeWidth: 2),
-                      )
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: context.uai.card,
+                                strokeWidth: 2,
+                              ),
+                            )
                           : Text('BUSCAR'),
                     ),
                   ],
@@ -798,16 +913,30 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                     Expanded(
                       child: Text(
                         '📌 Os arquivos devem ser PDF com o nome EXATO do aluno',
-                        style: TextStyle(fontSize: 11, color: context.uai.textSecondary),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.uai.textSecondary,
+                        ),
                       ),
                     ),
-                    if (_pastaSalva == null && _pastaUrlController.text.isNotEmpty)
+                    if (_pastaSalva == null &&
+                        _pastaUrlController.text.isNotEmpty)
                       TextButton.icon(
-                        onPressed: _isSalvandoPasta ? null : _salvarPastaNoFirestore,
+                        onPressed: _isSalvandoPasta
+                            ? null
+                            : _salvarPastaNoFirestore,
                         icon: _isSalvandoPasta
-                            ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : Icon(Icons.save, size: 16),
-                        label: Text(_isSalvandoPasta ? 'Salvando...' : 'Salvar pasta'),
+                        label: Text(
+                          _isSalvandoPasta ? 'Salvando...' : 'Salvar pasta',
+                        ),
                         style: TextButton.styleFrom(
                           foregroundColor: context.uai.associacao,
                         ),
@@ -833,12 +962,12 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                 fillColor: Colors.white,
                 suffixIcon: _buscaManualController.text.isNotEmpty
                     ? IconButton(
-                  icon: Icon(Icons.clear, color: context.uai.associacao),
-                  onPressed: () {
-                    _buscaManualController.clear();
-                    setState(() {});
-                  },
-                )
+                        icon: Icon(Icons.clear, color: context.uai.associacao),
+                        onPressed: () {
+                          _buscaManualController.clear();
+                          setState(() {});
+                        },
+                      )
                     : null,
               ),
               onChanged: (value) => setState(() {}),
@@ -853,7 +982,9 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
               decoration: BoxDecoration(
                 color: context.uai.associacao.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: context.uai.associacao.withOpacity(0.22)),
+                border: Border.all(
+                  color: context.uai.associacao.withOpacity(0.22),
+                ),
               ),
               child: Row(
                 children: [
@@ -922,140 +1053,168 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
           Expanded(
             child: participantesFiltrados.isEmpty
                 ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.search_off, size: 60, color: context.uai.border),
-                  SizedBox(height: 16),
-                  Text(
-                    'Nenhum aluno encontrado',
-                    style: TextStyle(color: context.uai.textSecondary),
-                  ),
-                ],
-              ),
-            )
-                : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: participantesFiltrados.length,
-              itemBuilder: (context, index) {
-                final p = participantesFiltrados[index];
-                final encontrado = p['status'] == 'encontrado' && p['link_encontrado']?.isNotEmpty == true;
-
-                return Card(
-                  margin: EdgeInsets.only(bottom: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: encontrado ? context.uai.success.withOpacity(0.24) : context.uai.warning.withOpacity(0.24),
-                      width: 1,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 60,
+                          color: context.uai.border,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Nenhum aluno encontrado',
+                          style: TextStyle(color: context.uai.textSecondary),
+                        ),
+                      ],
                     ),
-                  ),
-                  child: InkWell(
-                    onTap: encontrado ? () => _abrirPreviewCertificado(p) : null,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: encontrado ? context.uai.success.withOpacity(0.08) : context.uai.warning.withOpacity(0.08),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              encontrado ? Icons.picture_as_pdf : Icons.error,
-                              color: encontrado ? context.uai.success : context.uai.warning,
-                              size: 24,
-                            ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: participantesFiltrados.length,
+                    itemBuilder: (context, index) {
+                      final p = participantesFiltrados[index];
+                      final encontrado =
+                          p['status'] == 'encontrado' &&
+                          p['link_encontrado']?.isNotEmpty == true;
+
+                      return Card(
+                        margin: EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: encontrado
+                                ? context.uai.success.withOpacity(0.24)
+                                : context.uai.warning.withOpacity(0.24),
+                            width: 1,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        ),
+                        child: InkWell(
+                          onTap: encontrado
+                              ? () => _abrirPreviewCertificado(p)
+                              : null,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Row(
                               children: [
-                                Text(
-                                  p['aluno_nome'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: encontrado
+                                        ? context.uai.success.withOpacity(0.08)
+                                        : context.uai.warning.withOpacity(0.08),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    encontrado
+                                        ? Icons.picture_as_pdf
+                                        : Icons.error,
+                                    color: encontrado
+                                        ? context.uai.success
+                                        : context.uai.warning,
+                                    size: 24,
                                   ),
                                 ),
-                                SizedBox(height: 4),
-                                if (encontrado) ...[
-                                  Text(
-                                    '📄 ${p['arquivo_nome'] ?? 'Certificado'}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.uai.success,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    '👆 Toque para visualizar no app',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: context.uai.info,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ] else ...[
-                                  Text(
-                                    p['link_encontrado']?.isNotEmpty == true
-                                        ? '✅ Link manual salvo'
-                                        : '❌ Certificado não encontrado',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: p['link_encontrado']?.isNotEmpty == true
-                                          ? context.uai.success
-                                          : context.uai.warning,
-                                    ),
-                                  ),
-                                  if (p['link_encontrado']?.isNotEmpty == true)
-                                    Text(
-                                      '👆 Toque para visualizar',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: context.uai.info,
-                                        fontStyle: FontStyle.italic,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        p['aluno_nome'],
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
                                       ),
+                                      SizedBox(height: 4),
+                                      if (encontrado) ...[
+                                        Text(
+                                          '📄 ${p['arquivo_nome'] ?? 'Certificado'}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: context.uai.success,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          '👆 Toque para visualizar no app',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: context.uai.info,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          p['link_encontrado']?.isNotEmpty ==
+                                                  true
+                                              ? '✅ Link manual salvo'
+                                              : '❌ Certificado não encontrado',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                p['link_encontrado']
+                                                        ?.isNotEmpty ==
+                                                    true
+                                                ? context.uai.success
+                                                : context.uai.warning,
+                                          ),
+                                        ),
+                                        if (p['link_encontrado']?.isNotEmpty ==
+                                            true)
+                                          Text(
+                                            '👆 Toque para visualizar',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: context.uai.info,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.edit,
+                                        color: encontrado
+                                            ? context.uai.success
+                                            : context.uai.warning,
+                                        size: 20,
+                                      ),
+                                      onPressed: () =>
+                                          _editarLinkManualmente(p),
                                     ),
-                                ],
+                                    if (encontrado ||
+                                        p['link_encontrado']?.isNotEmpty ==
+                                            true)
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.visibility,
+                                          color: context.uai.info,
+                                          size: 20,
+                                        ),
+                                        onPressed: () =>
+                                            _abrirPreviewCertificado(p),
+                                      ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(
-                                  Icons.edit,
-                                  color: encontrado ? context.uai.success : context.uai.warning,
-                                  size: 20,
-                                ),
-                                onPressed: () => _editarLinkManualmente(p),
-                              ),
-                              if (encontrado || p['link_encontrado']?.isNotEmpty == true)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.visibility,
-                                    color: context.uai.info,
-                                    size: 20,
-                                  ),
-                                  onPressed: () => _abrirPreviewCertificado(p),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
 
           // 📝 LOGS
@@ -1073,7 +1232,11 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.terminal, color: context.uai.success, size: 16),
+                      Icon(
+                        Icons.terminal,
+                        color: context.uai.success,
+                        size: 16,
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'LOGS DA BUSCA',
@@ -1085,7 +1248,11 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
                       ),
                       Spacer(),
                       IconButton(
-                        icon: Icon(Icons.close, color: context.uai.textMuted, size: 16),
+                        icon: Icon(
+                          Icons.close,
+                          color: context.uai.textMuted,
+                          size: 16,
+                        ),
                         onPressed: () => setState(() => _logs.clear()),
                       ),
                     ],
@@ -1112,7 +1279,8 @@ class _VincularCertificadosDriveScreenState extends State<VincularCertificadosDr
             ),
 
           // BOTÃO SALVAR
-          if (_resultadosBusca != null && _participantesComCertificado.isNotEmpty)
+          if (_resultadosBusca != null &&
+              _participantesComCertificado.isNotEmpty)
             Padding(
               padding: EdgeInsets.all(16),
               child: SizedBox(

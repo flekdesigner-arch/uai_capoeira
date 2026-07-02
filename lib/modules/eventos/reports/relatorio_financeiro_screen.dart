@@ -1,4 +1,4 @@
-﻿// lib/screens/relatorios/relatorio_financeiro_screen.dart
+// lib/screens/relatorios/relatorio_financeiro_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -29,7 +29,8 @@ class RelatorioFinanceiroScreen extends StatefulWidget {
   });
 
   @override
-  State<RelatorioFinanceiroScreen> createState() => _RelatorioFinanceiroScreenState();
+  State<RelatorioFinanceiroScreen> createState() =>
+      _RelatorioFinanceiroScreenState();
 }
 
 class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
@@ -138,7 +139,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -187,7 +189,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Color _statusColor(Color color) => _ensureVisible(color, context.uai.card);
-
 
   // ==================== CAMISAS: MODELAGEM / TIPO / TAMANHO ====================
   String _normalizarModelagemCamisa(dynamic value) {
@@ -268,10 +269,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
 
     final tipo = _normalizarTipoCamisa(
-      data['tipo_camisa'] ??
-          data['tipoCamisa'] ??
-          data['tipo'] ??
-          'MANGA',
+      data['tipo_camisa'] ?? data['tipoCamisa'] ?? data['tipo'] ?? 'MANGA',
     );
 
     final tamanho = _normalizarTamanhoCamisa(
@@ -293,9 +291,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Map<String, double> _normalizarValoresPorTipoCamisaEvento(
-      dynamic raw, {
-        double fallback = 0,
-      }) {
+    dynamic raw, {
+    double fallback = 0,
+  }) {
     final result = <String, double>{
       'MANGA': fallback,
       'MANGA_LONGA': fallback,
@@ -337,7 +335,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       _valoresPorTipoCamisaEvento = valores;
 
-      debugPrint('👕 Valores oficiais de camisa do evento: $_valoresPorTipoCamisaEvento');
+      debugPrint(
+        '👕 Valores oficiais de camisa do evento: $_valoresPorTipoCamisaEvento',
+      );
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar valores oficiais das camisas: $e');
     }
@@ -350,10 +350,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   double _valorUnitarioCamisa(Map<String, dynamic> data) {
     final tipo = _normalizarTipoCamisa(
-      data['tipo_camisa'] ??
-          data['tipoCamisa'] ??
-          data['tipo'] ??
-          'MANGA',
+      data['tipo_camisa'] ?? data['tipoCamisa'] ?? data['tipo'] ?? 'MANGA',
     );
 
     // Prioridade 1: valor oficial configurado no evento.
@@ -431,9 +428,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     final modelagem = _normalizarModelagemCamisa(
       partes.isNotEmpty ? partes[0] : 'NORMAL',
     );
-    final tipo = _normalizarTipoCamisa(
-      partes.length > 1 ? partes[1] : 'MANGA',
-    );
+    final tipo = _normalizarTipoCamisa(partes.length > 1 ? partes[1] : 'MANGA');
     final tamanho = partes.length > 2 ? partes[2] : 'OUTRO';
 
     final ordemModelagem = modelagem == 'NORMAL' ? 0 : 1;
@@ -461,14 +456,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     final entries = result.entries.toList()
       ..sort((a, b) {
-        final ordem = _ordemGradeCamisa(a.key).compareTo(_ordemGradeCamisa(b.key));
+        final ordem = _ordemGradeCamisa(
+          a.key,
+        ).compareTo(_ordemGradeCamisa(b.key));
         if (ordem != 0) return ordem;
         return a.key.compareTo(b.key);
       });
 
     return Map<String, int>.fromEntries(entries);
   }
-
 
   @override
   void initState() {
@@ -528,7 +524,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   void _mostrarSemPermissao([
-    String mensagem = 'Você não tem permissão para acessar/gerar relatórios deste evento.',
+    String mensagem =
+        'Você não tem permissão para acessar/gerar relatórios deste evento.',
   ]) {
     if (!mounted) return;
 
@@ -564,19 +561,29 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       _logCarregamento('📌 Buscando participações do evento...');
       final participacoesValidas = await _buscarParticipacoesValidas();
-      _logCarregamento('✅ Participações válidas: ${participacoesValidas.length}');
+      _logCarregamento(
+        '✅ Participações válidas: ${participacoesValidas.length}',
+      );
 
-      _logCarregamento('🤝 Carregando patrocínios e cruzando com alunos válidos...');
+      _logCarregamento(
+        '🤝 Carregando patrocínios e cruzando com alunos válidos...',
+      );
       await _carregarPatrocinios(participacoesValidas);
       _logCarregamento('✅ Patrocínios válidos: ${_usosPatrocinio.length} usos');
 
-      _logCarregamento('📊 Processando pagamentos, quitados e inadimplentes...');
+      _logCarregamento(
+        '📊 Processando pagamentos, quitados e inadimplentes...',
+      );
       await _carregarParticipacoes(participacoesValidas);
-      _logCarregamento('✅ Participantes: $_totalParticipantes | Quitados: $_quitados | Patrocinados: $_cobertosPorPatrocinio');
+      _logCarregamento(
+        '✅ Participantes: $_totalParticipantes | Quitados: $_quitados | Patrocinados: $_cobertosPorPatrocinio',
+      );
 
       _logCarregamento('👕 Carregando camisas avulsas...');
       await _carregarCamisasAvulsas();
-      _logCarregamento('✅ Camisas totais: ${_detalhesCamisas['total_camisas'] ?? 0}');
+      _logCarregamento(
+        '✅ Camisas totais: ${_detalhesCamisas['total_camisas'] ?? 0}',
+      );
 
       _logCarregamento('💰 Carregando gastos do evento...');
       await _carregarGastos();
@@ -587,7 +594,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         });
       }
 
-      _logCarregamento('🏁 Relatório pronto. Saldo: ${_formatarMoeda(_saldoLiquido)}');
+      _logCarregamento(
+        '🏁 Relatório pronto. Saldo: ${_formatarMoeda(_saldoLiquido)}',
+      );
     } catch (e) {
       _logCarregamento('❌ Erro ao carregar dados: $e');
 
@@ -620,9 +629,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   String _limparLogVisual(String mensagem) {
-    return mensagem
-        .replaceAll(RegExp(r'^[^A-Za-zÀ-ÖØ-öø-ÿ0-9]+'), '')
-        .trim();
+    return mensagem.replaceAll(RegExp(r'^[^A-Za-zÀ-ÖØ-öø-ÿ0-9]+'), '').trim();
   }
 
   // 🔥 NOVO MÉTODO PARA RESETAR VARIÁVEIS
@@ -643,11 +650,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     _receitasPorForma = {};
     _gastosPorCategoria = {};
 
-    _valoresPorTipoCamisaEvento = {
-      'MANGA': 0,
-      'MANGA_LONGA': 0,
-      'REGATA': 0,
-    };
+    _valoresPorTipoCamisaEvento = {'MANGA': 0, 'MANGA_LONGA': 0, 'REGATA': 0};
 
     _detalhesCamisas = {
       'total_camisas': 0,
@@ -699,7 +702,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     _chavesParticipantesPatrocinados = {};
   }
 
-
   // ==================== LIMPEZA / DEDUPLICAÇÃO ====================
   String _normalizarTexto(dynamic value) {
     final text = value?.toString().trim().toUpperCase() ?? '';
@@ -749,7 +751,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           data['status_evento'],
     );
 
-    final removida = data['removido'] == true ||
+    final removida =
+        data['removido'] == true ||
         data['removido_evento'] == true ||
         data['excluido'] == true ||
         data['cancelado'] == true ||
@@ -772,9 +775,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return 0;
   }
 
-  int _pontuacaoParticipacao(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+  int _pontuacaoParticipacao(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
 
     int score = 0;
@@ -847,7 +848,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     _participacoesRemovidasIgnoradas = removidas;
     _participacoesDuplicadasIgnoradas = duplicadas;
-    _chavesParticipantesValidos = lista.map((doc) => _chaveParticipante(doc.data())).toSet();
+    _chavesParticipantesValidos = lista
+        .map((doc) => _chaveParticipante(doc.data()))
+        .toSet();
     _nomesParticipantesValidos = lista
         .map((doc) => _normalizarTexto(doc.data()['aluno_nome']))
         .where((nome) => nome.isNotEmpty)
@@ -872,32 +875,38 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
 
     final chave = _chaveParticipante({
-      'aluno_id': usoData['aluno_id'] ??
+      'aluno_id':
+          usoData['aluno_id'] ??
           usoData['alunoId'] ??
           usoData['aluno_doc_id'] ??
           usoData['aluno_ref_id'],
       'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'],
     });
 
-    final nome = _normalizarTexto(usoData['aluno_nome'] ?? usoData['nome_aluno']);
+    final nome = _normalizarTexto(
+      usoData['aluno_nome'] ?? usoData['nome_aluno'],
+    );
 
     return _chavesParticipantesValidos.contains(chave) ||
         (nome.isNotEmpty && _nomesParticipantesValidos.contains(nome));
   }
 
   String _chaveUsoPatrocinio(
-      String patrocinadorId,
-      Map<String, dynamic> usoData,
-      ) {
+    String patrocinadorId,
+    Map<String, dynamic> usoData,
+  ) {
     final chaveAluno = _chaveParticipante({
-      'aluno_id': usoData['aluno_id'] ??
+      'aluno_id':
+          usoData['aluno_id'] ??
           usoData['alunoId'] ??
           usoData['aluno_doc_id'] ??
           usoData['aluno_ref_id'],
       'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'],
     });
 
-    final valor = ((usoData['valor'] as num?)?.toDouble() ?? 0).toStringAsFixed(2);
+    final valor = ((usoData['valor'] as num?)?.toDouble() ?? 0).toStringAsFixed(
+      2,
+    );
 
     DateTime? data;
     final rawData = usoData['data'];
@@ -915,7 +924,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   String _chaveParticipanteUso(Map<String, dynamic> usoData) {
     final chave = _chaveParticipante({
-      'aluno_id': usoData['aluno_id'] ??
+      'aluno_id':
+          usoData['aluno_id'] ??
           usoData['alunoId'] ??
           usoData['aluno_doc_id'] ??
           usoData['aluno_ref_id'],
@@ -924,15 +934,17 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     if (_chavesParticipantesValidos.contains(chave)) return chave;
 
-    final nome = _normalizarTexto(usoData['aluno_nome'] ?? usoData['nome_aluno']);
+    final nome = _normalizarTexto(
+      usoData['aluno_nome'] ?? usoData['nome_aluno'],
+    );
 
     return 'nome:$nome';
   }
 
   // ==================== PATROCÍNIOS ====================
   Future<void> _carregarPatrocinios(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesValidas,
-      ) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesValidas,
+  ) async {
     try {
       final patrocinadoresSnapshot = await FirebaseFirestore.instance
           .collection('patrocinadores_eventos')
@@ -940,7 +952,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           .get();
 
       debugPrint('🤝 ===== CARREGANDO PATROCÍNIOS =====');
-      debugPrint('🤝 Total de patrocinadores: ${patrocinadoresSnapshot.docs.length}');
+      debugPrint(
+        '🤝 Total de patrocinadores: ${patrocinadoresSnapshot.docs.length}',
+      );
 
       double totalPatrocinios = 0;
       int pagos = 0;
@@ -962,7 +976,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
         if (valorPago == 0) {
           final saldoInicial = (data['saldo_inicial'] as num?)?.toDouble() ?? 0;
-          final saldoDisponivel = (data['saldo_disponivel'] as num?)?.toDouble() ?? 0;
+          final saldoDisponivel =
+              (data['saldo_disponivel'] as num?)?.toDouble() ?? 0;
           valorPago = saldoInicial - saldoDisponivel;
         }
 
@@ -999,7 +1014,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           usos.add({
             'patrocinador': nomePatrocinador,
             'patrocinador_id': patrocinador.id,
-            'aluno_nome': usoData['aluno_nome'] ?? usoData['nome_aluno'] ?? 'Aluno',
+            'aluno_nome':
+                usoData['aluno_nome'] ?? usoData['nome_aluno'] ?? 'Aluno',
             'aluno_chave': chaveParticipante,
             'valor': valorUso,
             'data': usoData['data'] is Timestamp
@@ -1047,7 +1063,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       debugPrint('\n✅ RESUMO PATROCÍNIOS LIMPOS:');
       debugPrint('   - Participações válidas: ${participacoesValidas.length}');
-      debugPrint('   - Total recebido: R\$ ${totalPatrocinios.toStringAsFixed(2)}');
+      debugPrint(
+        '   - Total recebido: R\$ ${totalPatrocinios.toStringAsFixed(2)}',
+      );
       debugPrint('   - Usos válidos: ${usos.length}');
       debugPrint('   - Usos órfãos ignorados: $usosOrfaos');
       debugPrint('   - Usos duplicados ignorados: $usosDuplicados');
@@ -1058,8 +1076,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   // ==================== PARTICIPAÇÕES ====================
   Future<void> _carregarParticipacoes(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesDocs,
-      ) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> participacoesDocs,
+  ) async {
     try {
       debugPrint('\n📊 ===== CARREGANDO PARTICIPAÇÕES VÁLIDAS =====');
       debugPrint('📊 Total válido único: ${participacoesDocs.length}');
@@ -1084,7 +1102,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         final data = participacao.data();
 
         final totalPago = (data['total_pago'] as num?)?.toDouble() ?? 0;
-        final valorInscricao = (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
+        final valorInscricao =
+            (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
         final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
         final totalDevido = valorInscricao + valorCamisa;
         final tamanhoCamisaRaw = data['tamanho_camisa'];
@@ -1092,8 +1111,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         final alunoNome = data['aluno_nome'] as String? ?? '';
         final chaveParticipante = _chaveParticipante(data);
 
-        final temPatrocinio = _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
-            _chavesParticipantesPatrocinados.contains('nome:${_normalizarTexto(alunoNome)}');
+        final temPatrocinio =
+            _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
+            _chavesParticipantesPatrocinados.contains(
+              'nome:${_normalizarTexto(alunoNome)}',
+            );
 
         debugPrint('\n📌 Aluno válido: $alunoNome');
         debugPrint('   - Total devido: R\$ $totalDevido');
@@ -1122,7 +1144,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             final pagData = pag.data();
             final valor = (pagData['valor'] as num?)?.toDouble() ?? 0;
             final forma = pagData['forma_pagamento'] as String? ?? 'OUTROS';
-            final observacoes = pagData['observacoes']?.toString().toLowerCase() ?? '';
+            final observacoes =
+                pagData['observacoes']?.toString().toLowerCase() ?? '';
 
             if (forma.toUpperCase() == 'PATROCÍNIO' ||
                 forma.toUpperCase() == 'PATROCINIO') {
@@ -1145,7 +1168,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
           totalCamisasParticipacoesCount++;
           camisasPorTamanho[tamanho] = (camisasPorTamanho[tamanho] ?? 0) + 1;
-          camisasPorDetalhe[chaveGrade] = (camisasPorDetalhe[chaveGrade] ?? 0) + 1;
+          camisasPorDetalhe[chaveGrade] =
+              (camisasPorDetalhe[chaveGrade] ?? 0) + 1;
 
           final valorUnitario = _valorUnitarioCamisa(data);
           valorTotalPedidoCamisasParticipacoes += valorUnitario;
@@ -1162,7 +1186,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         }
       }
 
-      final totalReceitasParticipacoes = totalInscricoes + totalCamisasParticipacoes;
+      final totalReceitasParticipacoes =
+          totalInscricoes + totalCamisasParticipacoes;
 
       if (mounted) {
         setState(() {
@@ -1194,7 +1219,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       debugPrint('\n✅ RESUMO PARTICIPAÇÕES LIMPAS:');
       debugPrint('   - Participantes únicos: ${participacoesDocs.length}');
-      debugPrint('   - Duplicadas ignoradas: $_participacoesDuplicadasIgnoradas');
+      debugPrint(
+        '   - Duplicadas ignoradas: $_participacoesDuplicadasIgnoradas',
+      );
       debugPrint('   - Removidas ignoradas: $_participacoesRemovidasIgnoradas');
       debugPrint('   - Quitados: $quitados');
       debugPrint('   - Patrocínio: $cobertosPatrocinio');
@@ -1266,10 +1293,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         };
 
         _detalhesCamisas = {
-          'total_camisas': _camisasParticipacoes['total'] + _camisasAvulsas['total'],
-          'camisas_pagas': _camisasParticipacoes['pagas'] + _camisasAvulsas['pagas'],
-          'valor_total_camisas': _camisasParticipacoes['valor'] + _camisasAvulsas['valor'],
-          'valor_total_pedido': (_camisasParticipacoes['valor_total_pedido'] ?? 0.0) +
+          'total_camisas':
+              _camisasParticipacoes['total'] + _camisasAvulsas['total'],
+          'camisas_pagas':
+              _camisasParticipacoes['pagas'] + _camisasAvulsas['pagas'],
+          'valor_total_camisas':
+              _camisasParticipacoes['valor'] + _camisasAvulsas['valor'],
+          'valor_total_pedido':
+              (_camisasParticipacoes['valor_total_pedido'] ?? 0.0) +
               (_camisasAvulsas['valor_total_pedido'] ?? 0.0),
           'por_tamanho': _combinarMapas(
             _camisasParticipacoes['por_tamanho'],
@@ -1326,7 +1357,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
       debugPrint('\n💰 ===== GASTOS =====');
       debugPrint('💰 Total: R\$ ${total.toStringAsFixed(2)}');
-
     } catch (e) {
       debugPrint('❌ Erro ao carregar gastos: $e');
     }
@@ -1354,7 +1384,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     final entries = result.entries.toList()
       ..sort((x, y) {
-        final ordem = _ordemTamanhoCamisa(x.key).compareTo(_ordemTamanhoCamisa(y.key));
+        final ordem = _ordemTamanhoCamisa(
+          x.key,
+        ).compareTo(_ordemTamanhoCamisa(y.key));
         if (ordem != 0) return ordem;
         return x.key.compareTo(y.key);
       });
@@ -1384,7 +1416,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return _ordenarGradeCamisas(result);
   }
 
-  Map<String, double> _combinarValoresUnitariosDetalhados(dynamic a, dynamic b) {
+  Map<String, double> _combinarValoresUnitariosDetalhados(
+    dynamic a,
+    dynamic b,
+  ) {
     final result = <String, double>{};
 
     void add(dynamic origem) {
@@ -1407,12 +1442,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     add(b);
 
     return Map<String, double>.fromEntries(
-      result.entries.toList()
-        ..sort((x, y) {
-          final ordem = _ordemGradeCamisa(x.key).compareTo(_ordemGradeCamisa(y.key));
-          if (ordem != 0) return ordem;
-          return x.key.compareTo(y.key);
-        }),
+      result.entries.toList()..sort((x, y) {
+        final ordem = _ordemGradeCamisa(
+          x.key,
+        ).compareTo(_ordemGradeCamisa(y.key));
+        if (ordem != 0) return ordem;
+        return x.key.compareTo(y.key);
+      }),
     );
   }
 
@@ -1434,12 +1470,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     add(b);
 
     return Map<String, double>.fromEntries(
-      result.entries.toList()
-        ..sort((x, y) {
-          final ordem = _ordemGradeCamisa(x.key).compareTo(_ordemGradeCamisa(y.key));
-          if (ordem != 0) return ordem;
-          return x.key.compareTo(y.key);
-        }),
+      result.entries.toList()..sort((x, y) {
+        final ordem = _ordemGradeCamisa(
+          x.key,
+        ).compareTo(_ordemGradeCamisa(y.key));
+        if (ordem != 0) return ordem;
+        return x.key.compareTo(y.key);
+      }),
     );
   }
 
@@ -1465,8 +1502,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       final totalDevido = valorInscricao + valorCamisa;
       final chaveParticipante = _chaveParticipante(d);
 
-      final temPatrocinio = _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
-          _chavesParticipantesPatrocinados.contains('nome:${_normalizarTexto(nome)}');
+      final temPatrocinio =
+          _chavesParticipantesPatrocinados.contains(chaveParticipante) ||
+          _chavesParticipantesPatrocinados.contains(
+            'nome:${_normalizarTexto(nome)}',
+          );
 
       final status = temPatrocinio
           ? 'Patrocinado'
@@ -1498,7 +1538,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     if (idsGraduacoes.isNotEmpty) {
       final futures = idsGraduacoes.map(
-            (id) => FirebaseFirestore.instance.collection('graduacoes').doc(id).get(),
+        (id) =>
+            FirebaseFirestore.instance.collection('graduacoes').doc(id).get(),
       );
       final docs = await Future.wait(futures);
       final coresMap = <String, Map<String, dynamic>>{};
@@ -1522,7 +1563,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     return lista;
   }
-
 
   // ==================== PDF LISTA DE ENTREGA DE CAMISAS ====================
   String _safeTexto(dynamic value, {String fallback = ''}) {
@@ -1591,15 +1631,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           ),
           origem: 'Aluno',
           tamanho: tamanho,
-          modelagem: data['modelagem_camisa'] ??
+          modelagem:
+              data['modelagem_camisa'] ??
               data['modelagemCamisa'] ??
               data['modelagem'] ??
               'NORMAL',
-          tipo: data['tipo_camisa'] ??
+          tipo:
+              data['tipo_camisa'] ??
               data['tipoCamisa'] ??
               data['tipo'] ??
               'MANGA',
-          entregue: data['camisa_entregue'] == true ||
+          entregue:
+              data['camisa_entregue'] == true ||
               data['entregue'] == true ||
               data['camisaEntregue'] == true,
         ),
@@ -1617,9 +1660,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     for (final doc in camisasSnapshot.docs) {
       final data = doc.data();
 
-      final tamanhoRaw = data['tamanho'] ??
-          data['tamanho_camisa'] ??
-          data['tamanhoCamisa'];
+      final tamanhoRaw =
+          data['tamanho'] ?? data['tamanho_camisa'] ?? data['tamanhoCamisa'];
       final tamanho = _safeTexto(tamanhoRaw);
 
       if (tamanho.isEmpty) {
@@ -1631,15 +1673,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           nome: _nomeCamisaAvulsa(data, avulsaIndex),
           origem: 'Avulsa',
           tamanho: tamanho,
-          modelagem: data['modelagem_camisa'] ??
+          modelagem:
+              data['modelagem_camisa'] ??
               data['modelagemCamisa'] ??
               data['modelagem'] ??
               'NORMAL',
-          tipo: data['tipo_camisa'] ??
+          tipo:
+              data['tipo_camisa'] ??
               data['tipoCamisa'] ??
               data['tipo'] ??
               'MANGA',
-          entregue: data['entregue'] == true ||
+          entregue:
+              data['entregue'] == true ||
               data['camisa_entregue'] == true ||
               data['camisaEntregue'] == true,
         ),
@@ -1691,7 +1736,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 children: [
                   DropdownButtonFormField<String>(
                     value: campoSelecionado,
-                    decoration: InputDecoration(labelText: 'Campo de ordenação'),
+                    decoration: InputDecoration(
+                      labelText: 'Campo de ordenação',
+                    ),
                     items: campos.entries.map((entry) {
                       return DropdownMenuItem(
                         value: entry.key,
@@ -1751,7 +1798,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   // Aplica ordenação a uma lista de participantes
   List<Map<String, dynamic>> _ordenarLista(
-      List<Map<String, dynamic>> lista, String campo, bool crescente) {
+    List<Map<String, dynamic>> lista,
+    String campo,
+    bool crescente,
+  ) {
     final copia = List<Map<String, dynamic>>.from(lista);
     copia.sort((a, b) {
       final valA = a[campo];
@@ -1772,9 +1822,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   // Método comum para PDFs que usam participantes
-  Future<void> _executarComOrdenacao(Function(List<Map<String, dynamic>>) gerarPdf) async {
+  Future<void> _executarComOrdenacao(
+    Function(List<Map<String, dynamic>>) gerarPdf,
+  ) async {
     if (!_podeExportarRelatorio && !_podeGerarCertificados) {
-      _mostrarSemPermissao('Você não tem permissão para gerar PDFs de participantes.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar PDFs de participantes.',
+      );
       return;
     }
 
@@ -1819,15 +1873,30 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow([]);
 
       sheet.appendRow(['📊 RESUMO GERAL']);
-      sheet.appendRow(['Receitas Totais:', 'R\$ ${_totalReceitas.toStringAsFixed(2)}']);
-      sheet.appendRow(['Gastos Totais:', 'R\$ ${_totalGastos.toStringAsFixed(2)}']);
-      sheet.appendRow(['Saldo Líquido:', 'R\$ ${_saldoLiquido.toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Receitas Totais:',
+        'R\$ ${_totalReceitas.toStringAsFixed(2)}',
+      ]);
+      sheet.appendRow([
+        'Gastos Totais:',
+        'R\$ ${_totalGastos.toStringAsFixed(2)}',
+      ]);
+      sheet.appendRow([
+        'Saldo Líquido:',
+        'R\$ ${_saldoLiquido.toStringAsFixed(2)}',
+      ]);
       sheet.appendRow([]);
 
       sheet.appendRow(['💰 RECEITAS POR TIPO']);
-      sheet.appendRow(['Inscrições:', 'R\$ ${_totalInscricoes.toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Inscrições:',
+        'R\$ ${_totalInscricoes.toStringAsFixed(2)}',
+      ]);
       sheet.appendRow(['Camisas:', 'R\$ ${_totalCamisas.toStringAsFixed(2)}']);
-      sheet.appendRow(['Patrocínios:', 'R\$ ${_totalPatrocinios.toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Patrocínios:',
+        'R\$ ${_totalPatrocinios.toStringAsFixed(2)}',
+      ]);
       sheet.appendRow([]);
 
       sheet.appendRow(['👥 PARTICIPAÇÕES']);
@@ -1840,9 +1909,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['👕 CAMISAS DOS ALUNOS']);
       sheet.appendRow(['Total:', '${_camisasParticipacoes['total']}']);
       sheet.appendRow(['Pagas:', '${_camisasParticipacoes['pagas']}']);
-      sheet.appendRow(['Valor:', 'R\$ ${_camisasParticipacoes['valor'].toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Valor:',
+        'R\$ ${_camisasParticipacoes['valor'].toStringAsFixed(2)}',
+      ]);
 
-      final distAlunos = Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {});
+      final distAlunos = Map<String, int>.from(
+        _camisasParticipacoes['por_detalhe'] ?? {},
+      );
       if (distAlunos.isNotEmpty) {
         sheet.appendRow(['Distribuição detalhada:']);
         sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
@@ -1861,9 +1935,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['👕 CAMISAS AVULSAS']);
       sheet.appendRow(['Total:', '${_camisasAvulsas['total']}']);
       sheet.appendRow(['Pagas:', '${_camisasAvulsas['pagas']}']);
-      sheet.appendRow(['Valor:', 'R\$ ${_camisasAvulsas['valor'].toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Valor:',
+        'R\$ ${_camisasAvulsas['valor'].toStringAsFixed(2)}',
+      ]);
 
-      final distAvulsas = Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {});
+      final distAvulsas = Map<String, int>.from(
+        _camisasAvulsas['por_detalhe'] ?? {},
+      );
       if (distAvulsas.isNotEmpty) {
         sheet.appendRow(['Distribuição detalhada:']);
         sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
@@ -1882,9 +1961,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow(['👕 RESUMO TOTAL DE CAMISAS']);
       sheet.appendRow(['Total:', '${_detalhesCamisas['total_camisas']}']);
       sheet.appendRow(['Pagas:', '${_detalhesCamisas['camisas_pagas']}']);
-      sheet.appendRow(['Valor total:', 'R\$ ${_detalhesCamisas['valor_total_camisas'].toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Valor total:',
+        'R\$ ${_detalhesCamisas['valor_total_camisas'].toStringAsFixed(2)}',
+      ]);
 
-      final distTotal = Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {});
+      final distTotal = Map<String, int>.from(
+        _detalhesCamisas['por_detalhe'] ?? {},
+      );
       if (distTotal.isNotEmpty) {
         sheet.appendRow(['Distribuição total detalhada:']);
         sheet.appendRow(['Modelagem', 'Tipo', 'Tamanho', 'Quantidade']);
@@ -1901,15 +1985,33 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow([]);
 
       sheet.appendRow(['🤝 DETALHES DOS PATROCÍNIOS']);
-      sheet.appendRow(['Total de patrocinadores:', '${_detalhesPatrocinios['total_patrocinadores']}']);
-      sheet.appendRow(['Patrocínios pagos:', '${_detalhesPatrocinios['patrocinios_pagos']}']);
-      sheet.appendRow(['Patrocínios pendentes:', '${_detalhesPatrocinios['patrocinios_pendentes']}']);
-      sheet.appendRow(['Valor total patrocínios:', 'R\$ ${_detalhesPatrocinios['valor_total_patrocinios'].toStringAsFixed(2)}']);
+      sheet.appendRow([
+        'Total de patrocinadores:',
+        '${_detalhesPatrocinios['total_patrocinadores']}',
+      ]);
+      sheet.appendRow([
+        'Patrocínios pagos:',
+        '${_detalhesPatrocinios['patrocinios_pagos']}',
+      ]);
+      sheet.appendRow([
+        'Patrocínios pendentes:',
+        '${_detalhesPatrocinios['patrocinios_pendentes']}',
+      ]);
+      sheet.appendRow([
+        'Valor total patrocínios:',
+        'R\$ ${_detalhesPatrocinios['valor_total_patrocinios'].toStringAsFixed(2)}',
+      ]);
       sheet.appendRow([]);
 
       if (_usosPatrocinio.isNotEmpty) {
         sheet.appendRow(['📋 ALUNOS BENEFICIADOS POR PATROCÍNIO']);
-        sheet.appendRow(['Patrocinador', 'Aluno', 'Valor', 'Data', 'Observação']);
+        sheet.appendRow([
+          'Patrocinador',
+          'Aluno',
+          'Valor',
+          'Data',
+          'Observação',
+        ]);
         for (var uso in _usosPatrocinio) {
           sheet.appendRow([
             uso['patrocinador'],
@@ -1925,8 +2027,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       if (_receitasPorForma.isNotEmpty) {
         sheet.appendRow(['💳 RECEITAS POR FORMA DE PAGAMENTO']);
         _receitasPorForma.forEach((forma, valor) {
-          double percentual = _totalReceitas > 0 ? (valor / _totalReceitas * 100) : 0;
-          sheet.appendRow([forma, 'R\$ ${valor.toStringAsFixed(2)}', '${percentual.toStringAsFixed(1)}%']);
+          double percentual = _totalReceitas > 0
+              ? (valor / _totalReceitas * 100)
+              : 0;
+          sheet.appendRow([
+            forma,
+            'R\$ ${valor.toStringAsFixed(2)}',
+            '${percentual.toStringAsFixed(1)}%',
+          ]);
         });
         sheet.appendRow([]);
       }
@@ -1934,21 +2042,27 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       if (_gastosPorCategoria.isNotEmpty) {
         sheet.appendRow(['💸 GASTOS POR CATEGORIA']);
         _gastosPorCategoria.forEach((categoria, valor) {
-          double percentual = _totalGastos > 0 ? (valor / _totalGastos * 100) : 0;
-          sheet.appendRow([categoria, 'R\$ ${valor.toStringAsFixed(2)}', '${percentual.toStringAsFixed(1)}%']);
+          double percentual = _totalGastos > 0
+              ? (valor / _totalGastos * 100)
+              : 0;
+          sheet.appendRow([
+            categoria,
+            'R\$ ${valor.toStringAsFixed(2)}',
+            '${percentual.toStringAsFixed(1)}%',
+          ]);
         });
         sheet.appendRow([]);
       }
 
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/relatorio_financeiro_${widget.eventoId}.xlsx');
+      final file = File(
+        '${dir.path}/relatorio_financeiro_${widget.eventoId}.xlsx',
+      );
       await file.writeAsBytes(excel.encode()!);
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Relatório Financeiro - ${widget.eventoNome}',
-      );
-
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Relatório Financeiro - ${widget.eventoNome}');
     } catch (e) {
       debugPrint('❌ Erro ao exportar Excel: $e');
       if (mounted) {
@@ -1965,7 +2079,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   // ==================== EXPORTAÇÃO DE PDFs ====================
   Future<void> _gerarPdfConfeccao() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar PDF de confecção.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar PDF de confecção.',
+      );
       return;
     }
 
@@ -1982,7 +2098,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   // 🔥 NOVO: PDF Confecção Completo (alunos + avulsas separados)
   Future<void> _gerarPdfConfeccaoCompleto() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar PDF de confecção completo.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar PDF de confecção completo.',
+      );
       return;
     }
 
@@ -1998,10 +2116,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
   }
 
-
   Future<void> _gerarPdfListaEntregaCamisas() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar lista de entrega de camisas.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar lista de entrega de camisas.',
+      );
       return;
     }
 
@@ -2019,7 +2138,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   Future<void> _gerarPdfGeral() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar relatório geral.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar relatório geral.',
+      );
       return;
     }
 
@@ -2050,7 +2171,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   // ✅ PDF Lista de Participantes (básico, já existente) – agora com diálogo de ordenação
   Future<void> _gerarPdfParticipantes() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar lista de participantes.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar lista de participantes.',
+      );
       return;
     }
 
@@ -2065,7 +2188,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   // 🔥 NOVO: PDF Conferência de Nomes (pais verificarem) – com diálogo de ordenação
   Future<void> _gerarPdfConferenciaNomes() async {
     if (!_podeExportarRelatorio) {
-      _mostrarSemPermissao('Você não tem permissão para gerar conferência de nomes.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para gerar conferência de nomes.',
+      );
       return;
     }
 
@@ -2176,7 +2301,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             decoration: BoxDecoration(
               color: context.uai.card,
               borderRadius: BorderRadius.circular(26),
-              border: material.Border.all(color: context.uai.warning.withOpacity(0.16)),
+              border: material.Border.all(
+                color: context.uai.warning.withOpacity(0.16),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: _shadowColor(0.035),
@@ -2188,7 +2315,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_outline_rounded, size: 64, color: _ensureVisible(context.uai.warning, context.uai.card)),
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 64,
+                  color: _ensureVisible(context.uai.warning, context.uai.card),
+                ),
                 SizedBox(height: 12),
                 Text(
                   'Relatório bloqueado',
@@ -2214,8 +2345,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                   icon: Icon(Icons.refresh_rounded),
                   label: Text('Recarregar permissões'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _ensureVisible(context.uai.success, context.uai.card),
-                    side: BorderSide(color: context.uai.success.withOpacity(0.25)),
+                    foregroundColor: _ensureVisible(
+                      context.uai.success,
+                      context.uai.card,
+                    ),
+                    side: BorderSide(
+                      color: context.uai.success.withOpacity(0.25),
+                    ),
                   ),
                 ),
               ],
@@ -2227,7 +2363,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Widget _buildLoadingComLogs() {
-    final ultimosLogs = _loadingLogs.reversed.take(12).toList().reversed.toList();
+    final ultimosLogs = _loadingLogs.reversed
+        .take(12)
+        .toList()
+        .reversed
+        .toList();
 
     return Container(
       color: context.uai.background,
@@ -2241,7 +2381,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               decoration: BoxDecoration(
                 color: context.uai.card,
                 borderRadius: BorderRadius.circular(26),
-                border: material.Border.all(color: context.uai.success.withOpacity(0.16)),
+                border: material.Border.all(
+                  color: context.uai.success.withOpacity(0.16),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: _shadowColor(0.04),
@@ -2265,7 +2407,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         ),
                         child: Center(
                           child: CircularProgressIndicator(
-                            color: _ensureVisible(context.uai.success, context.uai.card),
+                            color: _ensureVisible(
+                              context.uai.success,
+                              context.uai.card,
+                            ),
                             strokeWidth: 3,
                           ),
                         ),
@@ -2312,12 +2457,19 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.terminal_rounded, color: context.uai.textPrimary, size: 18),
+                            Icon(
+                              Icons.terminal_rounded,
+                              color: context.uai.textPrimary,
+                              size: 18,
+                            ),
                             SizedBox(width: 7),
                             Text(
                               'Logs do carregamento',
                               style: TextStyle(
-                                color: _ensureVisible(context.uai.success, context.uai.cardAlt),
+                                color: _ensureVisible(
+                                  context.uai.success,
+                                  context.uai.cardAlt,
+                                ),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 12,
                               ),
@@ -2328,7 +2480,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         if (ultimosLogs.isEmpty)
                           Text(
                             '> iniciando...',
-                            style: TextStyle(color: context.uai.textSecondary, fontSize: 11),
+                            style: TextStyle(
+                              color: context.uai.textSecondary,
+                              fontSize: 11,
+                            ),
                           )
                         else
                           ...ultimosLogs.map((log) {
@@ -2385,7 +2540,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             decoration: BoxDecoration(
               color: _onPrimary().withOpacity(0.14),
               borderRadius: BorderRadius.circular(22),
-              border: material.Border.all(color: _onPrimary().withOpacity(0.16)),
+              border: material.Border.all(
+                color: _onPrimary().withOpacity(0.16),
+              ),
             ),
             child: Icon(
               Icons.assessment_rounded,
@@ -2395,8 +2552,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 widget.eventoNome,
@@ -2426,10 +2584,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildHeroChip(Icons.groups_rounded, '$_totalParticipantes participantes'),
-                  _buildHeroChip(Icons.trending_up_rounded, _formatarMoeda(_totalReceitas)),
                   _buildHeroChip(
-                    _saldoLiquido >= 0 ? Icons.check_circle_rounded : Icons.warning_rounded,
+                    Icons.groups_rounded,
+                    '$_totalParticipantes participantes',
+                  ),
+                  _buildHeroChip(
+                    Icons.trending_up_rounded,
+                    _formatarMoeda(_totalReceitas),
+                  ),
+                  _buildHeroChip(
+                    _saldoLiquido >= 0
+                        ? Icons.check_circle_rounded
+                        : Icons.warning_rounded,
                     'Saldo ${_formatarMoeda(_saldoLiquido)}',
                   ),
                 ],
@@ -2438,13 +2604,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -2494,12 +2654,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   EdgeInsets _relatorioPadding(UaiResponsive r) {
     if (r.isPhone) return r.listInsets;
-    return EdgeInsets.fromLTRB(
-      r.pagePadding,
-      r.pagePadding,
-      r.pagePadding,
-      34,
-    );
+    return EdgeInsets.fromLTRB(r.pagePadding, r.pagePadding, r.pagePadding, 34);
   }
 
   @override
@@ -2511,8 +2666,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           'Relatório Financeiro',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _onPrimary(),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ?? _onPrimary(),
         elevation: 0,
         actions: [
           // 🔥 MENU DE EXPORTAÇÃO (Excel + PDFs)
@@ -2524,7 +2682,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 if (value == 'excel') _exportarExcel();
                 if (value == 'confeccao') _gerarPdfConfeccao();
                 if (value == 'confeccao_completo') _gerarPdfConfeccaoCompleto();
-                if (value == 'lista_entrega_camisas') _gerarPdfListaEntregaCamisas();
+                if (value == 'lista_entrega_camisas')
+                  _gerarPdfListaEntregaCamisas();
                 if (value == 'geral') _gerarPdfGeral();
                 if (value == 'participantes') _gerarPdfParticipantes();
                 // 🔥 NOVOS PDFs
@@ -2534,20 +2693,38 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'excel', child: Text('📊 Exportar Excel')),
                 PopupMenuDivider(),
-                PopupMenuItem(value: 'confeccao', child: Text('👕 PDF Confecção Camisas (Total)')),
-                PopupMenuItem(value: 'confeccao_completo', child: Text('👕 PDF Confecção Completo (Alunos + Avulsos)')),
-                PopupMenuItem(value: 'lista_entrega_camisas', child: Text('✅ PDF Lista de Entrega de Camisas')),
-                PopupMenuItem(value: 'geral', child: Text('📄 PDF Relatório Geral')),
-                PopupMenuItem(value: 'participantes', child: Text('👥 PDF Lista Participantes')),
+                PopupMenuItem(
+                  value: 'confeccao',
+                  child: Text('👕 PDF Confecção Camisas (Total)'),
+                ),
+                PopupMenuItem(
+                  value: 'confeccao_completo',
+                  child: Text('👕 PDF Confecção Completo (Alunos + Avulsos)'),
+                ),
+                PopupMenuItem(
+                  value: 'lista_entrega_camisas',
+                  child: Text('✅ PDF Lista de Entrega de Camisas'),
+                ),
+                PopupMenuItem(
+                  value: 'geral',
+                  child: Text('📄 PDF Relatório Geral'),
+                ),
+                PopupMenuItem(
+                  value: 'participantes',
+                  child: Text('👥 PDF Lista Participantes'),
+                ),
                 PopupMenuDivider(),
-                PopupMenuItem(value: 'conferencia_nomes', child: Text('📋 PDF Conferência de Nomes (Pais)')),
-                PopupMenuItem(value: 'lista_completa', child: Text('📋 PDF Lista Completa (Corda/Graduação)')),
+                PopupMenuItem(
+                  value: 'conferencia_nomes',
+                  child: Text('📋 PDF Conferência de Nomes (Pais)'),
+                ),
+                PopupMenuItem(
+                  value: 'lista_completa',
+                  child: Text('📋 PDF Lista Completa (Corda/Graduação)'),
+                ),
               ],
             ),
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _recarregarTudo,
-          ),
+          IconButton(icon: Icon(Icons.refresh), onPressed: _recarregarTudo),
         ],
       ),
       body: _carregandoPermissoes
@@ -2557,1073 +2734,1254 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           : _isLoading
           ? _buildLoadingComLogs()
           : RefreshIndicator(
-        onRefresh: _carregarDados,
-        color: _ensureVisible(context.uai.success, context.uai.card),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final r = UaiResponsive.fromConstraints(context, constraints);
+              onRefresh: _carregarDados,
+              color: _ensureVisible(context.uai.success, context.uai.card),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final r = UaiResponsive.fromConstraints(context, constraints);
 
-            return SingleChildScrollView(
-              padding: _relatorioPadding(r),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: _relatorioMaxWidth(r),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeroRelatorioTela(),
-                      SizedBox(height: 16),
-                      // ===== CARDS DE RESUMO =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
+                  return SingleChildScrollView(
+                    padding: _relatorioPadding(r),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: _relatorioMaxWidth(r),
                         ),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildResumoCard(
-                                    'Receitas',
-                                    _totalReceitas,
-                                    Icons.trending_up,
-                                    context.uai.success,
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Expanded(
-                                  child: _buildResumoCard(
-                                    'Gastos',
-                                    _totalGastos,
-                                    Icons.trending_down,
-                                    context.uai.error,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 12),
+                            _buildHeroRelatorioTela(),
+                            SizedBox(height: 16),
+                            // ===== CARDS DE RESUMO =====
                             Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    _saldoLiquido >= 0
-                                        ? context.uai.success.withOpacity(0.16)
-                                        : context.uai.error.withOpacity(0.16),
-                                    _saldoLiquido >= 0
-                                        ? context.uai.success.withOpacity(0.08)
-                                        : context.uai.error.withOpacity(0.08),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                border: material.Border.all(
-                                  color: _saldoLiquido >= 0
-                                      ? context.uai.success.withOpacity(0.25)
-                                      : context.uai.error.withOpacity(0.28),
-                                ),
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              child: Column(
                                 children: [
                                   Row(
                                     children: [
-                                      Icon(
-                                        _saldoLiquido >= 0
-                                            ? Icons.check_circle
-                                            : Icons.warning,
-                                        color: _saldoLiquido >= 0
-                                            ? context.uai.success
-                                            : context.uai.error,
+                                      Expanded(
+                                        child: _buildResumoCard(
+                                          'Receitas',
+                                          _totalReceitas,
+                                          Icons.trending_up,
+                                          context.uai.success,
+                                        ),
                                       ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'SALDO LÍQUIDO:',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: _buildResumoCard(
+                                          'Gastos',
+                                          _totalGastos,
+                                          Icons.trending_down,
+                                          context.uai.error,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  Text(
-                                    _formatarMoeda(_saldoLiquido),
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: _saldoLiquido >= 0
-                                          ? _ensureVisible(context.uai.success, context.uai.card)
-                                          : _ensureVisible(context.uai.error, context.uai.card),
+                                  SizedBox(height: 12),
+                                  Container(
+                                    padding: EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          _saldoLiquido >= 0
+                                              ? context.uai.success.withOpacity(
+                                                  0.16,
+                                                )
+                                              : context.uai.error.withOpacity(
+                                                  0.16,
+                                                ),
+                                          _saldoLiquido >= 0
+                                              ? context.uai.success.withOpacity(
+                                                  0.08,
+                                                )
+                                              : context.uai.error.withOpacity(
+                                                  0.08,
+                                                ),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: material.Border.all(
+                                        color: _saldoLiquido >= 0
+                                            ? context.uai.success.withOpacity(
+                                                0.25,
+                                              )
+                                            : context.uai.error.withOpacity(
+                                                0.28,
+                                              ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              _saldoLiquido >= 0
+                                                  ? Icons.check_circle
+                                                  : Icons.warning,
+                                              color: _saldoLiquido >= 0
+                                                  ? context.uai.success
+                                                  : context.uai.error,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'SALDO LÍQUIDO:',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          _formatarMoeda(_saldoLiquido),
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: _saldoLiquido >= 0
+                                                ? _ensureVisible(
+                                                    context.uai.success,
+                                                    context.uai.card,
+                                                  )
+                                                : _ensureVisible(
+                                                    context.uai.error,
+                                                    context.uai.card,
+                                                  ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
 
-                      SizedBox(height: 16),
-
-                      // ===== RECEITAS POR TIPO =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '💰 RECEITAS POR TIPO',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.success,
-                              ),
-                            ),
                             SizedBox(height: 16),
-                            _buildReceitaTipoRow(
-                              'Inscrições',
-                              _totalInscricoes,
-                              Icons.receipt,
-                              context.uai.info,
-                            ),
-                            SizedBox(height: 8),
-                            _buildReceitaTipoRow(
-                              'Camisas',
-                              _totalCamisas,
-                              Icons.shopping_bag,
-                              context.uai.warning,
-                            ),
-                            SizedBox(height: 8),
-                            _buildReceitaTipoRow(
-                              'Patrocínios',
-                              _totalPatrocinios,
-                              Icons.volunteer_activism,
-                              context.uai.associacao,
-                            ),
-                          ],
-                        ),
-                      ),
 
-                      SizedBox(height: 16),
-
-                      // ===== GRÁFICO DE PIZZA =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '🥧 RECEITAS VS GASTOS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.success,
+                            // ===== RECEITAS POR TIPO =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
                               ),
-                            ),
-                            SizedBox(height: 16),
-                            SizedBox(
-                              height: context.uaiResponsive.isPhone ? 220 : 260,
-                              child: PieChart(
-                                PieChartData(
-                                  sections: [
-                                    PieChartSectionData(
-                                      value: _totalReceitas,
-                                      title: 'Receitas\n${_formatarMoeda(_totalReceitas)}',
-                                      color: context.uai.success,
-                                      radius: context.uaiResponsive.isPhone ? 80 : 92,
-                                      titleStyle: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: _onSuccess(),
-                                      ),
-                                    ),
-                                    PieChartSectionData(
-                                      value: _totalGastos,
-                                      title: 'Gastos\n${_formatarMoeda(_totalGastos)}',
-                                      color: context.uai.error,
-                                      radius: context.uaiResponsive.isPhone ? 80 : 92,
-                                      titleStyle: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: _onError(),
-                                      ),
-                                    ),
-                                  ],
-                                  sectionsSpace: 2,
-                                  centerSpaceRadius: context.uaiResponsive.isPhone ? 40 : 46,
-                                  startDegreeOffset: 180,
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildLegendaItem('Receitas', context.uai.success),
-                                SizedBox(width: 24),
-                                _buildLegendaItem('Gastos', context.uai.error),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      // ===== PARTICIPAÇÕES =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '👥 PARTICIPAÇÕES',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: context.uai.info,
-                                  ),
-                                ),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: context.uai.info.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    'Total: $_totalParticipantes',
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '💰 RECEITAS POR TIPO',
                                     style: TextStyle(
+                                      fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: _ensureVisible(context.uai.info, context.uai.card),
+                                      color: context.uai.success,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Quitados',
-                                    _quitados,
-                                    Icons.check_circle,
-                                    context.uai.success,
+                                  SizedBox(height: 16),
+                                  _buildReceitaTipoRow(
+                                    'Inscrições',
+                                    _totalInscricoes,
+                                    Icons.receipt,
+                                    context.uai.info,
                                   ),
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Patrocínio',
-                                    _cobertosPorPatrocinio,
+                                  SizedBox(height: 8),
+                                  _buildReceitaTipoRow(
+                                    'Camisas',
+                                    _totalCamisas,
+                                    Icons.shopping_bag,
+                                    context.uai.warning,
+                                  ),
+                                  SizedBox(height: 8),
+                                  _buildReceitaTipoRow(
+                                    'Patrocínios',
+                                    _totalPatrocinios,
                                     Icons.volunteer_activism,
                                     context.uai.associacao,
                                   ),
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Inadimplentes',
-                                    _inadimplentes,
-                                    Icons.warning,
-                                    context.uai.warning,
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+
                             SizedBox(height: 16),
 
-                            if (_totalParticipantes > 0)
-                              Column(
+                            // ===== GRÁFICO DE PIZZA =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        flex: _quitados > 0 ? _quitados : 1,
-                                        child: Container(
-                                          height: 8,
-                                          decoration: BoxDecoration(
+                                  Text(
+                                    '🥧 RECEITAS VS GASTOS',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: context.uai.success,
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+                                  SizedBox(
+                                    height: context.uaiResponsive.isPhone
+                                        ? 220
+                                        : 260,
+                                    child: PieChart(
+                                      PieChartData(
+                                        sections: [
+                                          PieChartSectionData(
+                                            value: _totalReceitas,
+                                            title:
+                                                'Receitas\n${_formatarMoeda(_totalReceitas)}',
                                             color: context.uai.success,
-                                            borderRadius: BorderRadius.horizontal(
-                                              left: Radius.circular(4),
+                                            radius:
+                                                context.uaiResponsive.isPhone
+                                                ? 80
+                                                : 92,
+                                            titleStyle: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: _onSuccess(),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                      if (_cobertosPorPatrocinio > 0)
-                                        Expanded(
-                                          flex: _cobertosPorPatrocinio,
-                                          child: Container(
-                                            height: 8,
-                                            color: context.uai.associacao,
-                                          ),
-                                        ),
-                                      Expanded(
-                                        flex: _inadimplentes > 0 ? _inadimplentes : 1,
-                                        child: Container(
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: context.uai.warning,
-                                            borderRadius: BorderRadius.horizontal(
-                                              right: Radius.circular(4),
+                                          PieChartSectionData(
+                                            value: _totalGastos,
+                                            title:
+                                                'Gastos\n${_formatarMoeda(_totalGastos)}',
+                                            color: context.uai.error,
+                                            radius:
+                                                context.uaiResponsive.isPhone
+                                                ? 80
+                                                : 92,
+                                            titleStyle: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: _onError(),
                                             ),
                                           ),
-                                        ),
+                                        ],
+                                        sectionsSpace: 2,
+                                        centerSpaceRadius:
+                                            context.uaiResponsive.isPhone
+                                            ? 40
+                                            : 46,
+                                        startDegreeOffset: 180,
                                       ),
-                                    ],
+                                    ),
                                   ),
                                   SizedBox(height: 8),
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Text(
-                                        '${_quitados} quitados',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: _ensureVisible(context.uai.success, context.uai.card),
-                                        ),
+                                      _buildLegendaItem(
+                                        'Receitas',
+                                        context.uai.success,
                                       ),
-                                      Text(
-                                        '${_cobertosPorPatrocinio} patrocínio',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                        ),
-                                      ),
-                                      Text(
-                                        '${_inadimplentes} inadimplentes',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: _ensureVisible(context.uai.warning, context.uai.card),
-                                        ),
+                                      SizedBox(width: 24),
+                                      _buildLegendaItem(
+                                        'Gastos',
+                                        context.uai.error,
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                          ],
-                        ),
-                      ),
+                            ),
 
-                      SizedBox(height: 16),
+                            SizedBox(height: 16),
 
-                      // ===== RECEITAS POR FORMA DE PAGAMENTO =====
-                      if (_receitasPorForma.isNotEmpty)
-                        Container(
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: context.uai.card,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: context.uai.border,
-                                blurRadius: 8,
+                            // ===== PARTICIPAÇÕES =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '💳 RECEITAS POR FORMA',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: context.uai.success,
-                                ),
-                              ),
-                              SizedBox(height: 16),
-                              ..._receitasPorForma.entries.map((entry) {
-                                final percentual = (_totalReceitas > 0)
-                                    ? (entry.value / _totalReceitas * 100)
-                                    : 0;
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: 12),
-                                  child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
+                                      Text(
+                                        '👥 PARTICIPAÇÕES',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: context.uai.info,
+                                        ),
+                                      ),
                                       Container(
-                                        width: 8,
-                                        height: 8,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: _getCorFormaPagamento(entry.key),
+                                          color: context.uai.info.withOpacity(
+                                            0.08,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Total: $_totalParticipantes',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(
+                                              context.uai.info,
+                                              context.uai.card,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildStatusCard(
+                                          'Quitados',
+                                          _quitados,
+                                          Icons.check_circle,
+                                          context.uai.success,
                                         ),
                                       ),
                                       SizedBox(width: 8),
                                       Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          entry.key,
-                                          style: TextStyle(fontWeight: FontWeight.w500),
+                                        child: _buildStatusCard(
+                                          'Patrocínio',
+                                          _cobertosPorPatrocinio,
+                                          Icons.volunteer_activism,
+                                          context.uai.associacao,
                                         ),
                                       ),
+                                      SizedBox(width: 8),
                                       Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          _formatarMoeda(entry.value),
-                                          textAlign: TextAlign.right,
-                                          style: TextStyle(fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          '${percentual.toStringAsFixed(1)}%',
-                                          textAlign: TextAlign.right,
-                                          style: TextStyle(
-                                            color: context.uai.textSecondary,
-                                          ),
+                                        child: _buildStatusCard(
+                                          'Inadimplentes',
+                                          _inadimplentes,
+                                          Icons.warning,
+                                          context.uai.warning,
                                         ),
                                       ),
                                     ],
                                   ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
+                                  SizedBox(height: 16),
 
-                      SizedBox(height: 16),
-
-                      // ===== DETALHES DAS CAMISAS =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '👕 CAMISAS DOS ALUNOS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.info,
-                              ),
-                            ),
-                            SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildDetalheItem(
-                                  'Total',
-                                  '${_camisasParticipacoes['total']}',
-                                  Icons.shopping_bag,
-                                  context.uai.info,
-                                ),
-                                _buildDetalheItem(
-                                  'Pagas',
-                                  '${_camisasParticipacoes['pagas']}',
-                                  Icons.paid,
-                                  context.uai.success,
-                                ),
-                                _buildDetalheItem(
-                                  'Valor',
-                                  _formatarMoeda(_camisasParticipacoes['valor']),
-                                  Icons.attach_money,
-                                  context.uai.warning,
-                                ),
-                              ],
-                            ),
-                            if (Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).isNotEmpty) ...[
-                              SizedBox(height: 12),
-                              Text(
-                                'Distribuição:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: Map<String, int>.from(_camisasParticipacoes['por_detalhe'] ?? {}).entries.map((entry) {
-                                  return Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: context.uai.info.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
+                                  if (_totalParticipantes > 0)
+                                    Column(
                                       children: [
-                                        Text(
-                                          _labelGradeCamisa(entry.key),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: _ensureVisible(context.uai.info, context.uai.card),
-                                          ),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              flex: _quitados > 0
+                                                  ? _quitados
+                                                  : 1,
+                                              child: Container(
+                                                height: 8,
+                                                decoration: BoxDecoration(
+                                                  color: context.uai.success,
+                                                  borderRadius:
+                                                      BorderRadius.horizontal(
+                                                        left: Radius.circular(
+                                                          4,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                            if (_cobertosPorPatrocinio > 0)
+                                              Expanded(
+                                                flex: _cobertosPorPatrocinio,
+                                                child: Container(
+                                                  height: 8,
+                                                  color: context.uai.associacao,
+                                                ),
+                                              ),
+                                            Expanded(
+                                              flex: _inadimplentes > 0
+                                                  ? _inadimplentes
+                                                  : 1,
+                                              child: Container(
+                                                height: 8,
+                                                decoration: BoxDecoration(
+                                                  color: context.uai.warning,
+                                                  borderRadius:
+                                                      BorderRadius.horizontal(
+                                                        right: Radius.circular(
+                                                          4,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          '${entry.value}',
-                                          style: TextStyle(
-                                            color: _ensureVisible(context.uai.info, context.uai.card),
-                                          ),
+                                        SizedBox(height: 8),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              '${_quitados} quitados',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: _ensureVisible(
+                                                  context.uai.success,
+                                                  context.uai.card,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${_cobertosPorPatrocinio} patrocínio',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: _ensureVisible(
+                                                  context.uai.associacao,
+                                                  context.uai.card,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${_inadimplentes} inadimplentes',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: _ensureVisible(
+                                                  context.uai.warning,
+                                                  context.uai.card,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '👕 CAMISAS AVULSAS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.warning,
-                              ),
-                            ),
-                            SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildDetalheItem(
-                                  'Total',
-                                  '${_camisasAvulsas['total']}',
-                                  Icons.shopping_bag,
-                                  context.uai.warning,
-                                ),
-                                _buildDetalheItem(
-                                  'Pagas',
-                                  '${_camisasAvulsas['pagas']}',
-                                  Icons.paid,
-                                  context.uai.success,
-                                ),
-                                _buildDetalheItem(
-                                  'Valor',
-                                  _formatarMoeda(_camisasAvulsas['valor']),
-                                  Icons.attach_money,
-                                  context.uai.warning,
-                                ),
-                              ],
-                            ),
-                            if (Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).isNotEmpty) ...[
-                              SizedBox(height: 12),
-                              Text(
-                                'Distribuição:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: Map<String, int>.from(_camisasAvulsas['por_detalhe'] ?? {}).entries.map((entry) {
-                                  return Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: context.uai.warning.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _labelGradeCamisa(entry.key),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: _ensureVisible(context.uai.warning, context.uai.card),
-                                          ),
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          '${entry.value}',
-                                          style: TextStyle(
-                                            color: _ensureVisible(context.uai.warning, context.uai.card),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      // ===== RESUMO TOTAL DE CAMISAS =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '👕 RESUMO TOTAL DE CAMISAS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.associacao,
-                              ),
-                            ),
-                            SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildDetalheItem(
-                                  'Total',
-                                  '${_detalhesCamisas['total_camisas']}',
-                                  Icons.shopping_bag,
-                                  context.uai.associacao,
-                                ),
-                                _buildDetalheItem(
-                                  'Pagas',
-                                  '${_detalhesCamisas['camisas_pagas']}',
-                                  Icons.paid,
-                                  context.uai.success,
-                                ),
-                                _buildDetalheItem(
-                                  'Valor',
-                                  _formatarMoeda(_detalhesCamisas['valor_total_camisas']),
-                                  Icons.attach_money,
-                                  context.uai.warning,
-                                ),
-                              ],
-                            ),
-                            if (Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).isNotEmpty) ...[
-                              SizedBox(height: 12),
-                              Text(
-                                'Distribuição total:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: Map<String, int>.from(_detalhesCamisas['por_detalhe'] ?? {}).entries.map((entry) {
-                                  return Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: context.uai.associacao.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _labelGradeCamisa(entry.key),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                          ),
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          '${entry.value}',
-                                          style: TextStyle(
-                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      // ===== DETALHES DOS PATROCÍNIOS =====
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: context.uai.border,
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '🤝 PATROCÍNIOS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: context.uai.associacao,
-                              ),
-                            ),
-                            SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildDetalheItem(
-                                  'Total',
-                                  '${_detalhesPatrocinios['total_patrocinadores']}',
-                                  Icons.people,
-                                  context.uai.associacao,
-                                ),
-                                _buildDetalheItem(
-                                  'Pagos',
-                                  '${_detalhesPatrocinios['patrocinios_pagos']}',
-                                  Icons.check_circle,
-                                  context.uai.success,
-                                ),
-                                _buildDetalheItem(
-                                  'Pendentes',
-                                  '${_detalhesPatrocinios['patrocinios_pendentes']}',
-                                  Icons.pending,
-                                  context.uai.warning,
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 12),
-                            Container(
-                              padding: EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: context.uai.associacao.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Total recebido:',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatarMoeda(_detalhesPatrocinios['valor_total_patrocinios']),
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
 
-                            if (_usosPatrocinio.isNotEmpty) ...[
-                              SizedBox(height: 16),
-                              Divider(),
-                              SizedBox(height: 8),
-                              Text(
-                                '📋 Alunos beneficiados:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 12),
-                              ..._usosPatrocinio.map((uso) => Container(
-                                margin: EdgeInsets.only(bottom: 8),
-                                padding: EdgeInsets.all(12),
+                            SizedBox(height: 16),
+
+                            // ===== RECEITAS POR FORMA DE PAGAMENTO =====
+                            if (_receitasPorForma.isNotEmpty)
+                              Container(
+                                padding: EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: context.uai.background,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: material.Border.all(color: context.uai.associacao.withOpacity(0.25)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: context.uai.associacao.withOpacity(0.16),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        Icons.volunteer_activism,
-                                        color: context.uai.associacao,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            uso['aluno_nome'],
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            'Patrocinador: ${uso['patrocinador']}',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: context.uai.textSecondary,
-                                            ),
-                                          ),
-                                          if (uso['observacao'].isNotEmpty)
-                                            Text(
-                                              uso['observacao'],
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: context.uai.textMuted,
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          _formatarMoeda(uso['valor']),
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: _ensureVisible(context.uai.associacao, context.uai.card),
-                                          ),
-                                        ),
-                                        Text(
-                                          _formatter.format(uso['data']),
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: context.uai.textSecondary,
-                                          ),
-                                        ),
-                                      ],
+                                  color: context.uai.card,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: context.uai.border,
+                                      blurRadius: 8,
                                     ),
                                   ],
                                 ),
-                              )),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      // ===== GASTOS POR CATEGORIA =====
-                      if (_gastosPorCategoria.isNotEmpty)
-                        Container(
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: context.uai.card,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: context.uai.border,
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '💸 GASTOS POR CATEGORIA',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: context.uai.error,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '💳 RECEITAS POR FORMA',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: context.uai.success,
+                                      ),
+                                    ),
+                                    SizedBox(height: 16),
+                                    ..._receitasPorForma.entries.map((entry) {
+                                      final percentual = (_totalReceitas > 0)
+                                          ? (entry.value / _totalReceitas * 100)
+                                          : 0;
+                                      return Padding(
+                                        padding: EdgeInsets.only(bottom: 12),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: _getCorFormaPagamento(
+                                                  entry.key,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Expanded(
+                                              flex: 2,
+                                              child: Text(
+                                                entry.key,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 1,
+                                              child: Text(
+                                                _formatarMoeda(entry.value),
+                                                textAlign: TextAlign.right,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 1,
+                                              child: Text(
+                                                '${percentual.toStringAsFixed(1)}%',
+                                                textAlign: TextAlign.right,
+                                                style: TextStyle(
+                                                  color:
+                                                      context.uai.textSecondary,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
                                 ),
                               ),
-                              SizedBox(height: 16),
-                              ..._gastosPorCategoria.entries.map((entry) {
-                                final percentual = (_totalGastos > 0)
-                                    ? (entry.value / _totalGastos * 100)
-                                    : 0;
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: 12),
-                                  child: Row(
+
+                            SizedBox(height: 16),
+
+                            // ===== DETALHES DAS CAMISAS =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '👕 CAMISAS DOS ALUNOS',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: context.uai.info,
+                                    ),
+                                  ),
+                                  SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
                                     children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: context.uai.error,
-                                        ),
+                                      _buildDetalheItem(
+                                        'Total',
+                                        '${_camisasParticipacoes['total']}',
+                                        Icons.shopping_bag,
+                                        context.uai.info,
                                       ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          entry.key,
-                                          style: TextStyle(fontWeight: FontWeight.w500),
-                                        ),
+                                      _buildDetalheItem(
+                                        'Pagas',
+                                        '${_camisasParticipacoes['pagas']}',
+                                        Icons.paid,
+                                        context.uai.success,
                                       ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          _formatarMoeda(entry.value),
-                                          textAlign: TextAlign.right,
-                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                      _buildDetalheItem(
+                                        'Valor',
+                                        _formatarMoeda(
+                                          _camisasParticipacoes['valor'],
                                         ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          '${percentual.toStringAsFixed(1)}%',
-                                          textAlign: TextAlign.right,
-                                          style: TextStyle(
-                                            color: context.uai.textSecondary,
-                                          ),
-                                        ),
+                                        Icons.attach_money,
+                                        context.uai.warning,
                                       ),
                                     ],
                                   ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
+                                  if (Map<String, int>.from(
+                                    _camisasParticipacoes['por_detalhe'] ?? {},
+                                  ).isNotEmpty) ...[
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Distribuição:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children:
+                                          Map<String, int>.from(
+                                            _camisasParticipacoes['por_detalhe'] ??
+                                                {},
+                                          ).entries.map((entry) {
+                                            return Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: context.uai.info
+                                                    .withOpacity(0.08),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _labelGradeCamisa(
+                                                      entry.key,
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: _ensureVisible(
+                                                        context.uai.info,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    '${entry.value}',
+                                                    style: TextStyle(
+                                                      color: _ensureVisible(
+                                                        context.uai.info,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
 
-                      SizedBox(height: 16),
+                            SizedBox(height: 16),
 
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '👕 CAMISAS AVULSAS',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: context.uai.warning,
+                                    ),
+                                  ),
+                                  SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildDetalheItem(
+                                        'Total',
+                                        '${_camisasAvulsas['total']}',
+                                        Icons.shopping_bag,
+                                        context.uai.warning,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Pagas',
+                                        '${_camisasAvulsas['pagas']}',
+                                        Icons.paid,
+                                        context.uai.success,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Valor',
+                                        _formatarMoeda(
+                                          _camisasAvulsas['valor'],
+                                        ),
+                                        Icons.attach_money,
+                                        context.uai.warning,
+                                      ),
+                                    ],
+                                  ),
+                                  if (Map<String, int>.from(
+                                    _camisasAvulsas['por_detalhe'] ?? {},
+                                  ).isNotEmpty) ...[
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Distribuição:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children:
+                                          Map<String, int>.from(
+                                            _camisasAvulsas['por_detalhe'] ??
+                                                {},
+                                          ).entries.map((entry) {
+                                            return Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: context.uai.warning
+                                                    .withOpacity(0.08),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _labelGradeCamisa(
+                                                      entry.key,
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: _ensureVisible(
+                                                        context.uai.warning,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    '${entry.value}',
+                                                    style: TextStyle(
+                                                      color: _ensureVisible(
+                                                        context.uai.warning,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
 
-                      // ===== CONSISTÊNCIA DOS DADOS =====
-                      if (_participacoesDuplicadasIgnoradas > 0 ||
-                          _participacoesRemovidasIgnoradas > 0 ||
-                          _usosPatrocinioOrfaosIgnorados > 0 ||
-                          _usosPatrocinioDuplicadosIgnorados > 0) ...[
-                        _buildConsistenciaDadosCard(),
-                        SizedBox(height: 16),
-                      ],
+                            SizedBox(height: 16),
 
-                      // ===== AVISO DE ATUALIZAÇÃO =====
-                      Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: context.uai.info.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: material.Border.all(color: context.uai.info.withOpacity(0.25)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info, color: _ensureVisible(context.uai.info, context.uai.card)),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Os dados são atualizados em tempo real. Puxe para baixo para recarregar.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _ensureVisible(context.uai.info, context.uai.card),
+                            // ===== RESUMO TOTAL DE CAMISAS =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '👕 RESUMO TOTAL DE CAMISAS',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: context.uai.associacao,
+                                    ),
+                                  ),
+                                  SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildDetalheItem(
+                                        'Total',
+                                        '${_detalhesCamisas['total_camisas']}',
+                                        Icons.shopping_bag,
+                                        context.uai.associacao,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Pagas',
+                                        '${_detalhesCamisas['camisas_pagas']}',
+                                        Icons.paid,
+                                        context.uai.success,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Valor',
+                                        _formatarMoeda(
+                                          _detalhesCamisas['valor_total_camisas'],
+                                        ),
+                                        Icons.attach_money,
+                                        context.uai.warning,
+                                      ),
+                                    ],
+                                  ),
+                                  if (Map<String, int>.from(
+                                    _detalhesCamisas['por_detalhe'] ?? {},
+                                  ).isNotEmpty) ...[
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Distribuição total:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children:
+                                          Map<String, int>.from(
+                                            _detalhesCamisas['por_detalhe'] ??
+                                                {},
+                                          ).entries.map((entry) {
+                                            return Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: context.uai.associacao
+                                                    .withOpacity(0.08),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _labelGradeCamisa(
+                                                      entry.key,
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: _ensureVisible(
+                                                        context.uai.associacao,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    '${entry.value}',
+                                                    style: TextStyle(
+                                                      color: _ensureVisible(
+                                                        context.uai.associacao,
+                                                        context.uai.card,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+
+                            SizedBox(height: 16),
+
+                            // ===== DETALHES DOS PATROCÍNIOS =====
+                            Container(
+                              padding: EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.uai.card,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.uai.border,
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '🤝 PATROCÍNIOS',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: context.uai.associacao,
+                                    ),
+                                  ),
+                                  SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildDetalheItem(
+                                        'Total',
+                                        '${_detalhesPatrocinios['total_patrocinadores']}',
+                                        Icons.people,
+                                        context.uai.associacao,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Pagos',
+                                        '${_detalhesPatrocinios['patrocinios_pagos']}',
+                                        Icons.check_circle,
+                                        context.uai.success,
+                                      ),
+                                      _buildDetalheItem(
+                                        'Pendentes',
+                                        '${_detalhesPatrocinios['patrocinios_pendentes']}',
+                                        Icons.pending,
+                                        context.uai.warning,
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 12),
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: context.uai.associacao.withOpacity(
+                                        0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Total recebido:',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          _formatarMoeda(
+                                            _detalhesPatrocinios['valor_total_patrocinios'],
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: _ensureVisible(
+                                              context.uai.associacao,
+                                              context.uai.card,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  if (_usosPatrocinio.isNotEmpty) ...[
+                                    SizedBox(height: 16),
+                                    Divider(),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      '📋 Alunos beneficiados:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    SizedBox(height: 12),
+                                    ..._usosPatrocinio.map(
+                                      (uso) => Container(
+                                        margin: EdgeInsets.only(bottom: 8),
+                                        padding: EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: context.uai.background,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: material.Border.all(
+                                            color: context.uai.associacao
+                                                .withOpacity(0.25),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: context.uai.associacao
+                                                    .withOpacity(0.16),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.volunteer_activism,
+                                                color: context.uai.associacao,
+                                                size: 20,
+                                              ),
+                                            ),
+                                            SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    uso['aluno_nome'],
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 4),
+                                                  Text(
+                                                    'Patrocinador: ${uso['patrocinador']}',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: context
+                                                          .uai
+                                                          .textSecondary,
+                                                    ),
+                                                  ),
+                                                  if (uso['observacao']
+                                                      .isNotEmpty)
+                                                    Text(
+                                                      uso['observacao'],
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: context
+                                                            .uai
+                                                            .textMuted,
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  _formatarMoeda(uso['valor']),
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _ensureVisible(
+                                                      context.uai.associacao,
+                                                      context.uai.card,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _formatter.format(
+                                                    uso['data'],
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: context
+                                                        .uai
+                                                        .textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+
+                            SizedBox(height: 16),
+
+                            // ===== GASTOS POR CATEGORIA =====
+                            if (_gastosPorCategoria.isNotEmpty)
+                              Container(
+                                padding: EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: context.uai.card,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: context.uai.border,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
                                 ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '💸 GASTOS POR CATEGORIA',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: context.uai.error,
+                                      ),
+                                    ),
+                                    SizedBox(height: 16),
+                                    ..._gastosPorCategoria.entries.map((entry) {
+                                      final percentual = (_totalGastos > 0)
+                                          ? (entry.value / _totalGastos * 100)
+                                          : 0;
+                                      return Padding(
+                                        padding: EdgeInsets.only(bottom: 12),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: context.uai.error,
+                                              ),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Expanded(
+                                              flex: 2,
+                                              child: Text(
+                                                entry.key,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 1,
+                                              child: Text(
+                                                _formatarMoeda(entry.value),
+                                                textAlign: TextAlign.right,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(
+                                              flex: 1,
+                                              child: Text(
+                                                '${percentual.toStringAsFixed(1)}%',
+                                                textAlign: TextAlign.right,
+                                                style: TextStyle(
+                                                  color:
+                                                      context.uai.textSecondary,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+
+                            SizedBox(height: 16),
+
+                            // ===== CONSISTÊNCIA DOS DADOS =====
+                            if (_participacoesDuplicadasIgnoradas > 0 ||
+                                _participacoesRemovidasIgnoradas > 0 ||
+                                _usosPatrocinioOrfaosIgnorados > 0 ||
+                                _usosPatrocinioDuplicadosIgnorados > 0) ...[
+                              _buildConsistenciaDadosCard(),
+                              SizedBox(height: 16),
+                            ],
+
+                            // ===== AVISO DE ATUALIZAÇÃO =====
+                            Container(
+                              padding: EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: context.uai.info.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: material.Border.all(
+                                  color: context.uai.info.withOpacity(0.25),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info,
+                                    color: _ensureVisible(
+                                      context.uai.info,
+                                      context.uai.card,
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Os dados são atualizados em tempo real. Puxe para baixo para recarregar.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: _ensureVisible(
+                                          context.uai.info,
+                                          context.uai.card,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      ),
+            ),
     );
   }
-
 
   Widget _buildConsistenciaDadosCard() {
     return Container(
@@ -3645,7 +4003,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.verified_rounded, color: _ensureVisible(context.uai.info, context.uai.card)),
+              Icon(
+                Icons.verified_rounded,
+                color: _ensureVisible(context.uai.info, context.uai.card),
+              ),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -3732,7 +4093,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   // ==================== WIDGETS AUXILIARES ====================
 
-  Widget _buildReceitaTipoRow(String titulo, double valor, IconData icon, Color cor) {
+  Widget _buildReceitaTipoRow(
+    String titulo,
+    double valor,
+    IconData icon,
+    Color cor,
+  ) {
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
@@ -3753,10 +4119,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           Expanded(
             child: Text(
               titulo,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
           ),
           Text(
@@ -3772,7 +4135,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
   }
 
-  Widget _buildResumoCard(String titulo, double valor, IconData icon, Color cor) {
+  Widget _buildResumoCard(
+    String titulo,
+    double valor,
+    IconData icon,
+    Color cor,
+  ) {
     final r = context.uaiResponsive;
 
     return Container(
@@ -3780,9 +4148,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       decoration: BoxDecoration(
         color: cor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: material.Border.all(
-          color: cor.withOpacity(0.3),
-        ),
+        border: material.Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         children: [
@@ -3798,17 +4164,19 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           ),
           Text(
             titulo,
-            style: TextStyle(
-              fontSize: 12,
-              color: context.uai.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDetalheItem(String label, String valor, IconData icon, Color cor) {
+  Widget _buildDetalheItem(
+    String label,
+    String valor,
+    IconData icon,
+    Color cor,
+  ) {
     return Column(
       children: [
         Container(
@@ -3830,10 +4198,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         ),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: context.uai.textSecondary,
-          ),
+          style: TextStyle(fontSize: 11, color: context.uai.textSecondary),
         ),
       ],
     );
@@ -3845,9 +4210,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       decoration: BoxDecoration(
         color: cor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: material.Border.all(
-          color: cor.withOpacity(0.3),
-        ),
+        border: material.Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         children: [
@@ -3863,10 +4226,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           ),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 9,
-              color: context.uai.textSecondary,
-            ),
+            style: TextStyle(fontSize: 9, color: context.uai.textSecondary),
           ),
         ],
       ),
@@ -3879,16 +4239,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         Container(
           width: 16,
           height: 16,
-          decoration: BoxDecoration(
-            color: cor,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
         ),
         SizedBox(width: 4),
-        Text(
-          texto,
-          style: TextStyle(fontSize: 12),
-        ),
+        Text(texto, style: TextStyle(fontSize: 12)),
       ],
     );
   }

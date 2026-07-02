@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'dart:developer' as developer;
@@ -83,7 +83,9 @@ class CampeonatoService {
         final data = doc.data();
         final ativo = data['ativo'] ?? true;
 
-        if (ativo && data['nome'] != null && data['nome'].toString().trim().isNotEmpty) {
+        if (ativo &&
+            data['nome'] != null &&
+            data['nome'].toString().trim().isNotEmpty) {
           grupos.add(GrupoModel.fromFirestore(data, doc.id));
         }
       }
@@ -91,11 +93,10 @@ class CampeonatoService {
       grupos.sort((a, b) => a.nome.compareTo(b.nome));
 
       // Adiciona grupo UAI como primeira opção
-      grupos.insert(0, GrupoModel(
-        id: 'GRUPO_UAI',
-        nome: 'GRUPO UAI CAPOEIRA',
-        ativo: true,
-      ));
+      grupos.insert(
+        0,
+        GrupoModel(id: 'GRUPO_UAI', nome: 'GRUPO UAI CAPOEIRA', ativo: true),
+      );
 
       developer.log('✅ Grupos carregados: ${grupos.length} (incluindo UAI)');
       return grupos;
@@ -187,7 +188,10 @@ class CampeonatoService {
       DocumentSnapshot doc;
 
       if (campeonatoId == 'campeonato') {
-        doc = await _firestore.collection('configuracoes').doc('campeonato').get();
+        doc = await _firestore
+            .collection('configuracoes')
+            .doc('campeonato')
+            .get();
       } else {
         doc = await _firestore.collection('eventos').doc(campeonatoId).get();
       }
@@ -221,7 +225,10 @@ class CampeonatoService {
   }
 
   /// Buscar inscrições por status
-  Stream<QuerySnapshot> getInscricoesPorStatusStream(String campeonatoId, String status) {
+  Stream<QuerySnapshot> getInscricoesPorStatusStream(
+    String campeonatoId,
+    String status,
+  ) {
     return _firestore
         .collection('campeonato_inscricoes')
         .where('status', isEqualTo: status)
@@ -234,7 +241,10 @@ class CampeonatoService {
     try {
       developer.log('🔍 Buscando inscrição com ID: $inscricaoId');
 
-      final doc = await _firestore.collection('campeonato_inscricoes').doc(inscricaoId).get();
+      final doc = await _firestore
+          .collection('campeonato_inscricoes')
+          .doc(inscricaoId)
+          .get();
 
       if (!doc.exists) {
         developer.log('❌ Documento não encontrado');
@@ -269,7 +279,10 @@ class CampeonatoService {
   }
 
   /// Atualizar status da inscrição
-  Future<void> atualizarStatusInscricao(String inscricaoId, String status) async {
+  Future<void> atualizarStatusInscricao(
+    String inscricaoId,
+    String status,
+  ) async {
     try {
       await _firestore
           .collection('campeonato_inscricoes')
@@ -290,10 +303,10 @@ class CampeonatoService {
           .collection('campeonato_inscricoes')
           .doc(inscricaoId)
           .update({
-        'taxa_paga': true,
-        'status': 'confirmado',
-        'data_confirmacao': FieldValue.serverTimestamp(),
-      });
+            'taxa_paga': true,
+            'status': 'confirmado',
+            'data_confirmacao': FieldValue.serverTimestamp(),
+          });
 
       developer.log('✅ Pagamento confirmado');
     } catch (e) {
@@ -303,16 +316,19 @@ class CampeonatoService {
   }
 
   /// Adicionar observação na inscrição
-  Future<void> adicionarObservacao(String inscricaoId, String observacao) async {
+  Future<void> adicionarObservacao(
+    String inscricaoId,
+    String observacao,
+  ) async {
     try {
       await _firestore
           .collection('campeonato_inscricoes')
           .doc(inscricaoId)
           .update({
-        'observacoes': FieldValue.arrayUnion([observacao]),
-        'ultima_observacao': observacao,
-        'data_observacao': FieldValue.serverTimestamp(),
-      });
+            'observacoes': FieldValue.arrayUnion([observacao]),
+            'ultima_observacao': observacao,
+            'data_observacao': FieldValue.serverTimestamp(),
+          });
 
       developer.log('✅ Observação adicionada');
     } catch (e) {
@@ -364,12 +380,19 @@ class CampeonatoService {
   List<CategoriaModel> processarCategorias(List<dynamic> categoriasData) {
     return categoriasData
         .where((cat) => cat['ativo'] == true)
-        .map((cat) => CategoriaModel.fromFirestore(cat as Map<String, dynamic>, id: cat['id']))
+        .map(
+          (cat) => CategoriaModel.fromFirestore(
+            cat as Map<String, dynamic>,
+            id: cat['id'],
+          ),
+        )
         .toList();
   }
 
   /// Buscar competidores por categoria
-  Future<List<InscricaoCampeonatoModel>> getCompetidoresPorCategoria(String categoriaNome) async {
+  Future<List<InscricaoCampeonatoModel>> getCompetidoresPorCategoria(
+    String categoriaNome,
+  ) async {
     try {
       developer.log('🔍 Buscando competidores para categoria: $categoriaNome');
 
@@ -418,10 +441,18 @@ class CampeonatoService {
           .get();
 
       int total = inscricoes.docs.length;
-      int pendentes = inscricoes.docs.where((doc) => doc['status'] == 'pendente').length;
-      int confirmados = inscricoes.docs.where((doc) => doc['status'] == 'confirmado').length;
-      int cancelados = inscricoes.docs.where((doc) => doc['status'] == 'cancelado').length;
-      int pagos = inscricoes.docs.where((doc) => doc['taxa_paga'] == true).length;
+      int pendentes = inscricoes.docs
+          .where((doc) => doc['status'] == 'pendente')
+          .length;
+      int confirmados = inscricoes.docs
+          .where((doc) => doc['status'] == 'confirmado')
+          .length;
+      int cancelados = inscricoes.docs
+          .where((doc) => doc['status'] == 'cancelado')
+          .length;
+      int pagos = inscricoes.docs
+          .where((doc) => doc['taxa_paga'] == true)
+          .length;
 
       // Agrupar por categoria
       Map<String, int> porCategoria = {};
@@ -432,7 +463,8 @@ class CampeonatoService {
         porCategoria[categoria] = (porCategoria[categoria] ?? 0) + 1;
 
         if (doc['taxa_paga'] == true) {
-          pagosPorCategoria[categoria] = (pagosPorCategoria[categoria] ?? 0) + 1;
+          pagosPorCategoria[categoria] =
+              (pagosPorCategoria[categoria] ?? 0) + 1;
         }
       }
 
@@ -446,7 +478,9 @@ class CampeonatoService {
       // 🔥 CALCULAR TOTAL ARRECADADO COM A TAXA ATUAL
       double totalArrecadado = pagos * taxaAtual;
 
-      developer.log('💰 Total arrecadado: R\$ $totalArrecadado ($pagos pagos x R\$ $taxaAtual)');
+      developer.log(
+        '💰 Total arrecadado: R\$ $totalArrecadado ($pagos pagos x R\$ $taxaAtual)',
+      );
 
       return {
         'total': total,
@@ -482,7 +516,11 @@ class CampeonatoService {
   // ==================== UPLOAD DE ARQUIVOS ====================
 
   /// Fazer upload de arquivo para o Storage
-  Future<String?> uploadArquivo(Uint8List bytes, String pasta, String nomeArquivo) async {
+  Future<String?> uploadArquivo(
+    Uint8List bytes,
+    String pasta,
+    String nomeArquivo,
+  ) async {
     try {
       final ref = _storage.ref().child('$pasta/$nomeArquivo');
       final uploadTask = await ref.putData(
@@ -535,7 +573,10 @@ class CampeonatoService {
   // ==================== CHAVEAMENTO ====================
 
   /// Gerar chaves para uma categoria
-  Future<void> gerarChaves(String categoriaId, List<String> competidoresIds) async {
+  Future<void> gerarChaves(
+    String categoriaId,
+    List<String> competidoresIds,
+  ) async {
     try {
       // Embaralhar competidores
       List<String> shuffled = List.from(competidoresIds)..shuffle();
@@ -563,10 +604,7 @@ class CampeonatoService {
       }
 
       // Salvar chaves
-      await _firestore
-          .collection('campeonato_chaves')
-          .doc(categoriaId)
-          .set({
+      await _firestore.collection('campeonato_chaves').doc(categoriaId).set({
         'categoria_id': categoriaId,
         'chaves': chaves,
         'rodada': 1,
@@ -582,14 +620,14 @@ class CampeonatoService {
   }
 
   /// Atualizar chaves (para edição manual)
-  Future<void> atualizarChaves(String categoriaId, List<dynamic> novasChaves) async {
+  Future<void> atualizarChaves(
+    String categoriaId,
+    List<dynamic> novasChaves,
+  ) async {
     try {
       developer.log('🔄 Atualizando chaves para categoria: $categoriaId');
 
-      await _firestore
-          .collection('campeonato_chaves')
-          .doc(categoriaId)
-          .update({
+      await _firestore.collection('campeonato_chaves').doc(categoriaId).update({
         'chaves': novasChaves,
         'ultima_atualizacao': FieldValue.serverTimestamp(),
       });
@@ -603,12 +641,14 @@ class CampeonatoService {
 
   /// Registrar resultado de um confronto
   Future<void> registrarResultado(
-      String categoriaId,
-      int chaveIndex,
-      String vencedorId,
-      ) async {
+    String categoriaId,
+    int chaveIndex,
+    String vencedorId,
+  ) async {
     try {
-      final docRef = _firestore.collection('campeonato_chaves').doc(categoriaId);
+      final docRef = _firestore
+          .collection('campeonato_chaves')
+          .doc(categoriaId);
 
       await _firestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(docRef);
@@ -634,7 +674,10 @@ class CampeonatoService {
   /// Avançar para próxima rodada
   Future<void> avancarRodada(String categoriaId) async {
     try {
-      final doc = await _firestore.collection('campeonato_chaves').doc(categoriaId).get();
+      final doc = await _firestore
+          .collection('campeonato_chaves')
+          .doc(categoriaId)
+          .get();
 
       if (!doc.exists) return;
 
@@ -696,7 +739,10 @@ class CampeonatoService {
   /// Buscar chaves de uma categoria
   Future<Map<String, dynamic>?> getChaves(String categoriaId) async {
     try {
-      final doc = await _firestore.collection('campeonato_chaves').doc(categoriaId).get();
+      final doc = await _firestore
+          .collection('campeonato_chaves')
+          .doc(categoriaId)
+          .get();
       return doc.data();
     } catch (e) {
       developer.log('❌ Erro ao buscar chaves: $e');

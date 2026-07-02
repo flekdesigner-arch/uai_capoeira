@@ -1,9 +1,10 @@
-﻿// lib/screens/eventos/camisas_evento_screen.dart
+// lib/screens/eventos/camisas_evento_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
@@ -22,7 +23,6 @@ class CamisasEventoScreen extends StatefulWidget {
   State<CamisasEventoScreen> createState() => _CamisasEventoScreenState();
 }
 
-
 class _CamisasStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
   final double height;
@@ -37,7 +37,11 @@ class _CamisasStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   });
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Material(
       color: backgroundColor,
       elevation: overlapsContent ? 2 : 0,
@@ -45,9 +49,7 @@ class _CamisasStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
         height: height,
         decoration: BoxDecoration(
           color: backgroundColor,
-          border: Border(
-            bottom: BorderSide(color: borderColor),
-          ),
+          border: Border(bottom: BorderSide(color: borderColor)),
         ),
         child: child,
       ),
@@ -130,14 +132,21 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
 
   String _filtroStatus = 'TODOS';
 
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   @override
   void initState() {
     super.initState();
-    _carregarConfiguracoesDoEvento();
-    _verificarPermissoes();
+    _inicializarComPermissao();
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    await _verificarPermissoes();
+    if (!mounted || !_podeGerenciarCamisas) return;
+    await _carregarConfiguracoesDoEvento();
   }
 
   @override
@@ -156,7 +165,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -336,10 +346,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     if (result.isEmpty) return List<String>.from(_modelagensPadrao);
 
     result.sort((a, b) {
-      final ordem = {
-        modelagemNormal: 0,
-        modelagemBabyLook: 1,
-      };
+      final ordem = {modelagemNormal: 0, modelagemBabyLook: 1};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -359,11 +366,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     if (result.isEmpty) return List<String>.from(_tiposPadrao);
 
     result.sort((a, b) {
-      final ordem = {
-        tipoManga: 0,
-        tipoMangaLonga: 1,
-        tipoRegata: 2,
-      };
+      final ordem = {tipoManga: 0, tipoMangaLonga: 1, tipoRegata: 2};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -382,9 +385,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Map<String, double> _normalizarValoresPorTipoCamisa(
-      dynamic raw, {
-        double fallback = 0,
-      }) {
+    dynamic raw, {
+    double fallback = 0,
+  }) {
     final result = <String, double>{
       tipoManga: fallback,
       tipoMangaLonga: fallback,
@@ -397,9 +400,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
         final valor = value is num
             ? value.toDouble()
             : double.tryParse(
-          value?.toString().replaceAll(',', '.').trim() ?? '',
-        ) ??
-            fallback;
+                    value?.toString().replaceAll(',', '.').trim() ?? '',
+                  ) ??
+                  fallback;
 
         result[tipo] = valor;
       });
@@ -426,7 +429,11 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     _valorController.text = valor.toStringAsFixed(2).replaceAll('.', ',');
   }
 
-  String _campoTexto(Map<String, dynamic> data, List<String> chaves, String fallback) {
+  String _campoTexto(
+    Map<String, dynamic> data,
+    List<String> chaves,
+    String fallback,
+  ) {
     for (final chave in chaves) {
       final value = data[chave]?.toString().trim();
       if (value != null && value.isNotEmpty && value.toLowerCase() != 'null') {
@@ -452,10 +459,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
 
   String _tipoDaCamisa(Map<String, dynamic> data) {
     return _normalizarTipoCamisa(
-      data['tipo_camisa'] ??
-          data['tipoCamisa'] ??
-          data['tipo'] ??
-          tipoManga,
+      data['tipo_camisa'] ?? data['tipoCamisa'] ?? data['tipo'] ?? tipoManga,
     );
   }
 
@@ -519,7 +523,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
             data?['tipos_disponiveis'],
       );
 
-      final valorFallback = (data?['valorCamisa'] as num?)?.toDouble() ??
+      final valorFallback =
+          (data?['valorCamisa'] as num?)?.toDouble() ??
           (data?['valor_camisa'] as num?)?.toDouble() ??
           0;
 
@@ -639,7 +644,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                                   final modelagemField = _buildOpcaoSelector(
                                     enabled: !_salvando,
                                     label: 'Modelagem *',
-                                    value: _modelagemLabel(_modelagemSelecionada),
+                                    value: _modelagemLabel(
+                                      _modelagemSelecionada,
+                                    ),
                                     icon: Icons.style_rounded,
                                     onTap: () => _selecionarOpcao(
                                       titulo: 'Selecione a modelagem',
@@ -648,7 +655,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                                       labelBuilder: _modelagemLabel,
                                       normalizar: _normalizarModelagem,
                                       onSelected: (value) {
-                                        setState(() => _modelagemSelecionada = value);
+                                        setState(
+                                          () => _modelagemSelecionada = value,
+                                        );
                                         setDialogState(() {});
                                       },
                                     ),
@@ -713,9 +722,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                                       icon: Icons.attach_money_rounded,
                                     ),
                                     keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
                                   );
 
                                   if (narrow) {
@@ -813,9 +822,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Widget _buildDialogActions(
-      BuildContext dialogContext,
-      void Function(void Function()) setDialogState,
-      ) {
+    BuildContext dialogContext,
+    void Function(void Function()) setDialogState,
+  ) {
     final t = context.uai;
 
     return Container(
@@ -838,21 +847,21 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
               onPressed: _salvando
                   ? null
                   : () async {
-                final ok = await _adicionarCamisa();
-                setDialogState(() {});
-                if (ok && dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-              },
+                      final ok = await _adicionarCamisa();
+                      setDialogState(() {});
+                      if (ok && dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                    },
               icon: _salvando
                   ? SizedBox(
-                width: 17,
-                height: 17,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _onPrimary(),
-                ),
-              )
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _onPrimary(),
+                      ),
+                    )
                   : const Icon(Icons.add_rounded),
               label: Text(_salvando ? 'SALVANDO...' : 'ADICIONAR'),
             ),
@@ -893,7 +902,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Future<bool> _adicionarCamisa() async {
-    if (!_podeGerenciarCamisas) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para adicionar camisas.');
       return false;
     }
@@ -972,7 +983,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   // ───────────────────── AÇÕES ─────────────────────
 
   Future<void> _marcarPago(String camisaId, bool pago) async {
-    if (!_podeGerenciarCamisas) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para alterar pagamento.');
       return;
     }
@@ -982,16 +995,18 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           .collection('camisas_eventos')
           .doc(camisaId)
           .update({
-        'pago': pago,
-        'data_pagamento': pago ? FieldValue.serverTimestamp() : null,
-      });
+            'pago': pago,
+            'data_pagamento': pago ? FieldValue.serverTimestamp() : null,
+          });
     } catch (e) {
       debugPrint('Erro ao marcar pagamento: $e');
     }
   }
 
   Future<void> _marcarEntregue(String camisaId, bool entregue) async {
-    if (!_podeGerenciarCamisas) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para alterar entrega.');
       return;
     }
@@ -1001,16 +1016,18 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           .collection('camisas_eventos')
           .doc(camisaId)
           .update({
-        'entregue': entregue,
-        'data_entrega': entregue ? FieldValue.serverTimestamp() : null,
-      });
+            'entregue': entregue,
+            'data_entrega': entregue ? FieldValue.serverTimestamp() : null,
+          });
     } catch (e) {
       debugPrint('Erro ao marcar entrega: $e');
     }
   }
 
   Future<void> _editarValor(String camisaId, double valorAtual) async {
-    if (!_podeGerenciarCamisas) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para editar valores.');
       return;
     }
@@ -1070,10 +1087,12 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Future<void> _editarDadosCamisa(
-      String camisaId,
-      Map<String, dynamic> data,
-      ) async {
-    if (!_podeGerenciarCamisas) {
+    String camisaId,
+    Map<String, dynamic> data,
+  ) async {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para editar camisa.');
       return;
     }
@@ -1165,18 +1184,18 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           .collection('camisas_eventos')
           .doc(camisaId)
           .update({
-        'modelagem': _normalizarModelagem(result['modelagem']),
-        'modelagem_camisa': _normalizarModelagem(result['modelagem']),
-        'tipo_camisa': _normalizarTipoCamisa(result['tipo_camisa']),
-        'tamanho': _normalizarTamanho(result['tamanho']) ?? 'OUTRO',
-        'valor_unitario': _valorPorTipoCamisa(
-          _normalizarTipoCamisa(result['tipo_camisa']),
-        ),
-        'valor': _valorPorTipoCamisa(
-          _normalizarTipoCamisa(result['tipo_camisa']),
-        ),
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+            'modelagem': _normalizarModelagem(result['modelagem']),
+            'modelagem_camisa': _normalizarModelagem(result['modelagem']),
+            'tipo_camisa': _normalizarTipoCamisa(result['tipo_camisa']),
+            'tamanho': _normalizarTamanho(result['tamanho']) ?? 'OUTRO',
+            'valor_unitario': _valorPorTipoCamisa(
+              _normalizarTipoCamisa(result['tipo_camisa']),
+            ),
+            'valor': _valorPorTipoCamisa(
+              _normalizarTipoCamisa(result['tipo_camisa']),
+            ),
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       debugPrint('Erro ao editar camisa: $e');
       if (mounted) {
@@ -1192,7 +1211,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Future<void> _excluirCamisa(String camisaId, String nome) async {
-    if (!_podeGerenciarCamisas) {
+    if (!await _permissaoService.temPermissao(
+      'pode_gerenciar_camisas_evento',
+    )) {
       _mostrarSemPermissao('Você não tem permissão para excluir camisas.');
       return;
     }
@@ -1303,7 +1324,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
 
                       return Material(
                         color: selected
-                            ? Color.alphaBlend(accent.withOpacity(0.14), t.cardAlt)
+                            ? Color.alphaBlend(
+                                accent.withOpacity(0.14),
+                                t.cardAlt,
+                              )
                             : t.cardAlt,
                         borderRadius: BorderRadius.circular(t.inputRadius),
                         clipBehavior: Clip.antiAlias,
@@ -1318,7 +1342,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                               vertical: 13,
                             ),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(t.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
+                              ),
                               border: Border.all(
                                 color: selected ? accent : t.border,
                               ),
@@ -1330,13 +1356,17 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                                     labelBuilder(value),
                                     style: TextStyle(
                                       color: selected ? accent : t.textPrimary,
-                                      fontWeight:
-                                      selected ? FontWeight.w900 : FontWeight.w700,
+                                      fontWeight: selected
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
                                     ),
                                   ),
                                 ),
                                 if (selected)
-                                  Icon(Icons.check_circle_rounded, color: accent),
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    color: accent,
+                                  ),
                               ],
                             ),
                           ),
@@ -1394,55 +1424,57 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 const SizedBox(height: 16),
                 Expanded(
                   child: _isLoadingConfiguracoes
-                      ? Center(child: CircularProgressIndicator(color: t.primary))
+                      ? Center(
+                          child: CircularProgressIndicator(color: t.primary),
+                        )
                       : GridView.builder(
-                    gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: 1.5,
-                    ),
-                    itemCount: _tamanhosDisponiveis.length,
-                    itemBuilder: (context, index) {
-                      final tamanho = _tamanhosDisponiveis[index];
-                      final selected = _tamanhoSelecionado == tamanho;
-
-                      return InkWell(
-                        onTap: () {
-                          setState(() => _tamanhoSelecionado = tamanho);
-                          onSelected?.call();
-                          Navigator.pop(context);
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? Color.alphaBlend(
-                              accent.withOpacity(0.18),
-                              t.cardAlt,
-                            )
-                                : t.cardAlt,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: selected ? accent : t.border,
-                              width: selected ? 1.3 : 1,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              tamanho,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: selected ? accent : t.textPrimary,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 1.5,
                               ),
-                            ),
-                          ),
+                          itemCount: _tamanhosDisponiveis.length,
+                          itemBuilder: (context, index) {
+                            final tamanho = _tamanhosDisponiveis[index];
+                            final selected = _tamanhoSelecionado == tamanho;
+
+                            return InkWell(
+                              onTap: () {
+                                setState(() => _tamanhoSelecionado = tamanho);
+                                onSelected?.call();
+                                Navigator.pop(context);
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? Color.alphaBlend(
+                                          accent.withOpacity(0.18),
+                                          t.cardAlt,
+                                        )
+                                      : t.cardAlt,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected ? accent : t.border,
+                                    width: selected ? 1.3 : 1,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    tamanho,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: selected ? accent : t.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -1500,7 +1532,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     VoidCallback? onSelected,
   }) {
     final t = context.uai;
-    final hasValue = _tamanhoSelecionado != null && _tamanhoSelecionado!.isNotEmpty;
+    final hasValue =
+        _tamanhoSelecionado != null && _tamanhoSelecionado!.isNotEmpty;
     final accent = _ensureVisible(t.associacao, t.cardAlt);
 
     return InkWell(
@@ -1553,10 +1586,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
         children: [
           Text(
             titulo,
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -1595,18 +1625,21 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       {'label': 'TODOS', 'icon': Icons.list_rounded, 'color': t.textMuted},
       {'label': 'PAGO', 'icon': Icons.paid_rounded, 'color': t.success},
       {'label': 'PENDENTE', 'icon': Icons.pending_rounded, 'color': t.warning},
-      {'label': 'ENTREGUE', 'icon': Icons.check_circle_rounded, 'color': t.info},
-      {'label': 'NÃO ENTREGUE', 'icon': Icons.access_time_rounded, 'color': t.error},
+      {
+        'label': 'ENTREGUE',
+        'icon': Icons.check_circle_rounded,
+        'color': t.info,
+      },
+      {
+        'label': 'NÃO ENTREGUE',
+        'icon': Icons.access_time_rounded,
+        'color': t.error,
+      },
     ];
 
     return Container(
       color: t.background,
-      padding: EdgeInsets.fromLTRB(
-        r.pagePadding,
-        8,
-        r.pagePadding,
-        8,
-      ),
+      padding: EdgeInsets.fromLTRB(r.pagePadding, 8, r.pagePadding, 8),
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -1618,14 +1651,16 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.manual,
+                      ScrollViewKeyboardDismissBehavior.manual,
                   child: Row(
                     children: opcoes.map((opcao) {
                       final isSelected = _filtroStatus == opcao['label'];
                       final rawColor = opcao['color'] as Color;
                       final color = _ensureVisible(rawColor, t.card);
                       final bg = isSelected ? color : t.card;
-                      final fg = isSelected ? _readableOn(color) : t.textSecondary;
+                      final fg = isSelected
+                          ? _readableOn(color)
+                          : t.textSecondary;
 
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
@@ -1655,14 +1690,15 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                           ),
                           onSelected: (_) {
                             setState(
-                                  () => _filtroStatus = opcao['label'].toString(),
+                              () => _filtroStatus = opcao['label'].toString(),
                             );
                           },
                           labelStyle: TextStyle(
                             color: fg,
                             fontSize: r.isPhone ? 11.5 : 12,
-                            fontWeight:
-                            isSelected ? FontWeight.w900 : FontWeight.w700,
+                            fontWeight: isSelected
+                                ? FontWeight.w900
+                                : FontWeight.w700,
                           ),
                         ),
                       );
@@ -1742,7 +1778,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
             SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: t.primary),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: t.primary,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1797,7 +1836,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     );
   }
 
-  Widget _buildResumoCard(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildResumoCard(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final t = context.uai;
     final contagemDetalhada = <String, int>{};
     int entregues = 0;
@@ -1874,7 +1915,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: t.associacao.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(99),
@@ -1899,9 +1943,15 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                   final accent = _ensureVisible(t.associacao, t.cardAlt);
                   return Container(
                     margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                      color: Color.alphaBlend(
+                        accent.withOpacity(0.10),
+                        t.cardAlt,
+                      ),
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: accent.withOpacity(0.14)),
                     ),
@@ -1942,11 +1992,15 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 ],
               );
               final right = Column(
-                crossAxisAlignment:
-                narrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                crossAxisAlignment: narrow
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.end,
                 children: [
                   _legendLine('Entregues: $entregues', t.info),
-                  _legendLine('Não entregues: ${docs.length - entregues}', t.error),
+                  _legendLine(
+                    'Não entregues: ${docs.length - entregues}',
+                    t.error,
+                  ),
                 ],
               );
 
@@ -2270,13 +2324,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           maxWidth: r.isPhone ? double.infinity : 1120,
         ),
         child: Padding(
-          padding: padding ??
-              EdgeInsets.fromLTRB(
-                r.pagePadding,
-                0,
-                r.pagePadding,
-                0,
-              ),
+          padding:
+              padding ??
+              EdgeInsets.fromLTRB(r.pagePadding, 0, r.pagePadding, 0),
           child: child,
         ),
       ),
@@ -2288,10 +2338,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     EdgeInsetsGeometry? padding,
   }) {
     return SliverToBoxAdapter(
-      child: _buildContentBox(
-        padding: padding,
-        child: child,
-      ),
+      child: _buildContentBox(padding: padding, child: child),
     );
   }
 
@@ -2305,10 +2352,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
         children: docs
             .map(
               (doc) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _buildCamisaCard(doc),
-          ),
-        )
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildCamisaCard(doc),
+              ),
+            )
             .toList(),
       );
     }
@@ -2327,10 +2374,10 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
             children: docs
                 .map(
                   (doc) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildCamisaCard(doc),
-              ),
-            )
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildCamisaCard(doc),
+                  ),
+                )
                 .toList(),
           );
         }
@@ -2343,23 +2390,35 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           runSpacing: spacing,
           children: docs
               .map(
-                (doc) => SizedBox(
-              width: itemWidth,
-              child: _buildCamisaCard(doc),
-            ),
-          )
+                (doc) =>
+                    SizedBox(width: itemWidth, child: _buildCamisaCard(doc)),
+              )
               .toList(),
         );
       },
     );
   }
 
-
   // ───────────────────── BUILD ─────────────────────
 
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
+
+    if (_carregandoPermissoes) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Camisas do evento',
+      );
+    }
+
+    if (!_podeGerenciarCamisas) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Camisas do evento',
+        message: 'Você não tem permissão para gerenciar camisas do evento.',
+      );
+    }
 
     return Scaffold(
       backgroundColor: t.background,
@@ -2385,15 +2444,15 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       ),
       floatingActionButton: _podeGerenciarCamisas
           ? FloatingActionButton.extended(
-        onPressed: _abrirDialogAdicionar,
-        backgroundColor: t.primary,
-        foregroundColor: _onPrimary(),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'CAMISA',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-      )
+              onPressed: _abrirDialogAdicionar,
+              backgroundColor: t.primary,
+              foregroundColor: _onPrimary(),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'CAMISA',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            )
           : null,
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _buildQuery().snapshots(),
@@ -2408,7 +2467,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 _buildContentBox(child: _buildPermissaoBanner()),
                 SizedBox(height: r.sectionSpacing),
                 _buildContentBox(
-                  child: _errorBox('Erro ao carregar camisas: ${snapshot.error}'),
+                  child: _errorBox(
+                    'Erro ao carregar camisas: ${snapshot.error}',
+                  ),
                 ),
               ],
             );
@@ -2430,15 +2491,11 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                     top: r.pagePadding,
                     bottom: r.sectionSpacing,
                   ),
-                  sliver: _buildContentSliver(
-                    child: _buildPermissaoBanner(),
-                  ),
+                  sliver: _buildContentSliver(child: _buildPermissaoBanner()),
                 ),
                 SliverPadding(
                   padding: EdgeInsets.only(bottom: r.sectionSpacing),
-                  sliver: _buildContentSliver(
-                    child: _buildResumoCard(docs),
-                  ),
+                  sliver: _buildContentSliver(child: _buildResumoCard(docs)),
                 ),
                 SliverPersistentHeader(
                   pinned: true,

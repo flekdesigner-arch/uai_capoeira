@@ -144,7 +144,10 @@ class UserThemeSettings {
       textMuted: _colorFromAny(map['textMuted']),
       border: _colorFromAny(map['border']),
       cardRadius: _doubleFromAny(map['cardRadius'], defaultDark.cardRadius),
-      buttonRadius: _doubleFromAny(map['buttonRadius'], defaultDark.buttonRadius),
+      buttonRadius: _doubleFromAny(
+        map['buttonRadius'],
+        defaultDark.buttonRadius,
+      ),
       inputRadius: _doubleFromAny(map['inputRadius'], defaultDark.inputRadius),
       fontFamily: _normalizeFontFamily(map['fontFamily']?.toString()),
     );
@@ -179,7 +182,10 @@ class UserThemeSettings {
 
   static String? _normalizeFontFamily(String? value) {
     final clean = value?.trim();
-    if (clean == null || clean.isEmpty || clean == 'default' || clean == 'null') {
+    if (clean == null ||
+        clean.isEmpty ||
+        clean == 'default' ||
+        clean == 'null') {
       return null;
     }
 
@@ -276,7 +282,8 @@ class AppThemeController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
 
     _preset = UaiThemePresetX.fromId(prefs.getString(_presetKey));
-    _themeMode = _themeModeFromString(prefs.getString(_modeKey)) ?? ThemeMode.light;
+    _themeMode =
+        _themeModeFromString(prefs.getString(_modeKey)) ?? ThemeMode.light;
     _userTheme = _readUserTheme(prefs);
     _activeSavedThemeId = prefs.getString(_activeSavedThemeIdKey);
 
@@ -332,10 +339,7 @@ class AppThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> apply({
-    UaiThemePreset? preset,
-    ThemeMode? mode,
-  }) async {
+  Future<void> apply({UaiThemePreset? preset, ThemeMode? mode}) async {
     var changed = false;
     final prefs = await SharedPreferences.getInstance();
 
@@ -419,10 +423,7 @@ class AppThemeController extends ChangeNotifier {
     } else {
       final doc = collection.doc();
       id = doc.id;
-      await doc.set({
-        ...data,
-        'criadoEm': FieldValue.serverTimestamp(),
-      });
+      await doc.set({...data, 'criadoEm': FieldValue.serverTimestamp()});
     }
 
     if (activateAfterSave) {
@@ -482,7 +483,9 @@ class AppThemeController extends ChangeNotifier {
     }
   }
 
-  Future<bool> tryLoadActiveSavedThemeFromFirebase({bool notify = false}) async {
+  Future<bool> tryLoadActiveSavedThemeFromFirebase({
+    bool notify = false,
+  }) async {
     final activeId = _activeSavedThemeId;
     final collection = _themesCollection;
 
@@ -526,27 +529,53 @@ class AppThemeController extends ChangeNotifier {
 
   UserThemeSettings _readUserTheme(SharedPreferences prefs) {
     return UserThemeSettings(
-      primary: _readColor(prefs, _customPrimaryKey, UserThemeSettings.defaultDark.primary),
-      background: _readColor(prefs, _customBackgroundKey, UserThemeSettings.defaultDark.background),
-      surface: _readColor(prefs, _customSurfaceKey, UserThemeSettings.defaultDark.surface),
-      card: _readColor(prefs, _customCardKey, UserThemeSettings.defaultDark.card),
-      textPrimary: _readColor(prefs, _customTextPrimaryKey, UserThemeSettings.defaultDark.textPrimary),
+      primary: _readColor(
+        prefs,
+        _customPrimaryKey,
+        UserThemeSettings.defaultDark.primary,
+      ),
+      background: _readColor(
+        prefs,
+        _customBackgroundKey,
+        UserThemeSettings.defaultDark.background,
+      ),
+      surface: _readColor(
+        prefs,
+        _customSurfaceKey,
+        UserThemeSettings.defaultDark.surface,
+      ),
+      card: _readColor(
+        prefs,
+        _customCardKey,
+        UserThemeSettings.defaultDark.card,
+      ),
+      textPrimary: _readColor(
+        prefs,
+        _customTextPrimaryKey,
+        UserThemeSettings.defaultDark.textPrimary,
+      ),
       accent: _readNullableColor(prefs, _customAccentKey),
       cardAlt: _readNullableColor(prefs, _customCardAltKey),
       textSecondary: _readNullableColor(prefs, _customTextSecondaryKey),
       textMuted: _readNullableColor(prefs, _customTextMutedKey),
       border: _readNullableColor(prefs, _customBorderKey),
-      cardRadius: prefs.getDouble(_customCardRadiusKey) ?? UserThemeSettings.defaultDark.cardRadius,
-      buttonRadius: prefs.getDouble(_customButtonRadiusKey) ?? UserThemeSettings.defaultDark.buttonRadius,
-      inputRadius: prefs.getDouble(_customInputRadiusKey) ?? UserThemeSettings.defaultDark.inputRadius,
+      cardRadius:
+          prefs.getDouble(_customCardRadiusKey) ??
+          UserThemeSettings.defaultDark.cardRadius,
+      buttonRadius:
+          prefs.getDouble(_customButtonRadiusKey) ??
+          UserThemeSettings.defaultDark.buttonRadius,
+      inputRadius:
+          prefs.getDouble(_customInputRadiusKey) ??
+          UserThemeSettings.defaultDark.inputRadius,
       fontFamily: _normalizeFontFamily(prefs.getString(_customFontFamilyKey)),
     );
   }
 
   Future<void> _writeUserTheme(
-      SharedPreferences prefs,
-      UserThemeSettings settings,
-      ) async {
+    SharedPreferences prefs,
+    UserThemeSettings settings,
+  ) async {
     await prefs.setInt(_customPrimaryKey, settings.primary.value);
     await prefs.setInt(_customBackgroundKey, settings.background.value);
     await prefs.setInt(_customSurfaceKey, settings.surface.value);
@@ -555,7 +584,11 @@ class AppThemeController extends ChangeNotifier {
 
     await _writeNullableColor(prefs, _customAccentKey, settings.accent);
     await _writeNullableColor(prefs, _customCardAltKey, settings.cardAlt);
-    await _writeNullableColor(prefs, _customTextSecondaryKey, settings.textSecondary);
+    await _writeNullableColor(
+      prefs,
+      _customTextSecondaryKey,
+      settings.textSecondary,
+    );
     await _writeNullableColor(prefs, _customTextMutedKey, settings.textMuted);
     await _writeNullableColor(prefs, _customBorderKey, settings.border);
 
@@ -574,11 +607,15 @@ class AppThemeController extends ChangeNotifier {
   UserThemeSettings _sanitizeUserTheme(UserThemeSettings settings) {
     final bgIsDark = settings.background.computeLuminance() < 0.45;
     final fixedTextPrimary =
-    _hasGoodContrast(settings.textPrimary, settings.card)
+        _hasGoodContrast(settings.textPrimary, settings.card)
         ? settings.textPrimary
         : (bgIsDark ? const Color(0xFFF8F8F2) : const Color(0xFF111827));
 
-    final fixedSurface = _avoidSameColor(settings.surface, settings.background, bgIsDark);
+    final fixedSurface = _avoidSameColor(
+      settings.surface,
+      settings.background,
+      bgIsDark,
+    );
     final fixedCard = _avoidSameColor(settings.card, fixedSurface, bgIsDark);
 
     return settings.copyWith(
@@ -594,12 +631,14 @@ class AppThemeController extends ChangeNotifier {
   }
 
   bool _hasGoodContrast(Color text, Color background) {
-    final diff = (text.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (text.computeLuminance() - background.computeLuminance())
+        .abs();
     return diff >= 0.34;
   }
 
   Color _avoidSameColor(Color color, Color reference, bool dark) {
-    final diff = (color.computeLuminance() - reference.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - reference.computeLuminance())
+        .abs();
     if (diff >= 0.03) return color;
 
     final hsl = HSLColor.fromColor(color);
@@ -610,11 +649,7 @@ class AppThemeController extends ChangeNotifier {
     return hsl.withLightness(lightness).toColor();
   }
 
-  static Color _readColor(
-      SharedPreferences prefs,
-      String key,
-      Color fallback,
-      ) {
+  static Color _readColor(SharedPreferences prefs, String key, Color fallback) {
     final value = prefs.getInt(key);
     if (value == null) return fallback;
     return Color(value);
@@ -627,10 +662,10 @@ class AppThemeController extends ChangeNotifier {
   }
 
   static Future<void> _writeNullableColor(
-      SharedPreferences prefs,
-      String key,
-      Color? color,
-      ) async {
+    SharedPreferences prefs,
+    String key,
+    Color? color,
+  ) async {
     if (color == null) {
       await prefs.remove(key);
     } else {

@@ -17,7 +17,10 @@ class FornecedorService {
   }
 
   // Atualizar fornecedor
-  Future<void> atualizarFornecedor(String fornecedorId, Map<String, dynamic> dados) async {
+  Future<void> atualizarFornecedor(
+    String fornecedorId,
+    Map<String, dynamic> dados,
+  ) async {
     dados['atualizado_em'] = FieldValue.serverTimestamp();
     dados['atualizado_por'] = currentUser?.uid;
     await _firestore.collection('fornecedores').doc(fornecedorId).update(dados);

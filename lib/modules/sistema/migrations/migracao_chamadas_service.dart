@@ -75,7 +75,8 @@ class MigracaoChamadasService {
     for (var registro in dados) {
       try {
         // Converter presente para boolean
-        bool presente = registro['presente']?.toString().toUpperCase() == 'TRUE';
+        bool presente =
+            registro['presente']?.toString().toUpperCase() == 'TRUE';
 
         // Extrair campos necessários (já devem vir do enriquecimento!)
         final alunoId = registro['aluno_id']?.toString();
@@ -86,7 +87,8 @@ class MigracaoChamadasService {
         final academiaNome = registro['academia_nome']?.toString() ?? '';
         final dataFormatada = registro['data_formatada']?.toString() ?? '';
         final diaSemana = registro['dia_semana']?.toString() ?? '';
-        final diaSemanaAbrev = registro['dia_semana_abrev']?.toString().toLowerCase() ?? '';
+        final diaSemanaAbrev =
+            registro['dia_semana_abrev']?.toString().toLowerCase() ?? '';
         final tipoAula = registro['tipo_aula']?.toString() ?? 'OBJETIVA';
 
         if (alunoId == null || alunoId.isEmpty) {
@@ -116,9 +118,11 @@ class MigracaoChamadasService {
           alunosPorDataTurma[keyChamada]!.add(alunoId);
 
           if (presente) {
-            presentesPorDataTurma[keyChamada] = (presentesPorDataTurma[keyChamada] ?? 0) + 1;
+            presentesPorDataTurma[keyChamada] =
+                (presentesPorDataTurma[keyChamada] ?? 0) + 1;
           } else {
-            ausentesPorDataTurma[keyChamada] = (ausentesPorDataTurma[keyChamada] ?? 0) + 1;
+            ausentesPorDataTurma[keyChamada] =
+                (ausentesPorDataTurma[keyChamada] ?? 0) + 1;
           }
         } else {
           registrosSemTurma++;
@@ -154,7 +158,8 @@ class MigracaoChamadasService {
 
           // 🔥 CORREÇÃO: Criar Timestamp diretamente
           final dataObj = _parseData(dataFormatada);
-          final ultimoPresente = contadoresAlunos[keyContador]!['ultimo_dia_presente'];
+          final ultimoPresente =
+              contadoresAlunos[keyContador]!['ultimo_dia_presente'];
 
           if (ultimoPresente == null) {
             contadoresAlunos[keyContador]!['ultimo_dia_presente'] = dataObj;
@@ -165,7 +170,6 @@ class MigracaoChamadasService {
             }
           }
         }
-
       } catch (e) {
         erros.add('❌ Erro ao processar registro: $e');
       }
@@ -173,12 +177,15 @@ class MigracaoChamadasService {
 
     debugPrint('📊 Registros COM turma: $registrosComTurma');
     debugPrint('📊 Registros SEM turma: $registrosSemTurma');
-    debugPrint('📦 Total de combinações data+turma: ${chamadasPorDataTurma.length}');
+    debugPrint(
+      '📦 Total de combinações data+turma: ${chamadasPorDataTurma.length}',
+    );
 
     onProgress(20, 'Preparando batches...');
 
     // 2️⃣ EXECUTAR MIGRAÇÃO EM BATCHES
-    int totalBatches = (dados.length / 400).ceil() +
+    int totalBatches =
+        (dados.length / 400).ceil() +
         (contadoresAlunos.length / 400).ceil() +
         (chamadasPorDataTurma.length / 400).ceil();
     int batchesCompletos = 0;
@@ -245,7 +252,8 @@ class MigracaoChamadasService {
     onProgress(50, 'Atualizando contadores dos alunos...');
     debugPrint('\n📊 ===== ATUALIZANDO CONTADORES =====');
 
-    final List<Map<String, dynamic>> contadoresList = contadoresAlunos.values.toList();
+    final List<Map<String, dynamic>> contadoresList = contadoresAlunos.values
+        .toList();
     for (int i = 0; i < contadoresList.length; i += 400) {
       final batch = _firestore.batch();
       final lote = contadoresList.skip(i).take(400).toList();
@@ -287,7 +295,9 @@ class MigracaoChamadasService {
 
       await batch.commit();
       batchesCompletos++;
-      debugPrint('   ✅ Lote ${i ~/ 400 + 1}: $loteContadores contadores atualizados');
+      debugPrint(
+        '   ✅ Lote ${i ~/ 400 + 1}: $loteContadores contadores atualizados',
+      );
       onProgress(
         50 + (30 * batchesCompletos / totalBatches).round(),
         'Atualizando contadores...',
@@ -322,13 +332,13 @@ class MigracaoChamadasService {
 
           final primeiroRegistro = registros.first;
           final totalAlunos = registros.length;
-          final presentes = registros.where((r) => r['presente'] == true).length;
+          final presentes = registros
+              .where((r) => r['presente'] == true)
+              .length;
           final ausentes = totalAlunos - presentes;
 
           final docId = _gerarId();
-          final docRef = _firestore
-              .collection('chamadas')
-              .doc(docId);
+          final docRef = _firestore.collection('chamadas').doc(docId);
 
           // 🔥 CRIAR ARRAY DE ALUNOS SÓ COM QUEM TEM TURMA!
           final alunosArray = registros.map((r) {
@@ -353,8 +363,9 @@ class MigracaoChamadasService {
             'data_formatada': dataFormatada,
             'dia_semana': primeiroRegistro['dia_semana'],
             'dia_semana_abrev': primeiroRegistro['dia_semana_abrev'],
-            'porcentagem_frequencia':
-            totalAlunos > 0 ? ((presentes / totalAlunos) * 100).round() : 0,
+            'porcentagem_frequencia': totalAlunos > 0
+                ? ((presentes / totalAlunos) * 100).round()
+                : 0,
             'presentes': presentes,
             'professor_id': professorId,
             'professor_nome': professorNome,
@@ -366,7 +377,6 @@ class MigracaoChamadasService {
 
           chamadasCriadas++;
           loteChamadas++;
-
         } catch (e) {
           erros.add('❌ Erro ao criar chamada de turma: $e');
         }
@@ -380,18 +390,22 @@ class MigracaoChamadasService {
         'Finalizando...',
       );
     }
-    debugPrint('✅ Total de chamadas criadas: $chamadasCriadas/$chamadasEsperadas');
+    debugPrint(
+      '✅ Total de chamadas criadas: $chamadasCriadas/$chamadasEsperadas',
+    );
 
     stopwatch.stop();
 
     // ============================================
     // RELATÓRIO FINAL (CORRIGIDO - SEM repeat!)
     // ============================================
-    debugPrint('\n' + ('=' * 60));  // 🔥 CORRIGIDO: usa * em vez de repeat()
+    debugPrint('\n' + ('=' * 60)); // 🔥 CORRIGIDO: usa * em vez de repeat()
     debugPrint('📊 RELATÓRIO FINAL DA MIGRAÇÃO');
-    debugPrint('=' * 60);  // 🔥 CORRIGIDO
+    debugPrint('=' * 60); // 🔥 CORRIGIDO
     debugPrint('📝 Logs criados: $logsCriados/${dados.length}');
-    debugPrint('📊 Contadores atualizados: $contadoresAtualizados/${contadoresAlunos.length}');
+    debugPrint(
+      '📊 Contadores atualizados: $contadoresAtualizados/${contadoresAlunos.length}',
+    );
     debugPrint('📋 Chamadas criadas: $chamadasCriadas/$chamadasEsperadas');
     debugPrint('⏱️ Tempo: ${_formatarTempo(stopwatch.elapsed)}');
     debugPrint('❌ Erros: ${erros.length}');
@@ -401,7 +415,7 @@ class MigracaoChamadasService {
         debugPrint('   $i. ${erros[i]}');
       }
     }
-    debugPrint('=' * 60);  // 🔥 CORRIGIDO
+    debugPrint('=' * 60); // 🔥 CORRIGIDO
 
     return {
       'sucesso': erros.isEmpty,

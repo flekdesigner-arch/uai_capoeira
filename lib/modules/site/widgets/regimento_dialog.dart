@@ -22,8 +22,10 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
 
   Future<void> _carregarRegimento() async {
     try {
-      final doc =
-      await _firestore.collection('site_conteudo').doc('regimento').get();
+      final doc = await _firestore
+          .collection('site_conteudo')
+          .doc('regimento')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -82,7 +84,8 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         'titulo': '⚖️ REGRAS GERAIS',
         'icone': Icons.gavel,
         'cor': Colors.blue,
-        'conteudo': '🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).\n'
+        'conteudo':
+            '🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).\n'
             '❌ Não é permitido utilizar uniformes de outros grupos.\n'
             '📢 Participação em eventos externos deve ser comunicada antecipadamente.\n'
             '⏰ Cumprimento rigoroso dos horários de treinos, rodas e apresentações.\n'
@@ -98,7 +101,8 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         'titulo': '🆕 NOVOS ALUNOS',
         'icone': Icons.person_add,
         'cor': Colors.green,
-        'conteudo': '⏳ Prazo de 2 meses para adquirir o uniforme completo.\n'
+        'conteudo':
+            '⏳ Prazo de 2 meses para adquirir o uniforme completo.\n'
             '👀 Durante esse período, o aluno será avaliado pelos professores.\n'
             '🎖️ Primeira graduação possível após 6 meses de treino regular.\n'
             '📅 Indicação para início das atividades: preferencialmente em uma segunda-feira.\n'
@@ -110,7 +114,8 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         'titulo': '🎓 ALUNOS GRADUADOS',
         'icone': Icons.school,
         'cor': Colors.orange,
-        'conteudo': '🙏 Respeito, disciplina e comprometimento são indispensáveis.\n'
+        'conteudo':
+            '🙏 Respeito, disciplina e comprometimento são indispensáveis.\n'
             '👕 Uso do uniforme correto nos treinos e apresentações é obrigatório.\n'
             '⏳ Graduação só pode ser trocada após no mínimo 1 ano, conforme desempenho.\n'
             '🎭 Em eventos, utilizar somente o uniforme oficial (não camisas promocionais).\n'
@@ -121,7 +126,8 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         'titulo': '⭐ FORMADOS',
         'icone': Icons.workspace_premium,
         'cor': Colors.purple,
-        'conteudo': 'São considerados formados os monitores, instrutores, professores, contra-mestres e mestres.\n\n'
+        'conteudo':
+            'São considerados formados os monitores, instrutores, professores, contra-mestres e mestres.\n\n'
             '📚 Devem estar sempre ativos nos treinos e rodas, transmitindo conhecimento.\n'
             '🪘 Devem incentivar a prática dos instrumentos, cantos e fundamentos da capoeira.\n'
             '🌍 Representam o grupo dentro e fora da cidade, mantendo o nome da Associação com honra e responsabilidade.\n\n'
@@ -332,7 +338,9 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     }
 
     if (clean.startsWith('🌍')) return Icons.public_rounded;
-    if (clean.startsWith('🤝') || clean.startsWith('🙏') || clean.startsWith('🙌')) {
+    if (clean.startsWith('🤝') ||
+        clean.startsWith('🙏') ||
+        clean.startsWith('🙌')) {
       return Icons.handshake_rounded;
     }
 
@@ -350,8 +358,8 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   int get _totalOrientacoes {
     return _secoesRegimento.fold<int>(
       0,
-          (total, secao) =>
-      total + _linhasConteudo(secao['conteudo']?.toString() ?? '').length,
+      (total, secao) =>
+          total + _linhasConteudo(secao['conteudo']?.toString() ?? '').length,
     );
   }
 
@@ -391,10 +399,10 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
                       : _secoesRegimento.isEmpty
                       ? _buildEmptyState()
                       : RefreshIndicator(
-                    color: Colors.red.shade900,
-                    onRefresh: _carregarRegimento,
-                    child: _buildContent(),
-                  ),
+                          color: Colors.red.shade900,
+                          onRefresh: _carregarRegimento,
+                          child: _buildContent(),
+                        ),
                 ),
                 _buildBottomBar(),
               ],
@@ -408,9 +416,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: BoxDecoration(
-        color: Colors.red.shade900,
-      ),
+      decoration: BoxDecoration(color: Colors.red.shade900),
       child: Row(
         children: [
           Container(
@@ -585,7 +591,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
               _buildWhiteChip(
                 icon: Icons.article_rounded,
                 label:
-                '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
+                    '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
               ),
               _buildWhiteChip(
                 icon: Icons.checklist_rounded,
@@ -602,10 +608,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     );
   }
 
-  Widget _buildWhiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildWhiteChip({required IconData icon, required String label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -776,10 +779,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     final icone = secao['icone'] is IconData
         ? secao['icone'] as IconData
         : _getIconFromName(secao['icone']);
-    final cor = _resolveColor(
-      secao['cor'],
-      fallback: _fallbackColor(index),
-    );
+    final cor = _resolveColor(secao['cor'], fallback: _fallbackColor(index));
     final conteudo = secao['conteudo']?.toString() ?? '';
     final linhas = _linhasConteudo(conteudo);
 
@@ -855,23 +855,23 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
               padding: EdgeInsets.all(isCompact ? 12 : 14),
               child: linhas.isEmpty
                   ? Text(
-                'Conteúdo não informado.',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontStyle: FontStyle.italic,
-                ),
-              )
+                      'Conteúdo não informado.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
                   : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(linhas.length, (i) {
-                  final linha = linhas[i];
-                  return _buildLinhaRegimento(
-                    linha: linha,
-                    cor: cor,
-                    isCompact: isCompact,
-                  );
-                }),
-              ),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: List.generate(linhas.length, (i) {
+                        final linha = linhas[i];
+                        return _buildLinhaRegimento(
+                          linha: linha,
+                          cor: cor,
+                          isCompact: isCompact,
+                        );
+                      }),
+                    ),
             ),
           ],
         ),

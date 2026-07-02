@@ -216,17 +216,20 @@ class EventoFinanceiroPdfService {
   }
 
   static List<List<String>> _linhasCamisasDetalhadas(
-      Map<String, dynamic> bloco,
-      ) {
-    final porDetalheRaw = bloco['por_detalhe'] ??
+    Map<String, dynamic> bloco,
+  ) {
+    final porDetalheRaw =
+        bloco['por_detalhe'] ??
         bloco['por_modelagem_tipo_tamanho'] ??
         bloco['por_grade_detalhada'];
 
-    final unitariosRaw = bloco['por_detalhe_valor_unitario'] ??
+    final unitariosRaw =
+        bloco['por_detalhe_valor_unitario'] ??
         bloco['por_valor_unitario'] ??
         bloco['valores_unitarios'];
 
-    final totaisRaw = bloco['por_detalhe_total'] ??
+    final totaisRaw =
+        bloco['por_detalhe_total'] ??
         bloco['por_total'] ??
         bloco['totais_por_detalhe'];
 
@@ -253,29 +256,32 @@ class EventoFinanceiroPdfService {
     final rows = <List<String>>[];
 
     if (porDetalheRaw is Map && porDetalheRaw.isNotEmpty) {
-      final entries = porDetalheRaw.entries.map((entry) {
-        final key = entry.key.toString();
-        final quantidade = _asInt(entry.value);
+      final entries = porDetalheRaw.entries
+          .map((entry) {
+            final key = entry.key.toString();
+            final quantidade = _asInt(entry.value);
 
-        final parts = key.split('|');
-        final modelagem = parts.isNotEmpty ? parts[0] : 'NORMAL';
-        final tipo = parts.length > 1 ? parts[1] : 'MANGA';
-        final tamanho = parts.length > 2 ? parts[2] : key;
+            final parts = key.split('|');
+            final modelagem = parts.isNotEmpty ? parts[0] : 'NORMAL';
+            final tipo = parts.length > 1 ? parts[1] : 'MANGA';
+            final tamanho = parts.length > 2 ? parts[2] : key;
 
-        final unitario = valorUnitarioDaChave(key, quantidade);
-        final total = valorTotalDaChave(key, quantidade, unitario);
+            final unitario = valorUnitarioDaChave(key, quantidade);
+            final total = valorTotalDaChave(key, quantidade, unitario);
 
-        return _CamisaGradeRow(
-          modelagem: _normalizarModelagemCamisa(modelagem),
-          tipo: _normalizarTipoCamisa(tipo),
-          tamanho: tamanho.trim().isEmpty
-              ? 'OUTRO'
-              : tamanho.trim().toUpperCase().replaceAll(' ', ''),
-          quantidade: quantidade,
-          valorUnitario: unitario,
-          valorTotal: total,
-        );
-      }).where((row) => row.quantidade > 0).toList();
+            return _CamisaGradeRow(
+              modelagem: _normalizarModelagemCamisa(modelagem),
+              tipo: _normalizarTipoCamisa(tipo),
+              tamanho: tamanho.trim().isEmpty
+                  ? 'OUTRO'
+                  : tamanho.trim().toUpperCase().replaceAll(' ', ''),
+              quantidade: quantidade,
+              valorUnitario: unitario,
+              valorTotal: total,
+            );
+          })
+          .where((row) => row.quantidade > 0)
+          .toList();
 
       entries.sort(_compararCamisaGradeRow);
 
@@ -298,14 +304,14 @@ class EventoFinanceiroPdfService {
     final antigas = _ordenarTamanhos(porTamanho)
         .map(
           (entry) => _CamisaGradeRow(
-        modelagem: 'NORMAL',
-        tipo: 'MANGA',
-        tamanho: entry.key,
-        quantidade: entry.value,
-        valorUnitario: 0,
-        valorTotal: 0,
-      ),
-    )
+            modelagem: 'NORMAL',
+            tipo: 'MANGA',
+            tamanho: entry.key,
+            quantidade: entry.value,
+            valorUnitario: 0,
+            valorTotal: 0,
+          ),
+        )
         .toList();
 
     antigas.sort(_compararCamisaGradeRow);
@@ -333,7 +339,8 @@ class EventoFinanceiroPdfService {
 
     if (direto > 0) return direto;
 
-    final totaisRaw = bloco['por_detalhe_total'] ??
+    final totaisRaw =
+        bloco['por_detalhe_total'] ??
         bloco['por_total'] ??
         bloco['totais_por_detalhe'];
 
@@ -346,24 +353,22 @@ class EventoFinanceiroPdfService {
     return _asDouble(bloco['valor_total_camisas'] ?? bloco['valor'] ?? 0);
   }
 
-  static int _compararCamisaGradeRow(
-      _CamisaGradeRow a,
-      _CamisaGradeRow b,
-      ) {
-    final modelagem = _ordemModelagemCamisa(a.modelagem)
-        .compareTo(_ordemModelagemCamisa(b.modelagem));
+  static int _compararCamisaGradeRow(_CamisaGradeRow a, _CamisaGradeRow b) {
+    final modelagem = _ordemModelagemCamisa(
+      a.modelagem,
+    ).compareTo(_ordemModelagemCamisa(b.modelagem));
     if (modelagem != 0) return modelagem;
 
     final tipo = _ordemTipoCamisa(a.tipo).compareTo(_ordemTipoCamisa(b.tipo));
     if (tipo != 0) return tipo;
 
-    final tamanho = _ordemTamanhoCamisa(a.tamanho)
-        .compareTo(_ordemTamanhoCamisa(b.tamanho));
+    final tamanho = _ordemTamanhoCamisa(
+      a.tamanho,
+    ).compareTo(_ordemTamanhoCamisa(b.tamanho));
     if (tamanho != 0) return tamanho;
 
     return a.tamanho.compareTo(b.tamanho);
   }
-
 
   // ───────────────────── PDF DE CONFECÇÃO DE CAMISAS (TOTAL) ─────────────────────
   static Future<void> gerarPdfConfeccaoCamisas({
@@ -390,7 +395,7 @@ class EventoFinanceiroPdfService {
             titulo: 'PEDIDO DE CONFECÇÃO',
             subtitulo: eventoNome ?? 'Evento',
             descricao:
-            'Resumo total de camisas separado por modelagem, tipo, tamanho e valor.',
+                'Resumo total de camisas separado por modelagem, tipo, tamanho e valor.',
             cor: verdeEscuro,
             icone: '👕',
           ),
@@ -426,7 +431,14 @@ class EventoFinanceiroPdfService {
             _emptyBox('Nenhuma camisa encontrada.')
           else
             _modernTable(
-              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+              headers: [
+                'Modelagem',
+                'Tipo',
+                'Tamanho',
+                'Qtd.',
+                'Valor unit.',
+                'Total',
+              ],
               data: dataRows,
               headerColor: verdeEscuro,
               widths: {
@@ -481,7 +493,7 @@ class EventoFinanceiroPdfService {
             titulo: 'CONFECÇÃO DETALHADA',
             subtitulo: eventoNome ?? 'Evento',
             descricao:
-            'Separação de camisas por modelagem, tipo, tamanho, valor unitário e total.',
+                'Separação de camisas por modelagem, tipo, tamanho, valor unitário e total.',
             cor: verdeEscuro,
             icone: '👕',
           ),
@@ -523,7 +535,14 @@ class EventoFinanceiroPdfService {
             _emptyBox('Nenhuma camisa de alunos.')
           else
             _modernTable(
-              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+              headers: [
+                'Modelagem',
+                'Tipo',
+                'Tamanho',
+                'Qtd.',
+                'Valor unit.',
+                'Total',
+              ],
               data: dataAlunos,
               headerColor: verdeEscuro,
               widths: {
@@ -546,7 +565,14 @@ class EventoFinanceiroPdfService {
             _emptyBox('Nenhuma camisa avulsa.')
           else
             _modernTable(
-              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+              headers: [
+                'Modelagem',
+                'Tipo',
+                'Tamanho',
+                'Qtd.',
+                'Valor unit.',
+                'Total',
+              ],
               data: dataAvulsas,
               headerColor: laranjaEscuro,
               evenColor: laranjaClaro,
@@ -560,9 +586,7 @@ class EventoFinanceiroPdfService {
               },
             ),
           pw.SizedBox(height: 16),
-          _quebraInteligente(
-            espacoMinimo: dataTotal.length <= 6 ? 180 : 250,
-          ),
+          _quebraInteligente(espacoMinimo: dataTotal.length <= 6 ? 180 : 250),
           _sectionTitle(
             'Resumo geral',
             'Pedido total consolidado para a estamparia',
@@ -572,7 +596,14 @@ class EventoFinanceiroPdfService {
             _emptyBox('Nenhuma camisa no resumo geral.')
           else
             _modernTable(
-              headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+              headers: [
+                'Modelagem',
+                'Tipo',
+                'Tamanho',
+                'Qtd.',
+                'Valor unit.',
+                'Total',
+              ],
               data: dataTotal,
               headerColor: azulEscuro,
               evenColor: azulClaro,
@@ -598,7 +629,6 @@ class EventoFinanceiroPdfService {
     );
   }
 
-
   // ───────────────────── PDF LISTA DE ENTREGA DE CAMISAS ─────────────────────
   static Future<void> gerarPdfListaEntregaCamisasCompleta({
     required List<Map<String, dynamic>> itens,
@@ -623,20 +653,16 @@ class EventoFinanceiroPdfService {
     final rows = itensOrdenados.map((item) {
       final nome = _safe(item['nome']);
       final origem = _safe(item['origem'], fallback: '---');
-      final modelagem = _modelagemLabel(item['modelagem_camisa'] ?? item['modelagem']);
+      final modelagem = _modelagemLabel(
+        item['modelagem_camisa'] ?? item['modelagem'],
+      );
       final tipo = _tipoCamisaLabel(item['tipo_camisa'] ?? item['tipo']);
       final tamanho = _safe(
         item['tamanho_camisa'] ?? item['tamanho'],
         fallback: '---',
       );
 
-      return [
-        '',
-        nome,
-        origem,
-        '$modelagem • $tipo',
-        tamanho,
-      ];
+      return ['', nome, origem, '$modelagem • $tipo', tamanho];
     }).toList();
 
     pdf.addPage(
@@ -652,7 +678,7 @@ class EventoFinanceiroPdfService {
             titulo: 'LISTA DE ENTREGA DE CAMISAS',
             subtitulo: eventoNome ?? 'Evento',
             descricao:
-            'Lista única com alunos e camisas avulsas para conferência de entrega.',
+                'Lista única com alunos e camisas avulsas para conferência de entrega.',
             cor: azulEscuro,
             icone: '👕',
           ),
@@ -738,7 +764,7 @@ class EventoFinanceiroPdfService {
             ),
             child: pw.Text(
               'Observação: esta lista serve apenas para controle manual da entrega. '
-                  'Após conferir no papel, atualize o status de entrega no sistema.',
+              'Após conferir no papel, atualize o status de entrega no sistema.',
               style: pw.TextStyle(
                 color: cinza700,
                 fontSize: 8.5,
@@ -829,7 +855,7 @@ class EventoFinanceiroPdfService {
                 titulo: 'RELATÓRIO FINANCEIRO GERAL',
                 subtitulo: eventoNome ?? 'Evento',
                 descricao:
-                'Visão completa de receitas, gastos, participantes, camisas e patrocínios.',
+                    'Visão completa de receitas, gastos, participantes, camisas e patrocínios.',
                 cor: verdeEscuro,
                 icone: 'PDF',
               ),
@@ -856,7 +882,9 @@ class EventoFinanceiroPdfService {
                   cor: vermelhoEscuro,
                 ),
                 _MetricData(
-                  titulo: saldoLiquido >= 0 ? 'Saldo positivo' : 'Saldo negativo',
+                  titulo: saldoLiquido >= 0
+                      ? 'Saldo positivo'
+                      : 'Saldo negativo',
                   valor: _fmt(saldoLiquido),
                   subtitulo: 'Resultado líquido',
                   cor: saldoCor,
@@ -887,21 +915,21 @@ class EventoFinanceiroPdfService {
                   titulo: 'Quitados',
                   valor: quitados.toString(),
                   subtitulo:
-                  '${(taxaQuitados * 100).toStringAsFixed(1)}% do total',
+                      '${(taxaQuitados * 100).toStringAsFixed(1)}% do total',
                   cor: verdeEscuro,
                 ),
                 _MetricData(
                   titulo: 'Patrocinados',
                   valor: cobertosPorPatrocinio.toString(),
                   subtitulo:
-                  '${(taxaPatrocinados * 100).toStringAsFixed(1)}% do total',
+                      '${(taxaPatrocinados * 100).toStringAsFixed(1)}% do total',
                   cor: roxoEscuro,
                 ),
                 _MetricData(
                   titulo: 'Inadimplentes',
                   valor: inadimplentes.toString(),
                   subtitulo:
-                  '${(taxaInadimplentes * 100).toStringAsFixed(1)}% do total',
+                      '${(taxaInadimplentes * 100).toStringAsFixed(1)}% do total',
                   cor: vermelhoEscuro,
                 ),
               ]),
@@ -1017,7 +1045,14 @@ class EventoFinanceiroPdfService {
               if (camisaRows.isNotEmpty) ...[
                 pw.SizedBox(height: 10),
                 _modernTable(
-                  headers: ['Modelagem', 'Tipo', 'Tamanho', 'Qtd.', 'Valor unit.', 'Total'],
+                  headers: [
+                    'Modelagem',
+                    'Tipo',
+                    'Tamanho',
+                    'Qtd.',
+                    'Valor unit.',
+                    'Total',
+                  ],
                   data: camisaRows,
                   headerColor: laranjaEscuro,
                   evenColor: laranjaClaro,
@@ -1076,7 +1111,7 @@ class EventoFinanceiroPdfService {
                 _noticeBox(
                   title: 'Alunos beneficiados por patrocínio',
                   text:
-                  'Lista gerada com base nos dados válidos enviados pela tela de relatório.',
+                      'Lista gerada com base nos dados válidos enviados pela tela de relatório.',
                   color: roxoEscuro,
                   background: roxoClaro,
                 ),
@@ -1100,9 +1135,7 @@ class EventoFinanceiroPdfService {
             title: 'Observação final',
             subtitle: 'Registro automático',
             minFreeSpace: 90,
-            children: [
-              _assinaturaBox(),
-            ],
+            children: [_assinaturaBox()],
           ),
         ],
       ),
@@ -1134,7 +1167,9 @@ class EventoFinanceiroPdfService {
     pdf.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(),
-        header: (ctx) => ctx.pageNumber == 1 ? pw.SizedBox() : _miniHeader(logo, eventoNome ?? 'Evento'),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
         footer: (ctx) => _rodapePaginado(ctx),
         build: (ctx) => [
           _heroRelatorio(
@@ -1186,16 +1221,15 @@ class EventoFinanceiroPdfService {
     final pdf = pw.Document();
 
     final rows = participantes.map((p) {
-      return [
-        _safe(p['nome']),
-        _safe(p['tamanho_camisa']),
-      ];
+      return [_safe(p['nome']), _safe(p['tamanho_camisa'])];
     }).toList();
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(),
-        header: (ctx) => ctx.pageNumber == 1 ? pw.SizedBox() : _miniHeader(logo, eventoNome ?? 'Evento'),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
         footer: (ctx) => _rodapePaginado(ctx),
         build: (ctx) => [
           _heroRelatorio(
@@ -1203,7 +1237,7 @@ class EventoFinanceiroPdfService {
             titulo: 'CONFERÊNCIA DE NOMES',
             subtitulo: eventoNome ?? 'Evento',
             descricao:
-            'Lista para conferência antes da impressão de certificados e camisas.',
+                'Lista para conferência antes da impressão de certificados e camisas.',
             cor: verdeEscuro,
             icone: '✅',
           ),
@@ -1211,7 +1245,7 @@ class EventoFinanceiroPdfService {
           _noticeBox(
             title: 'ATENÇÃO',
             text:
-            'Verifique se o nome e o tamanho da camisa estão corretos. O nome será impresso no certificado exatamente como estiver nesta lista.',
+                'Verifique se o nome e o tamanho da camisa estão corretos. O nome será impresso no certificado exatamente como estiver nesta lista.',
             color: vermelhoEscuro,
             background: vermelhoClaro,
           ),
@@ -1380,7 +1414,9 @@ class EventoFinanceiroPdfService {
     pdf.addPage(
       pw.MultiPage(
         pageTheme: _pageTheme(),
-        header: (ctx) => ctx.pageNumber == 1 ? pw.SizedBox() : _miniHeader(logo, eventoNome ?? 'Evento'),
+        header: (ctx) => ctx.pageNumber == 1
+            ? pw.SizedBox()
+            : _miniHeader(logo, eventoNome ?? 'Evento'),
         footer: (ctx) => _rodapePaginado(ctx),
         build: (ctx) => [
           _heroRelatorio(
@@ -1388,7 +1424,7 @@ class EventoFinanceiroPdfService {
             titulo: 'LISTA COMPLETA',
             subtitulo: eventoNome ?? 'Evento',
             descricao:
-            'Participantes, pagamento, camisa, brinde, corda cortada e graduação.',
+                'Participantes, pagamento, camisa, brinde, corda cortada e graduação.',
             cor: verdeEscuro,
             icone: 'PDF',
             destaqueDireitaTitulo: participantes.length.toString(),
@@ -1446,11 +1482,9 @@ class EventoFinanceiroPdfService {
     );
   }
 
-
   static pw.Widget _quebraInteligente({double espacoMinimo = 180}) {
     return pw.NewPage(freeSpace: espacoMinimo);
   }
-
 
   static pw.Widget _totalPedidoBox(double valorTotal) {
     return pw.Container(
@@ -1521,7 +1555,7 @@ class EventoFinanceiroPdfService {
                 ),
                 const pw.TextSpan(
                   text:
-                  'Normal = camisa tradicional/unissex. Baby Look = modelagem feminina mais ajustada. ',
+                      'Normal = camisa tradicional/unissex. Baby Look = modelagem feminina mais ajustada. ',
                 ),
                 pw.TextSpan(
                   text: 'Tipo: ',
@@ -1529,7 +1563,7 @@ class EventoFinanceiroPdfService {
                 ),
                 const pw.TextSpan(
                   text:
-                  'Manga = manga curta normal. Manga Longa = camisa de manga longa. Regata = camisa sem mangas.',
+                      'Manga = manga curta normal. Manga Longa = camisa de manga longa. Regata = camisa sem mangas.',
                 ),
               ],
             ),
@@ -1540,11 +1574,11 @@ class EventoFinanceiroPdfService {
   }
 
   static pw.Widget _logoBox(
-      pw.MemoryImage? logo, {
-        double size = 64,
-        PdfColor? fallbackColor,
-        bool compact = false,
-      }) {
+    pw.MemoryImage? logo, {
+    double size = 64,
+    PdfColor? fallbackColor,
+    bool compact = false,
+  }) {
     return pw.Container(
       width: size,
       height: size,
@@ -1555,23 +1589,23 @@ class EventoFinanceiroPdfService {
       child: pw.Center(
         child: logo != null
             ? pw.Padding(
-          // A logo original tem respiro interno. Esse padding assimétrico
-          // centraliza melhor visualmente dentro do quadrado branco.
-          padding: const pw.EdgeInsets.fromLTRB(7, 4, 7, 8),
-          child: pw.Image(
-            logo,
-            fit: pw.BoxFit.contain,
-            alignment: pw.Alignment.center,
-          ),
-        )
+                // A logo original tem respiro interno. Esse padding assimétrico
+                // centraliza melhor visualmente dentro do quadrado branco.
+                padding: const pw.EdgeInsets.fromLTRB(7, 4, 7, 8),
+                child: pw.Image(
+                  logo,
+                  fit: pw.BoxFit.contain,
+                  alignment: pw.Alignment.center,
+                ),
+              )
             : pw.Text(
-          'UAI',
-          style: pw.TextStyle(
-            fontSize: compact ? 10 : 16,
-            fontWeight: pw.FontWeight.bold,
-            color: fallbackColor ?? verdeEscuro,
-          ),
-        ),
+                'UAI',
+                style: pw.TextStyle(
+                  fontSize: compact ? 10 : 16,
+                  fontWeight: pw.FontWeight.bold,
+                  color: fallbackColor ?? verdeEscuro,
+                ),
+              ),
       ),
     );
   }
@@ -1650,11 +1684,7 @@ class EventoFinanceiroPdfService {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          _logoBox(
-            logo,
-            size: 64,
-            fallbackColor: cor,
-          ),
+          _logoBox(logo, size: 64, fallbackColor: cor),
           pw.SizedBox(width: 14),
           pw.Expanded(
             child: pw.Column(
@@ -1694,7 +1724,10 @@ class EventoFinanceiroPdfService {
             pw.SizedBox(width: 12),
             pw.Container(
               width: 96,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
               decoration: pw.BoxDecoration(
                 color: PdfColors.white,
                 borderRadius: pw.BorderRadius.circular(12),
@@ -1758,10 +1791,7 @@ class EventoFinanceiroPdfService {
               ),
               pw.Text(
                 subtitle,
-                style: pw.TextStyle(
-                  fontSize: 8,
-                  color: cinza600,
-                ),
+                style: pw.TextStyle(fontSize: 8, color: cinza600),
               ),
             ],
           ),
@@ -1786,10 +1816,7 @@ class EventoFinanceiroPdfService {
           spacing: spacing,
           runSpacing: spacing,
           children: metrics.map((metric) {
-            return pw.SizedBox(
-              width: itemWidth,
-              child: _metricCard(metric),
-            );
+            return pw.SizedBox(width: itemWidth, child: _metricCard(metric));
           }).toList(),
         );
       },
@@ -1839,10 +1866,7 @@ class EventoFinanceiroPdfService {
           pw.Text(
             data.subtitulo,
             maxLines: 2,
-            style: pw.TextStyle(
-              fontSize: 7.2,
-              color: cinza600,
-            ),
+            style: pw.TextStyle(fontSize: 7.2, color: cinza600),
           ),
         ],
       ),
@@ -1893,7 +1917,9 @@ class EventoFinanceiroPdfService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  positivo ? 'Evento com saldo positivo' : 'Evento com saldo negativo',
+                  positivo
+                      ? 'Evento com saldo positivo'
+                      : 'Evento com saldo negativo',
                   style: pw.TextStyle(
                     color: cor,
                     fontSize: 12,
@@ -1903,10 +1929,7 @@ class EventoFinanceiroPdfService {
                 pw.SizedBox(height: 3),
                 pw.Text(
                   'Saldo líquido de ${_fmt(saldoLiquido)}. Margem aproximada: ${(margem * 100).toStringAsFixed(1)}%.',
-                  style: pw.TextStyle(
-                    color: cinza700,
-                    fontSize: 8.6,
-                  ),
+                  style: pw.TextStyle(color: cinza700, fontSize: 8.6),
                 ),
               ],
             ),
@@ -2022,7 +2045,10 @@ class EventoFinanceiroPdfService {
           decoration: pw.BoxDecoration(color: headerColor),
           children: headers.map((h) {
             return pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 7,
+              ),
               child: pw.Text(
                 h,
                 style: pw.TextStyle(
@@ -2051,12 +2077,12 @@ class EventoFinanceiroPdfService {
                 ),
                 child: cellBuilder == null
                     ? pw.Text(
-                  cell,
-                  style: pw.TextStyle(
-                    color: cinza900,
-                    fontSize: cellFontSize,
-                  ),
-                )
+                        cell,
+                        style: pw.TextStyle(
+                          color: cinza900,
+                          fontSize: cellFontSize,
+                        ),
+                      )
                     : cellBuilder(cell, index, colIndex),
               );
             }),
@@ -2162,10 +2188,7 @@ class EventoFinanceiroPdfService {
         borderRadius: pw.BorderRadius.circular(12),
         border: pw.Border.all(color: cinza200, width: 0.8),
       ),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(color: cinza600, fontSize: 9),
-      ),
+      child: pw.Text(text, style: pw.TextStyle(color: cinza600, fontSize: 9)),
     );
   }
 

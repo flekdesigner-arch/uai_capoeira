@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
@@ -29,7 +29,8 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -43,9 +44,10 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
 
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
-  Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
-
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   late EventoModel _evento;
   bool _isLoading = false;
@@ -63,7 +65,9 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
 
   Future<void> _verificarPermissoes() async {
     // Verifica as permissões de forma assíncrona
-    final podeEditar = await _permissaoService.temPermissao('pode_editar_evento');
+    final podeEditar = await _permissaoService.temPermissao(
+      'pode_editar_evento',
+    );
     final podeCriar = await _permissaoService.temPermissao('pode_criar_evento');
 
     if (mounted) {
@@ -81,7 +85,9 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
 
     try {
       // Busca dados atualizados do evento
-      final eventoAtualizado = await _eventoService.buscarEventoPorId(widget.eventoId);
+      final eventoAtualizado = await _eventoService.buscarEventoPorId(
+        widget.eventoId,
+      );
       if (eventoAtualizado != null && mounted) {
         setState(() {
           _evento = eventoAtualizado;
@@ -129,7 +135,8 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
   Future<void> _compartilharEvento() async {
     final String organizadores = _formatarOrganizadores(_evento.organizadores);
 
-    String texto = '''
+    String texto =
+        '''
 🎉 *${_evento.nome}*
 
 📅 Data: ${_evento.dataFormatada} ${_evento.horario.isNotEmpty ? 'às ${_evento.horario}' : ''}
@@ -162,8 +169,12 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
   Future<void> _abrirNoMapa() async {
     if (_evento.local.isEmpty && _evento.cidade.isEmpty) return;
 
-    final String query = Uri.encodeComponent('${_evento.local} ${_evento.cidade}'.trim());
-    final Uri uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+    final String query = Uri.encodeComponent(
+      '${_evento.local} ${_evento.cidade}'.trim(),
+    );
+    final Uri uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$query',
+    );
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -185,7 +196,9 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
   @override
   Widget build(BuildContext context) {
     final status = _evento.status ?? 'andamento';
-    final corStatus = status == 'finalizado' ? Colors.grey : context.uai.success;
+    final corStatus = status == 'finalizado'
+        ? Colors.grey
+        : context.uai.success;
     final textoStatus = status == 'finalizado' ? 'Finalizado' : 'Em andamento';
 
     return Scaffold(
@@ -193,40 +206,41 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(corStatus),
+              slivers: [
+                _buildSliverAppBar(corStatus),
 
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildStatusBadge(corStatus, textoStatus),
-                const SizedBox(height: 16),
-                _buildTituloEvento(),
-                const SizedBox(height: 8),
-                _buildTipoEvento(),
-                const SizedBox(height: 24),
-                _buildDataHorarioCard(),
-                const SizedBox(height: 24),
-                _buildLocalCard(),
-                const SizedBox(height: 24),
-                if (_evento.organizadores != null &&
-                    _formatarOrganizadores(_evento.organizadores) != 'Não informado')
-                  _buildOrganizadoresCard(),
-                const SizedBox(height: 24),
-                _buildLinksSection(),
-                const SizedBox(height: 24),
-                // Usando a variável de permissão que já foi carregada
-                if (_podeGerenciar && status != 'finalizado')
-                  _buildAdminActions(),
-                const SizedBox(height: 16),
-                _buildActionButtons(),
-                const SizedBox(height: 16),
-              ]),
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      _buildStatusBadge(corStatus, textoStatus),
+                      const SizedBox(height: 16),
+                      _buildTituloEvento(),
+                      const SizedBox(height: 8),
+                      _buildTipoEvento(),
+                      const SizedBox(height: 24),
+                      _buildDataHorarioCard(),
+                      const SizedBox(height: 24),
+                      _buildLocalCard(),
+                      const SizedBox(height: 24),
+                      if (_evento.organizadores != null &&
+                          _formatarOrganizadores(_evento.organizadores) !=
+                              'Não informado')
+                        _buildOrganizadoresCard(),
+                      const SizedBox(height: 24),
+                      _buildLinksSection(),
+                      const SizedBox(height: 24),
+                      // Usando a variável de permissão que já foi carregada
+                      if (_podeGerenciar && status != 'finalizado')
+                        _buildAdminActions(),
+                      const SizedBox(height: 16),
+                      _buildActionButtons(),
+                      const SizedBox(height: 16),
+                    ]),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -238,12 +252,12 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
       flexibleSpace: FlexibleSpaceBar(
         background: _evento.linkBanner != null && _evento.linkBanner!.isNotEmpty
             ? Image.network(
-          _evento.linkBanner!,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildFallbackBanner();
-          },
-        )
+                _evento.linkBanner!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildFallbackBanner();
+                },
+              )
             : _buildFallbackBanner(),
       ),
       actions: [
@@ -263,7 +277,11 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(_evento.iconeDoTipo, size: 50, color: Colors.white.withOpacity(0.5)),
+            Icon(
+              _evento.iconeDoTipo,
+              size: 50,
+              color: Colors.white.withOpacity(0.5),
+            ),
             const SizedBox(height: 8),
             Text(
               _evento.nome,
@@ -289,18 +307,12 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
           Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: corStatus,
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: corStatus),
           ),
           const SizedBox(width: 6),
           Text(
             textoStatus,
-            style: TextStyle(
-              color: corStatus,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: corStatus, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -327,10 +339,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
       ),
       child: Text(
         _evento.tipo,
-        style: TextStyle(
-          color: context.uai.info,
-          fontWeight: FontWeight.w500,
-        ),
+        style: TextStyle(color: context.uai.info, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -357,7 +366,10 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
               padding: EdgeInsets.all(16),
               child: Row(
                 children: [
-                  _buildIconWithBackground(Icons.calendar_today, context.uai.warning),
+                  _buildIconWithBackground(
+                    Icons.calendar_today,
+                    context.uai.warning,
+                  ),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -365,11 +377,18 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
                       children: [
                         Text(
                           'Data',
-                          style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.uai.textSecondary,
+                          ),
                         ),
                         Text(
                           _evento.dataFormatada,
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _onCard()),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _onCard(),
+                          ),
                         ),
                       ],
                     ),
@@ -383,11 +402,20 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
                       children: [
                         Text(
                           'Horário',
-                          style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.uai.textSecondary,
+                          ),
                         ),
                         Text(
-                          _evento.horario.isNotEmpty ? _evento.horario : 'Não definido',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _onCard()),
+                          _evento.horario.isNotEmpty
+                              ? _evento.horario
+                              : 'Não definido',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _onCard(),
+                          ),
                         ),
                       ],
                     ),
@@ -423,25 +451,41 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
               padding: EdgeInsets.all(16),
               child: Row(
                 children: [
-                  _buildIconWithBackground(Icons.location_on, context.uai.error),
+                  _buildIconWithBackground(
+                    Icons.location_on,
+                    context.uai.error,
+                  ),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _evento.local.isNotEmpty ? _evento.local : 'Local não informado',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _onCard()),
+                          _evento.local.isNotEmpty
+                              ? _evento.local
+                              : 'Local não informado',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _onCard(),
+                          ),
                         ),
                         if (_evento.cidade.isNotEmpty)
                           Text(
                             _evento.cidade,
-                            style: TextStyle(fontSize: 14, color: context.uai.textSecondary),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: context.uai.textSecondary,
+                            ),
                           ),
                       ],
                     ),
                   ),
-                  Icon(Icons.open_in_new, size: 16, color: context.uai.textMuted),
+                  Icon(
+                    Icons.open_in_new,
+                    size: 16,
+                    color: context.uai.textMuted,
+                  ),
                 ],
               ),
             ),
@@ -475,7 +519,11 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
                 Expanded(
                   child: Text(
                     _formatarOrganizadores(_evento.organizadores),
-                    style: TextStyle(fontSize: 14, color: _onCardMuted(), fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _onCardMuted(),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -498,7 +546,8 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
   }
 
   Widget _buildLinksSection() {
-    final hasLinks = (_evento.linkBanner?.isNotEmpty ?? false) ||
+    final hasLinks =
+        (_evento.linkBanner?.isNotEmpty ?? false) ||
         (_evento.linkFotosVideos?.isNotEmpty ?? false) ||
         (_evento.previaVideo?.isNotEmpty ?? false) ||
         (_evento.linkPlaylist?.isNotEmpty ?? false);
@@ -555,10 +604,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
       children: [
         Text(
           '⚙️ Ações Administrativas',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         SizedBox(height: 8),
         Card(
@@ -652,10 +698,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
           ),
           child: Icon(icon, color: cor, size: 20),
         ),
-        title: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
+        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
         subtitle: Text(
           url,
           maxLines: 1,

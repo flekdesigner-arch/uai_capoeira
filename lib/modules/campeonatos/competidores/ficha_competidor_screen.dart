@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,10 +9,7 @@ import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dar
 class FichaCompetidorScreen extends StatefulWidget {
   final InscricaoCampeonatoModel competidor;
 
-  const FichaCompetidorScreen({
-    super.key,
-    required this.competidor,
-  });
+  const FichaCompetidorScreen({super.key, required this.competidor});
 
   @override
   State<FichaCompetidorScreen> createState() => _FichaCompetidorScreenState();
@@ -41,7 +38,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_presente ? '✅ Presença marcada!' : '❌ Presença removida'),
+            content: Text(
+              _presente ? '✅ Presença marcada!' : '❌ Presença removida',
+            ),
             backgroundColor: _presente ? Colors.green : Colors.orange,
           ),
         );
@@ -74,7 +73,10 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await _campeonatoService.adicionarObservacao(widget.competidor.id, _observacao);
+      await _campeonatoService.adicionarObservacao(
+        widget.competidor.id,
+        _observacao,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,7 +161,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                 // Foto e nome
                 Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
@@ -170,39 +174,45 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                           decoration: BoxDecoration(
                             color: Colors.amber.shade100,
                             borderRadius: BorderRadius.circular(50),
-                            border: Border.all(color: Colors.amber.shade400, width: 3),
+                            border: Border.all(
+                              color: Colors.amber.shade400,
+                              width: 3,
+                            ),
                           ),
                           child: comp.fotoUrl != null
                               ? ClipRRect(
-                            borderRadius: BorderRadius.circular(50),
-                            child: CachedNetworkImage(
-                              imageUrl: comp.fotoUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => const Center(
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              errorWidget: (context, url, error) => Center(
-                                child: Text(
-                                  comp.nome[0],
-                                  style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.amber.shade900,
+                                  borderRadius: BorderRadius.circular(50),
+                                  child: CachedNetworkImage(
+                                    imageUrl: comp.fotoUrl!,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Center(
+                                          child: Text(
+                                            comp.nome[0],
+                                            style: TextStyle(
+                                              fontSize: 40,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.amber.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    comp.nome[0],
+                                    style: TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.amber.shade900,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          )
-                              : Center(
-                            child: Text(
-                              comp.nome[0],
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade900,
-                              ),
-                            ),
-                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -240,7 +250,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
-                                      comp.isMaiorIdade ? 'MAIOR DE IDADE' : 'MENOR DE IDADE',
+                                      comp.isMaiorIdade
+                                          ? 'MAIOR DE IDADE'
+                                          : 'MENOR DE IDADE',
                                       style: TextStyle(
                                         fontSize: 10,
                                         color: comp.isMaiorIdade
@@ -265,19 +277,30 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                 // Presença - CORRIGIDO: activeColor substituído por activeTrackColor
                 Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: SwitchListTile(
-                    title: const Text('PRESENÇA', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(_presente ? '✅ Competidor presente' : '⏳ Aguardando'),
+                    title: const Text(
+                      'PRESENÇA',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      _presente ? '✅ Competidor presente' : '⏳ Aguardando',
+                    ),
                     value: _presente,
-                    onChanged: _isSaving ? null : (value) {
-                      setState(() => _presente = value);
-                      _salvarPresenca();
-                    },
-                    activeTrackColor: Colors.green, // 👈 CORRIGIDO: activeColor -> activeTrackColor
+                    onChanged: _isSaving
+                        ? null
+                        : (value) {
+                            setState(() => _presente = value);
+                            _salvarPresenca();
+                          },
+                    activeTrackColor: Colors
+                        .green, // 👈 CORRIGIDO: activeColor -> activeTrackColor
                     inactiveTrackColor: Colors.grey.shade300,
                     activeThumbColor: Colors.white, // Cor do botão quando ativo
-                    inactiveThumbColor: Colors.white, // Cor do botão quando inativo
+                    inactiveThumbColor:
+                        Colors.white, // Cor do botão quando inativo
                   ),
                 ),
 
@@ -286,7 +309,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                 // Botões de contato - CORRIGIDO: contatoAluno ao invés de contato
                 Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -294,7 +319,10 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                       children: [
                         const Text(
                           '📱 CONTATOS',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -302,7 +330,8 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                             Expanded(
                               child: _buildContactButton(
                                 label: 'COMPETIDOR',
-                                numero: comp.contatoAluno, // 👈 CORRIGIDO: contato -> contatoAluno
+                                numero: comp
+                                    .contatoAluno, // 👈 CORRIGIDO: contato -> contatoAluno
                                 nome: comp.nome,
                                 cor: Colors.green,
                               ),
@@ -338,9 +367,15 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                     _buildInfoRow('Idade', '${comp.idade} anos'),
                     _buildInfoRow('Sexo', comp.sexo),
                     _buildInfoRow('CPF', _formatarCPF(comp.cpf)),
-                    _buildInfoRow('Contato', comp.contatoAluno), // 👈 CORRIGIDO: contato -> contatoAluno
+                    _buildInfoRow(
+                      'Contato',
+                      comp.contatoAluno,
+                    ), // 👈 CORRIGIDO: contato -> contatoAluno
                     _buildInfoRow('Cidade', comp.cidade),
-                    _buildInfoRow('Endereço', comp.endereco), // Adicionado campo endereço
+                    _buildInfoRow(
+                      'Endereço',
+                      comp.endereco,
+                    ), // Adicionado campo endereço
                   ],
                 ),
 
@@ -356,7 +391,10 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                     _buildInfoRow('Professor', comp.professorNome),
                     _buildInfoRow('Contato Prof.', comp.professorContato),
                     const Divider(height: 16),
-                    _buildInfoRow('Graduação', comp.graduacaoNome ?? 'Não informada'),
+                    _buildInfoRow(
+                      'Graduação',
+                      comp.graduacaoNome ?? 'Não informada',
+                    ),
                     if (comp.graduacaoId != null)
                       _buildInfoRow('ID Graduação', comp.graduacaoId!),
                     _buildInfoRow('Grupo UAI', comp.isGrupoUai ? 'Sim' : 'Não'),
@@ -383,27 +421,46 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
 
                 // Informações da Inscrição
                 _buildSection(
-                title: '📋 INFORMAÇÕES DA INSCRIÇÃO',
-                icon: Icons.receipt,
-                color: Colors.purple,
-                children: [
-                _buildInfoRow('Status', _getStatusText(comp.status)),
-                _buildInfoRow('Taxa', 'R\$ ${comp.taxaInscricao.toStringAsFixed(2)}'),
-                _buildInfoRow('Taxa Paga', comp.taxaPaga ? 'Sim' : 'Não'),
-                _buildInfoRow('Autorização', comp.autorizacao ? 'Sim' : 'Não'),
-    if (comp.dataInscricao != null)
-    _buildInfoRow('Data Insc.', DateFormat('dd/MM/yyyy HH:mm').format(comp.dataInscricao!)),
-    _buildInfoRow('Campeonato', comp.nomeCampeonato), // 👈 CORRIGIDO: campeonato -> nomeCampeonato
-    _buildInfoRow('Data Evento', comp.dataEvento), // Adicionado também a data do evento
-    ],
-    ),
+                  title: '📋 INFORMAÇÕES DA INSCRIÇÃO',
+                  icon: Icons.receipt,
+                  color: Colors.purple,
+                  children: [
+                    _buildInfoRow('Status', _getStatusText(comp.status)),
+                    _buildInfoRow(
+                      'Taxa',
+                      'R\$ ${comp.taxaInscricao.toStringAsFixed(2)}',
+                    ),
+                    _buildInfoRow('Taxa Paga', comp.taxaPaga ? 'Sim' : 'Não'),
+                    _buildInfoRow(
+                      'Autorização',
+                      comp.autorizacao ? 'Sim' : 'Não',
+                    ),
+                    if (comp.dataInscricao != null)
+                      _buildInfoRow(
+                        'Data Insc.',
+                        DateFormat(
+                          'dd/MM/yyyy HH:mm',
+                        ).format(comp.dataInscricao!),
+                      ),
+                    _buildInfoRow(
+                      'Campeonato',
+                      comp.nomeCampeonato,
+                    ), // 👈 CORRIGIDO: campeonato -> nomeCampeonato
+                    _buildInfoRow(
+                      'Data Evento',
+                      comp.dataEvento,
+                    ), // Adicionado também a data do evento
+                  ],
+                ),
 
                 const SizedBox(height: 16),
 
                 // Observações
                 Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -411,7 +468,10 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                       children: [
                         const Text(
                           '📝 OBSERVAÇÕES',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
@@ -438,13 +498,13 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
                             ),
                             child: _isSaving
                                 ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
                                 : const Text('SALVAR'),
                           ),
                         ),
@@ -458,9 +518,7 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
           if (_isSaving)
             Container(
               color: Colors.black.withValues(alpha: 0.3),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),
@@ -493,9 +551,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
     return InkWell(
       onTap: temContato
           ? () => _abrirWhatsApp(
-        numero,
-        mensagem: 'Olá $nome! Informações sobre o campeonato.',
-      )
+              numero,
+              mensagem: 'Olá $nome! Informações sobre o campeonato.',
+            )
           : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -503,7 +561,9 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
           color: temContato ? cor.withValues(alpha: 0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: temContato ? cor.withValues(alpha: 0.3) : Colors.grey.shade300,
+            color: temContato
+                ? cor.withValues(alpha: 0.3)
+                : Colors.grey.shade300,
           ),
         ),
         child: Column(
@@ -586,19 +646,13 @@ class _FichaCompetidorScreenState extends State<FichaCompetidorScreen> {
             width: 100,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
           ),
           Expanded(
             child: Text(
               value.isEmpty ? 'Não informado' : value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
         ],

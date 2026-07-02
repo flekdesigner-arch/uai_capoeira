@@ -22,15 +22,15 @@ class GeradorCertificadoEventoService {
     CertificadoEventoMapperService? mapperService,
     FirebaseStorage? storage,
     FirebaseFirestore? firestore,
-  })  : _exportService = exportService ?? const CertificadoExportService(),
-        _mapperService = mapperService ?? CertificadoEventoMapperService(),
-        _storage = storage ?? FirebaseStorage.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  }) : _exportService = exportService ?? const CertificadoExportService(),
+       _mapperService = mapperService ?? CertificadoEventoMapperService(),
+       _storage = storage ?? FirebaseStorage.instance,
+       _firestore = firestore ?? FirebaseFirestore.instance;
 
   Future<Uint8List> capturarPngDaPreview(
-      GlobalKey repaintKey, {
-        double pixelRatio = 4.0,
-      }) {
+    GlobalKey repaintKey, {
+    double pixelRatio = 4.0,
+  }) {
     return _exportService.capturarPreviewComoPng(
       repaintKey,
       pixelRatio: pixelRatio,
@@ -38,9 +38,9 @@ class GeradorCertificadoEventoService {
   }
 
   Future<Uint8List> gerarPdfDaPreview(
-      GlobalKey repaintKey, {
-        double pixelRatio = 4.0,
-      }) async {
+    GlobalKey repaintKey, {
+    double pixelRatio = 4.0,
+  }) async {
     final pngBytes = await capturarPngDaPreview(
       repaintKey,
       pixelRatio: pixelRatio,
@@ -83,9 +83,7 @@ class GeradorCertificadoEventoService {
     );
   }
 
-  Future<void> imprimirPdfDaPreview({
-    required GlobalKey repaintKey,
-  }) async {
+  Future<void> imprimirPdfDaPreview({required GlobalKey repaintKey}) async {
     final pdfBytes = await gerarPdfDaPreview(repaintKey);
     await _exportService.imprimirPdf(pdfBytes);
   }
@@ -121,7 +119,9 @@ class GeradorCertificadoEventoService {
     }
 
     if (participante.participacaoId.trim().isEmpty) {
-      throw Exception('Participação sem ID. Não é possível salvar certificado.');
+      throw Exception(
+        'Participação sem ID. Não é possível salvar certificado.',
+      );
     }
 
     final fileName = nomeArquivoBase(
@@ -162,10 +162,14 @@ class GeradorCertificadoEventoService {
     CertificadoVinculoLog? onLog,
   }) async {
     if (participante.participacaoId.trim().isEmpty) {
-      throw Exception('Participação sem ID. Não é possível vincular certificado.');
+      throw Exception(
+        'Participação sem ID. Não é possível vincular certificado.',
+      );
     }
 
-    onLog?.call('🔎 Verificando certificado antigo de ${participante.alunoNome}...');
+    onLog?.call(
+      '🔎 Verificando certificado antigo de ${participante.alunoNome}...',
+    );
 
     final dadosAntigos = await _buscarDadosCertificadoAntigo(
       participacaoId: participante.participacaoId,
@@ -237,9 +241,9 @@ class GeradorCertificadoEventoService {
   }
 
   Future<String> _tentarApagarCertificadoAntigoDoStorage(
-      Map<String, dynamic> dados, {
-        CertificadoVinculoLog? onLog,
-      }) async {
+    Map<String, dynamic> dados, {
+    CertificadoVinculoLog? onLog,
+  }) async {
     final storagePath = _primeiroTextoNaoVazio([
       dados['certificado_storage_path'],
       dados['storage_path_certificado'],
@@ -248,7 +252,9 @@ class GeradorCertificadoEventoService {
     ]);
 
     if (storagePath != null) {
-      onLog?.call('🧹 Certificado antigo encontrado no Storage Path. Tentando apagar...');
+      onLog?.call(
+        '🧹 Certificado antigo encontrado no Storage Path. Tentando apagar...',
+      );
 
       try {
         await _storage.ref().child(storagePath).delete();
@@ -288,7 +294,9 @@ class GeradorCertificadoEventoService {
       return '🔗 Link antigo é externo/Drive. Não apaguei arquivo externo; vou apenas substituir o link.';
     }
 
-    onLog?.call('🧹 Link antigo é do Firebase Storage. Tentando apagar arquivo antigo...');
+    onLog?.call(
+      '🧹 Link antigo é do Firebase Storage. Tentando apagar arquivo antigo...',
+    );
 
     try {
       await _storage.refFromURL(link).delete();

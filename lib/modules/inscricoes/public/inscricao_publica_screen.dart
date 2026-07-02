@@ -1,4 +1,3 @@
-﻿
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -160,7 +159,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -216,7 +216,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   String _toUpperCase(String? text) => text?.toUpperCase().trim() ?? '';
 
   String _nomeEtapaRastreio(int etapa) {
-    if (etapa < 0 || etapa >= _nomesEtapasRastreio.length) return 'etapa_$etapa';
+    if (etapa < 0 || etapa >= _nomesEtapasRastreio.length)
+      return 'etapa_$etapa';
     return _nomesEtapasRastreio[etapa];
   }
 
@@ -237,7 +238,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       'tempo_total_segundos': _tempoTotalInscricaoSegundos,
       'tempo_etapa_segundos': _tempoEtapaAtualSegundos,
       'tem_foto': _temFoto(),
-      'tem_assinatura': _assinaturaBytes != null || (_assinaturaUrl?.isNotEmpty == true),
+      'tem_assinatura':
+          _assinaturaBytes != null || (_assinaturaUrl?.isNotEmpty == true),
       'recolher_assinatura': _recolherAssinatura,
       'autorizacao': _autorizacao,
       'inscricoes_abertas': _inscricoesAbertas,
@@ -263,7 +265,8 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       'nome_responsavel': _controllers['nome_responsavel']!.text.trim(),
       'contato_responsavel': _controllers['contato_responsavel']!.text.trim(),
       'foto_preenchida': _temFoto(),
-      'assinatura_preenchida': _assinaturaUrl != null || _assinaturaBytes != null,
+      'assinatura_preenchida':
+          _assinaturaUrl != null || _assinaturaBytes != null,
       'autorizacao': _autorizacao,
       'idade_calculada': _controllers['data_nascimento']!.text.trim().isEmpty
           ? null
@@ -313,22 +316,25 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   void _registrarCampoDigitadoDebounce(String campo, String valor) {
     _debounceRastreioCampos[campo]?.cancel();
-    _debounceRastreioCampos[campo] = Timer(const Duration(milliseconds: 850), () {
-      if (!mounted) return;
+    _debounceRastreioCampos[campo] = Timer(
+      const Duration(milliseconds: 850),
+      () {
+        if (!mounted) return;
 
-      _rastreioService.registrarCampoFormulario(
-        formulario: 'inscricao_publica',
-        campo: campo,
-        valor: valor,
-        etapa: _campoParaEtapaRastreio(campo),
-        origem: 'digitacao',
-        sensivel: _campoSensivelRastreio(campo),
-        metadata: {
-          'etapa_atual': _etapaAtualRastreio(),
-          'etapa_numero': _currentStep + 1,
-        },
-      );
-    });
+        _rastreioService.registrarCampoFormulario(
+          formulario: 'inscricao_publica',
+          campo: campo,
+          valor: valor,
+          etapa: _campoParaEtapaRastreio(campo),
+          origem: 'digitacao',
+          sensivel: _campoSensivelRastreio(campo),
+          metadata: {
+            'etapa_atual': _etapaAtualRastreio(),
+            'etapa_numero': _currentStep + 1,
+          },
+        );
+      },
+    );
   }
 
   void _registrarSnapshotInscricao({
@@ -359,18 +365,23 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       _rastreioService.iniciarTela(
         'inscricao_publica',
         origem: 'landing_page',
-        metadata: {
-          'formulario': 'aula_experimental',
-          'total_etapas': 7,
-        },
+        metadata: {'formulario': 'aula_experimental', 'total_etapas': 7},
       ),
     );
 
-    unawaited(_rastreioService.registrarPaginaVista('inscricao_publica', 'landing_page'));
+    unawaited(
+      _rastreioService.registrarPaginaVista(
+        'inscricao_publica',
+        'landing_page',
+      ),
+    );
     unawaited(_registrarEntradaEtapa(0, origem: 'init'));
   }
 
-  Future<void> _registrarEntradaEtapa(int etapa, {String origem = 'navegacao'}) async {
+  Future<void> _registrarEntradaEtapa(
+    int etapa, {
+    String origem = 'navegacao',
+  }) async {
     _inicioEtapaAtual = DateTime.now();
 
     await _rastreioService.registrarEtapaFormulario(
@@ -384,10 +395,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   }
 
   Future<void> _registrarSaidaEtapa(
-      int etapa, {
-        required String destino,
-        String origem = 'navegacao',
-      }) async {
+    int etapa, {
+    required String destino,
+    String origem = 'navegacao',
+  }) async {
     await _rastreioService.registrarEtapaFormulario(
       formulario: 'inscricao_publica',
       etapa: etapa + 1,
@@ -403,10 +414,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   }
 
   void _rastrearAcaoInscricao(
-      String acao, {
-        String? origem,
-        Map<String, dynamic>? metadata,
-      }) {
+    String acao, {
+    String? origem,
+    Map<String, dynamic>? metadata,
+  }) {
     unawaited(
       _rastreioService.registrarAcaoFormulario(
         formulario: 'inscricao_publica',
@@ -418,11 +429,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   }
 
   void _rastrearErroInscricao(
-      String local,
-      List<String> erros, {
-        String? origem,
-        Map<String, dynamic>? metadata,
-      }) {
+    String local,
+    List<String> erros, {
+    String? origem,
+    Map<String, dynamic>? metadata,
+  }) {
     unawaited(
       _rastreioService.registrarErroFormulario(
         formulario: 'inscricao_publica',
@@ -437,7 +448,13 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   void _registrarSaidaInscricaoSeNecessario({required String motivo}) {
     if (!_rastreioInscricaoIniciado || _inscricaoFinalizadaComSucesso) return;
 
-    unawaited(_registrarSaidaEtapa(_currentStep, destino: motivo, origem: 'saida_inscricao'));
+    unawaited(
+      _registrarSaidaEtapa(
+        _currentStep,
+        destino: motivo,
+        origem: 'saida_inscricao',
+      ),
+    );
 
     unawaited(
       _rastreioService.registrarAcaoFormulario(
@@ -469,12 +486,16 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
             children: [
               Icon(Icons.check_circle_rounded, color: _readableOn(bg)),
               const SizedBox(width: 12),
-              Expanded(child: Text(message, style: TextStyle(color: _readableOn(bg)))),
+              Expanded(
+                child: Text(message, style: TextStyle(color: _readableOn(bg))),
+              ),
             ],
           ),
           backgroundColor: bg,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -493,12 +514,16 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
             children: [
               Icon(Icons.error_outline_rounded, color: _readableOn(bg)),
               const SizedBox(width: 12),
-              Expanded(child: Text(message, style: TextStyle(color: _readableOn(bg)))),
+              Expanded(
+                child: Text(message, style: TextStyle(color: _readableOn(bg))),
+              ),
             ],
           ),
           backgroundColor: bg,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+          ),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -506,7 +531,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   Future<void> _verificarInscricoes() async {
     try {
-      final doc = await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('inscricoes')
+          .get();
 
       if (!doc.exists) {
         if (!mounted) return;
@@ -516,7 +544,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
           _etapaValida[0] = false;
           _carregando = false;
         });
-        _rastrearAcaoInscricao('configuracao_inscricao_nao_encontrada', origem: 'verificar_inscricoes');
+        _rastrearAcaoInscricao(
+          'configuracao_inscricao_nao_encontrada',
+          origem: 'verificar_inscricoes',
+        );
         return;
       }
 
@@ -558,11 +589,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         },
       );
     } catch (e) {
-      _rastrearErroInscricao(
-        'verificar_inscricoes',
-        ['Erro ao verificar disponibilidade: $e'],
-        origem: 'firestore',
-      );
+      _rastrearErroInscricao('verificar_inscricoes', [
+        'Erro ao verificar disponibilidade: $e',
+      ], origem: 'firestore');
       if (!mounted) return;
       setState(() {
         _inscricoesAbertas = false;
@@ -584,12 +613,20 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
     final nomeValido = _validarNomePessoa(nome);
     if (!nomeValido) {
-      erros.add(nome.isEmpty ? 'Preencha o nome completo.' : 'O nome completo deve conter apenas letras.');
+      erros.add(
+        nome.isEmpty
+            ? 'Preencha o nome completo.'
+            : 'O nome completo deve conter apenas letras.',
+      );
     }
 
     final apelidoValido = _validarNomePessoa(apelido);
     if (!apelidoValido) {
-      erros.add(apelido.isEmpty ? 'Preencha o apelido.' : 'O apelido deve conter apenas letras.');
+      erros.add(
+        apelido.isEmpty
+            ? 'Preencha o apelido.'
+            : 'O apelido deve conter apenas letras.',
+      );
     }
 
     final dataValida = dataNascimento.isNotEmpty;
@@ -608,7 +645,12 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     setState(() {
-      _etapaValida[2] = nomeValido && apelidoValido && dataValida && sexoValido && idadeValida;
+      _etapaValida[2] =
+          nomeValido &&
+          apelidoValido &&
+          dataValida &&
+          sexoValido &&
+          idadeValida;
       _errosPorEtapa[2] = erros;
     });
   }
@@ -627,7 +669,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     if (!mounted) return;
     final erros = <String>[];
 
-    final contatoAlunoValido = _telefoneCompleto(_controllers['contato_aluno']!.text);
+    final contatoAlunoValido = _telefoneCompleto(
+      _controllers['contato_aluno']!.text,
+    );
     if (!contatoAlunoValido) erros.add('Informe o telefone completo do aluno.');
 
     bool nomeRespValido = true;
@@ -637,15 +681,23 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       final nomeResp = _controllers['nome_responsavel']!.text.trim();
       nomeRespValido = _validarNomePessoa(nomeResp);
       if (!nomeRespValido) {
-        erros.add(nomeResp.isEmpty ? 'Preencha o nome do responsável.' : 'O nome do responsável deve conter apenas letras.');
+        erros.add(
+          nomeResp.isEmpty
+              ? 'Preencha o nome do responsável.'
+              : 'O nome do responsável deve conter apenas letras.',
+        );
       }
 
-      contatoRespValido = _telefoneCompleto(_controllers['contato_responsavel']!.text);
-      if (!contatoRespValido) erros.add('Informe o telefone completo do responsável.');
+      contatoRespValido = _telefoneCompleto(
+        _controllers['contato_responsavel']!.text,
+      );
+      if (!contatoRespValido)
+        erros.add('Informe o telefone completo do responsável.');
     }
 
     setState(() {
-      _etapaValida[3] = contatoAlunoValido && nomeRespValido && contatoRespValido;
+      _etapaValida[3] =
+          contatoAlunoValido && nomeRespValido && contatoRespValido;
       _errosPorEtapa[3] = erros;
     });
   }
@@ -660,21 +712,39 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     final cidade = _controllers['cidade']!.text.trim();
 
     final ruaValida = _validarEnderecoTexto(rua);
-    if (!ruaValida) erros.add(rua.isEmpty ? 'Preencha a rua.' : 'A rua contém caracteres inválidos.');
+    if (!ruaValida)
+      erros.add(
+        rua.isEmpty ? 'Preencha a rua.' : 'A rua contém caracteres inválidos.',
+      );
 
     final numeroValido = numero.isNotEmpty && numero.length <= 5;
     if (!numeroValido) {
-      erros.add(numero.isEmpty ? 'Preencha o número do endereço.' : 'O número deve ter no máximo 5 dígitos.');
+      erros.add(
+        numero.isEmpty
+            ? 'Preencha o número do endereço.'
+            : 'O número deve ter no máximo 5 dígitos.',
+      );
     }
 
     final bairroValido = _validarEnderecoTexto(bairro);
-    if (!bairroValido) erros.add(bairro.isEmpty ? 'Preencha o bairro.' : 'O bairro contém caracteres inválidos.');
+    if (!bairroValido)
+      erros.add(
+        bairro.isEmpty
+            ? 'Preencha o bairro.'
+            : 'O bairro contém caracteres inválidos.',
+      );
 
     final cidadeValida = _validarEnderecoTexto(cidade);
-    if (!cidadeValida) erros.add(cidade.isEmpty ? 'Preencha a cidade.' : 'A cidade contém caracteres inválidos.');
+    if (!cidadeValida)
+      erros.add(
+        cidade.isEmpty
+            ? 'Preencha a cidade.'
+            : 'A cidade contém caracteres inválidos.',
+      );
 
     setState(() {
-      _etapaValida[4] = ruaValida && numeroValido && bairroValido && cidadeValida;
+      _etapaValida[4] =
+          ruaValida && numeroValido && bairroValido && cidadeValida;
       _errosPorEtapa[4] = erros;
     });
   }
@@ -684,15 +754,20 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
     if (!_autorizacao) erros.add('Aceite os termos de responsabilidade.');
 
-    if (_recolherAssinatura && _assinaturaUrl == null && _assinaturaBytes == null) {
+    if (_recolherAssinatura &&
+        _assinaturaUrl == null &&
+        _assinaturaBytes == null) {
       erros.add('Assine o termo digitalmente.');
     }
 
     if (!_temFoto()) erros.add('A foto do aluno é obrigatória.');
 
     setState(() {
-      _etapaValida[6] = _autorizacao &&
-          (_recolherAssinatura ? (_assinaturaUrl != null || _assinaturaBytes != null) : true) &&
+      _etapaValida[6] =
+          _autorizacao &&
+          (_recolherAssinatura
+              ? (_assinaturaUrl != null || _assinaturaBytes != null)
+              : true) &&
           _temFoto();
       _errosPorEtapa[6] = erros;
     });
@@ -700,7 +775,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
   void _mostrarFeedbackErros() {
     final erros = _errosPorEtapa[_currentStep] ?? [];
-    final errosRastreio = erros.isEmpty ? ['Preencha os campos obrigatórios.'] : erros;
+    final errosRastreio = erros.isEmpty
+        ? ['Preencha os campos obrigatórios.']
+        : erros;
 
     _rastrearErroInscricao(
       _nomeEtapaRastreio(_currentStep),
@@ -752,19 +829,30 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _roundIcon(icon: Icons.warning_amber_rounded, color: danger, size: 42),
+                    _roundIcon(
+                      icon: Icons.warning_amber_rounded,
+                      color: danger,
+                      size: 42,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       titulo,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: t.textPrimary),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: t.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Color.alphaBlend(danger.withOpacity(0.08), t.cardAlt),
+                        color: Color.alphaBlend(
+                          danger.withOpacity(0.08),
+                          t.cardAlt,
+                        ),
                         borderRadius: BorderRadius.circular(t.inputRadius),
                         border: Border.all(color: danger.withOpacity(0.16)),
                       ),
@@ -776,7 +864,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.error_outline_rounded, color: danger, size: 17),
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  color: danger,
+                                  size: 17,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -804,9 +896,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                           backgroundColor: danger,
                           foregroundColor: _readableOn(danger),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
+                          ),
                         ),
-                        child: const Text('ENTENDI', style: TextStyle(fontWeight: FontWeight.w900)),
+                        child: const Text(
+                          'ENTENDI',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
                       ),
                     ),
                   ],
@@ -861,18 +958,30 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _roundIcon(icon: Icons.center_focus_strong_rounded, color: primary, size: 34),
+                    _roundIcon(
+                      icon: Icons.center_focus_strong_rounded,
+                      color: primary,
+                      size: 34,
+                    ),
                     const SizedBox(height: 14),
                     Text(
                       'Foto para identificação',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: t.textPrimary, fontSize: 20, fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Tire a foto do aluno de frente, com o rosto bem visível.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: t.textSecondary, height: 1.35, fontSize: 13),
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        height: 1.35,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     Container(
@@ -881,7 +990,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                       decoration: BoxDecoration(
                         color: t.cardAlt,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: t.success.withOpacity(0.80), width: 2),
+                        border: Border.all(
+                          color: t.success.withOpacity(0.80),
+                          width: 2,
+                        ),
                       ),
                       child: CustomPaint(
                         painter: _GuiaRostoInscricaoPainter(
@@ -889,7 +1001,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                           borderColor: t.border,
                         ),
                         child: Center(
-                          child: Icon(Icons.face_rounded, size: 74, color: t.textMuted),
+                          child: Icon(
+                            Icons.face_rounded,
+                            size: 74,
+                            color: t.textMuted,
+                          ),
                         ),
                       ),
                     ),
@@ -911,8 +1027,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                             backgroundColor: t.primary,
                             foregroundColor: _readableOn(t.primary),
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
+                            ),
                           ),
                         );
 
@@ -924,7 +1046,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                         }
 
                         return Row(
-                          children: [Expanded(child: cancel), const SizedBox(width: 10), Expanded(child: ok)],
+                          children: [
+                            Expanded(child: cancel),
+                            const SizedBox(width: 10),
+                            Expanded(child: ok),
+                          ],
                         );
                       },
                     ),
@@ -946,11 +1072,17 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       final continuar = await _mostrarOrientacaoFotoAluno();
       if (!continuar) {
-        _rastrearAcaoInscricao('foto_orientacao_cancelada', origem: 'etapa_foto');
+        _rastrearAcaoInscricao(
+          'foto_orientacao_cancelada',
+          origem: 'etapa_foto',
+        );
         return;
       }
 
-      _rastrearAcaoInscricao('foto_orientacao_confirmada', origem: 'etapa_foto');
+      _rastrearAcaoInscricao(
+        'foto_orientacao_confirmada',
+        origem: 'etapa_foto',
+      );
 
       _setProcessandoFotoLocal('Abrindo câmera...');
 
@@ -992,9 +1124,13 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       );
 
       _validarEtapaFoto();
-      _showSuccessSnackbar('📸 Foto registrada! Ela será enviada ao finalizar.');
+      _showSuccessSnackbar(
+        '📸 Foto registrada! Ela será enviada ao finalizar.',
+      );
     } catch (e) {
-      _rastrearErroInscricao('foto_aluno', ['Erro ao tirar/processar foto: $e'], origem: 'foto');
+      _rastrearErroInscricao('foto_aluno', [
+        'Erro ao tirar/processar foto: $e',
+      ], origem: 'foto');
       _limparProcessandoFotoLocal();
       if (mounted) setState(() => _uploadingFoto = false);
       _showErrorSnackbar('Erro ao tirar foto: $e');
@@ -1014,18 +1150,21 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final nomeAluno = _controllers['nome']!
-          .text
+      final nomeAluno = _controllers['nome']!.text
           .trim()
           .replaceAll(RegExp(r'\s+'), '_')
           .replaceAll(RegExp(r'[^A-Za-zÀ-ÖØ-öø-ÿ0-9_\-]'), '');
 
-      final fileName = '${timestamp}_${nomeAluno.isEmpty ? 'aluno' : nomeAluno}.jpg';
+      final fileName =
+          '${timestamp}_${nomeAluno.isEmpty ? 'aluno' : nomeAluno}.jpg';
       final fotoRef = _storage.ref().child('fotos_inscricoes/$fileName');
 
       await fotoRef.putData(
         _fotoBytes!,
-        SettableMetadata(contentType: 'image/jpeg', customMetadata: {'origem': 'camera_inscricao_publica'}),
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {'origem': 'camera_inscricao_publica'},
+        ),
       );
 
       final downloadUrl = await fotoRef.getDownloadURL();
@@ -1044,7 +1183,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _processandoFotoLocal = false;
         _statusFotoLocal = '';
       });
-      _rastrearErroInscricao('upload_foto', ['Erro ao fazer upload da foto: $e'], origem: 'firebase_storage');
+      _rastrearErroInscricao('upload_foto', [
+        'Erro ao fazer upload da foto: $e',
+      ], origem: 'firebase_storage');
       _showErrorSnackbar('Erro ao fazer upload da foto: $e');
       rethrow;
     }
@@ -1061,10 +1202,19 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: t.surface,
-          title: Text('Remover foto', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900)),
-          content: Text('Tem certeza que deseja remover esta foto?', style: TextStyle(color: t.textSecondary)),
+          title: Text(
+            'Remover foto',
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+          ),
+          content: Text(
+            'Tem certeza que deseja remover esta foto?',
+            style: TextStyle(color: t.textSecondary),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCELAR'),
+            ),
             ElevatedButton(
               onPressed: () {
                 setState(() {
@@ -1079,7 +1229,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                 _rastrearAcaoInscricao('foto_removida', origem: 'foto_aluno');
                 _showSuccessSnackbar('Foto removida com sucesso');
               },
-              style: ElevatedButton.styleFrom(backgroundColor: danger, foregroundColor: _readableOn(danger)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: danger,
+                foregroundColor: _readableOn(danger),
+              ),
               child: const Text('REMOVER'),
             ),
           ],
@@ -1091,7 +1244,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   String _gerarTermoTexto() {
     final isMaior = _isMaiorIdade();
     final nomeAluno = _controllers['nome']!.text;
-    final nomeResp = isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
+    final nomeResp = isMaior
+        ? nomeAluno
+        : _controllers['nome_responsavel']!.text;
     final dataHora = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     if (isMaior) {
@@ -1139,7 +1294,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     _rastrearAcaoInscricao('assinatura_abriu', origem: 'revisao');
 
     final isMaior = _isMaiorIdade();
-    final nomeResponsavel = isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
+    final nomeResponsavel = isMaior
+        ? _controllers['nome']!.text
+        : _controllers['nome_responsavel']!.text;
 
     final result = await Navigator.push<bool>(
       context,
@@ -1161,7 +1318,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               }
             });
 
-            _rastrearAcaoInscricao('assinatura_registrada', origem: 'signature_screen', metadata: {'bytes': imageBytes.length});
+            _rastrearAcaoInscricao(
+              'assinatura_registrada',
+              origem: 'signature_screen',
+              metadata: {'bytes': imageBytes.length},
+            );
             _showSuccessSnackbar('✅ Assinatura registrada com sucesso!');
           },
         ),
@@ -1169,10 +1330,16 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     );
 
     if (result == true && mounted) {
-      _rastrearAcaoInscricao('assinatura_confirmada', origem: 'signature_screen');
+      _rastrearAcaoInscricao(
+        'assinatura_confirmada',
+        origem: 'signature_screen',
+      );
       _validarEtapaFinal();
     } else {
-      _rastrearAcaoInscricao('assinatura_cancelada_ou_voltou', origem: 'signature_screen');
+      _rastrearAcaoInscricao(
+        'assinatura_cancelada_ou_voltou',
+        origem: 'signature_screen',
+      );
     }
   }
 
@@ -1185,7 +1352,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final nomeResponsavel = _controllers['nome_responsavel']!.text.trim().isNotEmpty
+      final nomeResponsavel =
+          _controllers['nome_responsavel']!.text.trim().isNotEmpty
           ? _controllers['nome_responsavel']!.text.trim()
           : _controllers['nome']!.text.trim();
 
@@ -1193,20 +1361,29 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           .replaceAll(RegExp(r'\s+'), '_')
           .replaceAll(RegExp(r'[^A-Za-zÀ-ÖØ-öø-ÿ0-9_\-]'), '');
 
-      final fileName = '${timestamp}_${nomeSeguro.isEmpty ? 'responsavel' : nomeSeguro}.png';
-      final assinaturaRef = _storage.ref().child('assinaturas_inscricoes/$fileName');
+      final fileName =
+          '${timestamp}_${nomeSeguro.isEmpty ? 'responsavel' : nomeSeguro}.png';
+      final assinaturaRef = _storage.ref().child(
+        'assinaturas_inscricoes/$fileName',
+      );
 
       await assinaturaRef.putData(
         _assinaturaBytes!,
         SettableMetadata(
           contentType: 'image/png',
-          customMetadata: {'origem': 'assinatura_inscricao_publica', 'modo': 'upload_no_envio_final'},
+          customMetadata: {
+            'origem': 'assinatura_inscricao_publica',
+            'modo': 'upload_no_envio_final',
+          },
         ),
       );
 
       final downloadUrl = await assinaturaRef.getDownloadURL();
 
-      _rastrearAcaoInscricao('upload_assinatura_concluido', origem: 'envio_final');
+      _rastrearAcaoInscricao(
+        'upload_assinatura_concluido',
+        origem: 'envio_final',
+      );
 
       setState(() {
         _assinaturaUrl = downloadUrl;
@@ -1215,7 +1392,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       });
     } catch (e) {
       setState(() => _uploadingAssinatura = false);
-      _rastrearErroInscricao('upload_assinatura', ['Erro ao enviar assinatura: $e'], origem: 'firebase_storage');
+      _rastrearErroInscricao('upload_assinatura', [
+        'Erro ao enviar assinatura: $e',
+      ], origem: 'firebase_storage');
       _showErrorSnackbar('Erro ao enviar assinatura: $e');
       rethrow;
     }
@@ -1226,7 +1405,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     _validarEtapaFinal();
 
     if (!(_etapaValida[6] ?? false)) {
-      _rastrearErroInscricao('revisao_envio', _errosPorEtapa[6] ?? ['Revisão inválida'], origem: 'tentativa_envio');
+      _rastrearErroInscricao(
+        'revisao_envio',
+        _errosPorEtapa[6] ?? ['Revisão inválida'],
+        origem: 'tentativa_envio',
+      );
       _mostrarFeedbackErros();
       return;
     }
@@ -1234,7 +1417,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     setState(() => _enviando = true);
 
     try {
-      final configDoc = await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final configDoc = await _firestore
+          .collection('configuracoes')
+          .doc('inscricoes')
+          .get();
       final config = configDoc.data() ?? {};
       final vagasDisponiveis = config['vagas_disponiveis'] ?? 0;
 
@@ -1243,12 +1429,15 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           .where('status', isEqualTo: 'pendente')
           .get();
 
-      if (vagasDisponiveis > 0 && inscricoesSnapshot.docs.length >= vagasDisponiveis) {
+      if (vagasDisponiveis > 0 &&
+          inscricoesSnapshot.docs.length >= vagasDisponiveis) {
         setState(() {
           _mensagem = 'Desculpe, as vagas para inscrições estão esgotadas.';
           _enviando = false;
         });
-        _rastrearErroInscricao('envio_inscricao', ['Vagas esgotadas no momento do envio.'], origem: 'vagas');
+        _rastrearErroInscricao('envio_inscricao', [
+          'Vagas esgotadas no momento do envio.',
+        ], origem: 'vagas');
         _showErrorSnackbar('❌ Vagas esgotadas!');
         return;
       }
@@ -1260,7 +1449,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         'apelido': _toUpperCase(_controllers['apelido']!.text),
         'data_nascimento': _controllers['data_nascimento']!.text.trim(),
         'sexo': _sexo,
-        'contato_aluno': _controllers['contato_aluno']!.text.replaceAll(RegExp(r'[^0-9]'), ''),
+        'contato_aluno': _controllers['contato_aluno']!.text.replaceAll(
+          RegExp(r'[^0-9]'),
+          '',
+        ),
         'autorizacao': _autorizacao,
         'termo_autorizacao': _gerarTermoTexto(),
         'status': 'pendente',
@@ -1280,7 +1472,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       }
 
       if (_recolherAssinatura &&
-          ((_assinaturaUrl == null || _assinaturaUrl?.isEmpty == true) && _assinaturaBytes != null)) {
+          ((_assinaturaUrl == null || _assinaturaUrl?.isEmpty == true) &&
+              _assinaturaBytes != null)) {
         await _uploadAssinaturaFirebase();
       }
 
@@ -1290,18 +1483,26 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         throw Exception('Assinatura é obrigatória');
       }
 
-      if (_assinaturaUrl?.isNotEmpty == true) dados['assinatura_url'] = _assinaturaUrl;
+      if (_assinaturaUrl?.isNotEmpty == true)
+        dados['assinatura_url'] = _assinaturaUrl;
 
       if (!isMaior) {
-        dados['nome_responsavel'] = _toUpperCase(_controllers['nome_responsavel']!.text);
-        dados['contato_responsavel'] = _controllers['contato_responsavel']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['nome_responsavel'] = _toUpperCase(
+          _controllers['nome_responsavel']!.text,
+        );
+        dados['contato_responsavel'] = _controllers['contato_responsavel']!.text
+            .replaceAll(RegExp(r'[^0-9]'), '');
       } else {
         dados['nome_responsavel'] = _toUpperCase(_controllers['nome']!.text);
-        dados['contato_responsavel'] = _controllers['contato_aluno']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['contato_responsavel'] = _controllers['contato_aluno']!.text
+            .replaceAll(RegExp(r'[^0-9]'), '');
       }
 
       if (_controllers['cpf']!.text.trim().isNotEmpty) {
-        dados['cpf'] = _controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        dados['cpf'] = _controllers['cpf']!.text.replaceAll(
+          RegExp(r'[^0-9]'),
+          '',
+        );
       }
 
       final enderecoParts = <String>[];
@@ -1312,21 +1513,28 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         }
         enderecoParts.add(ruaNumero);
       }
-      if (_controllers['bairro']!.text.isNotEmpty) enderecoParts.add(_toUpperCase(_controllers['bairro']!.text));
-      if (_controllers['cidade']!.text.isNotEmpty) enderecoParts.add(_toUpperCase(_controllers['cidade']!.text));
+      if (_controllers['bairro']!.text.isNotEmpty)
+        enderecoParts.add(_toUpperCase(_controllers['bairro']!.text));
+      if (_controllers['cidade']!.text.isNotEmpty)
+        enderecoParts.add(_toUpperCase(_controllers['cidade']!.text));
       dados['endereco'] = enderecoParts.join(', ');
 
       final inscricaoRef = await _firestore.collection('inscricoes').add(dados);
 
       final novoTotal = inscricoesSnapshot.docs.length + 1;
-      await _firestore.collection('configuracoes').doc('inscricoes').set(
-        {'total_inscricoes': novoTotal},
-        SetOptions(merge: true),
-      );
+      await _firestore.collection('configuracoes').doc('inscricoes').set({
+        'total_inscricoes': novoTotal,
+      }, SetOptions(merge: true));
 
       _inscricaoFinalizadaComSucesso = true;
 
-      unawaited(_registrarSaidaEtapa(_currentStep, destino: 'inscricao_enviada', origem: 'conversao'));
+      unawaited(
+        _registrarSaidaEtapa(
+          _currentStep,
+          destino: 'inscricao_enviada',
+          origem: 'conversao',
+        ),
+      );
 
       unawaited(
         _rastreioService.registrarConversao(
@@ -1335,7 +1543,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           metadata: {
             ..._metadataResumoInscricao(),
             'inscricao_id': inscricaoRef.id,
-            'idade_aluno': _calcularIdade(_controllers['data_nascimento']!.text),
+            'idade_aluno': _calcularIdade(
+              _controllers['data_nascimento']!.text,
+            ),
             'is_maior_idade': isMaior,
             'tem_cpf': _controllers['cpf']!.text.trim().isNotEmpty,
             'tempo_total_inscricao_segundos': _tempoTotalInscricaoSegundos,
@@ -1343,7 +1553,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         ),
       );
 
-      unawaited(_rastreioService.finalizarTela(destino: 'inscricao_enviada', metadata: _metadataResumoInscricao()));
+      unawaited(
+        _rastreioService.finalizarTela(
+          destino: 'inscricao_enviada',
+          metadata: _metadataResumoInscricao(),
+        ),
+      );
       _registrarSnapshotInscricao(momento: 'envio_sucesso');
 
       if (mounted) {
@@ -1351,7 +1566,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         _mostrarDialogSucesso(dados);
       }
     } catch (e) {
-      _rastrearErroInscricao('envio_inscricao', ['Erro ao enviar inscrição: $e'], origem: 'firestore_storage');
+      _rastrearErroInscricao('envio_inscricao', [
+        'Erro ao enviar inscrição: $e',
+      ], origem: 'firestore_storage');
       if (!mounted) return;
       setState(() {
         _mensagem = 'Erro ao enviar inscrição: $e';
@@ -1378,7 +1595,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(18),
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92, maxWidth: 520),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.92,
+              maxWidth: 520,
+            ),
             child: Material(
               color: t.surface,
               borderRadius: BorderRadius.circular(t.cardRadius + 4),
@@ -1390,7 +1610,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [success, t.primary], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      gradient: LinearGradient(
+                        colors: [success, t.primary],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -1400,21 +1624,39 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           decoration: BoxDecoration(
                             color: _readableOn(success).withOpacity(0.18),
                             borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: _readableOn(success).withOpacity(0.20)),
+                            border: Border.all(
+                              color: _readableOn(success).withOpacity(0.20),
+                            ),
                           ),
-                          child: Icon(Icons.check_circle_rounded, color: _readableOn(success), size: 54),
+                          child: Icon(
+                            Icons.check_circle_rounded,
+                            color: _readableOn(success),
+                            size: 54,
+                          ),
                         ),
                         const SizedBox(height: 14),
                         Text(
                           'Inscrição enviada!',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: _readableOn(success), fontSize: 20, height: 1.05, fontWeight: FontWeight.w900),
+                          style: TextStyle(
+                            color: _readableOn(success),
+                            fontSize: 20,
+                            height: 1.05,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          isMaior ? 'Recebemos seus dados com sucesso.' : 'Recebemos a inscrição de $nomeAluno com sucesso.',
+                          isMaior
+                              ? 'Recebemos seus dados com sucesso.'
+                              : 'Recebemos a inscrição de $nomeAluno com sucesso.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: _readableOn(success).withOpacity(0.86), fontSize: 13, height: 1.35, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: _readableOn(success).withOpacity(0.86),
+                            fontSize: 13,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
@@ -1426,7 +1668,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                         children: [
                           _successMessageBox(
                             icon: Icons.waving_hand_rounded,
-                            text: isMaior ? 'Olá, $nomeAluno!' : 'Olá, $nomeResponsavel!',
+                            text: isMaior
+                                ? 'Olá, $nomeAluno!'
+                                : 'Olá, $nomeResponsavel!',
                             color: t.info,
                           ),
                           const SizedBox(height: 12),
@@ -1437,22 +1681,32 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                               children: [
                                 _buildInfoDialog('Aluno', dados['nome']),
                                 _buildInfoDialog('Idade', '$idadeAluno anos'),
-                                _buildInfoDialog('Contato', dados['contato_aluno']),
-                                if (!isMaior) _buildInfoDialog('Responsável', dados['nome_responsavel']),
+                                _buildInfoDialog(
+                                  'Contato',
+                                  dados['contato_aluno'],
+                                ),
+                                if (!isMaior)
+                                  _buildInfoDialog(
+                                    'Responsável',
+                                    dados['nome_responsavel'],
+                                  ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 12),
                           _successMessageBox(
                             icon: Icons.notifications_active_rounded,
-                            text: 'Agora é só aguardar o contato do professor para combinar os próximos detalhes da aula experimental.',
+                            text:
+                                'Agora é só aguardar o contato do professor para combinar os próximos detalhes da aula experimental.',
                             color: t.warning,
                           ),
                           if (_recolherAssinatura) ...[
                             const SizedBox(height: 12),
                             _successMessageBox(
                               icon: Icons.draw_rounded,
-                              text: (_assinaturaUrl != null || _assinaturaBytes != null)
+                              text:
+                                  (_assinaturaUrl != null ||
+                                      _assinaturaBytes != null)
                                   ? 'Assinatura digital registrada.'
                                   : 'Termo de responsabilidade aceito.',
                               color: t.success,
@@ -1466,17 +1720,25 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     top: false,
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-                      decoration: BoxDecoration(color: t.card, border: Border(top: BorderSide(color: t.border))),
+                      decoration: BoxDecoration(
+                        color: t.card,
+                        border: Border(top: BorderSide(color: t.border)),
+                      ),
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () {
-                            _rastrearAcaoInscricao('finalizou_dialog_sucesso', origem: 'sucesso');
+                            _rastrearAcaoInscricao(
+                              'finalizou_dialog_sucesso',
+                              origem: 'sucesso',
+                            );
                             Navigator.of(context).pop();
                             Navigator.pushAndRemoveUntil(
                               context,
-                              MaterialPageRoute(builder: (context) => const LandingPage()),
-                                  (route) => false,
+                              MaterialPageRoute(
+                                builder: (context) => const LandingPage(),
+                              ),
+                              (route) => false,
                             );
                           },
                           icon: const Icon(Icons.check_rounded),
@@ -1485,8 +1747,14 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                             backgroundColor: success,
                             foregroundColor: _readableOn(success),
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1523,7 +1791,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           Expanded(
             child: Text(
               text,
-              style: TextStyle(color: t.textPrimary, fontSize: 13, height: 1.32, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 13,
+                height: 1.32,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -1538,11 +1811,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          SizedBox(width: 82, child: Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary))),
+          SizedBox(
+            width: 82,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12, color: t.textSecondary),
+            ),
+          ),
           Expanded(
             child: Text(
               value ?? 'Não informado',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: t.textPrimary),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: t.textPrimary,
+              ),
             ),
           ),
         ],
@@ -1553,7 +1836,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   void _proximaEtapa() {
     if (_currentStep >= 6) return;
 
-    _rastrearAcaoInscricao('clicou_avancar_etapa', origem: _nomeEtapaRastreio(_currentStep));
+    _rastrearAcaoInscricao(
+      'clicou_avancar_etapa',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
 
     if (_currentStep == 1) _validarEtapaFoto();
     if (_currentStep == 2) _validarEtapa1();
@@ -1564,7 +1850,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       _errosPorEtapa[5] = [];
     }
 
-    final isValido = _currentStep == 5 ? true : (_etapaValida[_currentStep] ?? false);
+    final isValido = _currentStep == 5
+        ? true
+        : (_etapaValida[_currentStep] ?? false);
 
     if (!isValido) {
       _mostrarFeedbackErros();
@@ -1574,42 +1862,71 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final etapaAnterior = _currentStep;
     final proxima = _currentStep + 1;
 
-    unawaited(_registrarSaidaEtapa(etapaAnterior, destino: _nomeEtapaRastreio(proxima), origem: 'avancar'));
+    unawaited(
+      _registrarSaidaEtapa(
+        etapaAnterior,
+        destino: _nomeEtapaRastreio(proxima),
+        origem: 'avancar',
+      ),
+    );
 
     setState(() => _currentStep++);
 
     unawaited(_registrarEntradaEtapa(proxima, origem: 'avancar'));
 
-    _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _etapaAnterior() {
     if (_currentStep <= 0) return;
 
-    _rastrearAcaoInscricao('clicou_voltar_etapa', origem: _nomeEtapaRastreio(_currentStep));
+    _rastrearAcaoInscricao(
+      'clicou_voltar_etapa',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
 
     final etapaAnterior = _currentStep;
     final destino = _currentStep - 1;
 
-    unawaited(_registrarSaidaEtapa(etapaAnterior, destino: _nomeEtapaRastreio(destino), origem: 'voltar'));
+    unawaited(
+      _registrarSaidaEtapa(
+        etapaAnterior,
+        destino: _nomeEtapaRastreio(destino),
+        origem: 'voltar',
+      ),
+    );
 
     setState(() => _currentStep--);
 
     unawaited(_registrarEntradaEtapa(destino, origem: 'voltar'));
 
-    _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<bool> _onWillPop() async {
-    _rastrearAcaoInscricao('pressionou_voltar_sistema', origem: _nomeEtapaRastreio(_currentStep));
+    _rastrearAcaoInscricao(
+      'pressionou_voltar_sistema',
+      origem: _nomeEtapaRastreio(_currentStep),
+    );
 
     if (_currentStep == 0) {
       final shouldExit = await _confirmarSaida();
       if (shouldExit == true) {
-        _registrarSaidaInscricaoSeNecessario(motivo: 'voltar_sistema_confirmado');
+        _registrarSaidaInscricaoSeNecessario(
+          motivo: 'voltar_sistema_confirmado',
+        );
         if (mounted) Navigator.pop(context);
       } else {
-        _rastrearAcaoInscricao('cancelou_saida_inscricao', origem: 'dialog_saida');
+        _rastrearAcaoInscricao(
+          'cancelou_saida_inscricao',
+          origem: 'dialog_saida',
+        );
       }
       return false;
     }
@@ -1629,9 +1946,20 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           backgroundColor: t.surface,
           title: Column(
             children: [
-              _roundIcon(icon: Icons.exit_to_app_rounded, color: warning, size: 34),
+              _roundIcon(
+                icon: Icons.exit_to_app_rounded,
+                color: warning,
+                size: 34,
+              ),
               const SizedBox(height: 12),
-              Text('Sair da inscrição?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: t.textPrimary)),
+              Text(
+                'Sair da inscrição?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: t.textPrimary,
+                ),
+              ),
             ],
           ),
           content: Text(
@@ -1640,10 +1968,16 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             style: TextStyle(color: t.textSecondary),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CONTINUAR')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CONTINUAR'),
+            ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: warning, foregroundColor: _readableOn(warning)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: warning,
+                foregroundColor: _readableOn(warning),
+              ),
               child: const Text('SAIR'),
             ),
           ],
@@ -1660,10 +1994,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     // para evitar duas barras na área pública.
     return WillPopScope(
       onWillPop: _onWillPop,
-      child: ColoredBox(
-        color: t.background,
-        child: _buildBodyState(),
-      ),
+      child: ColoredBox(color: t.background, child: _buildBodyState()),
     );
   }
 
@@ -1671,7 +2002,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     if (_carregando) return _buildLoadingScreen();
 
     if (!_inscricoesAbertas) {
-      _rastreioService.registrarPaginaVista('inscricao_fechada', 'inscricao_publica');
+      _rastreioService.registrarPaginaVista(
+        'inscricao_fechada',
+        'inscricao_publica',
+      );
       return _buildInscricoesFechadas();
     }
 
@@ -1691,7 +2025,13 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           children: [
             CircularProgressIndicator(color: t.primary),
             const SizedBox(height: 14),
-            Text('Verificando inscrições...', style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w800)),
+            Text(
+              'Verificando inscrições...',
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ],
         ),
       ),
@@ -1712,16 +2052,27 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _roundIcon(icon: Icons.lock_rounded, color: primary, size: 42, large: true),
+              _roundIcon(
+                icon: Icons.lock_rounded,
+                color: primary,
+                size: 42,
+                large: true,
+              ),
               const SizedBox(height: 18),
               Text(
                 'Inscrições fechadas',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: t.textPrimary),
+                style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  color: t.textPrimary,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
-                _mensagem.isNotEmpty ? _mensagem : 'No momento não estamos aceitando novas inscrições.',
+                _mensagem.isNotEmpty
+                    ? _mensagem
+                    : 'No momento não estamos aceitando novas inscrições.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: t.textSecondary, height: 1.35),
               ),
@@ -1736,7 +2087,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     backgroundColor: t.primary,
                     foregroundColor: _readableOn(t.primary),
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
+                    ),
                   ),
                 ),
               ),
@@ -1797,7 +2150,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   ? 'Enviando foto...'
                   : 'Enviando sua inscrição...',
               textAlign: TextAlign.center,
-              style: TextStyle(color: t.textPrimary, fontSize: 18, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -1832,7 +2189,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         final compact = constraints.maxWidth < 380;
 
         return Container(
-          margin: EdgeInsets.fromLTRB(compact ? 10 : 14, compact ? 8 : 12, compact ? 10 : 14, 0),
+          margin: EdgeInsets.fromLTRB(
+            compact ? 10 : 14,
+            compact ? 8 : 12,
+            compact ? 10 : 14,
+            0,
+          ),
           padding: EdgeInsets.all(compact ? 10 : 12),
           decoration: BoxDecoration(
             gradient: t.primaryGradient,
@@ -1849,7 +2211,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   borderRadius: BorderRadius.circular(compact ? 14 : 16),
                   border: Border.all(color: onPrimary.withOpacity(0.16)),
                 ),
-                child: Icon(atual.$2, color: onPrimary, size: compact ? 21 : 24),
+                child: Icon(
+                  atual.$2,
+                  color: onPrimary,
+                  size: compact ? 21 : 24,
+                ),
               ),
               SizedBox(width: compact ? 9 : 11),
               Expanded(
@@ -1860,14 +2226,23 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                       atual.$1,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: onPrimary, fontWeight: FontWeight.w900, fontSize: compact ? 14 : 15.5, height: 1.05),
+                      style: TextStyle(
+                        color: onPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: compact ? 14 : 15.5,
+                        height: 1.05,
+                      ),
                     ),
                     SizedBox(height: compact ? 1 : 2),
                     Row(
                       children: [
                         Text(
                           'Etapa ${_currentStep + 1}/7',
-                          style: TextStyle(color: onPrimary.withOpacity(0.78), fontSize: compact ? 10.5 : 11.5, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            color: onPrimary.withOpacity(0.78),
+                            fontSize: compact ? 10.5 : 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1877,7 +2252,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                               minHeight: compact ? 5 : 6,
                               value: (_currentStep + 1) / 7,
                               backgroundColor: onPrimary.withOpacity(0.18),
-                              valueColor: AlwaysStoppedAnimation<Color>(onPrimary),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                onPrimary,
+                              ),
                             ),
                           ),
                         ),
@@ -1916,8 +2293,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             _statusBox(
               icon: _temVagas ? Icons.info_rounded : Icons.error_rounded,
               color: _temVagas ? t.info : t.error,
-              title: _temVagas ? 'Aceitamos alunos de $_idadeMinima a $_idadeMaxima anos' : 'Vagas esgotadas',
-              subtitle: _temVagas ? '$_vagasRestantes vagas disponíveis' : 'No momento não temos vagas disponíveis.',
+              title: _temVagas
+                  ? 'Aceitamos alunos de $_idadeMinima a $_idadeMaxima anos'
+                  : 'Vagas esgotadas',
+              subtitle: _temVagas
+                  ? '$_vagasRestantes vagas disponíveis'
+                  : 'No momento não temos vagas disponíveis.',
             ),
         ],
       ),
@@ -1934,8 +2315,14 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          _rastrearAcaoInscricao('abriu_regimento_interno', origem: 'boas_vindas');
-          showDialog<void>(context: context, builder: (context) => const RegimentoDialog());
+          _rastrearAcaoInscricao(
+            'abriu_regimento_interno',
+            origem: 'boas_vindas',
+          );
+          showDialog<void>(
+            context: context,
+            builder: (context) => const RegimentoDialog(),
+          );
         },
         borderRadius: BorderRadius.circular(18),
         child: Container(
@@ -1976,7 +2363,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     Expanded(
                       child: Text(
                         'Leia atentamente antes de prosseguir',
-                        style: TextStyle(fontSize: 11.2, color: accent, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontSize: 11.2,
+                          color: accent,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
@@ -2000,7 +2391,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           _heroMini(
             icon: Icons.camera_alt_rounded,
             title: 'Foto do aluno',
-            subtitle: 'Essa foto ajuda o professor a identificar o aluno na chamada. Tire uma foto de frente, bem iluminada e com o rosto visível.',
+            subtitle:
+                'Essa foto ajuda o professor a identificar o aluno na chamada. Tire uma foto de frente, bem iluminada e com o rosto visível.',
             color: t.primary,
           ),
           const SizedBox(height: 14),
@@ -2011,7 +2403,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               icon: Icons.hourglass_top_rounded,
               color: t.warning,
               title: 'Processando foto',
-              subtitle: _statusFotoLocal.isNotEmpty ? _statusFotoLocal : 'Processando foto do aluno...',
+              subtitle: _statusFotoLocal.isNotEmpty
+                  ? _statusFotoLocal
+                  : 'Processando foto do aluno...',
               loading: true,
             ),
             const SizedBox(height: 14),
@@ -2020,7 +2414,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             icon: Icons.center_focus_strong_rounded,
             color: t.success,
             title: 'Dica para a foto',
-            subtitle: 'Tire uma foto de frente, com rosto visível e boa iluminação.',
+            subtitle:
+                'Tire uma foto de frente, com rosto visível e boa iluminação.',
           ),
         ],
       ),
@@ -2029,7 +2424,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildStepAluno() {
     final t = context.uai;
-    final idade = _controllers['data_nascimento']!.text.isNotEmpty ? _calcularIdade(_controllers['data_nascimento']!.text) : 0;
+    final idade = _controllers['data_nascimento']!.text.isNotEmpty
+        ? _calcularIdade(_controllers['data_nascimento']!.text)
+        : 0;
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
 
     return SingleChildScrollView(
@@ -2037,7 +2434,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(icon: Icons.person_rounded, title: 'Dados do aluno', subtitle: 'Quem vai praticar capoeira?', color: t.primary),
+          _sectionTitle(
+            icon: Icons.person_rounded,
+            title: 'Dados do aluno',
+            subtitle: 'Quem vai praticar capoeira?',
+            color: t.primary,
+          ),
           const SizedBox(height: 14),
           _buildTextField(
             _controllers['nome']!,
@@ -2066,23 +2468,36 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           LayoutBuilder(
             builder: (context, constraints) {
               final narrow = constraints.maxWidth < 520;
-              final dateField = _buildDateField(_controllers['data_nascimento']!, 'Data de nascimento *');
+              final dateField = _buildDateField(
+                _controllers['data_nascimento']!,
+                'Data de nascimento *',
+              );
               final sexoField = _buildSexoField();
 
               if (narrow) {
-                return Column(children: [dateField, const SizedBox(height: 12), sexoField]);
+                return Column(
+                  children: [dateField, const SizedBox(height: 12), sexoField],
+                );
               }
 
-              return Row(children: [Expanded(child: dateField), const SizedBox(width: 12), Expanded(child: sexoField)]);
+              return Row(
+                children: [
+                  Expanded(child: dateField),
+                  const SizedBox(width: 12),
+                  Expanded(child: sexoField),
+                ],
+              );
             },
           ),
-          if (_controllers['data_nascimento']!.text.isNotEmpty && !idadeValida) ...[
+          if (_controllers['data_nascimento']!.text.isNotEmpty &&
+              !idadeValida) ...[
             const SizedBox(height: 10),
             _statusBox(
               icon: Icons.warning_amber_rounded,
               color: t.error,
               title: 'Idade não permitida',
-              subtitle: 'Aceitamos alunos de $_idadeMinima a $_idadeMaxima anos.',
+              subtitle:
+                  'Aceitamos alunos de $_idadeMinima a $_idadeMaxima anos.',
             ),
           ],
         ],
@@ -2102,11 +2517,16 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           _sectionTitle(
             icon: Icons.phone_rounded,
             title: 'Contato',
-            subtitle: isMaior ? 'Como vamos falar com você?' : 'Como vamos falar com vocês?',
+            subtitle: isMaior
+                ? 'Como vamos falar com você?'
+                : 'Como vamos falar com vocês?',
             color: t.info,
           ),
           const SizedBox(height: 14),
-          _buildPhoneField(_controllers['contato_aluno']!, 'Telefone do aluno *'),
+          _buildPhoneField(
+            _controllers['contato_aluno']!,
+            'Telefone do aluno *',
+          ),
           const SizedBox(height: 12),
           if (!isMaior) ...[
             _buildTextField(
@@ -2121,7 +2541,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               personNameOnly: true,
             ),
             const SizedBox(height: 12),
-            _buildPhoneField(_controllers['contato_responsavel']!, 'Telefone do responsável *'),
+            _buildPhoneField(
+              _controllers['contato_responsavel']!,
+              'Telefone do responsável *',
+            ),
           ],
         ],
       ),
@@ -2136,7 +2559,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(icon: Icons.home_rounded, title: 'Endereço', subtitle: 'Onde vocês moram?', color: t.success),
+          _sectionTitle(
+            icon: Icons.home_rounded,
+            title: 'Endereço',
+            subtitle: 'Onde vocês moram?',
+            color: t.success,
+          ),
           const SizedBox(height: 14),
           _buildTextField(
             _controllers['rua']!,
@@ -2180,10 +2608,18 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               );
 
               if (narrow) {
-                return Column(children: [numero, const SizedBox(height: 12), bairro]);
+                return Column(
+                  children: [numero, const SizedBox(height: 12), bairro],
+                );
               }
 
-              return Row(children: [Expanded(flex: 2, child: numero), const SizedBox(width: 12), Expanded(flex: 3, child: bairro)]);
+              return Row(
+                children: [
+                  Expanded(flex: 2, child: numero),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 3, child: bairro),
+                ],
+              );
             },
           ),
           const SizedBox(height: 12),
@@ -2211,13 +2647,19 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(icon: Icons.badge_rounded, title: 'Documento', subtitle: 'CPF opcional', color: t.associacao),
+          _sectionTitle(
+            icon: Icons.badge_rounded,
+            title: 'Documento',
+            subtitle: 'CPF opcional',
+            color: t.associacao,
+          ),
           const SizedBox(height: 14),
           _statusBox(
             icon: Icons.info_outline_rounded,
             color: t.info,
             title: 'Documento opcional',
-            subtitle: 'O CPF ajuda no cadastro futuro, mas não bloqueia o avanço.',
+            subtitle:
+                'O CPF ajuda no cadastro futuro, mas não bloqueia o avanço.',
           ),
           const SizedBox(height: 14),
           _buildCpfField(),
@@ -2230,10 +2672,15 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final t = context.uai;
 
     final isMaior = _isMaiorIdade();
-    final nomeResponsavel = isMaior ? _controllers['nome']!.text : _controllers['nome_responsavel']!.text;
+    final nomeResponsavel = isMaior
+        ? _controllers['nome']!.text
+        : _controllers['nome_responsavel']!.text;
     final nomeAluno = _controllers['nome']!.text;
     final idadeAluno = _calcularIdade(_controllers['data_nascimento']!.text);
-    final precisaAssinar = _recolherAssinatura && _assinaturaUrl == null && _assinaturaBytes == null;
+    final precisaAssinar =
+        _recolherAssinatura &&
+        _assinaturaUrl == null &&
+        _assinaturaBytes == null;
     final temFoto = _temFoto();
 
     return SingleChildScrollView(
@@ -2241,28 +2688,55 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(icon: Icons.check_circle_rounded, title: 'Revisão e autorização', subtitle: 'Confira os dados antes de enviar.', color: t.success),
+          _sectionTitle(
+            icon: Icons.check_circle_rounded,
+            title: 'Revisão e autorização',
+            subtitle: 'Confira os dados antes de enviar.',
+            color: t.success,
+          ),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: _cardDecoration(),
             child: Column(
               children: [
-                _buildResumoLinhaIcon(Icons.person_rounded, 'Aluno', nomeAluno, t.info),
+                _buildResumoLinhaIcon(
+                  Icons.person_rounded,
+                  'Aluno',
+                  nomeAluno,
+                  t.info,
+                ),
                 _divider(),
-                _buildResumoLinhaIcon(Icons.cake_rounded, 'Idade', '$idadeAluno anos', t.warning),
+                _buildResumoLinhaIcon(
+                  Icons.cake_rounded,
+                  'Idade',
+                  '$idadeAluno anos',
+                  t.warning,
+                ),
                 _divider(),
-                _buildResumoLinhaIcon(Icons.phone_rounded, 'Contato', _controllers['contato_aluno']!.text, t.success),
+                _buildResumoLinhaIcon(
+                  Icons.phone_rounded,
+                  'Contato',
+                  _controllers['contato_aluno']!.text,
+                  t.success,
+                ),
                 _divider(),
                 _buildResumoLinhaIcon(
                   Icons.photo_camera_rounded,
                   'Foto',
-                  temFoto ? '✅ Foto do aluno cadastrada' : '❌ Foto não cadastrada',
+                  temFoto
+                      ? '✅ Foto do aluno cadastrada'
+                      : '❌ Foto não cadastrada',
                   temFoto ? t.associacao : t.error,
                 ),
                 if (!isMaior) ...[
                   _divider(),
-                  _buildResumoLinhaIcon(Icons.person_outline_rounded, 'Responsável', nomeResponsavel, t.associacao),
+                  _buildResumoLinhaIcon(
+                    Icons.person_outline_rounded,
+                    'Responsável',
+                    nomeResponsavel,
+                    t.associacao,
+                  ),
                 ],
               ],
             ),
@@ -2297,7 +2771,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: _autorizacao ? success : t.border, width: _autorizacao ? 1.5 : 1),
+            border: Border.all(
+              color: _autorizacao ? success : t.border,
+              width: _autorizacao ? 1.5 : 1,
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2314,7 +2791,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               Expanded(
                 child: Text(
                   'Declaro que li e aceito o termo de responsabilidade e autorizo a participação na aula experimental.',
-                  style: TextStyle(color: t.textPrimary, fontSize: 13.2, height: 1.35, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 13.2,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -2332,18 +2814,29 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(borderColor: assinada ? success.withOpacity(0.20) : warning.withOpacity(0.20)),
+      decoration: _cardDecoration(
+        borderColor: assinada
+            ? success.withOpacity(0.20)
+            : warning.withOpacity(0.20),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              _iconBox(assinada ? Icons.check_circle_rounded : Icons.draw_rounded, assinada ? success : warning),
+              _iconBox(
+                assinada ? Icons.check_circle_rounded : Icons.draw_rounded,
+                assinada ? success : warning,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: _titleSubtitle(
-                  title: assinada ? 'Assinatura registrada' : 'Assinatura obrigatória',
-                  subtitle: assinada ? 'A assinatura digital foi recebida.' : 'Assine o termo digitalmente para enviar.',
+                  title: assinada
+                      ? 'Assinatura registrada'
+                      : 'Assinatura obrigatória',
+                  subtitle: assinada
+                      ? 'A assinatura digital foi recebida.'
+                      : 'Assine o termo digitalmente para enviar.',
                 ),
               ),
             ],
@@ -2358,7 +2851,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               foregroundColor: _readableOn(assinada ? success : t.primary),
               padding: const EdgeInsets.symmetric(vertical: 13),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.buttonRadius),
+              ),
             ),
           ),
         ],
@@ -2395,7 +2890,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             child: SingleChildScrollView(
               child: Text(
                 _gerarTermoTexto(),
-                style: TextStyle(color: t.textPrimary, height: 1.45, fontSize: 12.3, fontFamily: 'monospace'),
+                style: TextStyle(
+                  color: t.textPrimary,
+                  height: 1.45,
+                  fontSize: 12.3,
+                  fontFamily: 'monospace',
+                ),
               ),
             ),
           ),
@@ -2412,14 +2912,18 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final double cardH = cardW / 0.76;
     final double imageH = cardH - (tamanhoGrande ? 42 : 36);
 
-    final accent = temFoto ? _ensureVisible(t.success, t.card) : _ensureVisible(t.primary, t.card);
+    final accent = temFoto
+        ? _ensureVisible(t.success, t.card)
+        : _ensureVisible(t.primary, t.card);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Center(
           child: GestureDetector(
-            onTap: (_uploadingFoto || _processandoFotoLocal) ? null : _selecionarFoto,
+            onTap: (_uploadingFoto || _processandoFotoLocal)
+                ? null
+                : _selecionarFoto,
             onLongPress: temFoto ? _removerFoto : null,
             child: Stack(
               alignment: Alignment.bottomRight,
@@ -2441,22 +2945,39 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           width: cardW,
                           height: imageH,
                           child: _fotoUrl != null
-                              ? Image.network(_fotoUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildFotoPlaceholder())
+                              ? Image.network(
+                                  _fotoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _buildFotoPlaceholder(),
+                                )
                               : _fotoBytes != null
-                              ? Image.memory(_fotoBytes!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildFotoPlaceholder())
+                              ? Image.memory(
+                                  _fotoBytes!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _buildFotoPlaceholder(),
+                                )
                               : _buildFotoPlaceholder(),
                         ),
                         Expanded(
                           child: Container(
                             width: double.infinity,
-                            color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+                            color: Color.alphaBlend(
+                              accent.withOpacity(0.08),
+                              t.card,
+                            ),
                             alignment: Alignment.center,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             child: Text(
                               temFoto ? 'Foto pronta' : 'Tirar foto',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: accent, fontSize: tamanhoGrande ? 10.8 : 10.0, fontWeight: FontWeight.w900),
+                              style: TextStyle(
+                                color: accent,
+                                fontSize: tamanhoGrande ? 10.8 : 10.0,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
                         ),
@@ -2468,7 +2989,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   Container(
                     width: cardW,
                     height: cardH,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(28), color: Colors.black.withOpacity(0.62)),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      color: Colors.black.withOpacity(0.62),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: Column(
@@ -2477,13 +3001,23 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           const SizedBox(
                             width: 28,
                             height: 28,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.6),
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.6,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            _statusFotoLocal.isNotEmpty ? _statusFotoLocal : 'Processando foto...',
+                            _statusFotoLocal.isNotEmpty
+                                ? _statusFotoLocal
+                                : 'Processando foto...',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.2, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              height: 1.2,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ],
                       ),
@@ -2494,8 +3028,16 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: accent, shape: BoxShape.circle, border: Border.all(color: t.card, width: 2)),
-                    child: Icon(temFoto ? Icons.edit_rounded : Icons.camera_alt_rounded, color: _readableOn(accent), size: 20),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: t.card, width: 2),
+                    ),
+                    child: Icon(
+                      temFoto ? Icons.edit_rounded : Icons.camera_alt_rounded,
+                      color: _readableOn(accent),
+                      size: 20,
+                    ),
                   ),
                 ),
               ],
@@ -2508,15 +3050,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             children: [
               Text(
                 _processandoFotoLocal
-                    ? (_statusFotoLocal.isNotEmpty ? _statusFotoLocal : 'Processando foto...')
+                    ? (_statusFotoLocal.isNotEmpty
+                          ? _statusFotoLocal
+                          : 'Processando foto...')
                     : temFoto
                     ? '✅ Foto pronta! Toque para tirar outra • Segure para remover'
                     : '⚠️ Foto obrigatória • Toque para abrir a câmera',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _processandoFotoLocal ? _ensureVisible(t.warning, t.background) : accent,
-                  fontWeight: _processandoFotoLocal || !temFoto ? FontWeight.bold : FontWeight.w600,
+                  color: _processandoFotoLocal
+                      ? _ensureVisible(t.warning, t.background)
+                      : accent,
+                  fontWeight: _processandoFotoLocal || !temFoto
+                      ? FontWeight.bold
+                      : FontWeight.w600,
                 ),
               ),
               if (!temFoto)
@@ -2545,7 +3093,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         children: [
           Icon(Icons.camera_alt_rounded, size: 40, color: t.textMuted),
           const SizedBox(height: 4),
-          Text('Tirar\nfoto', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: t.textSecondary)),
+          Text(
+            'Tirar\nfoto',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: t.textSecondary),
+          ),
         ],
       ),
     );
@@ -2560,38 +3112,78 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 380;
-          final continuarLabel = isLast ? (compact ? 'ENVIAR' : 'ENVIAR INSCRIÇÃO') : (compact ? 'PRÓXIMO' : 'CONTINUAR');
+          final continuarLabel = isLast
+              ? (compact ? 'ENVIAR' : 'ENVIAR INSCRIÇÃO')
+              : (compact ? 'PRÓXIMO' : 'CONTINUAR');
 
           final voltarButton = OutlinedButton.icon(
             onPressed: _currentStep == 0 ? null : _etapaAnterior,
             icon: Icon(Icons.arrow_back_rounded, size: compact ? 17 : 18),
-            label: FittedBox(fit: BoxFit.scaleDown, child: Text(compact ? 'VOLTAR' : 'VOLTAR')),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(compact ? 'VOLTAR' : 'VOLTAR'),
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: t.textPrimary,
               side: BorderSide(color: t.border),
               padding: EdgeInsets.symmetric(vertical: compact ? 11 : 13),
-              textStyle: TextStyle(fontWeight: FontWeight.w900, fontSize: compact ? 11.5 : 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 13 : t.buttonRadius)),
+              textStyle: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: compact ? 11.5 : 13,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  compact ? 13 : t.buttonRadius,
+                ),
+              ),
             ),
           );
 
           final nextButton = ElevatedButton.icon(
             onPressed: isLast ? _enviarInscricao : _proximaEtapa,
-            icon: Icon(isLast ? Icons.send_rounded : Icons.arrow_forward_rounded, size: compact ? 17 : 19),
-            label: FittedBox(fit: BoxFit.scaleDown, child: Text(continuarLabel)),
+            icon: Icon(
+              isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
+              size: compact ? 17 : 19,
+            ),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(continuarLabel),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: t.primary,
               foregroundColor: _readableOn(t.primary),
               padding: EdgeInsets.symmetric(vertical: compact ? 12 : 14),
-              textStyle: TextStyle(fontSize: compact ? 11.5 : 13.5, fontWeight: FontWeight.w900),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 13 : t.buttonRadius)),
+              textStyle: TextStyle(
+                fontSize: compact ? 11.5 : 13.5,
+                fontWeight: FontWeight.w900,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  compact ? 13 : t.buttonRadius,
+                ),
+              ),
             ),
           );
 
           return Container(
-            padding: EdgeInsets.fromLTRB(compact ? 10 : 14, compact ? 7 : 9, compact ? 10 : 14, compact ? 10 : 14),
-            decoration: BoxDecoration(color: t.surface, border: Border(top: BorderSide(color: t.border)), boxShadow: t.softShadow),
-            child: Row(children: [Expanded(child: voltarButton), const SizedBox(width: 10), Expanded(flex: 2, child: nextButton)]),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 10 : 14,
+              compact ? 7 : 9,
+              compact ? 10 : 14,
+              compact ? 10 : 14,
+            ),
+            decoration: BoxDecoration(
+              color: t.surface,
+              border: Border(top: BorderSide(color: t.border)),
+              boxShadow: t.softShadow,
+            ),
+            child: Row(
+              children: [
+                Expanded(child: voltarButton),
+                const SizedBox(width: 10),
+                Expanded(flex: 2, child: nextButton),
+              ],
+            ),
           );
         },
       ),
@@ -2599,32 +3191,43 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   }
 
   Widget _buildTextField(
-      TextEditingController controller,
-      String label, {
-        String? Function(String?)? validator,
-        bool isNumberOnly = false,
-        bool personNameOnly = false,
-        bool addressText = false,
-        int? maxLength,
-      }) {
+    TextEditingController controller,
+    String label, {
+    String? Function(String?)? validator,
+    bool isNumberOnly = false,
+    bool personNameOnly = false,
+    bool addressText = false,
+    int? maxLength,
+  }) {
     final inputFormatters = <TextInputFormatter>[];
 
     if (isNumberOnly) {
       inputFormatters.add(FilteringTextInputFormatter.digitsOnly);
     } else if (personNameOnly) {
-      inputFormatters.add(FilteringTextInputFormatter.allow(RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ\s]')));
+      inputFormatters.add(
+        FilteringTextInputFormatter.allow(RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ\s]')),
+      );
     } else if (addressText) {
-      inputFormatters.add(FilteringTextInputFormatter.allow(RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,\-ºª/]')));
+      inputFormatters.add(
+        FilteringTextInputFormatter.allow(
+          RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,\-ºª/]'),
+        ),
+      );
     }
 
-    if (maxLength != null) inputFormatters.add(LengthLimitingTextInputFormatter(maxLength));
+    if (maxLength != null)
+      inputFormatters.add(LengthLimitingTextInputFormatter(maxLength));
 
     return TextFormField(
       controller: controller,
       style: TextStyle(color: context.uai.textPrimary),
       inputFormatters: inputFormatters,
       textCapitalization: TextCapitalization.characters,
-      decoration: _modernInputDecoration(label: label, icon: Icons.edit_rounded, errorText: validator?.call(controller.text)),
+      decoration: _modernInputDecoration(
+        label: label,
+        icon: Icons.edit_rounded,
+        errorText: validator?.call(controller.text),
+      ),
       onChanged: (_) {
         _validarEtapa1();
         _validarEtapa2();
@@ -2638,11 +3241,19 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       controller: controller,
       keyboardType: TextInputType.phone,
       style: TextStyle(color: context.uai.textPrimary),
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(11), _PhoneInputFormatter()],
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(11),
+        _PhoneInputFormatter(),
+      ],
       decoration: _modernInputDecoration(
         label: label,
         icon: Icons.phone_rounded,
-        errorText: controller.text.isEmpty ? 'Campo obrigatório' : !_telefoneCompleto(controller.text) ? 'Telefone incompleto' : null,
+        errorText: controller.text.isEmpty
+            ? 'Campo obrigatório'
+            : !_telefoneCompleto(controller.text)
+            ? 'Telefone incompleto'
+            : null,
       ),
       onChanged: (_) => _validarEtapa2(),
     );
@@ -2655,8 +3266,15 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       controller: controller,
       keyboardType: TextInputType.number,
       style: TextStyle(color: context.uai.textPrimary),
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(11), _CpfInputFormatter()],
-      decoration: _modernInputDecoration(label: 'CPF opcional', icon: Icons.badge_rounded),
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(11),
+        _CpfInputFormatter(),
+      ],
+      decoration: _modernInputDecoration(
+        label: 'CPF opcional',
+        icon: Icons.badge_rounded,
+      ),
     );
   }
 
@@ -2665,13 +3283,17 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       controller: controller,
       readOnly: true,
       style: TextStyle(color: context.uai.textPrimary),
-      decoration: _modernInputDecoration(
-        label: label,
-        icon: Icons.cake_rounded,
-        errorText: controller.text.isEmpty ? 'Campo obrigatório' : null,
-      ).copyWith(
-        suffixIcon: Icon(Icons.calendar_month_rounded, color: _ensureVisible(context.uai.primary, context.uai.card)),
-      ),
+      decoration:
+          _modernInputDecoration(
+            label: label,
+            icon: Icons.cake_rounded,
+            errorText: controller.text.isEmpty ? 'Campo obrigatório' : null,
+          ).copyWith(
+            suffixIcon: Icon(
+              Icons.calendar_month_rounded,
+              color: _ensureVisible(context.uai.primary, context.uai.card),
+            ),
+          ),
       onTap: () => _selectDate(controller),
     );
   }
@@ -2684,14 +3306,22 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       isExpanded: true,
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary),
-      decoration: _modernInputDecoration(label: 'Sexo *', icon: Icons.wc_rounded, errorText: _sexo == null ? 'Campo obrigatório' : null),
+      decoration: _modernInputDecoration(
+        label: 'Sexo *',
+        icon: Icons.wc_rounded,
+        errorText: _sexo == null ? 'Campo obrigatório' : null,
+      ),
       items: const [
         DropdownMenuItem(value: 'MASCULINO', child: Text('MASCULINO')),
         DropdownMenuItem(value: 'FEMININO', child: Text('FEMININO')),
       ],
       onChanged: (v) {
         setState(() => _sexo = v);
-        _rastrearAcaoInscricao('selecionou_sexo', origem: 'dados_aluno', metadata: {'sexo': v});
+        _rastrearAcaoInscricao(
+          'selecionou_sexo',
+          origem: 'dados_aluno',
+          metadata: {'sexo': v},
+        );
         _validarEtapa1();
       },
     );
@@ -2708,7 +3338,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(primary: t.primary, surface: t.surface, onSurface: t.textPrimary),
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: t.primary,
+              surface: t.surface,
+              onSurface: t.textPrimary,
+            ),
           ),
           child: child ?? const SizedBox.shrink(),
         );
@@ -2739,11 +3373,25 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       errorMaxLines: 2,
       counterText: '',
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius), borderSide: BorderSide(color: t.border)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius), borderSide: BorderSide(color: primary, width: 1.4)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius), borderSide: BorderSide(color: t.error, width: 1.2)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(t.inputRadius), borderSide: BorderSide(color: t.error, width: 1.4)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(t.inputRadius),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        borderSide: BorderSide(color: t.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        borderSide: BorderSide(color: primary, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        borderSide: BorderSide(color: t.error, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        borderSide: BorderSide(color: t.error, width: 1.4),
+      ),
     );
   }
 
@@ -2759,7 +3407,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(gradient: t.primaryGradient, borderRadius: BorderRadius.circular(24), boxShadow: t.softShadow),
+      decoration: BoxDecoration(
+        gradient: t.primaryGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: t.softShadow,
+      ),
       child: Column(
         children: [
           Icon(icon, color: onPrimary, size: 34),
@@ -2767,13 +3419,22 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           Text(
             title,
             textAlign: TextAlign.center,
-            style: TextStyle(color: onPrimary, fontSize: 22, fontWeight: FontWeight.w900, height: 1.1),
+            style: TextStyle(
+              color: onPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              height: 1.1,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(color: onPrimary.withOpacity(0.82), fontSize: 13, height: 1.35),
+            style: TextStyle(
+              color: onPrimary.withOpacity(0.82),
+              fontSize: 13,
+              height: 1.35,
+            ),
           ),
         ],
       ),
@@ -2794,7 +3455,13 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       children: [
         _iconBox(icon, accent, compact: dense),
         const SizedBox(width: 10),
-        Expanded(child: _titleSubtitle(title: title, subtitle: subtitle, titleSize: dense ? 14.5 : 17)),
+        Expanded(
+          child: _titleSubtitle(
+            title: title,
+            subtitle: subtitle,
+            titleSize: dense ? 14.5 : 17,
+          ),
+        ),
       ],
     );
   }
@@ -2813,14 +3480,24 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: titleSize, height: 1.12),
+          style: TextStyle(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w900,
+            fontSize: titleSize,
+            height: 1.12,
+          ),
         ),
         const SizedBox(height: 3),
         Text(
           subtitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: t.textSecondary, fontSize: 11.8, height: 1.25, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: t.textSecondary,
+            fontSize: 11.8,
+            height: 1.25,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
@@ -2847,17 +3524,32 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       child: Row(
         children: [
           if (loading)
-            SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.3, color: accent))
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.3, color: accent),
+            )
           else
             Icon(icon, color: accent),
           const SizedBox(width: 10),
-          Expanded(child: _titleSubtitle(title: title, subtitle: subtitle, titleSize: 13.5)),
+          Expanded(
+            child: _titleSubtitle(
+              title: title,
+              subtitle: subtitle,
+              titleSize: 13.5,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildResumoLinhaIcon(IconData icon, String label, String valor, Color cor) {
+  Widget _buildResumoLinhaIcon(
+    IconData icon,
+    String label,
+    String valor,
+    Color cor,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(cor, t.card);
 
@@ -2869,8 +3561,18 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(fontSize: 12, color: t.textSecondary)),
-              Text(valor, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: t.textPrimary)),
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, color: t.textSecondary),
+              ),
+              Text(
+                valor,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: t.textPrimary,
+                ),
+              ),
             ],
           ),
         ),
@@ -2930,27 +3632,38 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
 class _PhoneInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     var formatted = digits;
 
     if (digits.length >= 2) {
       formatted = '(${digits.substring(0, 2)})';
       if (digits.length > 2) {
-        formatted += ' ${digits.substring(2, digits.length > 7 ? 7 : digits.length)}';
+        formatted +=
+            ' ${digits.substring(2, digits.length > 7 ? 7 : digits.length)}';
       }
       if (digits.length > 7) {
-        formatted += '-${digits.substring(7, digits.length > 11 ? 11 : digits.length)}';
+        formatted +=
+            '-${digits.substring(7, digits.length > 11 ? 11 : digits.length)}';
       }
     }
 
-    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
   }
 }
 
 class _CpfInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     var formatted = digits;
 
@@ -2958,13 +3671,18 @@ class _CpfInputFormatter extends TextInputFormatter {
       formatted = '${digits.substring(0, 3)}.${digits.substring(3)}';
     }
     if (digits.length > 6) {
-      formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+      formatted =
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
     }
     if (digits.length > 9) {
-      formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9, digits.length > 11 ? 11 : digits.length)}';
+      formatted =
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9, digits.length > 11 ? 11 : digits.length)}';
     }
 
-    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
   }
 }
 
@@ -2998,18 +3716,32 @@ class _GuiaRostoInscricaoPainter extends CustomPainter {
     canvas.drawOval(faceRect, line);
 
     final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.24, size.height * 0.62, size.width * 0.52, size.height * 0.22),
+      Rect.fromLTWH(
+        size.width * 0.24,
+        size.height * 0.62,
+        size.width * 0.52,
+        size.height * 0.22,
+      ),
       const Radius.circular(18),
     );
 
     canvas.drawRRect(bodyRect, soft);
 
-    canvas.drawLine(Offset(size.width * 0.20, size.height * 0.50), Offset(size.width * 0.80, size.height * 0.50), soft);
-    canvas.drawLine(Offset(size.width * 0.50, size.height * 0.16), Offset(size.width * 0.50, size.height * 0.86), soft);
+    canvas.drawLine(
+      Offset(size.width * 0.20, size.height * 0.50),
+      Offset(size.width * 0.80, size.height * 0.50),
+      soft,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.50, size.height * 0.16),
+      Offset(size.width * 0.50, size.height * 0.86),
+      soft,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _GuiaRostoInscricaoPainter oldDelegate) {
-    return oldDelegate.lineColor != lineColor || oldDelegate.borderColor != borderColor;
+    return oldDelegate.lineColor != lineColor ||
+        oldDelegate.borderColor != borderColor;
   }
 }

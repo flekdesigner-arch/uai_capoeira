@@ -13,7 +13,10 @@ class GrupoModel {
     required this.ativo,
   });
 
-  factory GrupoModel.fromFirestore(Map<String, dynamic> data, String documentId) {
+  factory GrupoModel.fromFirestore(
+    Map<String, dynamic> data,
+    String documentId,
+  ) {
     return GrupoModel(
       id: documentId,
       nome: data['nome']?.toString().trim().toUpperCase() ?? '',

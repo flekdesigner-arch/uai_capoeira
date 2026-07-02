@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 
 class MigracaoEventosScreen extends StatefulWidget {
   const MigracaoEventosScreen({super.key});
@@ -11,6 +12,10 @@ class MigracaoEventosScreen extends StatefulWidget {
 }
 
 class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
+
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isMigrating = false;
   String _statusMessage = '';
   int _successCount = 0;
@@ -26,16 +31,52 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
       "horario": "10:00",
       "local": "CENTRO DE CONVIVIO",
       "cidade": "BOCAIUVA-MG",
-      "link_banner": "https://drive.google.com/file/d/1Aq_m1OlCYUL2aRGsx9T5Ctqc5mw-zqLv/view",
+      "link_banner":
+          "https://drive.google.com/file/d/1Aq_m1OlCYUL2aRGsx9T5Ctqc5mw-zqLv/view",
       "organizadores": "TICO-TICO, TOQUINHO, BODE, WARLEY",
       "link_fotos_videos": "https://photos.app.goo.gl/rDKtWQ1uzZdMMVYC9",
       "previa_video": "https://youtu.be/bwWPprzkoNg",
       "link_playlist": "",
-      "status": "finalizado"
-    }
+      "status": "finalizado",
+    },
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Você não tem permissão para executar migrações.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    return permitido;
+  }
+
   Future<void> _migrarEventos() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() {
       _isMigrating = true;
       _statusMessage = 'Carregando arquivo de eventos...';
@@ -46,11 +87,14 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
 
     try {
       // 1️⃣ Carregar arquivo JSON dos assets
-      final String jsonString = await rootBundle.loadString('assets/eventos.json');
+      final String jsonString = await rootBundle.loadString(
+        'assets/eventos.json',
+      );
       final List<dynamic> jsonList = json.decode(jsonString);
 
       setState(() {
-        _statusMessage = 'Arquivo carregado! Processando ${jsonList.length} eventos...';
+        _statusMessage =
+            'Arquivo carregado! Processando ${jsonList.length} eventos...';
       });
 
       // 2️⃣ Processar cada evento
@@ -89,7 +133,6 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
           setState(() {
             _successCount++;
           });
-
         } catch (e) {
           setState(() {
             _errorCount++;
@@ -102,7 +145,6 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
         _isMigrating = false;
         _statusMessage = 'Migração concluída!';
       });
-
     } catch (e) {
       setState(() {
         _isMigrating = false;
@@ -139,6 +181,21 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Migração de Eventos',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Migração de Eventos',
+        message: 'Você não tem permissão para executar migrações.',
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Migração de Eventos'),
@@ -219,13 +276,13 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
                 onPressed: _isMigrating ? null : _migrarEventos,
                 icon: _isMigrating
                     ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.cloud_upload),
                 label: Text(
                   _isMigrating ? 'MIGRANDO...' : 'INICIAR MIGRAÇÃO',
@@ -264,7 +321,9 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
                       child: Text(
                         _statusMessage,
                         style: TextStyle(
-                          color: _isMigrating ? Colors.blue.shade900 : Colors.green.shade900,
+                          color: _isMigrating
+                              ? Colors.blue.shade900
+                              : Colors.green.shade900,
                         ),
                       ),
                     ),
@@ -289,7 +348,11 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
                       ),
                       child: Column(
                         children: [
-                          Icon(Icons.check_circle, color: Colors.green.shade700, size: 32),
+                          Icon(
+                            Icons.check_circle,
+                            color: Colors.green.shade700,
+                            size: 32,
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             '$_successCount',
@@ -318,7 +381,11 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
                       ),
                       child: Column(
                         children: [
-                          Icon(Icons.error, color: Colors.red.shade700, size: 32),
+                          Icon(
+                            Icons.error,
+                            color: Colors.red.shade700,
+                            size: 32,
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             '$_errorCount',

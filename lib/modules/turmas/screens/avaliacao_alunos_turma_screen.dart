@@ -29,10 +29,12 @@ class AvaliacaoAlunosTurmaScreen extends StatefulWidget {
   });
 
   @override
-  State<AvaliacaoAlunosTurmaScreen> createState() => _AvaliacaoAlunosTurmaScreenState();
+  State<AvaliacaoAlunosTurmaScreen> createState() =>
+      _AvaliacaoAlunosTurmaScreenState();
 }
 
-class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen> {
+class _AvaliacaoAlunosTurmaScreenState
+    extends State<AvaliacaoAlunosTurmaScreen> {
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -40,7 +42,8 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -53,9 +56,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
   }
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
-  Color _onCardMuted([BuildContext? c]) => _onCard(c ?? context).withOpacity(0.68);
-  Color _onPrimary([BuildContext? c]) => _readableOn((c ?? context).uai.primary);
-
+  Color _onCardMuted([BuildContext? c]) =>
+      _onCard(c ?? context).withOpacity(0.68);
+  Color _onPrimary([BuildContext? c]) =>
+      _readableOn((c ?? context).uai.primary);
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -102,7 +106,8 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
     _CriterioAvaliacao(
       chave: 'comportamento_casa',
       titulo: 'Comportamento em casa',
-      descricao: 'Relato dos pais/responsáveis sobre comportamento fora do treino.',
+      descricao:
+          'Relato dos pais/responsáveis sobre comportamento fora do treino.',
       icone: Icons.home_rounded,
       categoria: 'Comportamento',
     ),
@@ -193,16 +198,19 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
       .doc(widget.turmaId)
       .collection('ciclos_avaliacao');
 
-  CollectionReference<Map<String, dynamic>> get _resumoAvaliacoesRef => _firestore
-      .collection('turmas')
-      .doc(widget.turmaId)
-      .collection('avaliacoes_alunos');
+  CollectionReference<Map<String, dynamic>> get _resumoAvaliacoesRef =>
+      _firestore
+          .collection('turmas')
+          .doc(widget.turmaId)
+          .collection('avaliacoes_alunos');
 
   bool _boolSeguro(dynamic value) {
     if (value == true) return true;
     if (value is String) {
       final normalizado = value.toLowerCase().trim();
-      return normalizado == 'true' || normalizado == '1' || normalizado == 'sim';
+      return normalizado == 'true' ||
+          normalizado == '1' ||
+          normalizado == 'sim';
     }
     if (value is num) return value == 1;
     return false;
@@ -212,9 +220,7 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
     final tipo = dados['tipo']?.toString().toLowerCase().trim() ?? '';
     final peso = _parseInt(dados['peso_permissao']);
 
-    return peso >= 90 ||
-        tipo == 'admin' ||
-        tipo == 'administrador';
+    return peso >= 90 || tipo == 'admin' || tipo == 'administrador';
   }
 
   Future<void> _carregarPerfilEPermissoesUsuario() async {
@@ -298,7 +304,8 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
     if (value == null) return 0;
     if (value is int) return value.toDouble();
     if (value is double) return value;
-    if (value is String) return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+    if (value is String)
+      return double.tryParse(value.replaceAll(',', '.')) ?? 0;
     return 0;
   }
 
@@ -397,7 +404,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
       if (!_podeAvaliarAluno && !_isAdmin) {
         if (!mounted) return;
         setState(() => _isLoading = false);
-        _mostrarSnack('Você não tem permissão para acessar avaliações.', context.uai.error);
+        _mostrarSnack(
+          'Você não tem permissão para acessar avaliações.',
+          context.uai.error,
+        );
         return;
       }
 
@@ -407,10 +417,7 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         await _garantirCicloMesAtual();
       }
 
-      await Future.wait([
-        _carregarAlunos(),
-        _carregarCiclos(),
-      ]);
+      await Future.wait([_carregarAlunos(), _carregarCiclos()]);
 
       if (_cicloAtual == null) {
         await _definirCicloAtualPadrao();
@@ -434,10 +441,7 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         .get(const GetOptions(source: Source.server));
 
     final alunos = alunosSnap.docs.map((doc) {
-      return {
-        'id': doc.id,
-        ...doc.data(),
-      };
+      return {'id': doc.id, ...doc.data()};
     }).toList();
 
     alunos.sort((a, b) {
@@ -456,10 +460,7 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         .get(const GetOptions(source: Source.server));
 
     final ciclos = snap.docs.map((doc) {
-      return {
-        'id': doc.id,
-        ...doc.data(),
-      };
+      return {'id': doc.id, ...doc.data()};
     }).toList();
 
     _ciclos = ciclos;
@@ -552,10 +553,7 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
     final avaliacoes = <String, Map<String, dynamic>>{};
     for (final doc in avaliacoesSnap.docs) {
-      avaliacoes[doc.id] = {
-        'id': doc.id,
-        ...doc.data(),
-      };
+      avaliacoes[doc.id] = {'id': doc.id, ...doc.data()};
     }
 
     _avaliacoesDoCiclo = avaliacoes;
@@ -563,7 +561,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _trocarCiclo(Map<String, dynamic> ciclo) async {
     if (!_podeGerenciarCiclos) {
-      _mostrarSnack('Apenas administradores podem trocar o ciclo.', context.uai.warning);
+      _mostrarSnack(
+        'Apenas administradores podem trocar o ciclo.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -584,7 +585,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _criarNovoCicloDialog() async {
     if (!_podeGerenciarCiclos) {
-      _mostrarSnack('Apenas administradores podem criar ciclos.', context.uai.warning);
+      _mostrarSnack(
+        'Apenas administradores podem criar ciclos.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -598,7 +602,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
               title: const Text(
                 'Novo ciclo de avaliação',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -676,7 +682,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _criarOuAbrirCiclo(int mes, int ano) async {
     if (!_podeGerenciarCiclos) {
-      _mostrarSnack('Apenas administradores podem criar ou abrir ciclos.', context.uai.warning);
+      _mostrarSnack(
+        'Apenas administradores podem criar ou abrir ciclos.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -713,8 +722,13 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
       await _carregarCiclos();
       final ciclo = _ciclos.firstWhere(
-            (c) => c['id'] == cicloId,
-        orElse: () => {'id': cicloId, 'nome': _nomeCiclo(data), 'mes': mes, 'ano': ano},
+        (c) => c['id'] == cicloId,
+        orElse: () => {
+          'id': cicloId,
+          'nome': _nomeCiclo(data),
+          'mes': mes,
+          'ano': ano,
+        },
       );
 
       _cicloAtual = ciclo;
@@ -731,7 +745,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _abrirSeletorCiclo() async {
     if (!_podeGerenciarCiclos) {
-      _mostrarSnack('Professor avalia somente o ciclo aberto atual.', context.uai.warning);
+      _mostrarSnack(
+        'Professor avalia somente o ciclo aberto atual.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -768,13 +785,19 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                   children: [
                     CircleAvatar(
                       backgroundColor: context.uai.associacao.withOpacity(0.10),
-                      child: Icon(Icons.calendar_month_rounded, color: context.uai.associacao),
+                      child: Icon(
+                        Icons.calendar_month_rounded,
+                        color: context.uai.associacao,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
                       child: Text(
                         'Escolher ciclo',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                        ),
                       ),
                     ),
                   ],
@@ -789,17 +812,27 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                       final ativo = ciclo['id'] == _cicloAtual?['id'];
 
                       return ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        tileColor: ativo ? context.uai.associacao.withOpacity(0.10) : null,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        tileColor: ativo
+                            ? context.uai.associacao.withOpacity(0.10)
+                            : null,
                         leading: Icon(
-                          ativo ? Icons.check_circle_rounded : Icons.calendar_today_rounded,
-                          color: ativo ? context.uai.associacao : context.uai.textSecondary,
+                          ativo
+                              ? Icons.check_circle_rounded
+                              : Icons.calendar_today_rounded,
+                          color: ativo
+                              ? context.uai.associacao
+                              : context.uai.textSecondary,
                         ),
                         title: Text(
                           ciclo['nome']?.toString() ?? 'Ciclo',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        subtitle: Text('${ciclo['mes']}/${ciclo['ano']} • ${ciclo['status'] ?? 'aberto'}'),
+                        subtitle: Text(
+                          '${ciclo['mes']}/${ciclo['ano']} • ${ciclo['status'] ?? 'aberto'}',
+                        ),
                         trailing: Icon(Icons.chevron_right_rounded),
                         onTap: () => Navigator.pop(context, ciclo),
                       );
@@ -820,7 +853,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _alternarStatusCiclo() async {
     if (!_podeGerenciarCiclos) {
-      _mostrarSnack('Apenas administradores podem finalizar ou reabrir ciclos.', context.uai.warning);
+      _mostrarSnack(
+        'Apenas administradores podem finalizar ou reabrir ciclos.',
+        context.uai.warning,
+      );
       return;
     }
 
@@ -833,15 +869,23 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(novoStatus == 'finalizado' ? 'Finalizar ciclo?' : 'Reabrir ciclo?'),
+        title: Text(
+          novoStatus == 'finalizado' ? 'Finalizar ciclo?' : 'Reabrir ciclo?',
+        ),
         content: Text(
           novoStatus == 'finalizado'
               ? 'Depois de finalizado, o ciclo fica como histórico. Ainda será possível reabrir depois.'
               : 'O ciclo será reaberto para novas edições.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Confirmar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Confirmar'),
+          ),
         ],
       ),
     );
@@ -883,15 +927,23 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
       lista = lista.where((aluno) {
         final nome = _normalizar(aluno['nome']?.toString() ?? '');
         final apelido = _normalizar(aluno['apelido']?.toString() ?? '');
-        final graduacao = _normalizar(aluno['graduacao_atual']?.toString() ?? '');
-        return nome.contains(_busca) || apelido.contains(_busca) || graduacao.contains(_busca);
+        final graduacao = _normalizar(
+          aluno['graduacao_atual']?.toString() ?? '',
+        );
+        return nome.contains(_busca) ||
+            apelido.contains(_busca) ||
+            graduacao.contains(_busca);
       });
     }
 
     if (_filtroStatus == 'Avaliados') {
-      lista = lista.where((a) => _avaliacoesDoCiclo.containsKey(a['id']?.toString()));
+      lista = lista.where(
+        (a) => _avaliacoesDoCiclo.containsKey(a['id']?.toString()),
+      );
     } else if (_filtroStatus == 'Pendentes') {
-      lista = lista.where((a) => !_avaliacoesDoCiclo.containsKey(a['id']?.toString()));
+      lista = lista.where(
+        (a) => !_avaliacoesDoCiclo.containsKey(a['id']?.toString()),
+      );
     } else if (_filtroStatus == 'Precisa melhorar') {
       lista = lista.where((a) {
         final av = _avaliacoesDoCiclo[a['id']?.toString()];
@@ -903,8 +955,12 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
     if (_filtroStatus == 'Top notas') {
       resultado.sort((a, b) {
-        final notaA = _parseDouble(_avaliacoesDoCiclo[a['id']?.toString()]?['nota_final']);
-        final notaB = _parseDouble(_avaliacoesDoCiclo[b['id']?.toString()]?['nota_final']);
+        final notaA = _parseDouble(
+          _avaliacoesDoCiclo[a['id']?.toString()]?['nota_final'],
+        );
+        final notaB = _parseDouble(
+          _avaliacoesDoCiclo[b['id']?.toString()]?['nota_final'],
+        );
         return notaB.compareTo(notaA);
       });
     }
@@ -918,7 +974,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
 
   Future<void> _abrirDialogAvaliacao(Map<String, dynamic> aluno) async {
     if (!_podeAvaliarAluno && !_isAdmin) {
-      _mostrarSnack('Você não tem permissão para avaliar alunos.', context.uai.error);
+      _mostrarSnack(
+        'Você não tem permissão para avaliar alunos.',
+        context.uai.error,
+      );
       return;
     }
 
@@ -963,9 +1022,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
   }
 
   Future<void> _salvarAvaliacao(
-      Map<String, dynamic> aluno,
-      _ResultadoAvaliacao resultado,
-      ) async {
+    Map<String, dynamic> aluno,
+    _ResultadoAvaliacao resultado,
+  ) async {
     if (_isSaving || _cicloAtual == null) return;
 
     setState(() => _isSaving = true);
@@ -976,7 +1035,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
       final cicloId = _cicloAtual!['id'].toString();
       final agora = Timestamp.now();
 
-      final avaliacaoRef = _ciclosRef.doc(cicloId).collection('avaliacoes').doc(alunoId);
+      final avaliacaoRef = _ciclosRef
+          .doc(cicloId)
+          .collection('avaliacoes')
+          .doc(alunoId);
       final resumoRef = _resumoAvaliacoesRef.doc(alunoId);
 
       final data = {
@@ -1001,7 +1063,8 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         'pontos_melhorar': resultado.pontosMelhorar,
         'avaliado': true,
         'avaliado_por_id': user?.uid,
-        'avaliado_por_nome': _usuarioLogadoDados['nome_completo'] ??
+        'avaliado_por_nome':
+            _usuarioLogadoDados['nome_completo'] ??
             user?.displayName ??
             user?.email ??
             'Usuário',
@@ -1064,7 +1127,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         _isSaving = false;
       });
 
-      _mostrarSnack('Avaliação salva no ciclo ${_cicloAtual!['nome']}.', context.uai.success);
+      _mostrarSnack(
+        'Avaliação salva no ciclo ${_cicloAtual!['nome']}.',
+        context.uai.success,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
@@ -1082,13 +1148,16 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
           prefixIcon: Icon(Icons.search_rounded, color: context.uai.associacao),
           suffixIcon: _buscaController.text.isNotEmpty
               ? IconButton(
-            onPressed: () => _buscaController.clear(),
-            icon: Icon(Icons.close_rounded),
-          )
+                  onPressed: () => _buscaController.clear(),
+                  icon: Icon(Icons.close_rounded),
+                )
               : null,
           filled: true,
           fillColor: context.uai.card,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 12,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide(color: context.uai.border),
@@ -1112,9 +1181,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
     double media = 0;
 
     if (_avaliacoesDoCiclo.isNotEmpty) {
-      media = _avaliacoesDoCiclo.values
-          .map((a) => _parseDouble(a['nota_final']))
-          .fold<double>(0, (s, n) => s + n) /
+      media =
+          _avaliacoesDoCiclo.values
+              .map((a) => _parseDouble(a['nota_final']))
+              .fold<double>(0, (s, n) => s + n) /
           _avaliacoesDoCiclo.length;
     }
 
@@ -1153,7 +1223,11 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                   color: context.uai.card.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(Icons.star_rate_rounded, color: _onCard(context), size: 28),
+                child: Icon(
+                  Icons.star_rate_rounded,
+                  color: _onCard(context),
+                  size: 28,
+                ),
               ),
               SizedBox(width: 12),
               Expanded(
@@ -1184,7 +1258,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                 SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(color: _onCard(context), strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    color: _onCard(context),
+                    strokeWidth: 2,
+                  ),
                 ),
             ],
           ),
@@ -1201,18 +1278,29 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
               ),
               child: Row(
                 children: [
-                  Icon(Icons.calendar_month_rounded, color: _onCard(context), size: 18),
+                  Icon(
+                    Icons.calendar_month_rounded,
+                    color: _onCard(context),
+                    size: 18,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       cicloNome,
-                      style: TextStyle(color: _onCard(context), fontWeight: FontWeight.bold, fontSize: 13),
+                      style: TextStyle(
+                        color: _onCard(context),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: status == 'aberto'
                           ? context.uai.success.withOpacity(0.20)
@@ -1221,11 +1309,19 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                     ),
                     child: Text(
                       status.toUpperCase(),
-                      style: TextStyle(color: _onCard(context), fontSize: 9, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: _onCard(context),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   SizedBox(width: 4),
-                  Icon(Icons.expand_more_rounded, color: _onCard(context), size: 20),
+                  Icon(
+                    Icons.expand_more_rounded,
+                    color: _onCard(context),
+                    size: 20,
+                  ),
                 ],
               ),
             ),
@@ -1233,13 +1329,37 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _headerMetric('${_alunos.length}', 'Alunos', Icons.groups_rounded)),
+              Expanded(
+                child: _headerMetric(
+                  '${_alunos.length}',
+                  'Alunos',
+                  Icons.groups_rounded,
+                ),
+              ),
               const SizedBox(width: 8),
-              Expanded(child: _headerMetric('$avaliados', 'Avaliados', Icons.check_circle_rounded)),
+              Expanded(
+                child: _headerMetric(
+                  '$avaliados',
+                  'Avaliados',
+                  Icons.check_circle_rounded,
+                ),
+              ),
               SizedBox(width: 8),
-              Expanded(child: _headerMetric('$pendentes', 'Pendentes', Icons.pending_actions_rounded)),
+              Expanded(
+                child: _headerMetric(
+                  '$pendentes',
+                  'Pendentes',
+                  Icons.pending_actions_rounded,
+                ),
+              ),
               SizedBox(width: 8),
-              Expanded(child: _headerMetric(media.toStringAsFixed(1), 'Média', Icons.insights_rounded)),
+              Expanded(
+                child: _headerMetric(
+                  media.toStringAsFixed(1),
+                  'Média',
+                  Icons.insights_rounded,
+                ),
+              ),
             ],
           ),
           SizedBox(height: 12),
@@ -1252,8 +1372,15 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                     icon: Icon(Icons.swap_horiz_rounded, size: 18),
                     label: Text('Trocar'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-                      side: BorderSide(color: context.uai.card.withOpacity(0.45)),
+                      foregroundColor:
+                          Theme.of(context).appBarTheme.foregroundColor ??
+                          _readableOn(
+                            Theme.of(context).appBarTheme.backgroundColor ??
+                                context.uai.primary,
+                          ),
+                      side: BorderSide(
+                        color: context.uai.card.withOpacity(0.45),
+                      ),
                     ),
                   ),
                 ),
@@ -1264,17 +1391,28 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                     icon: Icon(Icons.add_rounded, size: 18),
                     label: Text('Novo ciclo'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-                      side: BorderSide(color: context.uai.card.withOpacity(0.45)),
+                      foregroundColor:
+                          Theme.of(context).appBarTheme.foregroundColor ??
+                          _readableOn(
+                            Theme.of(context).appBarTheme.backgroundColor ??
+                                context.uai.primary,
+                          ),
+                      side: BorderSide(
+                        color: context.uai.card.withOpacity(0.45),
+                      ),
                     ),
                   ),
                 ),
                 SizedBox(width: 8),
                 IconButton(
-                  tooltip: status == 'aberto' ? 'Finalizar ciclo' : 'Reabrir ciclo',
+                  tooltip: status == 'aberto'
+                      ? 'Finalizar ciclo'
+                      : 'Reabrir ciclo',
                   onPressed: _alternarStatusCiclo,
                   icon: Icon(
-                    status == 'aberto' ? Icons.lock_outline_rounded : Icons.lock_open_rounded,
+                    status == 'aberto'
+                        ? Icons.lock_outline_rounded
+                        : Icons.lock_open_rounded,
                     color: _onCard(context),
                   ),
                 ),
@@ -1291,7 +1429,11 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
               ),
               child: Row(
                 children: [
-                  Icon(Icons.lock_person_rounded, color: _onCard(context), size: 18),
+                  Icon(
+                    Icons.lock_person_rounded,
+                    color: _onCard(context),
+                    size: 18,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1398,7 +1540,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         color: context.uai.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: temAvaliacao ? _corNota(nota).withOpacity(0.26) : context.uai.border,
+          color: temAvaliacao
+              ? _corNota(nota).withOpacity(0.26)
+              : context.uai.border,
           width: temAvaliacao ? 1.4 : 1,
         ),
         boxShadow: [
@@ -1424,7 +1568,11 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                   children: [
                     Text(
                       apelido.isNotEmpty ? '$nome ($apelido)' : nome,
-                      style: TextStyle(color: _onCard(context), fontWeight: FontWeight.bold, fontSize: 14.5),
+                      style: TextStyle(
+                        color: _onCard(context),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14.5,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1450,7 +1598,10 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                         Expanded(
                           child: Text(
                             _formatarData(avaliacao?['atualizado_em']),
-                            style: TextStyle(color: _onCardMuted(context).withOpacity(0.78), fontSize: 10.5),
+                            style: TextStyle(
+                              color: _onCardMuted(context).withOpacity(0.78),
+                              fontSize: 10.5,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1466,7 +1617,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                     width: 48,
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     decoration: BoxDecoration(
-                      color: temAvaliacao ? _corNota(nota).withOpacity(0.10) : context.uai.cardAlt,
+                      color: temAvaliacao
+                          ? _corNota(nota).withOpacity(0.10)
+                          : context.uai.cardAlt,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -1474,7 +1627,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                         Text(
                           temAvaliacao ? nota.toStringAsFixed(1) : '-',
                           style: TextStyle(
-                            color: temAvaliacao ? _corNota(nota) : context.uai.textSecondary,
+                            color: temAvaliacao
+                                ? _corNota(nota)
+                                : context.uai.textSecondary,
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -1482,7 +1637,9 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                         Text(
                           'nota',
                           style: TextStyle(
-                            color: temAvaliacao ? _corNota(nota) : context.uai.textSecondary,
+                            color: temAvaliacao
+                                ? _corNota(nota)
+                                : context.uai.textSecondary,
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1492,8 +1649,12 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
                   ),
                   SizedBox(height: 6),
                   Icon(
-                    _cicloFinalizado ? Icons.lock_outline_rounded : Icons.edit_note_rounded,
-                    color: _cicloFinalizado ? context.uai.textMuted : context.uai.associacao,
+                    _cicloFinalizado
+                        ? Icons.lock_outline_rounded
+                        : Icons.edit_note_rounded,
+                    color: _cicloFinalizado
+                        ? context.uai.textMuted
+                        : context.uai.associacao,
                     size: 22,
                   ),
                 ],
@@ -1569,10 +1730,16 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_search_rounded, size: 72, color: context.uai.textMuted),
+            Icon(
+              Icons.person_search_rounded,
+              size: 72,
+              color: context.uai.textMuted,
+            ),
             SizedBox(height: 16),
             Text(
-              _busca.isEmpty ? 'Nenhum aluno encontrado nessa turma' : 'Nenhum aluno encontrado na busca',
+              _busca.isEmpty
+                  ? 'Nenhum aluno encontrado nessa turma'
+                  : 'Nenhum aluno encontrado na busca',
               style: TextStyle(
                 color: _onCardMuted(context),
                 fontWeight: FontWeight.bold,
@@ -1606,8 +1773,15 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
             'Avaliação do Aluno',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
           ),
-          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-          foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+          backgroundColor:
+              Theme.of(context).appBarTheme.backgroundColor ??
+              context.uai.primary,
+          foregroundColor:
+              Theme.of(context).appBarTheme.foregroundColor ??
+              _readableOn(
+                Theme.of(context).appBarTheme.backgroundColor ??
+                    context.uai.primary,
+              ),
         ),
         body: Center(
           child: Padding(
@@ -1615,7 +1789,11 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.lock_person_rounded, size: 76, color: context.uai.primaryDark),
+                Icon(
+                  Icons.lock_person_rounded,
+                  size: 76,
+                  color: context.uai.primaryDark,
+                ),
                 SizedBox(height: 16),
                 Text(
                   'Acesso negado',
@@ -1641,8 +1819,15 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
           'Avaliação do Aluno',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         actions: [
           IconButton(
             onPressed: _isLoading || _isSaving ? null : _carregarTudo,
@@ -1652,37 +1837,43 @@ class _AvaliacaoAlunosTurmaScreenState extends State<AvaliacaoAlunosTurmaScreen>
         ],
       ),
       body: _isLoading || _isCarregandoPerfil
-          ? Center(child: CircularProgressIndicator(color: context.uai.associacao))
+          ? Center(
+              child: CircularProgressIndicator(color: context.uai.associacao),
+            )
           : Column(
-        children: [
-          _buildHeader(),
-          _buildBusca(),
-          _buildFiltrosStatus(),
-          if (_isSaving)
-            LinearProgressIndicator(
-              color: context.uai.associacao,
-              backgroundColor: context.uai.associacao.withOpacity(0.10),
+              children: [
+                _buildHeader(),
+                _buildBusca(),
+                _buildFiltrosStatus(),
+                if (_isSaving)
+                  LinearProgressIndicator(
+                    color: context.uai.associacao,
+                    backgroundColor: context.uai.associacao.withOpacity(0.10),
+                  ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _carregarTudo,
+                    color: context.uai.associacao,
+                    child: alunos.isEmpty
+                        ? ListView(
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.18,
+                              ),
+                              _buildEmpty(),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 18, top: 8),
+                            itemCount: alunos.length,
+                            itemBuilder: (context, index) =>
+                                _buildAlunoCard(alunos[index]),
+                          ),
+                  ),
+                ),
+              ],
             ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _carregarTudo,
-              color: context.uai.associacao,
-              child: alunos.isEmpty
-                  ? ListView(
-                children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.18),
-                  _buildEmpty(),
-                ],
-              )
-                  : ListView.builder(
-                padding: const EdgeInsets.only(bottom: 18, top: 8),
-                itemCount: alunos.length,
-                itemBuilder: (context, index) => _buildAlunoCard(alunos[index]),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1729,7 +1920,8 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
         final value = notasAtuais[criterio.chave];
         if (value is int) nota = value.toDouble();
         if (value is double) nota = value;
-        if (value is String) nota = double.tryParse(value.replaceAll(',', '.')) ?? 7;
+        if (value is String)
+          nota = double.tryParse(value.replaceAll(',', '.')) ?? 7;
       }
       _notas[criterio.chave] = nota.clamp(0, 10);
     }
@@ -1852,11 +2044,17 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                   children: [
                     Text(
                       criterio.titulo,
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                      ),
                     ),
                     Text(
                       criterio.descricao,
-                      style: TextStyle(color: _onCardMuted(context), fontSize: 10.5),
+                      style: TextStyle(
+                        color: _onCardMuted(context),
+                        fontSize: 10.5,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1917,7 +2115,8 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
   @override
   Widget build(BuildContext context) {
     final nome = widget.aluno['nome']?.toString() ?? 'Aluno';
-    final graduacao = widget.aluno['graduacao_atual']?.toString() ?? 'Sem graduação';
+    final graduacao =
+        widget.aluno['graduacao_atual']?.toString() ?? 'Sem graduação';
     final bottom = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
@@ -1937,13 +2136,18 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
               decoration: BoxDecoration(
                 color: context.uai.associacao,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
               ),
               child: Row(
                 children: [
                   CircleAvatar(
                     backgroundColor: context.uai.card.withOpacity(0.16),
-                    child: Icon(Icons.star_rate_rounded, color: context.uai.card),
+                    child: Icon(
+                      Icons.star_rate_rounded,
+                      color: context.uai.card,
+                    ),
                   ),
                   SizedBox(width: 10),
                   Expanded(
@@ -1952,11 +2156,18 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                       children: [
                         Text(
                           'Avaliar aluno',
-                          style: TextStyle(color: _onCard(context), fontWeight: FontWeight.bold, fontSize: 17),
+                          style: TextStyle(
+                            color: _onCard(context),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                          ),
                         ),
                         Text(
                           '$nome • ${widget.cicloNome}',
-                          style: TextStyle(color: context.uai.card.withOpacity(0.82), fontSize: 12),
+                          style: TextStyle(
+                            color: context.uai.card.withOpacity(0.82),
+                            fontSize: 12,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1992,7 +2203,10 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                             children: [
                               Text(
                                 graduacao,
-                                style: TextStyle(color: context.uai.card.withOpacity(0.82), fontSize: 12),
+                                style: TextStyle(
+                                  color: context.uai.card.withOpacity(0.82),
+                                  fontSize: 12,
+                                ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                               SizedBox(height: 5),
@@ -2008,7 +2222,10 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: context.uai.card.withOpacity(0.16),
                             borderRadius: BorderRadius.circular(16),
@@ -2025,7 +2242,10 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                               ),
                               Text(
                                 'nota final',
-                                style: TextStyle(color: context.uai.card.withOpacity(0.78), fontSize: 10),
+                                style: TextStyle(
+                                  color: context.uai.card.withOpacity(0.78),
+                                  fontSize: 10,
+                                ),
                               ),
                             ],
                           ),
@@ -2034,7 +2254,9 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ..._criteriosPorCategoria.entries.map((e) => _buildCategoria(e.key, e.value)),
+                  ..._criteriosPorCategoria.entries.map(
+                    (e) => _buildCategoria(e.key, e.value),
+                  ),
                   const SizedBox(height: 8),
                   _buildCampoTexto(
                     controller: _pontosFortesController,
@@ -2069,9 +2291,18 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                 child: ElevatedButton.icon(
                   onPressed: _salvar,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                    foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    backgroundColor:
+                        Theme.of(context).appBarTheme.backgroundColor ??
+                        context.uai.primary,
+                    foregroundColor:
+                        Theme.of(context).appBarTheme.foregroundColor ??
+                        _readableOn(
+                          Theme.of(context).appBarTheme.backgroundColor ??
+                              context.uai.primary,
+                        ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                   icon: const Icon(Icons.save_rounded),
                   label: const Text(

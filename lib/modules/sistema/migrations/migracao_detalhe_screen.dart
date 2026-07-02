@@ -102,10 +102,7 @@ class MigracaoService {
   final FirebaseFirestore firestore;
   final FirebaseStorage storage;
 
-  MigracaoService({
-    required this.firestore,
-    required this.storage,
-  });
+  MigracaoService({required this.firestore, required this.storage});
 
   // MÉTODO PARA MIGRAR FOTO
   Future<String> migrarFoto(String driveUrl, String nomeAluno) async {
@@ -123,9 +120,9 @@ class MigracaoService {
       }
 
       final fileName = _sanitizeFileName(nomeAluno);
-      final storageRef = storage
-          .ref()
-          .child('foto_alunos/${fileName}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final storageRef = storage.ref().child(
+        'foto_alunos/${fileName}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
 
       await storageRef.putData(response.bodyBytes);
       return await storageRef.getDownloadURL();
@@ -164,7 +161,9 @@ class MigracaoService {
   }
 
   // MÉTODO PARA BUSCAR TURMAS
-  Future<Map<String, Map<String, dynamic>>> buscarTurmas(String academiaId) async {
+  Future<Map<String, Map<String, dynamic>>> buscarTurmas(
+    String academiaId,
+  ) async {
     if (academiaId.isEmpty) return {};
 
     try {
@@ -300,25 +299,59 @@ class MigracaoDetalheController extends ChangeNotifier {
     nomeController = TextEditingController(text: alunoOriginal.nome ?? '');
     cpfController = TextEditingController(text: alunoOriginal.cpf ?? '');
     fotoController = TextEditingController(text: alunoOriginal.fotoUrl ?? '');
-    apelidoController = TextEditingController(text: alunoOriginal.apelido ?? '');
-    sexoController = TextEditingController(text: (alunoOriginal.sexo ?? 'MASCULINO').toUpperCase());
-    dataNascimentoController = TextEditingController(text: _normalizeDateForDisplay(alunoOriginal.dataNascimento));
-    graduacaoController = TextEditingController(text: alunoOriginal.graduacao ?? '');
-    dataGraduacaoController = TextEditingController(text: _normalizeDateForDisplay(alunoOriginal.dataGraduacao));
-    tempoCapoeiraController = TextEditingController(text: _normalizeDateForDisplay(alunoOriginal.tempoCapoeira));
-    enderecoController = TextEditingController(text: alunoOriginal.endereco ?? '');
-    contatoController = TextEditingController(text: alunoOriginal.contato ?? '');
-    responsavelController = TextEditingController(text: alunoOriginal.responsavel ?? '');
-    contatoResponsavelController = TextEditingController(text: alunoOriginal.contatoResponsavel ?? '');
-    statusController = TextEditingController(text: (alunoOriginal.status ?? 'ATIVO(A)').toUpperCase());
+    apelidoController = TextEditingController(
+      text: alunoOriginal.apelido ?? '',
+    );
+    sexoController = TextEditingController(
+      text: (alunoOriginal.sexo ?? 'MASCULINO').toUpperCase(),
+    );
+    dataNascimentoController = TextEditingController(
+      text: _normalizeDateForDisplay(alunoOriginal.dataNascimento),
+    );
+    graduacaoController = TextEditingController(
+      text: alunoOriginal.graduacao ?? '',
+    );
+    dataGraduacaoController = TextEditingController(
+      text: _normalizeDateForDisplay(alunoOriginal.dataGraduacao),
+    );
+    tempoCapoeiraController = TextEditingController(
+      text: _normalizeDateForDisplay(alunoOriginal.tempoCapoeira),
+    );
+    enderecoController = TextEditingController(
+      text: alunoOriginal.endereco ?? '',
+    );
+    contatoController = TextEditingController(
+      text: alunoOriginal.contato ?? '',
+    );
+    responsavelController = TextEditingController(
+      text: alunoOriginal.responsavel ?? '',
+    );
+    contatoResponsavelController = TextEditingController(
+      text: alunoOriginal.contatoResponsavel ?? '',
+    );
+    statusController = TextEditingController(
+      text: (alunoOriginal.status ?? 'ATIVO(A)').toUpperCase(),
+    );
     cidadeController = TextEditingController(text: alunoOriginal.cidade ?? '');
-    academiaController = TextEditingController(text: alunoOriginal.academia ?? '');
-    modalidadeController = TextEditingController(text: alunoOriginal.modalidade ?? '');
+    academiaController = TextEditingController(
+      text: alunoOriginal.academia ?? '',
+    );
+    modalidadeController = TextEditingController(
+      text: alunoOriginal.modalidade ?? '',
+    );
     turmaController = TextEditingController(text: alunoOriginal.turma ?? '');
-    cadastroPorController = TextEditingController(text: alunoOriginal.cadastroPor ?? '');
-    dataCadastroController = TextEditingController(text: _normalizeDateForDisplay(alunoOriginal.dataCadastro));
-    atualizadoPorController = TextEditingController(text: alunoOriginal.atualizadoPor ?? '');
-    dataAtualizacaoController = TextEditingController(text: _normalizeDateForDisplay(alunoOriginal.dataAtualizacao));
+    cadastroPorController = TextEditingController(
+      text: alunoOriginal.cadastroPor ?? '',
+    );
+    dataCadastroController = TextEditingController(
+      text: _normalizeDateForDisplay(alunoOriginal.dataCadastro),
+    );
+    atualizadoPorController = TextEditingController(
+      text: alunoOriginal.atualizadoPor ?? '',
+    );
+    dataAtualizacaoController = TextEditingController(
+      text: _normalizeDateForDisplay(alunoOriginal.dataAtualizacao),
+    );
 
     _editavel = alunoOriginal.editavel;
   }
@@ -327,7 +360,9 @@ class MigracaoDetalheController extends ChangeNotifier {
   String _normalizeDateForDisplay(String? input) {
     if (input == null || input.isEmpty) return '';
     final timestamp = _parseDateToTimestamp(input);
-    return timestamp != null ? DateFormat('dd/MM/yyyy').format(timestamp.toDate()) : input;
+    return timestamp != null
+        ? DateFormat('dd/MM/yyyy').format(timestamp.toDate())
+        : input;
   }
 
   // MANTIDO IGUAL - FUNCIONANDO PERFEITAMENTE
@@ -353,8 +388,18 @@ class MigracaoDetalheController extends ChangeNotifier {
         final monthStr = parts[1];
         final year = int.parse(parts[3]);
         final monthMap = {
-          'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-          'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+          'Jan': 1,
+          'Feb': 2,
+          'Mar': 3,
+          'Apr': 4,
+          'May': 5,
+          'Jun': 6,
+          'Jul': 7,
+          'Aug': 8,
+          'Sep': 9,
+          'Oct': 10,
+          'Nov': 11,
+          'Dec': 12,
         };
         final monthNum = monthMap[monthStr];
         if (monthNum != null) {
@@ -363,7 +408,9 @@ class MigracaoDetalheController extends ChangeNotifier {
       }
     } catch (_) {}
 
-    debugPrint("AVISO: Não foi possível converter a data '$dateString'. O campo será salvo como nulo.");
+    debugPrint(
+      "AVISO: Não foi possível converter a data '$dateString'. O campo será salvo como nulo.",
+    );
     return null;
   }
 
@@ -381,8 +428,9 @@ class MigracaoDetalheController extends ChangeNotifier {
       final academiaId = _academiasMap.entries
           .firstWhere(
             (entry) => entry.value == academiaPlanilha,
-        orElse: () => MapEntry('', ''),
-      ).key;
+            orElse: () => MapEntry('', ''),
+          )
+          .key;
 
       if (academiaId.isNotEmpty) {
         _selectedAcademiaId = academiaId;
@@ -413,7 +461,7 @@ class MigracaoDetalheController extends ChangeNotifier {
     final turmaPlanilha = alunoOriginal.turma ?? '';
     if (turmaPlanilha.isNotEmpty && _selectedTurmaId == null) {
       final turmaEntry = _turmasMap.entries.firstWhere(
-            (entry) => entry.value['nome'] == turmaPlanilha,
+        (entry) => entry.value['nome'] == turmaPlanilha,
         orElse: () => MapEntry('', {}),
       );
 
@@ -436,12 +484,15 @@ class MigracaoDetalheController extends ChangeNotifier {
     if (gradText.isNotEmpty) {
       if (_graduacoesMap.containsKey(gradText)) {
         _selectedGraduacaoId = _graduacoesMap[gradText];
-        debugPrint('✅ Graduação encontrada: "$gradText" -> $_selectedGraduacaoId');
+        debugPrint(
+          '✅ Graduação encontrada: "$gradText" -> $_selectedGraduacaoId',
+        );
       } else {
         String? matchingKey;
         try {
           matchingKey = _graduacoesMap.keys.firstWhere(
-                (key) => key.toLowerCase().contains(gradText.toLowerCase()) ||
+            (key) =>
+                key.toLowerCase().contains(gradText.toLowerCase()) ||
                 gradText.toLowerCase().contains(key.toLowerCase()),
           );
         } catch (e) {
@@ -450,7 +501,9 @@ class MigracaoDetalheController extends ChangeNotifier {
 
         if (matchingKey != null && matchingKey.isNotEmpty) {
           _selectedGraduacaoId = _graduacoesMap[matchingKey];
-          debugPrint('✅ Graduação encontrada (parcial): "$gradText" -> "$matchingKey" -> $_selectedGraduacaoId');
+          debugPrint(
+            '✅ Graduação encontrada (parcial): "$gradText" -> "$matchingKey" -> $_selectedGraduacaoId',
+          );
         } else {
           debugPrint('⚠️ Graduação não encontrada: "$gradText"');
           _selectedGraduacaoId = null;
@@ -538,7 +591,8 @@ class MigracaoDetalheScreen extends StatefulWidget {
 }
 
 class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
-  final String _urlScript = "https://script.google.com/macros/s/AKfycbwaMU-QDZBBWotVcHFJh7nq2svmKQFkJixgDrrp5at5Jrl7xGjTQhh_rrh4sFKUtpCX/exec";
+  final String _urlScript =
+      "https://script.google.com/macros/s/AKfycbwaMU-QDZBBWotVcHFJh7nq2svmKQFkJixgDrrp5at5Jrl7xGjTQhh_rrh4sFKUtpCX/exec";
   late MigracaoDetalheController _controller;
 
   @override
@@ -582,10 +636,12 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       if (_controller.fotoController.text.isNotEmpty) {
         try {
           fotoFinalUrl = await _controller.service.migrarFoto(
-              _controller.fotoController.text,
-              _controller.nomeController.text
+            _controller.fotoController.text,
+            _controller.nomeController.text,
           );
-          debugPrint('Foto migrada: ${fotoFinalUrl.isNotEmpty ? "Sim" : "Não"}');
+          debugPrint(
+            'Foto migrada: ${fotoFinalUrl.isNotEmpty ? "Sim" : "Não"}',
+          );
         } catch (e) {
           debugPrint('⚠️ Erro ao migrar foto: $e');
         }
@@ -623,38 +679,56 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         'foto_perfil_aluno': fotoFinalUrl,
         'apelido': _controller.apelidoController.text.trim(),
         'sexo': _controller.sexoController.text,
-        'data_nascimento': _controller._parseDateToTimestamp(_controller.dataNascimentoController.text),
+        'data_nascimento': _controller._parseDateToTimestamp(
+          _controller.dataNascimentoController.text,
+        ),
         'graduacao_atual': _controller.graduacaoController.text.trim(),
         'graduacao_id': _controller.selectedGraduacaoId,
-        'data_graduacao_atual': _controller._parseDateToTimestamp(_controller.dataGraduacaoController.text),
-        'tempo_capoeira': _controller._parseDateToTimestamp(_controller.tempoCapoeiraController.text),
+        'data_graduacao_atual': _controller._parseDateToTimestamp(
+          _controller.dataGraduacaoController.text,
+        ),
+        'tempo_capoeira': _controller._parseDateToTimestamp(
+          _controller.tempoCapoeiraController.text,
+        ),
         'endereco': _controller.enderecoController.text.trim(),
         'contato_aluno': _controller.contatoController.text.trim(),
         'nome_responsavel': _controller.responsavelController.text.trim(),
-        'contato_responsavel': _controller.contatoResponsavelController.text.trim(),
+        'contato_responsavel': _controller.contatoResponsavelController.text
+            .trim(),
         'status_atividade': _controller.statusController.text,
         'cidade': _controller.cidadeController.text.trim(),
         'modalidade': _controller.modalidadeController.text.trim(),
         'editavel': _controller.editavel,
         'cadastro_realizado_por': _controller.cadastroPorController.text.trim(),
-        'data_do_cadastro': _controller._parseDateToTimestamp(_controller.dataCadastroController.text),
+        'data_do_cadastro': _controller._parseDateToTimestamp(
+          _controller.dataCadastroController.text,
+        ),
         'atualizado_por': _controller.atualizadoPorController.text.trim(),
-        'data_atualizacao': _controller._parseDateToTimestamp(_controller.dataAtualizacaoController.text),
+        'data_atualizacao': _controller._parseDateToTimestamp(
+          _controller.dataAtualizacaoController.text,
+        ),
         'migrado_em': FieldValue.serverTimestamp(),
         ...graduacaoData,
       };
 
       // ADICIONAR VÍNCULOS DE ACADEMIA E TURMA
-      if (_controller.selectedAcademiaId != null && _controller.selectedAcademiaId!.isNotEmpty) {
+      if (_controller.selectedAcademiaId != null &&
+          _controller.selectedAcademiaId!.isNotEmpty) {
         dadosParaSalvar['academia_id'] = _controller.selectedAcademiaId;
-        dadosParaSalvar['academia'] = _controller.selectedAcademiaNome ?? _controller.academiasMap[_controller.selectedAcademiaId];
+        dadosParaSalvar['academia'] =
+            _controller.selectedAcademiaNome ??
+            _controller.academiasMap[_controller.selectedAcademiaId];
       } else {
-        dadosParaSalvar['academia'] = _controller.academiaController.text.trim();
+        dadosParaSalvar['academia'] = _controller.academiaController.text
+            .trim();
       }
 
-      if (_controller.selectedTurmaId != null && _controller.selectedTurmaId!.isNotEmpty) {
+      if (_controller.selectedTurmaId != null &&
+          _controller.selectedTurmaId!.isNotEmpty) {
         dadosParaSalvar['turma_id'] = _controller.selectedTurmaId;
-        dadosParaSalvar['turma'] = _controller.selectedTurmaNome ?? _controller.turmasMap[_controller.selectedTurmaId]?['nome'];
+        dadosParaSalvar['turma'] =
+            _controller.selectedTurmaNome ??
+            _controller.turmasMap[_controller.selectedTurmaId]?['nome'];
       } else {
         dadosParaSalvar['turma'] = _controller.turmaController.text.trim();
       }
@@ -687,11 +761,13 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     debugPrint('Marcando linha $linha na planilha...');
 
     try {
-      final response = await http.post(
-        Uri.parse(_urlScript),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {'acao': 'marcar_concluido', 'linha': linha.toString()},
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse(_urlScript),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: {'acao': 'marcar_concluido', 'linha': linha.toString()},
+          )
+          .timeout(const Duration(seconds: 15));
 
       debugPrint('Status: ${response.statusCode}');
 
@@ -699,7 +775,8 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         final responseBody = response.body.trim();
 
         try {
-          final jsonResponse = json.decode(responseBody) as Map<String, dynamic>;
+          final jsonResponse =
+              json.decode(responseBody) as Map<String, dynamic>;
           if (jsonResponse['sucesso'] == true) {
             _mostrarSucesso("✅ Aluno migrado com sucesso!");
           } else {
@@ -707,13 +784,17 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
             _mostrarSucessoComAviso('Script: $erro');
           }
         } catch (jsonError) {
-          if (responseBody.toLowerCase().contains('sucesso') || responseBody.toLowerCase().contains('success')) {
+          if (responseBody.toLowerCase().contains('sucesso') ||
+              responseBody.toLowerCase().contains('success')) {
             _mostrarSucessoComAviso('Migrado! (script respondeu OK)');
-          } else if (responseBody.contains('<!DOCTYPE') || responseBody.contains('<html>')) {
+          } else if (responseBody.contains('<!DOCTYPE') ||
+              responseBody.contains('<html>')) {
             _mostrarSucessoComAviso('Erro no script (HTML retornado)');
           } else {
             final length = responseBody.length > 50 ? 50 : responseBody.length;
-            _mostrarSucessoComAviso('Script respondeu: ${responseBody.substring(0, length)}...');
+            _mostrarSucessoComAviso(
+              'Script respondeu: ${responseBody.substring(0, length)}...',
+            );
           }
         }
       } else {
@@ -729,11 +810,11 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensagem),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        )
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -741,19 +822,19 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('✅ Aluno migrado para o Firestore!'),
-              const SizedBox(height: 4),
-              Text('Obs: $aviso', style: const TextStyle(fontSize: 12)),
-            ],
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 5),
-        )
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('✅ Aluno migrado para o Firestore!'),
+            const SizedBox(height: 4),
+            Text('Obs: $aviso', style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 
@@ -761,11 +842,11 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensagem),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        )
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 
@@ -773,15 +854,15 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     DateTime? initialDate;
     try {
       initialDate = DateFormat('dd/MM/yyyy').parseStrict(controller.text);
-    } catch(_){
+    } catch (_) {
       initialDate = DateTime.now();
     }
 
     DateTime? picked = await showDatePicker(
-        context: context,
-        initialDate: initialDate,
-        firstDate: DateTime(1900),
-        lastDate: DateTime(2100)
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
     );
 
     if (picked != null && mounted) {
@@ -796,9 +877,9 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            _controller.nomeController.text.isNotEmpty
-                ? _controller.nomeController.text
-                : 'Migrar Aluno'
+          _controller.nomeController.text.isNotEmpty
+              ? _controller.nomeController.text
+              : 'Migrar Aluno',
         ),
         backgroundColor: Colors.red.shade900,
         foregroundColor: Colors.white,
@@ -812,77 +893,138 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       ),
       body: _controller.isSaving
           ? const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 20),
-            Text('Migrando aluno...', style: TextStyle(fontSize: 16, color: Colors.grey)),
-            Text('Por favor, aguarde', style: TextStyle(fontSize: 14, color: Colors.grey)),
-          ],
-        ),
-      )
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text(
+                    'Migrando aluno...',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                  Text(
+                    'Por favor, aguarde',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // FOTO
-              if (_controller.fotoController.text.isNotEmpty)
-                _buildFotoPreview(),
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // FOTO
+                    if (_controller.fotoController.text.isNotEmpty)
+                      _buildFotoPreview(),
 
-              // DADOS PESSOAIS
-              _buildSectionTitle('👤 Dados Pessoais'),
-              _buildTextField(_controller.nomeController, 'Nome Completo', isRequired: true),
-              _buildTextField(_controller.apelidoController, 'Apelido'),
-              _buildTextField(_controller.cpfController, 'CPF', keyboardType: TextInputType.number),
-              _buildDropdown(_controller.sexoController, 'Sexo', _controller.opcoesSexo),
-              _buildDateField(_controller.dataNascimentoController, 'Data de Nascimento'),
+                    // DADOS PESSOAIS
+                    _buildSectionTitle('👤 Dados Pessoais'),
+                    _buildTextField(
+                      _controller.nomeController,
+                      'Nome Completo',
+                      isRequired: true,
+                    ),
+                    _buildTextField(_controller.apelidoController, 'Apelido'),
+                    _buildTextField(
+                      _controller.cpfController,
+                      'CPF',
+                      keyboardType: TextInputType.number,
+                    ),
+                    _buildDropdown(
+                      _controller.sexoController,
+                      'Sexo',
+                      _controller.opcoesSexo,
+                    ),
+                    _buildDateField(
+                      _controller.dataNascimentoController,
+                      'Data de Nascimento',
+                    ),
 
-              // LOCAL TREINO
-              _buildSectionTitle('🏢 Local de Treino'),
-              _buildAcademiaDropdown(),
-              _buildTurmaDropdown(),
-              _buildTextField(_controller.cidadeController, 'Cidade'),
-              _buildTextField(_controller.modalidadeController, 'Modalidade'),
+                    // LOCAL TREINO
+                    _buildSectionTitle('🏢 Local de Treino'),
+                    _buildAcademiaDropdown(),
+                    _buildTurmaDropdown(),
+                    _buildTextField(_controller.cidadeController, 'Cidade'),
+                    _buildTextField(
+                      _controller.modalidadeController,
+                      'Modalidade',
+                    ),
 
-              // DADOS CAPOEIRA
-              _buildSectionTitle('🥋 Dados de Capoeira'),
-              _buildGraduacaoDropdown(),
-              _buildDateField(_controller.dataGraduacaoController, 'Data da Última Graduação'),
-              _buildDateField(_controller.tempoCapoeiraController, 'Início na Capoeira'),
-              _buildDropdown(_controller.statusController, 'Status da Atividade', _controller.opcoesStatus),
+                    // DADOS CAPOEIRA
+                    _buildSectionTitle('🥋 Dados de Capoeira'),
+                    _buildGraduacaoDropdown(),
+                    _buildDateField(
+                      _controller.dataGraduacaoController,
+                      'Data da Última Graduação',
+                    ),
+                    _buildDateField(
+                      _controller.tempoCapoeiraController,
+                      'Início na Capoeira',
+                    ),
+                    _buildDropdown(
+                      _controller.statusController,
+                      'Status da Atividade',
+                      _controller.opcoesStatus,
+                    ),
 
-              // CONTATOS
-              _buildSectionTitle('📞 Contatos e Endereço'),
-              _buildTextField(_controller.contatoController, 'Contato do Aluno', keyboardType: TextInputType.phone),
-              _buildTextField(_controller.responsavelController, 'Nome do Responsável'),
-              _buildTextField(_controller.contatoResponsavelController, 'Contato do Responsável', keyboardType: TextInputType.phone),
-              _buildTextField(_controller.enderecoController, 'Endereço', maxLines: 2),
+                    // CONTATOS
+                    _buildSectionTitle('📞 Contatos e Endereço'),
+                    _buildTextField(
+                      _controller.contatoController,
+                      'Contato do Aluno',
+                      keyboardType: TextInputType.phone,
+                    ),
+                    _buildTextField(
+                      _controller.responsavelController,
+                      'Nome do Responsável',
+                    ),
+                    _buildTextField(
+                      _controller.contatoResponsavelController,
+                      'Contato do Responsável',
+                      keyboardType: TextInputType.phone,
+                    ),
+                    _buildTextField(
+                      _controller.enderecoController,
+                      'Endereço',
+                      maxLines: 2,
+                    ),
 
-              // ADMINISTRATIVO
-              _buildSectionTitle('📋 Dados Administrativos'),
-              _buildTextField(_controller.cadastroPorController, 'Cadastro Realizado Por'),
-              _buildTextField(_controller.atualizadoPorController, 'Última Atualização Por'),
-              _buildDateField(_controller.dataAtualizacaoController, 'Data da Última Atualização'),
-              _buildDateField(_controller.dataCadastroController, 'Data do Cadastro'),
+                    // ADMINISTRATIVO
+                    _buildSectionTitle('📋 Dados Administrativos'),
+                    _buildTextField(
+                      _controller.cadastroPorController,
+                      'Cadastro Realizado Por',
+                    ),
+                    _buildTextField(
+                      _controller.atualizadoPorController,
+                      'Última Atualização Por',
+                    ),
+                    _buildDateField(
+                      _controller.dataAtualizacaoController,
+                      'Data da Última Atualização',
+                    ),
+                    _buildDateField(
+                      _controller.dataCadastroController,
+                      'Data do Cadastro',
+                    ),
 
-              // EDITÁVEL
-              _buildEditavelSwitch(),
+                    // EDITÁVEL
+                    _buildEditavelSwitch(),
 
-              // INFO GRADUAÇÃO
-              if (_controller.graduacaoController.text.isNotEmpty)
-                _buildInfoGraduacao(),
+                    // INFO GRADUAÇÃO
+                    if (_controller.graduacaoController.text.isNotEmpty)
+                      _buildInfoGraduacao(),
 
-              const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-              // BOTÃO PRINCIPAL
-              _buildBotaoSalvar(),
-            ],
-          ),
-        ),
-      ),
+                    // BOTÃO PRINCIPAL
+                    _buildBotaoSalvar(),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 
@@ -932,7 +1074,10 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Academia/Núcleo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            'Academia/Núcleo',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -946,7 +1091,10 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                 hint: const Text('Selecione uma academia'),
                 isExpanded: true,
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('Selecione uma academia')),
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Selecione uma academia'),
+                  ),
                   ..._controller.academiasMap.entries.map((entry) {
                     return DropdownMenuItem(
                       value: entry.key,
@@ -954,16 +1102,18 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                     );
                   }).toList(),
                 ],
-                onChanged: _controller.isSaving ? null : (String? novoId) {
-                  if (novoId != null) {
-                    setState(() {
-                      _controller.setSelectedAcademia(
-                        novoId,
-                        _controller.academiasMap[novoId],
-                      );
-                    });
-                  }
-                },
+                onChanged: _controller.isSaving
+                    ? null
+                    : (String? novoId) {
+                        if (novoId != null) {
+                          setState(() {
+                            _controller.setSelectedAcademia(
+                              novoId,
+                              _controller.academiasMap[novoId],
+                            );
+                          });
+                        }
+                      },
               ),
             ),
           ),
@@ -978,12 +1128,18 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Turma', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            'Turma',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           Stack(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey.shade400),
                   borderRadius: BorderRadius.circular(8),
@@ -994,7 +1150,10 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                     hint: const Text('Selecione uma turma (opcional)'),
                     isExpanded: true,
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Sem turma')),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Sem turma'),
+                      ),
                       ..._controller.turmasMap.entries.map((entry) {
                         final turma = entry.value;
                         final horario = turma['horario'] ?? '';
@@ -1003,20 +1162,26 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                             : turma['nome'].toString();
                         return DropdownMenuItem(
                           value: entry.key,
-                          child: Text(displayText, overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            displayText,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                     ],
-                    onChanged: _controller.isSaving ? null : (String? novoId) {
-                      if (novoId != null) {
-                        setState(() {
-                          _controller.setSelectedTurma(
-                            novoId,
-                            _controller.turmasMap[novoId]?['nome'] as String?,
-                          );
-                        });
-                      }
-                    },
+                    onChanged: _controller.isSaving
+                        ? null
+                        : (String? novoId) {
+                            if (novoId != null) {
+                              setState(() {
+                                _controller.setSelectedTurma(
+                                  novoId,
+                                  _controller.turmasMap[novoId]?['nome']
+                                      as String?,
+                                );
+                              });
+                            }
+                          },
                   ),
                 ),
               ),
@@ -1047,9 +1212,16 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
           ),
           child: const Row(
             children: [
-              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
               SizedBox(width: 12),
-              Text('Carregando graduações...', style: TextStyle(color: Colors.grey)),
+              Text(
+                'Carregando graduações...',
+                style: TextStyle(color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -1057,27 +1229,32 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     }
 
     return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: DropdownButtonFormField<String>(
-          value: _controller.selectedGraduacaoId,
-          items: [
-            const DropdownMenuItem(value: null, child: Text('-- Sem graduação --')),
-            ..._controller.graduacoesDocs.map((doc) {
-              final nome = doc['nome_graduacao'] ?? 'Sem nome';
-              return DropdownMenuItem(value: doc.id, child: Text(nome));
-            }).toList(),
-          ],
-          onChanged: _controller.isSaving ? null : (v) {
-            setState(() {
-              _controller.setSelectedGraduacao(v);
-            });
-          },
-          decoration: const InputDecoration(
-            labelText: 'Graduação Atual',
-            border: OutlineInputBorder(),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: _controller.selectedGraduacaoId,
+        items: [
+          const DropdownMenuItem(
+            value: null,
+            child: Text('-- Sem graduação --'),
           ),
-          isExpanded: true,
-        )
+          ..._controller.graduacoesDocs.map((doc) {
+            final nome = doc['nome_graduacao'] ?? 'Sem nome';
+            return DropdownMenuItem(value: doc.id, child: Text(nome));
+          }).toList(),
+        ],
+        onChanged: _controller.isSaving
+            ? null
+            : (v) {
+                setState(() {
+                  _controller.setSelectedGraduacao(v);
+                });
+              },
+        decoration: const InputDecoration(
+          labelText: 'Graduação Atual',
+          border: OutlineInputBorder(),
+        ),
+        isExpanded: true,
+      ),
     );
   }
 
@@ -1090,15 +1267,20 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: SwitchListTile(
-        title: const Text('Aluno Editável', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Aluno Editável',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: const Text('Permite que o aluno edite seus dados'),
         value: _controller.editavel,
         activeColor: Colors.red.shade900,
-        onChanged: _controller.isSaving ? null : (v) {
-          setState(() {
-            _controller.setEditavel(v);
-          });
-        },
+        onChanged: _controller.isSaving
+            ? null
+            : (v) {
+                setState(() {
+                  _controller.setEditavel(v);
+                });
+              },
         contentPadding: EdgeInsets.zero,
       ),
     );
@@ -1109,17 +1291,25 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _controller.selectedGraduacaoId != null ? Colors.green[50] : Colors.orange[50],
+        color: _controller.selectedGraduacaoId != null
+            ? Colors.green[50]
+            : Colors.orange[50],
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: _controller.selectedGraduacaoId != null ? Colors.green : Colors.orange,
+          color: _controller.selectedGraduacaoId != null
+              ? Colors.green
+              : Colors.orange,
         ),
       ),
       child: Row(
         children: [
           Icon(
-            _controller.selectedGraduacaoId != null ? Icons.check_circle : Icons.warning,
-            color: _controller.selectedGraduacaoId != null ? Colors.green : Colors.orange,
+            _controller.selectedGraduacaoId != null
+                ? Icons.check_circle
+                : Icons.warning,
+            color: _controller.selectedGraduacaoId != null
+                ? Colors.green
+                : Colors.orange,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1127,16 +1317,26 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _controller.selectedGraduacaoId != null ? '✅ Graduação vinculada!' : '⚠️ Graduação não encontrada',
+                  _controller.selectedGraduacaoId != null
+                      ? '✅ Graduação vinculada!'
+                      : '⚠️ Graduação não encontrada',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: _controller.selectedGraduacaoId != null ? Colors.green : Colors.orange,
+                    color: _controller.selectedGraduacaoId != null
+                        ? Colors.green
+                        : Colors.orange,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('Nome: ${_controller.graduacaoController.text}', style: const TextStyle(fontSize: 14)),
+                Text(
+                  'Nome: ${_controller.graduacaoController.text}',
+                  style: const TextStyle(fontSize: 14),
+                ),
                 if (_controller.selectedGraduacaoId != null)
-                  Text('ID: ${_controller.selectedGraduacaoId}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(
+                    'ID: ${_controller.selectedGraduacaoId}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
               ],
             ),
           ),
@@ -1153,26 +1353,35 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         onPressed: _controller.isSaving ? null : _salvar,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.red.shade900,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           elevation: 2,
         ),
         child: _controller.isSaving
             ? const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-            SizedBox(width: 12),
-            Text('Migrando...'),
-          ],
-        )
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Text('Migrando...'),
+                ],
+              )
             : const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cloud_upload, size: 24),
-            SizedBox(width: 12),
-            Text('SALVAR E FINALIZAR MIGRAÇÃO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.cloud_upload, size: 24),
+                  SizedBox(width: 12),
+                  Text(
+                    'SALVAR E FINALIZAR MIGRAÇÃO',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -1180,19 +1389,21 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
   // WIDGETS AUXILIARES
   Widget _buildSectionTitle(String title) {
     return Padding(
-        padding: const EdgeInsets.only(top: 20, bottom: 12),
-        child: Text(
-          title,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.red.shade800,
-          ),
-        )
+      padding: const EdgeInsets.only(top: 20, bottom: 12),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.red.shade800,
+        ),
+      ),
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label, {
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
     bool isRequired = false,
@@ -1204,7 +1415,10 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
           border: const OutlineInputBorder(),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 14,
+          ),
         ),
         keyboardType: keyboardType,
         maxLines: maxLines,
@@ -1212,17 +1426,25 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     );
   }
 
-  Widget _buildDropdown(TextEditingController controller, String label, List<String> items) {
+  Widget _buildDropdown(
+    TextEditingController controller,
+    String label,
+    List<String> items,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
         value: items.contains(controller.text) ? controller.text : null,
-        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-        onChanged: _controller.isSaving ? null : (v) {
-          setState(() {
-            controller.text = v ?? '';
-          });
-        },
+        items: items
+            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+            .toList(),
+        onChanged: _controller.isSaving
+            ? null
+            : (v) {
+                setState(() {
+                  controller.text = v ?? '';
+                });
+              },
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
@@ -1243,7 +1465,9 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
           border: const OutlineInputBorder(),
           suffixIcon: IconButton(
             icon: const Icon(Icons.calendar_today),
-            onPressed: _controller.isSaving ? null : () => _selecionarData(controller),
+            onPressed: _controller.isSaving
+                ? null
+                : () => _selecionarData(controller),
           ),
         ),
         onTap: _controller.isSaving ? null : () => _selecionarData(controller),

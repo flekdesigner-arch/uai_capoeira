@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_model.dart'; // 👈 ÚNICO IMPORT!
 import '../competidores/ficha_competidor_screen.dart';
@@ -39,7 +39,9 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
 
     try {
       // 👇 O SERVICE JÁ RETORNA O TIPO CORRETO!
-      final competidores = await _campeonatoService.getCompetidoresPorCategoria(widget.categoriaNome);
+      final competidores = await _campeonatoService.getCompetidoresPorCategoria(
+        widget.categoriaNome,
+      );
 
       if (mounted) {
         setState(() {
@@ -64,18 +66,23 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
   // Filtrar competidores pela busca
   List<InscricaoCampeonatoModel> get _competidoresFiltrados {
     if (_searchQuery.isEmpty) return _competidores;
-    return _competidores.where((c) =>
-    c.nome.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        c.apelido.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        c.grupo.toLowerCase().contains(_searchQuery.toLowerCase())
-    ).toList();
+    return _competidores
+        .where(
+          (c) =>
+              c.nome.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              c.apelido.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              c.grupo.toLowerCase().contains(_searchQuery.toLowerCase()),
+        )
+        .toList();
   }
 
   Future<void> _gerarChaves() async {
     if (_competidores.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('É necessário pelo menos 2 competidores para gerar chaves'),
+          content: Text(
+            'É necessário pelo menos 2 competidores para gerar chaves',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -125,9 +132,7 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FichaCompetidorScreen(
-          competidor: competidor,
-        ),
+        builder: (context) => FichaCompetidorScreen(competidor: competidor),
       ),
     );
   }
@@ -155,7 +160,10 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.15),
                 hintStyle: const TextStyle(color: Colors.white70),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
               style: const TextStyle(color: Colors.white),
             ),
@@ -201,7 +209,10 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber.shade900,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -317,12 +328,19 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
                         children: [
                           Text(
                             comp.grupo,
-                            style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 12,
+                            ),
                           ),
-                          if (comp.graduacaoNome != null && comp.graduacaoNome!.isNotEmpty)
+                          if (comp.graduacaoNome != null &&
+                              comp.graduacaoNome!.isNotEmpty)
                             Text(
                               comp.graduacaoNome!,
-                              style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 11,
+                              ),
                             ),
                         ],
                       ),
@@ -357,17 +375,20 @@ class _GerarChavesScreenState extends State<GerarChavesScreen> {
               onPressed: _isGerando ? null : _gerarChaves,
               icon: _isGerando
                   ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.account_tree),
               label: Text(
                 _isGerando ? 'GERANDO...' : 'GERAR CHAVES',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber.shade900,

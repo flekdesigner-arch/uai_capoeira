@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class ModoTrollScreen extends StatefulWidget {
@@ -13,9 +14,12 @@ class ModoTrollScreen extends StatefulWidget {
 
 class _ModoTrollScreenState extends State<ModoTrollScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
   bool _carregando = true;
   bool _salvando = false;
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _ativo = false;
   bool _chamadaTelepatia = false;
   bool _chamadaInversa = false;
@@ -27,7 +31,8 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -42,10 +47,49 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarConfiguracao();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_chamada',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _carregarConfiguracao();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_chamada',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Você não tem permissão para configurar brincadeiras da chamada.',
+          ),
+          backgroundColor: context.uai.error,
+        ),
+      );
+    }
+
+    return permitido;
   }
 
   Future<void> _carregarConfiguracao() async {
+    if (!await _revalidarAcesso()) return;
+
     try {
       final doc = await _firestore
           .collection('configuracoes_sistema')
@@ -83,17 +127,22 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
   }
 
   Future<void> _salvarConfiguracao() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() => _salvando = true);
 
     try {
-      await _firestore.collection('configuracoes_sistema').doc('modo_troll').set({
-        'ativo': _ativo,
-        'trolagens': {
-          'chamada_telepatia': _chamadaTelepatia,
-          'chamada_inversa': _chamadaInversa,
-        },
-        'atualizado_em': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _firestore
+          .collection('configuracoes_sistema')
+          .doc('modo_troll')
+          .set({
+            'ativo': _ativo,
+            'trolagens': {
+              'chamada_telepatia': _chamadaTelepatia,
+              'chamada_inversa': _chamadaInversa,
+            },
+            'atualizado_em': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -117,9 +166,26 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Brincadeiras da Chamada',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Brincadeiras da Chamada',
+        message:
+            'Você não tem permissão para configurar brincadeiras da chamada.',
+      );
+    }
+
     final t = context.uai;
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -136,13 +202,13 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
             onPressed: _salvando ? null : _salvarConfiguracao,
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: appBarFg,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: appBarFg,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
           ),
         ],
@@ -150,57 +216,60 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
       body: _carregando
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : ListView(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
-        children: [
-          _buildHeader(context),
-          const SizedBox(height: 14),
-          _buildGeralSwitch(context),
-          const SizedBox(height: 14),
-          _buildItem(
-            context: context,
-            icon: Icons.psychology_alt_rounded,
-            title: 'Chamada por Telepatia',
-            subtitle:
-            'Só acontece quando já existe uma chamada real salva para o dia. A tela reproduz visualmente os dados reais, registra em trolldata do usuário e depois volta a aparecer normal.',
-            color: t.associacao,
-            value: _chamadaTelepatia,
-            onChanged: (value) => setState(() => _chamadaTelepatia = value),
-          ),
-          const SizedBox(height: 10),
-          _buildItem(
-            context: context,
-            icon: Icons.swap_vert_circle_rounded,
-            title: 'Chamada Inversa',
-            subtitle:
-            'Nos primeiros 20 segundos de uma chamada real nova, ao tocar em um aluno, o app marca o card vizinho. Depois volta ao normal para o professor corrigir e salvar de verdade.',
-            color: t.warning,
-            value: _chamadaInversa,
-            onChanged: (value) => setState(() => _chamadaInversa = value),
-          ),
-          const SizedBox(height: 16),
-          _buildAvisoSeguro(context),
-          const SizedBox(height: 22),
-          ElevatedButton.icon(
-            onPressed: _salvando ? null : _salvarConfiguracao,
-            icon: _salvando
-                ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-                : const Icon(Icons.save_rounded),
-            label: Text(_salvando ? 'SALVANDO...' : 'SALVAR CONFIGURAÇÃO'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: appBarBg,
-              foregroundColor: appBarFg,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 14),
+                _buildGeralSwitch(context),
+                const SizedBox(height: 14),
+                _buildItem(
+                  context: context,
+                  icon: Icons.psychology_alt_rounded,
+                  title: 'Chamada por Telepatia',
+                  subtitle:
+                      'Só acontece quando já existe uma chamada real salva para o dia. A tela reproduz visualmente os dados reais, registra em trolldata do usuário e depois volta a aparecer normal.',
+                  color: t.associacao,
+                  value: _chamadaTelepatia,
+                  onChanged: (value) =>
+                      setState(() => _chamadaTelepatia = value),
+                ),
+                const SizedBox(height: 10),
+                _buildItem(
+                  context: context,
+                  icon: Icons.swap_vert_circle_rounded,
+                  title: 'Chamada Inversa',
+                  subtitle:
+                      'Nos primeiros 20 segundos de uma chamada real nova, ao tocar em um aluno, o app marca o card vizinho. Depois volta ao normal para o professor corrigir e salvar de verdade.',
+                  color: t.warning,
+                  value: _chamadaInversa,
+                  onChanged: (value) => setState(() => _chamadaInversa = value),
+                ),
+                const SizedBox(height: 16),
+                _buildAvisoSeguro(context),
+                const SizedBox(height: 22),
+                ElevatedButton.icon(
+                  onPressed: _salvando ? null : _salvarConfiguracao,
+                  icon: _salvando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(
+                    _salvando ? 'SALVANDO...' : 'SALVAR CONFIGURAÇÃO',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: appBarBg,
+                    foregroundColor: appBarFg,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -228,7 +297,11 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                   border: Border.all(color: onPrimary.withOpacity(0.16)),
                 ),
-                child: Icon(Icons.theater_comedy_rounded, color: onPrimary, size: 30),
+                child: Icon(
+                  Icons.theater_comedy_rounded,
+                  color: onPrimary,
+                  size: 30,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -365,11 +438,7 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Switch(
-            value: value,
-            activeColor: t.success,
-            onChanged: onChanged,
-          ),
+          Switch(value: value, activeColor: t.success, onChanged: onChanged),
         ],
       ),
     );

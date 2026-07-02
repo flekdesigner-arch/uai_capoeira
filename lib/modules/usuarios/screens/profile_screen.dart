@@ -38,8 +38,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -94,8 +94,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final image =
-    await ImagePicker().pickImage(source: source, imageQuality: 50);
+    final image = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 50,
+    );
     if (image != null) {
       setState(() => _pickedImage = image);
     }
@@ -199,10 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (kIsWeb) {
           final bytes = await _pickedImage!.readAsBytes();
-          await ref.putData(
-            bytes,
-            SettableMetadata(contentType: 'image/jpeg'),
-          );
+          await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
         } else {
           await ref.putFile(File(_pickedImage!.path));
         }
@@ -234,8 +233,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             backgroundColor: context.uai.success,
             behavior: SnackBarBehavior.floating,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
         );
         Navigator.pop(context);
@@ -253,8 +253,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             backgroundColor: context.uai.error,
             behavior: SnackBarBehavior.floating,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
         );
       }
@@ -436,46 +437,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: ClipOval(
               child: _pickedImage != null
                   ? kIsWeb
-                  ? Image.network(
-                _pickedImage!.path,
-                fit: BoxFit.cover,
-                width: 168,
-                height: 168,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  Icons.person_rounded,
-                  size: 82,
-                  color: context.uai.textMuted,
-                ),
-              )
-                  : Image.file(
-                File(_pickedImage!.path),
-                fit: BoxFit.cover,
-                width: 168,
-                height: 168,
-              )
+                        ? Image.network(
+                            _pickedImage!.path,
+                            fit: BoxFit.cover,
+                            width: 168,
+                            height: 168,
+                            errorBuilder: (context, error, stackTrace) => Icon(
+                              Icons.person_rounded,
+                              size: 82,
+                              color: context.uai.textMuted,
+                            ),
+                          )
+                        : Image.file(
+                            File(_pickedImage!.path),
+                            fit: BoxFit.cover,
+                            width: 168,
+                            height: 168,
+                          )
                   : (_photoUrl != null && _photoUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                imageUrl: _photoUrl!,
-                placeholder: (context, url) => Center(
-                  child: CircularProgressIndicator(color: accent),
-                ),
-                errorWidget: (context, url, error) => Icon(
-                  Icons.person_rounded,
-                  size: 82,
-                  color: context.uai.textMuted,
-                ),
-                fit: BoxFit.cover,
-                width: 168,
-                height: 168,
-              )
-                  : Container(
-                color: context.uai.cardAlt,
-                child: Icon(
-                  Icons.person_rounded,
-                  size: 82,
-                  color: context.uai.textMuted,
-                ),
-              )),
+                        ? CachedNetworkImage(
+                            imageUrl: _photoUrl!,
+                            placeholder: (context, url) => Center(
+                              child: CircularProgressIndicator(color: accent),
+                            ),
+                            errorWidget: (context, url, error) => Icon(
+                              Icons.person_rounded,
+                              size: 82,
+                              color: context.uai.textMuted,
+                            ),
+                            fit: BoxFit.cover,
+                            width: 168,
+                            height: 168,
+                          )
+                        : Container(
+                            color: context.uai.cardAlt,
+                            child: Icon(
+                              Icons.person_rounded,
+                              size: 82,
+                              color: context.uai.textMuted,
+                            ),
+                          )),
             ),
           ),
           Positioned(
@@ -522,107 +523,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: context.uai.primary))
           : SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(16, 18, 16, 28),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 720),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildAvatar(),
-                SizedBox(height: 22),
-                _sectionCard(
-                  title: 'Informações editáveis',
-                  subtitle: 'Atualize seus dados principais',
-                  icon: Icons.edit_rounded,
-                  color: context.uai.primary,
+              padding: EdgeInsets.fromLTRB(16, 18, 16, 28),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 720),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextField(
-                        controller: _nomeController,
-                        style: TextStyle(color: context.uai.textPrimary),
-                        decoration: _inputDecoration(
-                          label: 'Nome completo *',
-                          icon: Icons.person_rounded,
+                      _buildAvatar(),
+                      SizedBox(height: 22),
+                      _sectionCard(
+                        title: 'Informações editáveis',
+                        subtitle: 'Atualize seus dados principais',
+                        icon: Icons.edit_rounded,
+                        color: context.uai.primary,
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _nomeController,
+                              style: TextStyle(color: context.uai.textPrimary),
+                              decoration: _inputDecoration(
+                                label: 'Nome completo *',
+                                icon: Icons.person_rounded,
+                              ),
+                            ),
+                            SizedBox(height: 14),
+                            TextField(
+                              controller: _contatoController,
+                              style: TextStyle(color: context.uai.textPrimary),
+                              decoration: _inputDecoration(
+                                label: 'Contato (telefone) *',
+                                icon: Icons.phone_rounded,
+                              ),
+                              keyboardType: TextInputType.phone,
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: 14),
-                      TextField(
-                        controller: _contatoController,
-                        style: TextStyle(color: context.uai.textPrimary),
-                        decoration: _inputDecoration(
-                          label: 'Contato (telefone) *',
-                          icon: Icons.phone_rounded,
+                      SizedBox(height: 16),
+                      _sectionCard(
+                        title: 'Informações do sistema',
+                        subtitle: 'Dados protegidos do seu acesso',
+                        icon: Icons.security_rounded,
+                        color: context.uai.info,
+                        child: Column(
+                          children: [
+                            _buildInfoField(
+                              'E-mail',
+                              _email ?? '',
+                              icon: Icons.email_rounded,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoField(
+                              'Tipo de usuário',
+                              _tipo ?? '',
+                              icon: Icons.group_rounded,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoField(
+                              'Status da conta',
+                              _statusConta ?? '',
+                              icon: Icons.verified_rounded,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoField(
+                              'Data de cadastro',
+                              _formatTimestamp(_dataCadastro),
+                              icon: Icons.calendar_today_rounded,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildInfoField(
+                              'Última atualização',
+                              _formatTimestamp(_ultimaAtualizacao),
+                              icon: Icons.update_rounded,
+                            ),
+                          ],
                         ),
-                        keyboardType: TextInputType.phone,
+                      ),
+                      SizedBox(height: 22),
+                      ElevatedButton.icon(
+                        onPressed: _saveProfile,
+                        icon: Icon(Icons.save_rounded),
+                        label: Text('SALVAR ALTERAÇÕES'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: context.uai.primary,
+                          foregroundColor: _readableOn(context.uai.primary),
+                          minimumSize: const Size(double.infinity, 52),
+                          textStyle: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.3,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              context.uai.buttonRadius,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                SizedBox(height: 16),
-                _sectionCard(
-                  title: 'Informações do sistema',
-                  subtitle: 'Dados protegidos do seu acesso',
-                  icon: Icons.security_rounded,
-                  color: context.uai.info,
-                  child: Column(
-                    children: [
-                      _buildInfoField(
-                        'E-mail',
-                        _email ?? '',
-                        icon: Icons.email_rounded,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoField(
-                        'Tipo de usuário',
-                        _tipo ?? '',
-                        icon: Icons.group_rounded,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoField(
-                        'Status da conta',
-                        _statusConta ?? '',
-                        icon: Icons.verified_rounded,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoField(
-                        'Data de cadastro',
-                        _formatTimestamp(_dataCadastro),
-                        icon: Icons.calendar_today_rounded,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildInfoField(
-                        'Última atualização',
-                        _formatTimestamp(_ultimaAtualizacao),
-                        icon: Icons.update_rounded,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 22),
-                ElevatedButton.icon(
-                  onPressed: _saveProfile,
-                  icon: Icon(Icons.save_rounded),
-                  label: Text('SALVAR ALTERAÇÕES'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.uai.primary,
-                    foregroundColor: _readableOn(context.uai.primary),
-                    minimumSize: const Size(double.infinity, 52),
-                    textStyle: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(context.uai.buttonRadius),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

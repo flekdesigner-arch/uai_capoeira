@@ -90,8 +90,8 @@ class CertificadoEventoToolbar extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -156,19 +156,20 @@ class CertificadoEventoToolbar extends StatelessWidget {
               ),
               child: carregando
                   ? Padding(
-                padding: const EdgeInsets.all(11),
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  color: primary,
-                ),
-              )
+                      padding: const EdgeInsets.all(11),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: primary,
+                      ),
+                    )
                   : Icon(Icons.tune_rounded, color: primary),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                crossAxisAlignment: narrow
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Ferramentas do gerador',
@@ -213,11 +214,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
         if (narrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              title,
-              const SizedBox(height: 10),
-              reload,
-            ],
+            children: [title, const SizedBox(height: 10), reload],
           );
         }
 
@@ -250,9 +247,9 @@ class CertificadoEventoToolbar extends StatelessWidget {
         suffixIcon: busca.trim().isEmpty
             ? null
             : IconButton(
-          onPressed: () => onBuscaChanged(''),
-          icon: Icon(Icons.close_rounded, color: t.textSecondary),
-        ),
+                onPressed: () => onBuscaChanged(''),
+                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+              ),
         filled: true,
         fillColor: t.cardAlt,
         border: OutlineInputBorder(
@@ -399,13 +396,13 @@ class CertificadoEventoToolbar extends StatelessWidget {
   }
 
   Widget _actionButton(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required Color color,
-        required VoidCallback? onTap,
-        required bool filled,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onTap,
+    required bool filled,
+  }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
     final onAccent = _readableOn(accent);
@@ -446,10 +443,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),
         ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w900,
-          fontSize: 12.2,
-        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.2),
       ),
     );
   }

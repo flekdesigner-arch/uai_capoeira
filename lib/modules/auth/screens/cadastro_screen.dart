@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -138,9 +138,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ),
                     helperText: 'DDD + número (10 ou 11 dígitos)',
                   ),
-                  inputFormatters: [
-                    PhoneMaskService.phoneInputFormatter,
-                  ],
+                  inputFormatters: [PhoneMaskService.phoneInputFormatter],
                   validator: (value) {
                     if (!ValidationService.isPhoneValid(value ?? '')) {
                       return 'Digite um telefone válido (DDD + número)';
@@ -198,7 +196,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
                       ),
                       onPressed: () {
                         setState(() {
-                          _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                          _isConfirmPasswordVisible =
+                              !_isConfirmPasswordVisible;
                         });
                       },
                     ),
@@ -230,7 +229,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ),
                     child: const Text(
                       'CADASTRAR',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -246,7 +248,11 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   ),
                   child: Column(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.blue.shade700, size: 24),
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.blue.shade700,
+                        size: 24,
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         'Sua conta será analisada por um administrador antes de ser ativada.',
@@ -281,11 +287,11 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
     try {
       // 1. Criar usuário no Firebase Auth
-      final UserCredential userCredential =
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
       if (userCredential.user != null) {
         final user = userCredential.user!;
@@ -294,7 +300,9 @@ class _CadastroScreenState extends State<CadastroScreen> {
         await UserService.createOrUpdateUserDocument(
           user: user,
           nomeCompleto: _nameController.text.trim(),
-          contato: ValidationService.extractPhoneNumbers(_contatoController.text),
+          contato: ValidationService.extractPhoneNumbers(
+            _contatoController.text,
+          ),
         );
       }
 
@@ -304,7 +312,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
       if (mounted) {
         _showSuccessDialog();
       }
-
     } on FirebaseAuthException catch (e) {
       if (mounted) Navigator.pop(context);
 
@@ -336,9 +343,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
         content: Text(message),
         backgroundColor: Colors.red.shade900,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         action: SnackBarAction(
           label: 'OK',
           textColor: Colors.white,
@@ -370,10 +375,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
             Text(
               'Você receberá um email quando sua conta for ativada.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -383,9 +385,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
               Navigator.pop(context); // Fecha o alerta
               Navigator.pop(context); // Volta para login
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red.shade900,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade900),
             child: const Text('ENTENDI'),
           ),
         ],

@@ -1,8 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -13,6 +16,7 @@ import 'package:uai_capoeira/modules/eventos/services/certificado_service.dart';
 import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
 import 'package:uai_capoeira/modules/eventos/widgets/adicionar_participante_modal.dart';
 import 'package:uai_capoeira/modules/graduacoes/services/graduacao_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'aluno_detalhe_participacao_screen.dart';
 import 'finalizacao_massa_evento_screen.dart';
@@ -57,29 +61,25 @@ class RobustAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget avatarChild = _isValidUrl(fotoUrl)
         ? ClipOval(
-      child: Image.network(
-        fotoUrl!,
-        width: radius * 2,
-        height: radius * 2,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const SizedBox.shrink();
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return Icon(
-            Icons.person,
-            size: radius * 0.8,
-            color: context.uai.textMuted,
-          );
-        },
-      ),
-    )
-        : Icon(
-      Icons.person,
-      size: radius * 0.8,
-      color: context.uai.textMuted,
-    );
+            child: Image.network(
+              fotoUrl!,
+              width: radius * 2,
+              height: radius * 2,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const SizedBox.shrink();
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return Icon(
+                  Icons.person,
+                  size: radius * 0.8,
+                  color: context.uai.textMuted,
+                );
+              },
+            ),
+          )
+        : Icon(Icons.person, size: radius * 0.8, color: context.uai.textMuted);
 
     return Container(
       decoration: BoxDecoration(
@@ -104,7 +104,11 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   _StickyHeaderDelegate({required this.child, required this.height});
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Material(
       color: context.uai.surface,
       elevation: 0,
@@ -145,19 +149,27 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     with TickerProviderStateMixin {
   final ParticipacaoService _participacaoService = ParticipacaoService();
   final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
   final GraduacaoService _graduacaoService = GraduacaoService();
   final CertificadoService _certificadoService = CertificadoService();
 
-  late final TabController _tabController;
+  late TabController _tabController;
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _searchParticipantesController =
-  TextEditingController();
+      TextEditingController();
+  final TextEditingController _searchConcluidosController =
+      TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _searchParticipantesFocusNode = FocusNode();
+  final FocusNode _searchConcluidosFocusNode = FocusNode();
 
   String _searchQuery = '';
   String _searchParticipantesQuery = '';
+  String _searchConcluidosQuery = '';
+  String _filtroConcluidosWhatsapp = 'todos';
   List<Map<String, dynamic>> _alunosDisponiveis = [];
   List<String> _alunosParticipantesIds = [];
   bool _isLoadingAlunos = false;
@@ -191,6 +203,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   Timer? _debounceTimer;
 
   bool _podeGerenciarParticipantes = false;
+  bool _podeVerParticipantes = false;
+  bool _podeAbrirDetalhe = false;
   bool _podeAdicionar = false;
   bool _podeEditarParticipacao = false;
   bool _podeRemover = false;
@@ -198,6 +212,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   bool _podeGerarCertificados = false;
   bool _podeExportarListas = false;
   bool _carregandoPermissoes = true;
+  bool _acessoNegado = false;
+
+  int get _tabCount => _podeAdicionar ? 3 : 2;
+
+  bool get _podeEnviarWhatsappCertificado =>
+      _podeGerenciarParticipantes ||
+      _podeAbrirDetalhe ||
+      _podeGerarCertificados;
 
   bool get _isBatizado {
     final tipo = (widget.evento ?? _eventoCarregado)?.tipo.toUpperCase() ?? '';
@@ -211,8 +233,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -233,7 +255,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   String _normalizarModelagemCamisa(dynamic value) {
     final raw = value?.toString().trim().toUpperCase() ?? '';
-    final clean = raw.replaceAll('-', '_').replaceAll(' ', '_').replaceAll('__', '_');
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
 
     if (clean == 'BABYLOOK' ||
         clean == 'BABY_LOOK' ||
@@ -247,7 +272,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   String _normalizarTipoCamisa(dynamic value) {
     final raw = value?.toString().trim().toUpperCase() ?? '';
-    final clean = raw.replaceAll('-', '_').replaceAll(' ', '_').replaceAll('__', '_');
+    final clean = raw
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_')
+        .replaceAll('__', '_');
 
     if (clean == 'MANGA_LONGA' ||
         clean == 'LONGA' ||
@@ -349,6 +377,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     });
   }
 
+  void _onSearchConcluidosChanged(String value) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      setState(() => _searchConcluidosQuery = value.toLowerCase().trim());
+    });
+  }
+
   Widget _buildSearchField({
     required TextEditingController controller,
     required FocusNode focusNode,
@@ -377,13 +413,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         prefixIcon: Icon(Icons.search_rounded, color: accent),
         suffixIcon: hasValue
             ? IconButton(
-          icon: Icon(Icons.clear_rounded, color: context.uai.textMuted),
-          onPressed: onClear,
-        )
+                icon: Icon(Icons.clear_rounded, color: context.uai.textMuted),
+                onPressed: onClear,
+              )
             : null,
         filled: true,
         fillColor: context.uai.card,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(context.uai.buttonRadius),
           borderSide: BorderSide(color: context.uai.border),
@@ -404,13 +443,35 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: _tabCount, vsync: this);
 
-    if (widget.evento == null) _buscarEventoDoFirestore();
-    _carregarGraduacoes();
-    _carregarPatrocinios();
-    _carregarParticipantesExistentes().then((_) => _carregarAlunos());
-    _verificarPermissoes();
+    _inicializarComPermissao();
+  }
+
+  void _sincronizarTabController() {
+    if (_tabController.length == _tabCount) return;
+
+    final oldIndex = _tabController.index;
+    _tabController.dispose();
+    _tabController = TabController(
+      length: _tabCount,
+      vsync: this,
+      initialIndex: oldIndex.clamp(0, _tabCount - 1),
+    );
+  }
+
+  Future<void> _inicializarComPermissao() async {
+    await _verificarPermissoes();
+    if (!mounted || _acessoNegado) return;
+
+    if (widget.evento == null) await _buscarEventoDoFirestore();
+    await Future.wait([
+      _carregarGraduacoes(),
+      _carregarPatrocinios(),
+      _carregarParticipantesExistentes(),
+    ]);
+    if (!mounted) return;
+    if (_podeAdicionar) await _carregarAlunos();
   }
 
   @override
@@ -445,6 +506,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           'pode_gerenciar_participantes_evento',
           'pode_gerenciar_participantes',
         ]),
+        _permissaoService.temPermissao('pode_ver_participantes_evento'),
+        _permissaoService.temQualquerPermissao([
+          'pode_ver_detalhe_participacao_evento',
+          'pode_gerenciar_participantes_evento',
+        ]),
         _permissaoService.temQualquerPermissaoDireta([
           'pode_adicionar_participante_evento',
           'pode_adcionar_aluno_a_eventos',
@@ -475,28 +541,35 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       if (!mounted) return;
 
       setState(() {
-        _podeGerenciarParticipantes = permissoes[0] ||
-            permissoes[1] ||
-            permissoes[2] ||
-            permissoes[3] ||
-            permissoes[4];
-        _podeAdicionar = permissoes[1];
-        _podeEditarParticipacao = permissoes[2];
-        _podeRemover = permissoes[3];
-        _podeConcluirParticipacao = permissoes[4];
-        _podeGerarCertificados = permissoes[5];
-        _podeExportarListas = permissoes[5] || permissoes[6];
+        _podeGerenciarParticipantes = permissoes[0];
+        _podeVerParticipantes = permissoes[0] || permissoes[1];
+        _podeAbrirDetalhe = permissoes[2];
+        _podeAdicionar = permissoes[3];
+        _podeEditarParticipacao = permissoes[4];
+        _podeRemover = permissoes[5];
+        _podeConcluirParticipacao = permissoes[6];
+        _podeGerarCertificados = permissoes[7];
+        _podeExportarListas = permissoes[7] || permissoes[8];
+        _acessoNegado =
+            !(_podeGerenciarParticipantes ||
+                _podeVerParticipantes ||
+                _podeAbrirDetalhe ||
+                _podeAdicionar ||
+                _podeEditarParticipacao);
         _carregandoPermissoes = false;
       });
+      _sincronizarTabController();
 
-      debugPrint('🔐 Permissões participantes: '
-          'gerenciar=$_podeGerenciarParticipantes | '
-          'adicionar=$_podeAdicionar | '
-          'editar=$_podeEditarParticipacao | '
-          'remover=$_podeRemover | '
-          'concluir=$_podeConcluirParticipacao | '
-          'certificados=$_podeGerarCertificados | '
-          'exportar=$_podeExportarListas');
+      debugPrint(
+        '🔐 Permissões participantes: '
+        'gerenciar=$_podeGerenciarParticipantes | '
+        'adicionar=$_podeAdicionar | '
+        'editar=$_podeEditarParticipacao | '
+        'remover=$_podeRemover | '
+        'concluir=$_podeConcluirParticipacao | '
+        'certificados=$_podeGerarCertificados | '
+        'exportar=$_podeExportarListas',
+      );
     } catch (e) {
       debugPrint('Erro ao verificar permissões dos participantes: $e');
       if (!mounted) return;
@@ -579,16 +652,29 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     if (cached != null && !cached.isExpired) return cached.data;
 
     try {
-      final doc =
-      await FirebaseFirestore.instance.collection('alunos').doc(alunoId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
       if (doc.exists) {
         final data = doc.data()!;
         final dados = {
           'nome': data['nome'] ?? '',
-          'foto': data['foto_perfil_aluno'] as String?,
-          'graduacao': data['graduacao_atual'] ?? '',
+          'foto':
+              data['foto_perfil_aluno'] ??
+              data['foto'] ??
+              data['foto_url'] ??
+              data['fotoUrl'],
+          'graduacao':
+              data['graduacao_atual'] ??
+              data['graduacao_nome'] ??
+              data['graduacao'] ??
+              '',
           'turma': data['turma'] as String?,
           'data_nascimento': data['data_nascimento'],
+          'contato_aluno': data['contato_aluno'],
+          'contato_responsavel': data['contato_responsavel'],
+          'nome_responsavel': data['nome_responsavel'],
         };
         _cacheAlunos[alunoId] = CachedAlunoData(dados);
         return dados;
@@ -603,6 +689,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       'graduacao': '',
       'turma': null,
       'data_nascimento': null,
+      'contato_aluno': null,
+      'contato_responsavel': null,
+      'nome_responsavel': null,
     };
   }
 
@@ -641,7 +730,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       _verificarPermissoes(),
     ]);
 
-    await _carregarAlunos();
+    if (_acessoNegado) return;
+    if (_podeAdicionar) await _carregarAlunos();
 
     if (!mounted) return;
     setState(() => _isRefreshing = false);
@@ -656,8 +746,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   void _calcularEstatisticas(List<ParticipacaoModel> participantes) {
     final assinatura = participantes
-        .map((p) =>
-    '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.modelagemCamisa}|${p.tipoCamisa}|${p.estaQuitado}')
+        .map(
+          (p) =>
+              '${p.id}|${p.totalPago}|${p.valorTotal}|${p.tamanhoCamisa}|${p.modelagemCamisa}|${p.tipoCamisa}|${p.estaQuitado}',
+        )
         .join(';');
 
     if (_assinaturaEstatisticas == assinatura) return;
@@ -699,8 +791,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   Widget _buildDashboard() {
     final saldoDevedor = _totalInscricoes - _totalArrecadado;
-    final inadimplentes =
-    (_totalParticipantes - _participantesPagos).clamp(0, _totalParticipantes);
+    final inadimplentes = (_totalParticipantes - _participantesPagos).clamp(
+      0,
+      _totalParticipantes,
+    );
     final percentualPago = _totalParticipantes > 0
         ? (_participantesPagos / _totalParticipantes * 100).toStringAsFixed(1)
         : '0';
@@ -756,8 +850,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 ),
               ),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: context.uai.primary.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(99),
@@ -768,7 +864,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 child: Text(
                   '$percentualPago%',
                   style: TextStyle(
-                    color: _ensureVisible(context.uai.primary, context.uai.card),
+                    color: _ensureVisible(
+                      context.uai.primary,
+                      context.uai.card,
+                    ),
                     fontWeight: FontWeight.w900,
                     fontSize: 12,
                   ),
@@ -823,15 +922,15 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 children: items
                     .map(
                       (item) => SizedBox(
-                    width: itemWidth,
-                    child: _dashboardMiniCard(
-                      icon: item.icon,
-                      value: item.value,
-                      label: item.label,
-                      color: item.color,
-                    ),
-                  ),
-                )
+                        width: itemWidth,
+                        child: _dashboardMiniCard(
+                          icon: item.icon,
+                          value: item.value,
+                          label: item.label,
+                          color: item.color,
+                        ),
+                      ),
+                    )
                     .toList(),
               );
             },
@@ -899,47 +998,60 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: (_camisasPorDetalhe.isNotEmpty
-                          ? _camisasPorDetalhe.entries
-                          : _camisasPorTamanho.entries)
-                          .map((e) {
-                        final accent = _ensureVisible(
-                          context.uai.warning,
-                          context.uai.card,
-                        );
-                        final label = e.key.contains('|')
-                            ? e.key.split('|').asMap().entries.map((part) {
-                          if (part.key == 0) {
-                            return _modelagemCamisaLabel(part.value);
-                          }
-                          if (part.key == 1) {
-                            return _tipoCamisaLabel(part.value);
-                          }
-                          return part.value;
-                        }).join(' • ')
-                            : e.key;
+                      children:
+                          (_camisasPorDetalhe.isNotEmpty
+                                  ? _camisasPorDetalhe.entries
+                                  : _camisasPorTamanho.entries)
+                              .map((e) {
+                                final accent = _ensureVisible(
+                                  context.uai.warning,
+                                  context.uai.card,
+                                );
+                                final label = e.key.contains('|')
+                                    ? e.key
+                                          .split('|')
+                                          .asMap()
+                                          .entries
+                                          .map((part) {
+                                            if (part.key == 0) {
+                                              return _modelagemCamisaLabel(
+                                                part.value,
+                                              );
+                                            }
+                                            if (part.key == 1) {
+                                              return _tipoCamisaLabel(
+                                                part.value,
+                                              );
+                                            }
+                                            return part.value;
+                                          })
+                                          .join(' • ')
+                                    : e.key;
 
-                        return Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: accent.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(99),
-                            border: Border.all(color: accent.withOpacity(0.18)),
-                          ),
-                          child: Text(
-                            '$label: ${e.value}',
-                            style: TextStyle(
-                              color: accent,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                                return Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent.withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(99),
+                                    border: Border.all(
+                                      color: accent.withOpacity(0.18),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '$label: ${e.value}',
+                                    style: TextStyle(
+                                      color: accent,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                );
+                              })
+                              .toList(),
                     ),
                   ),
                 ),
@@ -1081,42 +1193,49 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           .where('status_atividade', isEqualTo: 'ATIVO(A)')
           .get();
 
-      final alunos = snap.docs
-          .where((doc) => !_alunosParticipantesIds.contains(doc.id))
-          .map((doc) {
-        final data = doc.data();
-        final gradId = data['graduacao_atual_id']?.toString() ?? '';
-        final gradInfo = mapaGrad[gradId];
-        String tipoPublico = 'ADULTO';
-        int nivel = data['nivel_graduacao'] is int
-            ? data['nivel_graduacao'] as int
-            : int.tryParse(data['nivel_graduacao']?.toString() ?? '') ?? 0;
+      final alunos =
+          snap.docs
+              .where((doc) => !_alunosParticipantesIds.contains(doc.id))
+              .map((doc) {
+                final data = doc.data();
+                final gradId = data['graduacao_atual_id']?.toString() ?? '';
+                final gradInfo = mapaGrad[gradId];
+                String tipoPublico = 'ADULTO';
+                int nivel = data['nivel_graduacao'] is int
+                    ? data['nivel_graduacao'] as int
+                    : int.tryParse(data['nivel_graduacao']?.toString() ?? '') ??
+                          0;
 
-        if (gradInfo != null) {
-          tipoPublico = gradInfo['tipo_publico']?.toString() ?? 'ADULTO';
-          nivel = gradInfo['nivel_graduacao'] is int
-              ? gradInfo['nivel_graduacao'] as int
-              : int.tryParse(gradInfo['nivel_graduacao']?.toString() ?? '') ??
-              nivel;
-        } else {
-          final gradTexto = data['graduacao_atual']?.toString() ?? '';
-          if (gradTexto.contains('INFANTIL')) tipoPublico = 'INFANTIL';
-        }
+                if (gradInfo != null) {
+                  tipoPublico =
+                      gradInfo['tipo_publico']?.toString() ?? 'ADULTO';
+                  nivel = gradInfo['nivel_graduacao'] is int
+                      ? gradInfo['nivel_graduacao'] as int
+                      : int.tryParse(
+                              gradInfo['nivel_graduacao']?.toString() ?? '',
+                            ) ??
+                            nivel;
+                } else {
+                  final gradTexto = data['graduacao_atual']?.toString() ?? '';
+                  if (gradTexto.contains('INFANTIL')) tipoPublico = 'INFANTIL';
+                }
 
-        return {
-          'id': doc.id,
-          'nome': data['nome'] ?? '',
-          'foto': data['foto_perfil_aluno'] as String?,
-          'graduacao': data['graduacao_atual'] ?? '',
-          'graduacao_id': gradId,
-          'nivel_graduacao': nivel,
-          'tipo_publico': tipoPublico,
-          'turma': data['turma'] as String?,
-          'data_nascimento': data['data_nascimento'],
-        };
-      }).toList()
-        ..sort((a, b) =>
-            (a['nome'] as String).compareTo(b['nome'] as String));
+                return {
+                  'id': doc.id,
+                  'nome': data['nome'] ?? '',
+                  'foto': data['foto_perfil_aluno'] as String?,
+                  'graduacao': data['graduacao_atual'] ?? '',
+                  'graduacao_id': gradId,
+                  'nivel_graduacao': nivel,
+                  'tipo_publico': tipoPublico,
+                  'turma': data['turma'] as String?,
+                  'data_nascimento': data['data_nascimento'],
+                };
+              })
+              .toList()
+            ..sort(
+              (a, b) => (a['nome'] as String).compareTo(b['nome'] as String),
+            );
 
       if (!mounted) return;
       setState(() => _alunosDisponiveis = alunos);
@@ -1136,8 +1255,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Future<void> _mostrarModalAdicionar(Map<String, dynamic> aluno) async {
-    if (!_podeAdicionar) {
-      _mostrarSemPermissao('Você não tem permissão para adicionar participantes.');
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_adicionar_participante_evento',
+        'pode_adcionar_aluno_a_eventos',
+        'pode_adicionar_aluno_a_eventos',
+      ],
+      message: 'Você não tem permissão para adicionar participantes.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -1169,7 +1296,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       aluno,
       tamanhoCamisa: result['tamanhoCamisa'],
       modelagemCamisa:
-      result['modelagemCamisa'] ?? result['modelagem_camisa'] ?? 'NORMAL',
+          result['modelagemCamisa'] ?? result['modelagem_camisa'] ?? 'NORMAL',
       tipoCamisa: tipoCamisa,
       valorCamisa: valorCamisa,
       novaGraduacao: result['graduacao']?['nome_graduacao'],
@@ -1178,16 +1305,24 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Future<void> _adicionarParticipante(
-      Map<String, dynamic> aluno, {
-        String? tamanhoCamisa,
-        String? modelagemCamisa,
-        String? tipoCamisa,
-        double? valorCamisa,
-        String? novaGraduacao,
-        String? novaGraduacaoId,
-      }) async {
-    if (!_podeAdicionar) {
-      _mostrarSemPermissao('Você não tem permissão para adicionar participantes.');
+    Map<String, dynamic> aluno, {
+    String? tamanhoCamisa,
+    String? modelagemCamisa,
+    String? tipoCamisa,
+    double? valorCamisa,
+    String? novaGraduacao,
+    String? novaGraduacaoId,
+  }) async {
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_adicionar_participante_evento',
+        'pode_adcionar_aluno_a_eventos',
+        'pode_adicionar_aluno_a_eventos',
+      ],
+      message: 'Você não tem permissão para adicionar participantes.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -1244,12 +1379,19 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Future<void> _removerParticipante(
-      String id,
-      String nome,
-      String alunoId,
-      ) async {
-    if (!_podeRemover) {
-      _mostrarSemPermissao('Você não tem permissão para remover participantes.');
+    String id,
+    String nome,
+    String alunoId,
+  ) async {
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_remover_participante_evento',
+        'pode_remover_alunos_de_eventos',
+      ],
+      message: 'Você não tem permissão para remover participantes.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -1299,17 +1441,404 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  void _abrirDetalhe(ParticipacaoModel p) {
-    final podeAbrirDetalhe = _podeEditarParticipacao ||
-        _podeConcluirParticipacao ||
-        _podeGerarCertificados;
+  String _limparNumeroContato(String? numero) {
+    var cleaned = (numero ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    while (cleaned.startsWith('0')) {
+      cleaned = cleaned.substring(1);
+    }
+    return cleaned;
+  }
 
-    if (!podeAbrirDetalhe) {
+  bool _temContatoValido(String? numero) {
+    var cleaned = _limparNumeroContato(numero);
+    if (cleaned.startsWith('55')) cleaned = cleaned.substring(2);
+    return cleaned.length == 10 || cleaned.length == 11;
+  }
+
+  String _formatarNumeroWhatsApp(String numero) {
+    var cleanedPhone = _limparNumeroContato(numero);
+    if (!cleanedPhone.startsWith('55')) cleanedPhone = '55$cleanedPhone';
+    return cleanedPhone;
+  }
+
+  String _ultimosQuatroDigitos(String? value) {
+    final digits = _limparNumeroContato(value);
+    if (digits.length <= 4) return digits;
+    return digits.substring(digits.length - 4);
+  }
+
+  String _mascararNumeroFinal(String? value) {
+    final ultimos = _ultimosQuatroDigitos(value);
+    return ultimos.isEmpty ? '' : '****$ultimos';
+  }
+
+  String _iniciaisAreaAluno(String nomeCompleto) {
+    final ignorar = {'DE', 'DA', 'DO', 'DAS', 'DOS', 'E'};
+    final partes = nomeCompleto
+        .trim()
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.trim().isNotEmpty && !ignorar.contains(p.trim()))
+        .toList();
+
+    if (partes.isEmpty) return '';
+
+    return partes
+        .map((p) => p.characters.first)
+        .join()
+        .replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
+  }
+
+  String _formatarDataNascimentoAreaAluno(dynamic value) {
+    DateTime? date;
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    } else if (value is String) {
+      final raw = value.trim();
+      if (RegExp(r'^\d{2}/\d{2}/\d{4}$').hasMatch(raw)) return raw;
+      date = DateTime.tryParse(raw);
+    }
+    if (date == null) return '';
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
+  Future<Map<String, dynamic>> _configAreaAlunoAtual() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('configuracoes_site')
+          .doc('area_aluno')
+          .get(const GetOptions(source: Source.server));
+      return doc.data() ?? {};
+    } catch (_) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('configuracoes_site')
+            .doc('area_aluno')
+            .get(const GetOptions(source: Source.cache));
+        return doc.data() ?? {};
+      } catch (_) {
+        return {};
+      }
+    }
+  }
+
+  bool _areaAlunoVisivel(Map<String, dynamic> config) {
+    return config['visivel_site'] == true &&
+        config['ativo'] != false &&
+        config['ativa'] != false;
+  }
+
+  Future<bool> _abrirWhatsApp(String numero, {required String mensagem}) async {
+    try {
+      final cleanedPhone = _formatarNumeroWhatsApp(numero);
+      final encodedMessage = Uri.encodeComponent(mensagem);
+      final appUrl = Uri.parse(
+        'https://wa.me/$cleanedPhone?text=$encodedMessage',
+      );
+
+      final launched = await launchUrl(
+        appUrl,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) return true;
+
+      final webUrl = Uri.parse(
+        'https://web.whatsapp.com/send?phone=$cleanedPhone&text=$encodedMessage',
+      );
+      return launchUrl(webUrl, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Não foi possível abrir o WhatsApp.'),
+          backgroundColor: context.uai.error,
+        ),
+      );
+      return false;
+    }
+  }
+
+  String _mensagemCertificadoConcluido({
+    required String nomeAluno,
+    required String nomeEvento,
+    required String dataNascimento,
+    required String iniciais,
+    required String ultimos4Telefone,
+    required bool exigeTelefone,
+  }) {
+    final linhas = <String>[
+      '*UAI CAPOEIRA*',
+      '',
+      'Olá! Passando para informar que a participação de *$nomeAluno* no evento *$nomeEvento* foi concluída com sucesso.',
+      '',
+      '✅ A participação já foi finalizada no sistema.',
+      'O certificado também foi adicionado na *Área do Aluno*.',
+      '',
+      'Para acessar:',
+      '',
+      'Entre no site:',
+      'http://uaicapoeira.com.br',
+      '',
+      'Toque em *Área do Aluno* e acesse com as credenciais do aluno.',
+      '',
+      'Dados de acesso:',
+      'Data de nascimento: $dataNascimento',
+      'Iniciais do nome: $iniciais',
+    ];
+
+    if (exigeTelefone) {
+      linhas.add('Últimos 4 dígitos do telefone: $ultimos4Telefone');
+    }
+
+    linhas.addAll([
+      '',
+      'Depois de entrar com esses dados, é necessário vincular uma conta Google para liberar o acesso completo à Área do Aluno.',
+      '',
+      'Após vincular o Google, o aluno poderá acessar seus dados, eventos, certificados e demais informações com mais segurança.',
+      '',
+      'Axé! ⚫',
+    ]);
+
+    return linhas.join('\n');
+  }
+
+  Future<Map<String, String>?> _escolherDestinoWhatsapp(
+    List<Map<String, String>> destinos,
+  ) async {
+    if (destinos.length == 1) return destinos.first;
+
+    return showModalBottomSheet<Map<String, String>>(
+      context: context,
+      backgroundColor: context.uai.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Enviar WhatsApp',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Escolha para quem enviar o aviso de certificado.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.uai.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                ...destinos.map(
+                  (destino) => ListTile(
+                    leading: Icon(
+                      destino['tipo'] == 'aluno'
+                          ? Icons.person_rounded
+                          : Icons.supervisor_account_rounded,
+                      color: context.uai.success,
+                    ),
+                    title: Text(destino['label'] ?? 'Contato'),
+                    subtitle: Text(_mascararNumeroFinal(destino['numero'])),
+                    onTap: () => Navigator.pop(context, destino),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _registrarWhatsappCertificadoEnviado({
+    required String participacaoId,
+    required String destinoTipo,
+    required String numero,
+  }) async {
+    await FirebaseFirestore.instance
+        .collection('participacoes_eventos')
+        .doc(participacaoId)
+        .set({
+          'whatsapp_certificado_enviado': true,
+          'whatsapp_certificado_enviado_em': FieldValue.serverTimestamp(),
+          'whatsapp_certificado_enviado_por_uid':
+              FirebaseAuth.instance.currentUser?.uid,
+          'whatsapp_certificado_enviado_para': destinoTipo,
+          'whatsapp_certificado_enviado_numero_final': _mascararNumeroFinal(
+            numero,
+          ),
+          'atualizado_em': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> _enviarWhatsappCertificadoConcluido({
+    required ParticipacaoModel participacao,
+    required Map<String, dynamic> participacaoData,
+    required Map<String, dynamic> alunoData,
+  }) async {
+    if (!_podeEnviarWhatsappCertificado) {
       _mostrarSemPermissao(
-        'Você não tem permissão para abrir/editar detalhes da participação.',
+        'Você não tem permissão para enviar WhatsApp de certificado.',
       );
       return;
     }
+
+    final permitido = await _accessGuard.revalidateAny(
+      context,
+      permissions: const [
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_detalhe_participacao_evento',
+        'pode_gerar_certificados_evento',
+      ],
+      message: 'Você não tem permissão para enviar WhatsApp de certificado.',
+    );
+    if (!permitido) return;
+    if (!mounted) return;
+
+    if (participacaoData['whatsapp_certificado_enviado'] == true) {
+      final reenviar = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Mensagem já enviada'),
+          content: const Text(
+            'Mensagem já enviada para este aluno. Deseja enviar novamente?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CANCELAR'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('REENVIAR'),
+            ),
+          ],
+        ),
+      );
+      if (reenviar != true) return;
+      if (!mounted) return;
+    }
+
+    final config = await _configAreaAlunoAtual();
+    if (!_areaAlunoVisivel(config)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('A Área do Aluno não está ativa no site.'),
+          backgroundColor: context.uai.warning,
+        ),
+      );
+      return;
+    }
+
+    final nomeAluno = _nomeAlunoSeguro(alunoData['nome'], participacao);
+    final dataNascimento = _formatarDataNascimentoAreaAluno(
+      alunoData['data_nascimento'],
+    );
+    final iniciais = _iniciaisAreaAluno(nomeAluno);
+    final contatoAluno = alunoData['contato_aluno']?.toString() ?? '';
+    final contatoResponsavel =
+        alunoData['contato_responsavel']?.toString() ?? '';
+    final nomeResponsavel =
+        alunoData['nome_responsavel']?.toString().trim() ?? '';
+    final exigeTelefone = config['exigir_telefone_confirmacao'] != false;
+    final telefoneBase = _temContatoValido(contatoAluno)
+        ? contatoAluno
+        : contatoResponsavel;
+    final ultimos4Telefone = _ultimosQuatroDigitos(telefoneBase);
+
+    if (dataNascimento.isEmpty ||
+        iniciais.isEmpty ||
+        (exigeTelefone && ultimos4Telefone.length != 4)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Dados insuficientes para montar o acesso da Área do Aluno.',
+          ),
+          backgroundColor: context.uai.error,
+        ),
+      );
+      return;
+    }
+
+    final destinos = <Map<String, String>>[];
+    if (_temContatoValido(contatoAluno)) {
+      destinos.add({
+        'tipo': 'aluno',
+        'label': 'Enviar para aluno',
+        'numero': contatoAluno,
+      });
+    }
+    if (_temContatoValido(contatoResponsavel) &&
+        _limparNumeroContato(contatoResponsavel) !=
+            _limparNumeroContato(contatoAluno)) {
+      destinos.add({
+        'tipo': 'responsavel',
+        'label': nomeResponsavel.isNotEmpty
+            ? 'Enviar para $nomeResponsavel'
+            : 'Enviar para responsável',
+        'numero': contatoResponsavel,
+      });
+    }
+
+    if (destinos.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Nenhum WhatsApp válido cadastrado para este aluno.',
+          ),
+          backgroundColor: context.uai.error,
+        ),
+      );
+      return;
+    }
+
+    final destino = await _escolherDestinoWhatsapp(destinos);
+    if (destino == null) return;
+    if (!mounted) return;
+
+    final mensagem = _mensagemCertificadoConcluido(
+      nomeAluno: nomeAluno,
+      nomeEvento: widget.eventoNome,
+      dataNascimento: dataNascimento,
+      iniciais: iniciais,
+      ultimos4Telefone: ultimos4Telefone,
+      exigeTelefone: exigeTelefone,
+    );
+
+    final abriu = await _abrirWhatsApp(destino['numero']!, mensagem: mensagem);
+    if (!abriu || participacao.id == null) return;
+
+    await _registrarWhatsappCertificadoEnviado(
+      participacaoId: participacao.id!,
+      destinoTipo: destino['tipo']!,
+      numero: destino['numero']!,
+    );
+  }
+
+  Future<void> _abrirDetalhe(ParticipacaoModel p) async {
+    final podeAbrirDetalhe = await _accessGuard.revalidateAny(
+      context,
+      permissions: const [
+        'pode_ver_detalhe_participacao_evento',
+        'pode_gerenciar_participantes_evento',
+      ],
+      message:
+          'Você não tem permissão para abrir/editar detalhes da participação.',
+    );
+
+    if (!podeAbrirDetalhe) return;
+    if (!mounted) return;
 
     Navigator.push(
       context,
@@ -1356,7 +1885,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       }
 
       if (_filtroStatusCamisa != null) {
-        final temCamisa = p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty;
+        final temCamisa =
+            p.tamanhoCamisa != null && p.tamanhoCamisa!.isNotEmpty;
         if (_filtroStatusCamisa == 'com' && !temCamisa) return false;
         if (_filtroStatusCamisa == 'sem' && temCamisa) return false;
       }
@@ -1398,7 +1928,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         label: const Text('Quitado'),
                         selected: statusPagamento.contains('quitado'),
                         onSelected: (v) => setSheetState(
-                              () => v
+                          () => v
                               ? statusPagamento.add('quitado')
                               : statusPagamento.remove('quitado'),
                         ),
@@ -1407,7 +1937,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         label: const Text('Pendente'),
                         selected: statusPagamento.contains('pendente'),
                         onSelected: (v) => setSheetState(
-                              () => v
+                          () => v
                               ? statusPagamento.add('pendente')
                               : statusPagamento.remove('pendente'),
                         ),
@@ -1416,7 +1946,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         label: const Text('Patrocinado'),
                         selected: statusPagamento.contains('patrocinado'),
                         onSelected: (v) => setSheetState(
-                              () => v
+                          () => v
                               ? statusPagamento.add('patrocinado')
                               : statusPagamento.remove('patrocinado'),
                         ),
@@ -1430,7 +1960,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Todas')),
                       ..._graduacoes.map(
-                            (g) => DropdownMenuItem<String?>(
+                        (g) => DropdownMenuItem<String?>(
                           value: g['id']?.toString(),
                           child: Text(g['nome_graduacao']?.toString() ?? ''),
                         ),
@@ -1446,14 +1976,16 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       FilterChip(
                         label: const Text('Com camisa'),
                         selected: statusCamisa == 'com',
-                        onSelected: (v) =>
-                            setSheetState(() => statusCamisa = v ? 'com' : null),
+                        onSelected: (v) => setSheetState(
+                          () => statusCamisa = v ? 'com' : null,
+                        ),
                       ),
                       FilterChip(
                         label: const Text('Sem camisa'),
                         selected: statusCamisa == 'sem',
-                        onSelected: (v) =>
-                            setSheetState(() => statusCamisa = v ? 'sem' : null),
+                        onSelected: (v) => setSheetState(
+                          () => statusCamisa = v ? 'sem' : null,
+                        ),
                       ),
                     ],
                   ),
@@ -1491,7 +2023,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
-  Widget _buildViewModeButton(IconData icon, bool isSelected, VoidCallback onTap) {
+  Widget _buildViewModeButton(
+    IconData icon,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1523,17 +2059,17 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           _buildViewModeButton(
             Icons.grid_view,
             _viewMode == 0,
-                () => setState(() => _viewMode = 0),
+            () => setState(() => _viewMode = 0),
           ),
           _buildViewModeButton(
             Icons.list,
             _viewMode == 1,
-                () => setState(() => _viewMode = 1),
+            () => setState(() => _viewMode = 1),
           ),
           _buildViewModeButton(
             Icons.table_chart,
             _viewMode == 2,
-                () => setState(() => _viewMode = 2),
+            () => setState(() => _viewMode = 2),
           ),
         ],
       ),
@@ -1648,7 +2184,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                       bottom: 9,
                                       child: Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Text(
@@ -1777,7 +2313,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       );
     }
 
-    if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
+    if (url.isEmpty ||
+        !(url.startsWith('http://') || url.startsWith('https://'))) {
       return fallback();
     }
 
@@ -1893,8 +2430,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Widget _graduacaoFluxoLista(String? gradAtualAluno, ParticipacaoModel p) {
-    final antigaBase = _textoSeguro(gradAtualAluno, fallback: p.graduacao ?? '');
-    final antiga = antigaBase.trim().isNotEmpty ? antigaBase.trim() : 'SEM GRADUAÇÃO';
+    final antigaBase = _textoSeguro(
+      gradAtualAluno,
+      fallback: p.graduacao ?? '',
+    );
+    final antiga = antigaBase.trim().isNotEmpty
+        ? antigaBase.trim()
+        : 'SEM GRADUAÇÃO';
     final nova = (p.graduacaoNova ?? '').trim();
 
     if (nova.isEmpty || nova == antiga) {
@@ -1987,7 +2529,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                 decoration: BoxDecoration(
                                   color: context.uai.warning,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
                                 ),
                                 child: const Icon(
                                   Icons.access_time,
@@ -2253,8 +2798,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
-                          columnSpacing:
-                          context.uaiResponsive.isPhone ? 14 : 22,
+                          columnSpacing: context.uaiResponsive.isPhone
+                              ? 14
+                              : 22,
                           columns: const [
                             DataColumn(
                               label: Text(
@@ -2301,7 +2847,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                         height: 24,
                                         decoration: BoxDecoration(
                                           color: borderColor,
-                                          borderRadius: BorderRadius.circular(2),
+                                          borderRadius: BorderRadius.circular(
+                                            2,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -2319,7 +2867,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                     ).format(p.totalPago),
                                   ),
                                 ),
-                                DataCell(Text(p.graduacaoNova ?? p.graduacao ?? '---')),
+                                DataCell(
+                                  Text(p.graduacaoNova ?? p.graduacao ?? '---'),
+                                ),
                                 const DataCell(Icon(Icons.chevron_right)),
                               ],
                             );
@@ -2431,10 +2981,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 return UaiSliverMaxExtentGrid(
                   itemCount: filtrados.length,
                   maxCrossAxisExtent: r.participantCardMaxExtent,
-                  mainAxisExtent:
-                  r.isPhone ? 220 : r.participantCardMainExtent,
+                  mainAxisExtent: r.isPhone ? 220 : r.participantCardMainExtent,
                   spacing: r.isPhone ? 10 : 10,
-                  itemBuilder: (ctx, i) => _buildParticipantCardGrade(filtrados[i]),
+                  itemBuilder: (ctx, i) =>
+                      _buildParticipantCardGrade(filtrados[i]),
                 );
               },
             ),
@@ -2488,7 +3038,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.people_alt_rounded, size: 14, color: primary),
+                        Icon(
+                          Icons.people_alt_rounded,
+                          size: 14,
+                          color: primary,
+                        ),
                         const SizedBox(width: 5),
                         Text(
                           '$totalFiltrado/$totalGeral',
@@ -2544,7 +3098,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 if (!usarGrade) {
                   return ListView.builder(
                     keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.manual,
+                        ScrollViewKeyboardDismissBehavior.manual,
                     itemCount: filtrados.length + 1,
                     itemBuilder: (ctx, i) {
                       if (i == filtrados.length) {
@@ -2569,10 +3123,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
                 return GridView.builder(
                   keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.manual,
+                      ScrollViewKeyboardDismissBehavior.manual,
                   padding: const EdgeInsets.only(bottom: 18),
-                  gridDelegate:
-                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 620,
                     mainAxisExtent: 118,
                     mainAxisSpacing: 10,
@@ -2611,6 +3164,21 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_carregandoPermissoes) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Participantes',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Participantes',
+        message: 'Você não tem permissão para acessar participantes do evento.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -2626,13 +3194,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           IconButton(
             icon: _isRefreshing
                 ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.refresh),
             onPressed: _isRefreshing ? null : _limparCacheERecarregar,
             tooltip: 'Atualizar lista',
@@ -2652,28 +3220,27 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               tooltip: 'Finalização em massa',
             ),
         ],
-        bottom: _podeAdicionar
-            ? TabBar(
+        bottom: TabBar(
           controller: _tabController,
           labelColor: _appBarFg(),
           unselectedLabelColor: _appBarFg().withOpacity(0.66),
           indicatorColor: _appBarFg(),
-          tabs: const [
-            Tab(text: 'PARTICIPANTES', icon: Icon(Icons.people)),
-            Tab(text: 'ADICIONAR', icon: Icon(Icons.person_add)),
+          tabs: [
+            const Tab(text: 'PARTICIPANTES', icon: Icon(Icons.people)),
+            const Tab(text: 'CONCLUÍDOS', icon: Icon(Icons.verified_rounded)),
+            if (_podeAdicionar)
+              const Tab(text: 'ADICIONAR', icon: Icon(Icons.person_add)),
           ],
-        )
-            : null,
+        ),
       ),
-      body: _podeAdicionar
-          ? TabBarView(
+      body: TabBarView(
         controller: _tabController,
         children: [
           _buildParticipantesList(),
-          _buildAdicionarParticipantes(),
+          _buildConcluidosParticipantes(),
+          if (_podeAdicionar) _buildAdicionarParticipantes(),
         ],
-      )
-          : _buildParticipantesList(),
+      ),
     );
   }
 
@@ -2750,9 +3317,11 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           }
 
           final participantes = docs
-              .map((doc) => ParticipacaoModel.fromFirestore(
-            doc as DocumentSnapshot<Map<String, dynamic>>,
-          ))
+              .map(
+                (doc) => ParticipacaoModel.fromFirestore(
+                  doc as DocumentSnapshot<Map<String, dynamic>>,
+                ),
+              )
               .toList();
           _allParticipants = participantes;
 
@@ -2777,9 +3346,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         tooltip: 'Filtros avançados',
                         icon: Icon(
                           Icons.filter_alt_rounded,
-                          color: _filtroStatusPagamento.isNotEmpty ||
-                              _filtroGraduacaoId != null ||
-                              _filtroStatusCamisa != null
+                          color:
+                              _filtroStatusPagamento.isNotEmpty ||
+                                  _filtroGraduacaoId != null ||
+                                  _filtroStatusCamisa != null
                               ? context.uai.primary
                               : context.uai.textMuted,
                         ),
@@ -2821,9 +3391,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Widget _buildAlunoDisponivelCard(
-      Map<String, dynamic> aluno, {
-        required bool modoGrade,
-      }) {
+    Map<String, dynamic> aluno, {
+    required bool modoGrade,
+  }) {
     final idade = _calcularIdade(aluno['data_nascimento']);
     final nome = aluno['nome']?.toString() ?? 'Aluno';
     final graduacao = aluno['graduacao']?.toString() ?? '';
@@ -2834,9 +3404,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.only(bottom: modoGrade ? 0 : 8),
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () => _mostrarModalAdicionar(aluno),
         borderRadius: BorderRadius.circular(12),
@@ -2844,10 +3412,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           padding: EdgeInsets.all(modoGrade ? 10 : 12),
           child: Row(
             children: [
-              RobustAvatar(
-                fotoUrl: aluno['foto'],
-                radius: modoGrade ? 24 : 28,
-              ),
+              RobustAvatar(fotoUrl: aluno['foto'], radius: modoGrade ? 24 : 28),
               SizedBox(width: modoGrade ? 12 : 16),
               Expanded(
                 child: Column(
@@ -2974,6 +3539,424 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     );
   }
 
+  bool _isParticipacaoConcluida(
+    Map<String, dynamic> data,
+    ParticipacaoModel p,
+  ) {
+    final status = (data['status'] ?? p.status).toString().toLowerCase();
+    return p.estaFinalizado ||
+        data['finalizado'] == true ||
+        data['participacao_finalizada'] == true ||
+        data['data_finalizacao'] != null ||
+        data['finalizado_em'] != null ||
+        status == 'finalizado' ||
+        status == 'finalizada' ||
+        status == 'concluido' ||
+        status == 'concluído' ||
+        status == 'concluida' ||
+        status == 'concluída';
+  }
+
+  String _formatarDataHoraEnvio(dynamic value) {
+    DateTime? date;
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    } else if (value is String) {
+      date = DateTime.tryParse(value);
+    }
+    if (date == null) return '';
+    return DateFormat('dd/MM/yyyy HH:mm').format(date);
+  }
+
+  List<Map<String, dynamic>> _filtrarConcluidos(
+    List<Map<String, dynamic>> items,
+  ) {
+    final query = _searchConcluidosQuery;
+    return items.where((item) {
+      final p = item['participacao'] as ParticipacaoModel;
+      final data = item['data'] as Map<String, dynamic>;
+      final enviado = data['whatsapp_certificado_enviado'] == true;
+
+      if (_filtroConcluidosWhatsapp == 'enviada' && !enviado) return false;
+      if (_filtroConcluidosWhatsapp == 'pendente' && enviado) return false;
+
+      if (query.isEmpty) return true;
+      final alvo = [
+        p.alunoNome,
+        p.graduacao,
+        p.graduacaoNova,
+        p.status,
+      ].whereType<String>().join(' ').toLowerCase();
+      return alvo.contains(query);
+    }).toList();
+  }
+
+  Widget _buildFiltroConcluidosChip(String label, String value) {
+    final selected = _filtroConcluidosWhatsapp == value;
+    final accent = selected ? context.uai.primary : context.uai.textMuted;
+
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => setState(() => _filtroConcluidosWhatsapp = value),
+      selectedColor: context.uai.primary.withOpacity(0.16),
+      backgroundColor: context.uai.card,
+      labelStyle: TextStyle(
+        color: selected
+            ? _ensureVisible(context.uai.primary, context.uai.card)
+            : accent,
+        fontWeight: FontWeight.w800,
+        fontSize: 12,
+      ),
+      side: BorderSide(
+        color: selected
+            ? context.uai.primary.withOpacity(0.35)
+            : context.uai.border,
+      ),
+    );
+  }
+
+  Widget _buildConcluidosEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.verified_outlined,
+              size: 64,
+              color: context.uai.textMuted,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Nenhum aluno concluído ainda',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Quando uma participação for finalizada, ela aparecerá aqui para envio do aviso pelo WhatsApp.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWhatsappIconButton({
+    required bool enviado,
+    required VoidCallback? onPressed,
+  }) {
+    final bg = enviado ? context.uai.cardAlt : context.uai.success;
+    final fg = enviado ? context.uai.success : _readableOn(context.uai.success);
+
+    return Tooltip(
+      message: enviado ? 'Reenviar WhatsApp' : 'Enviar WhatsApp',
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: context.uai.success.withOpacity(0.35)),
+          ),
+          child: SvgPicture.asset(
+            'assets/images/whatsapp.svg',
+            width: 24,
+            height: 24,
+            colorFilter: ColorFilter.mode(fg, BlendMode.srcIn),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConcluidoCard({
+    required ParticipacaoModel p,
+    required Map<String, dynamic> data,
+  }) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _buscarDadosAluno(p.alunoId),
+      builder: (context, snapshot) {
+        final aluno = snapshot.data ?? {};
+        final fotoUrl = aluno['foto'];
+        final nome = _nomeAlunoSeguro(aluno['nome'], p);
+        final gradAtual = _graduacaoSegura(aluno['graduacao'], p);
+        final gradNova = _textoSeguro(
+          p.graduacaoNova ?? data['graduacao_final'] ?? data['graduacao_nova'],
+        );
+        final enviado = data['whatsapp_certificado_enviado'] == true;
+        final enviadoEm = _formatarDataHoraEnvio(
+          data['whatsapp_certificado_enviado_em'],
+        );
+        final destino = _textoSeguro(data['whatsapp_certificado_enviado_para']);
+        final temCertificado = _textoSeguro(p.linkCertificado).isNotEmpty;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: context.uai.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: enviado
+                  ? context.uai.success.withOpacity(0.45)
+                  : context.uai.border,
+              width: enviado ? 1.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                RobustAvatar(
+                  fotoUrl: fotoUrl,
+                  radius: 30,
+                  borderColor: context.uai.success,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nome,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _onCard(),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _miniChip('Concluído', context.uai.success),
+                          _miniChip(gradAtual, context.uai.primary),
+                          if (gradNova.isNotEmpty)
+                            _miniChip('Nova: $gradNova', context.uai.info),
+                          _miniChip(
+                            temCertificado
+                                ? 'Certificado adicionado'
+                                : 'Sem link de certificado',
+                            temCertificado
+                                ? context.uai.success
+                                : context.uai.warning,
+                          ),
+                          if (enviado)
+                            _miniChip(
+                              enviadoEm.isNotEmpty
+                                  ? 'Mensagem enviada $enviadoEm'
+                                  : 'Mensagem enviada',
+                              context.uai.success,
+                            ),
+                          if (enviado && destino.isNotEmpty)
+                            _miniChip('Para: $destino', context.uai.associacao),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _buildWhatsappIconButton(
+                  enviado: enviado,
+                  onPressed: _podeEnviarWhatsappCertificado
+                      ? () => _enviarWhatsappCertificadoConcluido(
+                          participacao: p,
+                          participacaoData: data,
+                          alunoData: aluno,
+                        )
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildConcluidosParticipantes() {
+    return RefreshIndicator(
+      onRefresh: _limparCacheERecarregar,
+      color: context.uai.primary,
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('participacoes_eventos')
+            .where('evento_id', isEqualTo: widget.eventoId)
+            .orderBy('aluno_nome')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Erro ao carregar concluídos: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.uai.error),
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(
+              child: CircularProgressIndicator(color: context.uai.primary),
+            );
+          }
+
+          final items = (snapshot.data?.docs ?? [])
+              .map((doc) {
+                final data = doc.data();
+                final p = ParticipacaoModel.fromFirestore(doc);
+                return {'participacao': p, 'data': data};
+              })
+              .where(
+                (item) => _isParticipacaoConcluida(
+                  item['data'] as Map<String, dynamic>,
+                  item['participacao'] as ParticipacaoModel,
+                ),
+              )
+              .toList();
+          final filtrados = _filtrarConcluidos(items);
+
+          return Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  context.uaiResponsive.pagePadding,
+                  context.uaiResponsive.pagePadding,
+                  context.uaiResponsive.pagePadding,
+                  8,
+                ),
+                child: Column(
+                  children: [
+                    _buildSearchField(
+                      controller: _searchConcluidosController,
+                      focusNode: _searchConcluidosFocusNode,
+                      hint: 'Buscar concluídos...',
+                      hasValue: _searchConcluidosQuery.isNotEmpty,
+                      onChanged: _onSearchConcluidosChanged,
+                      onClear: () {
+                        _searchConcluidosController.clear();
+                        setState(() => _searchConcluidosQuery = '');
+                        _searchConcluidosFocusNode.requestFocus();
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildFiltroConcluidosChip('Todos', 'todos'),
+                          const SizedBox(width: 8),
+                          _buildFiltroConcluidosChip(
+                            'Mensagem enviada',
+                            'enviada',
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFiltroConcluidosChip(
+                            'Mensagem pendente',
+                            'pendente',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: items.isEmpty
+                    ? _buildConcluidosEmpty()
+                    : filtrados.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Nenhum concluído encontrado nesse filtro.',
+                          style: TextStyle(color: context.uai.textSecondary),
+                        ),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final usarGrade = constraints.maxWidth >= 760;
+                          if (!usarGrade) {
+                            return ListView.builder(
+                              padding: EdgeInsets.fromLTRB(
+                                context.uaiResponsive.pagePadding,
+                                4,
+                                context.uaiResponsive.pagePadding,
+                                18,
+                              ),
+                              itemCount: filtrados.length,
+                              itemBuilder: (context, index) {
+                                final item = filtrados[index];
+                                return _buildConcluidoCard(
+                                  p: item['participacao'] as ParticipacaoModel,
+                                  data: item['data'] as Map<String, dynamic>,
+                                );
+                              },
+                            );
+                          }
+
+                          return GridView.builder(
+                            padding: EdgeInsets.fromLTRB(
+                              context.uaiResponsive.pagePadding,
+                              4,
+                              context.uaiResponsive.pagePadding,
+                              18,
+                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 620,
+                                  mainAxisExtent: 122,
+                                  mainAxisSpacing: 10,
+                                  crossAxisSpacing: 10,
+                                ),
+                            itemCount: filtrados.length,
+                            itemBuilder: (context, index) {
+                              final item = filtrados[index];
+                              return _buildConcluidoCard(
+                                p: item['participacao'] as ParticipacaoModel,
+                                data: item['data'] as Map<String, dynamic>,
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildAdicionarParticipantes() {
     if (!_podeAdicionar) {
       return Center(
@@ -2991,10 +3974,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             Text(
               'Peça para o administrador liberar “Adicionar participante” nas permissões do evento.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: context.uai.textMuted,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: context.uai.textMuted, fontSize: 12),
             ),
           ],
         ),
@@ -3003,12 +3983,12 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
     final alunosFiltrados = _alunosDisponiveis
         .where(
-          (aluno) => _searchQuery.isEmpty ||
-          (aluno['nome'] ?? '')
-              .toString()
-              .toLowerCase()
-              .contains(_searchQuery),
-    )
+          (aluno) =>
+              _searchQuery.isEmpty ||
+              (aluno['nome'] ?? '').toString().toLowerCase().contains(
+                _searchQuery,
+              ),
+        )
         .toList();
 
     return Column(
@@ -3031,109 +4011,107 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         Expanded(
           child: _isLoadingAlunos
               ? Center(
-            child: CircularProgressIndicator(
-              color: context.uai.primary,
-            ),
-          )
+                  child: CircularProgressIndicator(color: context.uai.primary),
+                )
               : _alunosDisponiveis.isEmpty
               ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.people_outline,
-                  size: 60,
-                  color: context.uai.border,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Nenhum aluno disponível',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: context.uai.textMuted,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.people_outline,
+                        size: 60,
+                        color: context.uai.border,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Nenhum aluno disponível',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: context.uai.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Todos os alunos já estão participando!',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: context.uai.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Todos os alunos já estão participando!',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.uai.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          )
+                )
               : alunosFiltrados.isEmpty
               ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.search_off,
-                  size: 60,
-                  color: context.uai.textMuted,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Nenhum aluno encontrado para "$_searchQuery"',
-                  style: TextStyle(
-                    color: context.uai.textSecondary,
-                    fontSize: 16,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off,
+                        size: 60,
+                        color: context.uai.textMuted,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Nenhum aluno encontrado para "$_searchQuery"',
+                        style: TextStyle(
+                          color: context.uai.textSecondary,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(Icons.clear),
+                        label: const Text('Limpar busca'),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                  icon: const Icon(Icons.clear),
-                  label: const Text('Limpar busca'),
-                ),
-              ],
-            ),
-          )
+                )
               : LayoutBuilder(
-            builder: (context, constraints) {
-              final usarGrade = constraints.maxWidth >= 720;
+                  builder: (context, constraints) {
+                    final usarGrade = constraints.maxWidth >= 720;
 
-              if (!usarGrade) {
-                return ListView.builder(
-                  padding: EdgeInsets.all(
-                    context.uaiResponsive.pagePadding,
-                  ),
-                  itemCount: alunosFiltrados.length,
-                  itemBuilder: (context, index) {
-                    return _buildAlunoDisponivelCard(
-                      alunosFiltrados[index],
-                      modoGrade: false,
+                    if (!usarGrade) {
+                      return ListView.builder(
+                        padding: EdgeInsets.all(
+                          context.uaiResponsive.pagePadding,
+                        ),
+                        itemCount: alunosFiltrados.length,
+                        itemBuilder: (context, index) {
+                          return _buildAlunoDisponivelCard(
+                            alunosFiltrados[index],
+                            modoGrade: false,
+                          );
+                        },
+                      );
+                    }
+
+                    return GridView.builder(
+                      padding: EdgeInsets.all(
+                        context.uaiResponsive.pagePadding,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 560,
+                            mainAxisExtent: 106,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                          ),
+                      itemCount: alunosFiltrados.length,
+                      itemBuilder: (context, index) {
+                        return _buildAlunoDisponivelCard(
+                          alunosFiltrados[index],
+                          modoGrade: true,
+                        );
+                      },
                     );
                   },
-                );
-              }
-
-              return GridView.builder(
-                padding: EdgeInsets.all(
-                  context.uaiResponsive.pagePadding,
                 ),
-                gridDelegate:
-                const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 560,
-                  mainAxisExtent: 106,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                ),
-                itemCount: alunosFiltrados.length,
-                itemBuilder: (context, index) {
-                  return _buildAlunoDisponivelCard(
-                    alunosFiltrados[index],
-                    modoGrade: true,
-                  );
-                },
-              );
-            },
-          ),
         ),
       ],
     );
@@ -3172,9 +4150,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                         child: Text(entry.value),
                       );
                     }).toList(),
-                    onChanged: (value) => setState(
-                          () => campoSelecionado = value!,
-                    ),
+                    onChanged: (value) =>
+                        setState(() => campoSelecionado = value!),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -3184,9 +4161,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       Expanded(
                         child: ToggleButtons(
                           isSelected: [crescente, !crescente],
-                          onPressed: (index) => setState(
-                                () => crescente = index == 0,
-                          ),
+                          onPressed: (index) =>
+                              setState(() => crescente = index == 0),
                           children: const [
                             Padding(
                               padding: EdgeInsets.symmetric(horizontal: 12),
@@ -3224,10 +4200,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   List<ParticipacaoModel> _ordenarParticipantes(
-      List<ParticipacaoModel> lista,
-      String campo,
-      bool crescente,
-      ) {
+    List<ParticipacaoModel> lista,
+    String campo,
+    bool crescente,
+  ) {
     final copia = List<ParticipacaoModel>.from(lista);
     copia.sort((a, b) {
       dynamic valA;
@@ -3279,8 +4255,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   List<Map<String, dynamic>> _participantesParaExportacao(
-      List<ParticipacaoModel> participantes,
-      ) {
+    List<ParticipacaoModel> participantes,
+  ) {
     return participantes.map((p) {
       final map = <String, dynamic>{
         'nome': p.alunoNome,
@@ -3361,8 +4337,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     _tabController.dispose();
     _searchController.dispose();
     _searchParticipantesController.dispose();
+    _searchConcluidosController.dispose();
     _searchFocusNode.dispose();
     _searchParticipantesFocusNode.dispose();
+    _searchConcluidosFocusNode.dispose();
     _debounceTimer?.cancel();
     _cacheAlunos.clear();
     super.dispose();

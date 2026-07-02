@@ -734,12 +734,38 @@ exports.processarChamada = onCall(async (request) => {
         professor_nome: professorNome,
         criado_em: admin.firestore.FieldValue.serverTimestamp(),
         atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
-        alunos: alunos.map(aluno => ({
-            aluno_id: aluno.id,
-            aluno_nome: aluno.nome,
-            presente: aluno.presente === true,
-            observacao: aluno.observacao || ''
-        }))
+        alunos: alunos.map(aluno => {
+            const fotoPerfilAluno = String(
+                aluno.foto_perfil_aluno ||
+                aluno.foto ||
+                aluno.foto_url ||
+                aluno.imagem_url ||
+                aluno.avatar_url ||
+                ''
+            ).trim();
+
+            return {
+                aluno_id: aluno.id,
+                aluno_nome: aluno.nome,
+                apelido: aluno.apelido || '',
+                presente: aluno.presente === true,
+                observacao: aluno.observacao || '',
+
+                // Snapshot econômico para listas/histórico.
+                // Evita consultar alunos/{id} só para exibir foto em chamadas novas.
+                foto_perfil_aluno: fotoPerfilAluno,
+                foto: fotoPerfilAluno,
+                graduacao_id: aluno.graduacao_id || null,
+                graduacao_nome: aluno.graduacao_nome || aluno.graduacao || aluno.corda || '',
+                ultimo_dia_presente: aluno.ultimo_dia_presente ||
+                    aluno.ultimoDiaPresente ||
+                    aluno.ultima_presenca ||
+                    aluno.ultimaPresenca ||
+                    aluno.data_ultima_presenca ||
+                    aluno.dataUltimaPresenca ||
+                    null,
+            };
+        })
     };
 
     batch.set(chamadaRef, chamadaData);
@@ -784,6 +810,17 @@ exports.processarChamada = onCall(async (request) => {
             presente: presenteDepois,
             tipo_aula: tipoAula,
             observacao: aluno.observacao || '',
+            foto_perfil_aluno: String(
+                aluno.foto_perfil_aluno ||
+                aluno.foto ||
+                aluno.foto_url ||
+                aluno.imagem_url ||
+                aluno.avatar_url ||
+                ''
+            ).trim(),
+            apelido: aluno.apelido || '',
+            graduacao_id: aluno.graduacao_id || null,
+            graduacao_nome: aluno.graduacao_nome || aluno.graduacao || aluno.corda || '',
             professor_id: professorId,
             professor_nome: professorNome,
             registrado_em: logAnteriorDoc.exists

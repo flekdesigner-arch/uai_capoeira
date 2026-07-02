@@ -1,10 +1,10 @@
-﻿import 'dart:io';
+import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
@@ -34,11 +34,13 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
   final EventoService _eventoService = EventoService();
   final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
 
   bool _carregandoPermissoes = true;
   bool _podeCriarEvento = false;
   bool _podeEditarEvento = false;
-  bool _podeFinalizarEvento = false;
 
   final _nomeController = TextEditingController();
   final _descricaoController = TextEditingController();
@@ -130,7 +132,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
   bool _temCertificado = false;
   ConfiguracoesCertificadoEvento _configCertificado =
-  ConfiguracoesCertificadoEvento.padrao();
+      ConfiguracoesCertificadoEvento.padrao();
   bool _mostrarNoPortfolioWeb = false;
 
   String _status = 'andamento';
@@ -189,8 +191,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -278,10 +280,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     }
 
     result.sort((a, b) {
-      final ordem = {
-        _modelagemNormal: 0,
-        _modelagemBabyLook: 1,
-      };
+      final ordem = {_modelagemNormal: 0, _modelagemBabyLook: 1};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -303,11 +302,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     }
 
     result.sort((a, b) {
-      final ordem = {
-        _tipoManga: 0,
-        _tipoMangaLonga: 1,
-        _tipoRegata: 2,
-      };
+      final ordem = {_tipoManga: 0, _tipoMangaLonga: 1, _tipoRegata: 2};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -334,9 +329,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   Map<String, double> _normalizarValoresPorTipoCamisa(
-      dynamic raw, {
-        double fallback = 0,
-      }) {
+    dynamic raw, {
+    double fallback = 0,
+  }) {
     final result = <String, double>{
       _tipoManga: fallback,
       _tipoMangaLonga: fallback,
@@ -349,9 +344,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         final valor = value is num
             ? value.toDouble()
             : double.tryParse(
-          value?.toString().replaceAll(',', '.').trim() ?? '',
-        ) ??
-            fallback;
+                    value?.toString().replaceAll(',', '.').trim() ?? '',
+                  ) ??
+                  fallback;
 
         result[tipo] = valor;
       });
@@ -361,13 +356,15 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   void _sincronizarControllersValoresCamisa() {
-    _valorCamisaMangaController.text =
-        _formatarValorCampo(_valoresPorTipoCamisa[_tipoManga] ?? _valorCamisa);
+    _valorCamisaMangaController.text = _formatarValorCampo(
+      _valoresPorTipoCamisa[_tipoManga] ?? _valorCamisa,
+    );
     _valorCamisaMangaLongaController.text = _formatarValorCampo(
       _valoresPorTipoCamisa[_tipoMangaLonga] ?? _valorCamisa,
     );
-    _valorCamisaRegataController.text =
-        _formatarValorCampo(_valoresPorTipoCamisa[_tipoRegata] ?? _valorCamisa);
+    _valorCamisaRegataController.text = _formatarValorCampo(
+      _valoresPorTipoCamisa[_tipoRegata] ?? _valorCamisa,
+    );
   }
 
   void _sincronizarMapaValoresCamisa() {
@@ -391,7 +388,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     return _valoresPorTipoCamisa[clean] ?? _valorCamisa;
   }
 
-
   Future<void> _verificarPermissoes() async {
     if (mounted) {
       setState(() => _carregandoPermissoes = true);
@@ -399,9 +395,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
     try {
       final permissoes = await Future.wait<bool>([
-        _permissaoService.temQualquerPermissao(['pode_criar_evento']),
-        _permissaoService.temQualquerPermissao(['pode_editar_evento']),
-        _permissaoService.temQualquerPermissao(['pode_finalizar_evento']),
+        _permissaoService.temPermissao('pode_criar_evento'),
+        _permissaoService.temPermissao('pode_editar_evento'),
       ]);
 
       if (!mounted) return;
@@ -409,11 +404,12 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       setState(() {
         _podeCriarEvento = permissoes[0];
         _podeEditarEvento = permissoes[1];
-        _podeFinalizarEvento = permissoes[2];
         _carregandoPermissoes = false;
       });
     } catch (e) {
-      debugPrint('Erro ao verificar permissões de criação/edição de evento: $e');
+      debugPrint(
+        'Erro ao verificar permissões de criação/edição de evento: $e',
+      );
       if (!mounted) return;
       setState(() => _carregandoPermissoes = false);
     }
@@ -525,7 +521,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
     if (data != null) {
       setState(() {
-        _dataController.text = '${data.day.toString().padLeft(2, '0')}/'
+        _dataController.text =
+            '${data.day.toString().padLeft(2, '0')}/'
             '${data.month.toString().padLeft(2, '0')}/'
             '${data.year}';
       });
@@ -605,7 +602,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     try {
       setState(() => _isUploadingBanner = true);
 
-      final fileName = '${eventoId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName =
+          '${eventoId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('eventos')
@@ -651,7 +649,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             _bannerFile = null;
             _bannerUrl = null;
           });
-          _showSnack('Banner será removido ao salvar', type: _SnackType.warning);
+          _showSnack(
+            'Banner será removido ao salvar',
+            type: _SnackType.warning,
+          );
         },
       );
     } else {
@@ -804,10 +805,14 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 height: 44,
                                 decoration: BoxDecoration(
                                   color: primary.withOpacity(0.12),
-                                  borderRadius:
-                                  BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
-                                child: Icon(Icons.checkroom_rounded, color: primary),
+                                child: Icon(
+                                  Icons.checkroom_rounded,
+                                  color: primary,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -822,7 +827,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               ),
                               IconButton(
                                 onPressed: () => Navigator.pop(dialogContext),
-                                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: t.textSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -841,16 +849,19 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 child: Material(
                                   color: isSelected
                                       ? Color.alphaBlend(
-                                    primary.withOpacity(0.10),
-                                    t.cardAlt,
-                                  )
+                                          primary.withOpacity(0.10),
+                                          t.cardAlt,
+                                        )
                                       : t.cardAlt,
-                                  borderRadius: BorderRadius.circular(t.inputRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.inputRadius,
+                                  ),
                                   clipBehavior: Clip.antiAlias,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      borderRadius:
-                                      BorderRadius.circular(t.inputRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.inputRadius,
+                                      ),
                                       border: Border.all(
                                         color: isSelected
                                             ? primary.withOpacity(0.28)
@@ -899,10 +910,13 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: t.textPrimary,
                                     side: BorderSide(color: t.border),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(t.buttonRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.buttonRadius,
+                                      ),
                                     ),
                                   ),
                                   child: const Text('CANCELAR'),
@@ -920,15 +934,20 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: t.primary,
                                     foregroundColor: _readableOn(t.primary),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(t.buttonRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.buttonRadius,
+                                      ),
                                     ),
                                   ),
                                   child: const Text(
                                     'OK',
-                                    style: TextStyle(fontWeight: FontWeight.w900),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -970,10 +989,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           ),
           child: Row(
             children: [
-              Icon(
-                icon,
-                color: _ensureVisible(t.primary, t.cardAlt),
-              ),
+              Icon(icon, color: _ensureVisible(t.primary, t.cardAlt)),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -986,10 +1002,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                   ),
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: t.textSecondary,
-              ),
+              Icon(Icons.chevron_right_rounded, color: t.textSecondary),
             ],
           ),
         ),
@@ -1022,7 +1035,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
   void _selecionarTiposCamisa() async {
     if (!_podeSalvarEvento) {
-      _mostrarSemPermissao('Você não tem permissão para alterar tipos de camisa.');
+      _mostrarSemPermissao(
+        'Você não tem permissão para alterar tipos de camisa.',
+      );
       return;
     }
 
@@ -1085,10 +1100,14 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 height: 44,
                                 decoration: BoxDecoration(
                                   color: primary.withOpacity(0.12),
-                                  borderRadius:
-                                  BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
-                                child: Icon(Icons.checkroom_rounded, color: primary),
+                                child: Icon(
+                                  Icons.checkroom_rounded,
+                                  color: primary,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -1103,7 +1122,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               ),
                               IconButton(
                                 onPressed: () => Navigator.pop(dialogContext),
-                                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: t.textSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -1115,23 +1137,28 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                             itemCount: opcoes.length,
                             itemBuilder: (context, index) {
                               final item = opcoes[index];
-                              final isSelected = selecionadosTemp.contains(item);
+                              final isSelected = selecionadosTemp.contains(
+                                item,
+                              );
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Material(
                                   color: isSelected
                                       ? Color.alphaBlend(
-                                    primary.withOpacity(0.10),
-                                    t.cardAlt,
-                                  )
+                                          primary.withOpacity(0.10),
+                                          t.cardAlt,
+                                        )
                                       : t.cardAlt,
-                                  borderRadius: BorderRadius.circular(t.inputRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.inputRadius,
+                                  ),
                                   clipBehavior: Clip.antiAlias,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      borderRadius:
-                                      BorderRadius.circular(t.inputRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.inputRadius,
+                                      ),
                                       border: Border.all(
                                         color: isSelected
                                             ? primary.withOpacity(0.28)
@@ -1153,7 +1180,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                       onChanged: (selected) {
                                         setStateDialog(() {
                                           if (selected == true) {
-                                            if (!selecionadosTemp.contains(item)) {
+                                            if (!selecionadosTemp.contains(
+                                              item,
+                                            )) {
                                               selecionadosTemp.add(item);
                                             }
                                           } else {
@@ -1182,10 +1211,13 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: t.textPrimary,
                                     side: BorderSide(color: t.border),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(t.buttonRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.buttonRadius,
+                                      ),
                                     ),
                                   ),
                                   child: const Text('CANCELAR'),
@@ -1195,21 +1227,28 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               Expanded(
                                 child: ElevatedButton(
                                   onPressed: () {
-                                    onSalvar(List<String>.from(selecionadosTemp));
+                                    onSalvar(
+                                      List<String>.from(selecionadosTemp),
+                                    );
                                     Navigator.pop(dialogContext);
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: t.primary,
                                     foregroundColor: _readableOn(t.primary),
-                                    padding: const EdgeInsets.symmetric(vertical: 13),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(t.buttonRadius),
+                                      borderRadius: BorderRadius.circular(
+                                        t.buttonRadius,
+                                      ),
                                     ),
                                   ),
                                   child: const Text(
                                     'OK',
-                                    style: TextStyle(fontWeight: FontWeight.w900),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1227,7 +1266,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       },
     );
   }
-
 
   Future<void> _showConfirmDialog({
     required String title,
@@ -1289,10 +1327,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     const SizedBox(height: 14),
                     Text(
                       message,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     Row(
@@ -1305,7 +1340,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               side: BorderSide(color: t.border),
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                             child: const Text('CANCELAR'),
@@ -1323,12 +1360,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                               foregroundColor: _readableOn(color),
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                             child: Text(
                               confirmLabel,
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
                         ),
@@ -1384,8 +1425,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         label: 'Camisa',
         subtitle: _temCamisa
             ? '${_tamanhosSelecionados.length} tam. • '
-            '${_modelagensCamisaSelecionadas.length} mod. • '
-            '${_tiposCamisaSelecionados.length} tipo(s)'
+                  '${_modelagensCamisaSelecionadas.length} mod. • '
+                  '${_tiposCamisaSelecionados.length} tipo(s)'
             : 'Desativada',
         color: t.warning,
         ativo: _temCamisa,
@@ -1410,13 +1451,15 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         keyRef: _linksKey,
         icon: Icons.link_rounded,
         label: 'Links',
-        subtitle: _linkFotosController.text.trim().isNotEmpty ||
-            _linkPreviaController.text.trim().isNotEmpty ||
-            _linkPlaylistController.text.trim().isNotEmpty
+        subtitle:
+            _linkFotosController.text.trim().isNotEmpty ||
+                _linkPreviaController.text.trim().isNotEmpty ||
+                _linkPlaylistController.text.trim().isNotEmpty
             ? 'Preenchidos'
             : 'Opcional',
         color: t.associacao,
-        ativo: _linkFotosController.text.trim().isNotEmpty ||
+        ativo:
+            _linkFotosController.text.trim().isNotEmpty ||
             _linkPreviaController.text.trim().isNotEmpty ||
             _linkPlaylistController.text.trim().isNotEmpty,
       ),
@@ -1560,11 +1603,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       title: 'Permissões',
       subtitle: liberado
           ? (_modoEdicao
-          ? 'Permissão liberada para editar este evento.'
-          : 'Permissão liberada para criar evento.')
+                ? 'Permissão liberada para editar este evento.'
+                : 'Permissão liberada para criar evento.')
           : (_modoEdicao
-          ? 'Você pode visualizar, mas não tem permissão para editar este evento.'
-          : 'Você não tem permissão para criar eventos.'),
+                ? 'Você pode visualizar, mas não tem permissão para editar este evento.'
+                : 'Você não tem permissão para criar eventos.'),
       color: color,
       child: Align(
         alignment: Alignment.centerLeft,
@@ -1662,7 +1705,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     required ValueChanged<bool> onChanged,
   }) {
     final t = context.uai;
-    final accent = _ensureVisible(value ? activeColor : t.textSecondary, t.card);
+    final accent = _ensureVisible(
+      value ? activeColor : t.textSecondary,
+      t.card,
+    );
 
     return Material(
       color: value
@@ -1705,18 +1751,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   Future<void> _abrirConfigCertificado() async {
-    if (!_podeSalvarEvento) {
-      _mostrarSemPermissao(
-        'Você não tem permissão para configurar certificados.',
-      );
-      return;
-    }
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: 'pode_configurar_certificados_evento',
+      message: 'Você não tem permissão para configurar certificados do evento.',
+    );
+    if (!permitido) return;
 
     final resultado = await EventoCertificadoConfigDialog.show(
       context: context,
-      configuracaoInicial: _configCertificado.copyWith(
-        ativo: _temCertificado,
-      ),
+      configuracaoInicial: _configCertificado.copyWith(ativo: _temCertificado),
     );
 
     if (resultado == null || !mounted) return;
@@ -1773,7 +1817,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: (_temCertificado ? success : warning).withOpacity(0.11),
+                  color: (_temCertificado ? success : warning).withOpacity(
+                    0.11,
+                  ),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                 ),
                 child: Icon(
@@ -1852,11 +1898,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.draw_rounded,
-                      color: t.textMuted,
-                      size: 16,
-                    ),
+                    Icon(Icons.draw_rounded, color: t.textMuted, size: 16),
                     const SizedBox(width: 7),
                     Expanded(
                       child: Text(
@@ -1967,17 +2009,23 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   }
 
   Future<void> _salvar() async {
-    if (!_podeSalvarEvento) {
-      _mostrarSemPermissao(
-        _modoEdicao
-            ? 'Você não tem permissão para editar eventos.'
-            : 'Você não tem permissão para criar eventos.',
-      );
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: _modoEdicao ? 'pode_editar_evento' : 'pode_criar_evento',
+      message: _modoEdicao
+          ? 'Você não tem permissão para editar eventos.'
+          : 'Você não tem permissão para criar eventos.',
+    );
+    if (!permitido) {
       return;
     }
 
-    if (!_podeFinalizarEvento && _status == 'finalizado') {
-      _mostrarSemPermissao('Você não tem permissão para finalizar eventos.');
+    if (_status == 'finalizado' &&
+        !await _accessGuard.revalidate(
+          context,
+          permission: 'pode_finalizar_evento',
+          message: 'Você não tem permissão para finalizar eventos.',
+        )) {
       return;
     }
 
@@ -2002,18 +2050,22 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       final tipo = _tipoController.text;
       final alteraGraduacao =
           tipo.contains('BATIZADO') || tipo.contains('CAMPEONATO');
-      final geraCertificado = tipo.contains('BATIZADO') ||
+      final geraCertificado =
+          tipo.contains('BATIZADO') ||
           tipo.contains('CAMPEONATO') ||
           tipo.contains('AULÃO') ||
           _temCertificado;
 
       final bool bannerFoiRemovido =
-          widget.evento?.linkBanner != null && _bannerUrl == null && _bannerFile == null;
+          widget.evento?.linkBanner != null &&
+          _bannerUrl == null &&
+          _bannerFile == null;
 
       if (bannerFoiRemovido && widget.evento?.linkBanner != null) {
         try {
-          final oldBannerRef =
-          FirebaseStorage.instance.refFromURL(widget.evento!.linkBanner!);
+          final oldBannerRef = FirebaseStorage.instance.refFromURL(
+            widget.evento!.linkBanner!,
+          );
           await oldBannerRef.delete();
           debugPrint('Banner antigo removido do Storage');
         } catch (e) {
@@ -2027,8 +2079,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         if (widget.evento?.linkBanner != null &&
             widget.evento!.linkBanner != _bannerUrl) {
           try {
-            final oldBannerRef =
-            FirebaseStorage.instance.refFromURL(widget.evento!.linkBanner!);
+            final oldBannerRef = FirebaseStorage.instance.refFromURL(
+              widget.evento!.linkBanner!,
+            );
             await oldBannerRef.delete();
             debugPrint('Banner antigo removido antes do upload');
           } catch (e) {
@@ -2037,7 +2090,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         }
 
         final tempEventoId =
-            widget.evento?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+            widget.evento?.id ??
+            DateTime.now().millisecondsSinceEpoch.toString();
         novaBannerUrl = await _uploadBanner(_bannerFile!, tempEventoId);
 
         if (novaBannerUrl == null) {
@@ -2069,10 +2123,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         valorCamisa: _temCamisa ? _valorCamisa : null,
         valoresPorTipoCamisa: _temCamisa ? _valoresPorTipoCamisa : const {},
         tamanhosDisponiveis: _temCamisa ? _tamanhosSelecionados : [],
-        modelagensCamisaDisponiveis:
-        _temCamisa ? _modelagensCamisaSelecionadas : [],
-        tiposCamisaDisponiveis:
-        _temCamisa ? _tiposCamisaSelecionados : [],
+        modelagensCamisaDisponiveis: _temCamisa
+            ? _modelagensCamisaSelecionadas
+            : [],
+        tiposCamisaDisponiveis: _temCamisa ? _tiposCamisaSelecionados : [],
         camisaObrigatoria: _temCamisa ? _camisaObrigatoria : false,
         alteraGraduacao: alteraGraduacao,
         geraCertificado: geraCertificado,
@@ -2088,8 +2142,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             ? _linkPlaylistController.text.trim()
             : null,
         temCertificado: _temCertificado,
-        configuracoesCertificado:
-        _temCertificado ? _configCertificado.toMap() : null,
+        configuracoesCertificado: _temCertificado
+            ? _configCertificado.toMap()
+            : null,
         modeloCertificadoId: _temCertificado
             ? _configCertificado.modeloPadrao
             : null,
@@ -2105,7 +2160,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         throw Exception('Erro ao salvar evento: ID não gerado');
       }
 
-      if (_bannerFile != null && novaBannerUrl != null && widget.evento?.id == null) {
+      if (_bannerFile != null &&
+          novaBannerUrl != null &&
+          widget.evento?.id == null) {
         try {
           final storageRef = FirebaseStorage.instance.refFromURL(novaBannerUrl);
           final newPath =
@@ -2200,14 +2257,15 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         icon: icon,
         hint: hint,
       ).copyWith(alignLabelWithHint: maxLines > 1),
-      validator: validator ??
+      validator:
+          validator ??
           (obrigatorio
               ? (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Campo obrigatório';
-            }
-            return null;
-          }
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Campo obrigatório';
+                  }
+                  return null;
+                }
               : null),
     );
   }
@@ -2307,7 +2365,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             icon: Icons.info_outline_rounded,
             color: t.info,
             text:
-            'O valor de Manga também será salvo como valor padrão da camisa para manter compatibilidade com eventos antigos.',
+                'O valor de Manga também será salvo como valor padrão da camisa para manter compatibilidade com eventos antigos.',
           ),
         ],
       ),
@@ -2337,10 +2395,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       },
       validator: _temCamisa
           ? (value) {
-        final valor = _parseValorMoeda(value ?? '');
-        if (valor < 0) return 'Valor inválido';
-        return null;
-      }
+              final valor = _parseValorMoeda(value ?? '');
+              if (valor < 0) return 'Valor inválido';
+              return null;
+            }
           : null,
     );
   }
@@ -2359,15 +2417,17 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       initialValue: initialValue.toString(),
       keyboardType: TextInputType.number,
       style: TextStyle(color: t.textPrimary),
-      decoration: _inputDecoration(label: label + (obrigatorio ? ' *' : ''), icon: icon)
-          .copyWith(suffixText: suffixText),
+      decoration: _inputDecoration(
+        label: label + (obrigatorio ? ' *' : ''),
+        icon: icon,
+      ).copyWith(suffixText: suffixText),
       onChanged: onChanged,
       validator: obrigatorio
           ? (value) {
-        if (value == null || value.isEmpty) return 'Campo obrigatório';
-        if (double.tryParse(value) == null) return 'Valor inválido';
-        return null;
-      }
+              if (value == null || value.isEmpty) return 'Campo obrigatório';
+              if (double.tryParse(value) == null) return 'Valor inválido';
+              return null;
+            }
           : null,
     );
   }
@@ -2489,15 +2549,18 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
             child: Icon(
-              _modoEdicao ? Icons.edit_calendar_rounded : Icons.event_available_rounded,
+              _modoEdicao
+                  ? Icons.edit_calendar_rounded
+                  : Icons.event_available_rounded,
               color: onPrimary,
               size: 33,
             ),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 _modoEdicao ? 'Editar Evento' : 'Criar Evento',
@@ -2521,8 +2584,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               ),
               const SizedBox(height: 12),
               Wrap(
-                alignment:
-                narrow ? WrapAlignment.center : WrapAlignment.start,
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
                 spacing: 8,
                 runSpacing: 8,
                 children: [
@@ -2539,11 +2601,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
           if (narrow) {
             return Column(
-              children: [
-                iconBox,
-                const SizedBox(height: 14),
-                text,
-              ],
+              children: [iconBox, const SizedBox(height: 14), text],
             );
           }
 
@@ -2606,47 +2664,44 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           ),
           child: _bannerFile != null
               ? Image.file(
-            _bannerFile!,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stack) => _bannerFallback(
-              icon: Icons.broken_image_rounded,
-              text: 'Erro ao carregar imagem',
-            ),
-          )
+                  _bannerFile!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stack) => _bannerFallback(
+                    icon: Icons.broken_image_rounded,
+                    text: 'Erro ao carregar imagem',
+                  ),
+                )
               : _bannerUrl != null
               ? Image.network(
-            _bannerUrl!,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return Center(
-                child: CircularProgressIndicator(
-                  color: t.primary,
-                  value: progress.expectedTotalBytes != null
-                      ? progress.cumulativeBytesLoaded /
-                      progress.expectedTotalBytes!
-                      : null,
-                ),
-              );
-            },
-            errorBuilder: (context, error, stack) => _bannerFallback(
-              icon: Icons.broken_image_rounded,
-              text: 'Erro ao carregar imagem',
-            ),
-          )
+                  _bannerUrl!,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        color: t.primary,
+                        value: progress.expectedTotalBytes != null
+                            ? progress.cumulativeBytesLoaded /
+                                  progress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stack) => _bannerFallback(
+                    icon: Icons.broken_image_rounded,
+                    text: 'Erro ao carregar imagem',
+                  ),
+                )
               : _bannerFallback(
-            icon: Icons.add_photo_alternate_rounded,
-            text: 'Clique para adicionar um banner',
-          ),
+                  icon: Icons.add_photo_alternate_rounded,
+                  text: 'Clique para adicionar um banner',
+                ),
         ),
       ),
     );
   }
 
-  Widget _bannerFallback({
-    required IconData icon,
-    required String text,
-  }) {
+  Widget _bannerFallback({required IconData icon, required String text}) {
     final t = context.uai;
 
     return Center(
@@ -2655,10 +2710,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         children: [
           Icon(icon, size: 50, color: t.textMuted),
           const SizedBox(height: 8),
-          Text(
-            text,
-            style: TextStyle(color: t.textSecondary),
-          ),
+          Text(text, style: TextStyle(color: t.textSecondary)),
         ],
       ),
     );
@@ -2707,11 +2759,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         if (narrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              alterar,
-              const SizedBox(height: 10),
-              remover,
-            ],
+            children: [alterar, const SizedBox(height: 10), remover],
           );
         }
 
@@ -2839,583 +2887,581 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           : _isLoading
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 112),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHero(),
-                    const SizedBox(height: 14),
-                    _buildPermissaoEventoCard(),
-                    const SizedBox(height: 14),
-                    _buildSectionNavigator(),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _dadosKey,
-                      icon: Icons.event_rounded,
-                      title: 'Dados Básicos',
-                      subtitle:
-                      'Nome, descrição, tipo, data, local e organizadores.',
-                      color: t.primary,
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 112),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 980),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _formField(
-                            controller: _nomeController,
-                            label: 'Nome do Evento',
+                          _buildHero(),
+                          const SizedBox(height: 14),
+                          _buildPermissaoEventoCard(),
+                          const SizedBox(height: 14),
+                          _buildSectionNavigator(),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _dadosKey,
                             icon: Icons.event_rounded,
-                            obrigatorio: true,
-                          ),
-                          const SizedBox(height: 12),
-                          _formField(
-                            controller: _descricaoController,
-                            label: 'Descrição do Evento',
-                            icon: Icons.description_rounded,
-                            hint: 'Descreva os detalhes do evento...',
-                            maxLines: 3,
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            value: _tipoController.text.isNotEmpty
-                                ? _tipoController.text
-                                : null,
-                            isExpanded: true,
-                            dropdownColor: t.surface,
-                            style: TextStyle(color: t.textPrimary),
-                            decoration: _inputDecoration(
-                              label: 'Tipo do Evento *',
-                              icon: Icons.category_rounded,
-                            ),
-                            items: _tiposEvento.map((tipo) {
-                              return DropdownMenuItem<String>(
-                                value: tipo,
-                                child: Text(
-                                  tipo,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: t.textPrimary,
-                                  ),
+                            title: 'Dados Básicos',
+                            subtitle:
+                                'Nome, descrição, tipo, data, local e organizadores.',
+                            color: t.primary,
+                            child: Column(
+                              children: [
+                                _formField(
+                                  controller: _nomeController,
+                                  label: 'Nome do Evento',
+                                  icon: Icons.event_rounded,
+                                  obrigatorio: true,
                                 ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _tipoController.text = value ?? '';
-                              });
-                            },
-                            validator: (value) {
-                              return value == null
-                                  ? 'Campo obrigatório'
-                                  : null;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow =
-                                  constraints.maxWidth < 560;
-
-                              final data = _buildDateField(
-                                label: 'Data *',
-                                emptyText: 'Selecione a data',
-                                value: _dataController.text,
-                                onTap: _selecionarData,
-                              );
-
-                              final horario = _formField(
-                                controller: _horarioController,
-                                label: 'Horário',
-                                icon: Icons.access_time_rounded,
-                                hint: 'HH:MM',
-                                obrigatorio: true,
-                              );
-
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    data,
-                                    const SizedBox(height: 12),
-                                    horario,
-                                  ],
-                                );
-                              }
-
-                              return Row(
-                                children: [
-                                  Expanded(child: data),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: horario),
-                                ],
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final narrow =
-                                  constraints.maxWidth < 560;
-
-                              final local = _formField(
-                                controller: _localController,
-                                label: 'Local',
-                                icon: Icons.location_on_rounded,
-                                obrigatorio: true,
-                              );
-
-                              final cidade = _formField(
-                                controller: _cidadeController,
-                                label: 'Cidade',
-                                icon: Icons.location_city_rounded,
-                                obrigatorio: true,
-                              );
-
-                              if (narrow) {
-                                return Column(
-                                  children: [
-                                    local,
-                                    const SizedBox(height: 12),
-                                    cidade,
-                                  ],
-                                );
-                              }
-
-                              return Row(
-                                children: [
-                                  Expanded(child: local),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: cidade),
-                                ],
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _formField(
-                            controller: _organizadoresController,
-                            label:
-                            'Organizadores separados por vírgula',
-                            icon: Icons.people_rounded,
-                            maxLines: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _bannerKey,
-                      icon: Icons.image_rounded,
-                      title: 'Banner do Evento',
-                      subtitle:
-                      'Adicione, troque ou remova a imagem do evento.',
-                      color: t.info,
-                      child: Column(
-                        children: [
-                          _buildBannerPreview(),
-                          if (_isUploadingBanner) ...[
-                            const SizedBox(height: 12),
-                            LinearProgressIndicator(color: t.primary),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Enviando banner...',
-                              style: TextStyle(
-                                color: t.textSecondary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          _buildBannerActions(),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _financeiroKey,
-                      icon: Icons.payments_rounded,
-                      title: 'Configurações de Taxa',
-                      subtitle:
-                      'Valor, parcelamento e desconto à vista.',
-                      color: t.success,
-                      child: Column(
-                        children: [
-                          _numberField(
-                            label: 'Valor da inscrição (R\$)',
-                            icon: Icons.attach_money_rounded,
-                            initialValue: _valorInscricao,
-                            obrigatorio: true,
-                            onChanged: (value) {
-                              _valorInscricao =
-                                  double.tryParse(value) ?? 0;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildToggleCard(
-                            value: _permiteParcelamento,
-                            icon: Icons.receipt_long_rounded,
-                            title: 'Permite parcelamento?',
-                            activeText:
-                            'O evento permite parcelamento.',
-                            inactiveText:
-                            'O evento não permite parcelamento.',
-                            activeColor: t.success,
-                            onChanged: (value) {
-                              setState(() {
-                                _permiteParcelamento = value;
-                              });
-                            },
-                          ),
-                          if (_permiteParcelamento) ...[
-                            const SizedBox(height: 8),
-                            _numberField(
-                              label: 'Máximo de parcelas',
-                              icon: Icons.format_list_numbered_rounded,
-                              initialValue: _maxParcelas,
-                              onChanged: (value) {
-                                _maxParcelas =
-                                    int.tryParse(value) ?? 1;
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          _numberField(
-                            label: 'Desconto à vista',
-                            icon: Icons.percent_rounded,
-                            suffixText: '%',
-                            initialValue: _descontoAVista,
-                            onChanged: (value) {
-                              _descontoAVista =
-                                  int.tryParse(value) ?? 0;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildDateField(
-                            label: 'Data limite 1ª parcela',
-                            emptyText: 'Não definido',
-                            value: _dataLimitePrimeiraParcela == null
-                                ? ''
-                                : '${_dataLimitePrimeiraParcela!.day}/${_dataLimitePrimeiraParcela!.month}/${_dataLimitePrimeiraParcela!.year}',
-                            enabled: _permiteParcelamento,
-                            onTap: _selecionarDataLimite,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _camisaKey,
-                      icon: Icons.checkroom_rounded,
-                      title: 'Configurações de Camisa',
-                      subtitle:
-                      'Defina camisa, valores por tipo, tamanhos e modelagens.',
-                      color: t.warning,
-                      child: Column(
-                        children: [
-                          _buildToggleCard(
-                            value: _temCamisa,
-                            icon: Icons.checkroom_rounded,
-                            title: 'Evento terá camisa?',
-                            activeText:
-                            'Este evento terá camisa disponível.',
-                            inactiveText:
-                            'Este evento não terá camisa.',
-                            activeColor: t.warning,
-                            onChanged: (value) {
-                              setState(() {
-                                _temCamisa = value;
-                                if (!value) {
-                                  _tamanhosSelecionados = [];
-                                  _modelagensCamisaSelecionadas = [];
-                                  _tiposCamisaSelecionados = [];
-                                  _camisaObrigatoria = false;
-                                  _valorCamisa = 0;
-                                  _valoresPorTipoCamisa = {
-                                    _tipoManga: 0,
-                                    _tipoMangaLonga: 0,
-                                    _tipoRegata: 0,
-                                  };
-                                  _valorCamisaMangaController.clear();
-                                  _valorCamisaMangaLongaController.clear();
-                                  _valorCamisaRegataController.clear();
-                                } else {
-                                  if (_valoresPorTipoCamisa.isEmpty) {
-                                    _valoresPorTipoCamisa = {
-                                      _tipoManga: _valorCamisa,
-                                      _tipoMangaLonga: _valorCamisa,
-                                      _tipoRegata: _valorCamisa,
-                                    };
-                                    _sincronizarControllersValoresCamisa();
-                                  }
-                                  if (_tamanhosSelecionados.isEmpty) {
-                                    _tamanhosSelecionados = List.from(_todosTamanhos);
-                                  }
-                                  if (_modelagensCamisaSelecionadas.isEmpty) {
-                                    _modelagensCamisaSelecionadas =
-                                        List.from(_todasModelagensCamisa);
-                                  }
-                                  if (_tiposCamisaSelecionados.isEmpty) {
-                                    _tiposCamisaSelecionados =
-                                        List.from(_todosTiposCamisa);
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                          if (_temCamisa) ...[
-                            const SizedBox(height: 12),
-                            _valoresPorTipoCamisaCard(),
-                            const SizedBox(height: 12),
-                            Material(
-                              color: t.cardAlt,
-                              borderRadius:
-                              BorderRadius.circular(t.inputRadius),
-                              clipBehavior: Clip.antiAlias,
-                              child: InkWell(
-                                onTap: _selecionarTamanhos,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 14,
+                                const SizedBox(height: 12),
+                                _formField(
+                                  controller: _descricaoController,
+                                  label: 'Descrição do Evento',
+                                  icon: Icons.description_rounded,
+                                  hint: 'Descreva os detalhes do evento...',
+                                  maxLines: 3,
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  value: _tipoController.text.isNotEmpty
+                                      ? _tipoController.text
+                                      : null,
+                                  isExpanded: true,
+                                  dropdownColor: t.surface,
+                                  style: TextStyle(color: t.textPrimary),
+                                  decoration: _inputDecoration(
+                                    label: 'Tipo do Evento *',
+                                    icon: Icons.category_rounded,
                                   ),
-                                  decoration: BoxDecoration(
-                                    borderRadius:
-                                    BorderRadius.circular(
+                                  items: _tiposEvento.map((tipo) {
+                                    return DropdownMenuItem<String>(
+                                      value: tipo,
+                                      child: Text(
+                                        tipo,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: t.textPrimary),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _tipoController.text = value ?? '';
+                                    });
+                                  },
+                                  validator: (value) {
+                                    return value == null
+                                        ? 'Campo obrigatório'
+                                        : null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
+
+                                    final data = _buildDateField(
+                                      label: 'Data *',
+                                      emptyText: 'Selecione a data',
+                                      value: _dataController.text,
+                                      onTap: _selecionarData,
+                                    );
+
+                                    final horario = _formField(
+                                      controller: _horarioController,
+                                      label: 'Horário',
+                                      icon: Icons.access_time_rounded,
+                                      hint: 'HH:MM',
+                                      obrigatorio: true,
+                                    );
+
+                                    if (narrow) {
+                                      return Column(
+                                        children: [
+                                          data,
+                                          const SizedBox(height: 12),
+                                          horario,
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: data),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: horario),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
+
+                                    final local = _formField(
+                                      controller: _localController,
+                                      label: 'Local',
+                                      icon: Icons.location_on_rounded,
+                                      obrigatorio: true,
+                                    );
+
+                                    final cidade = _formField(
+                                      controller: _cidadeController,
+                                      label: 'Cidade',
+                                      icon: Icons.location_city_rounded,
+                                      obrigatorio: true,
+                                    );
+
+                                    if (narrow) {
+                                      return Column(
+                                        children: [
+                                          local,
+                                          const SizedBox(height: 12),
+                                          cidade,
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: local),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: cidade),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _formField(
+                                  controller: _organizadoresController,
+                                  label: 'Organizadores separados por vírgula',
+                                  icon: Icons.people_rounded,
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _bannerKey,
+                            icon: Icons.image_rounded,
+                            title: 'Banner do Evento',
+                            subtitle:
+                                'Adicione, troque ou remova a imagem do evento.',
+                            color: t.info,
+                            child: Column(
+                              children: [
+                                _buildBannerPreview(),
+                                if (_isUploadingBanner) ...[
+                                  const SizedBox(height: 12),
+                                  LinearProgressIndicator(color: t.primary),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Enviando banner...',
+                                    style: TextStyle(
+                                      color: t.textSecondary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                _buildBannerActions(),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _financeiroKey,
+                            icon: Icons.payments_rounded,
+                            title: 'Configurações de Taxa',
+                            subtitle: 'Valor, parcelamento e desconto à vista.',
+                            color: t.success,
+                            child: Column(
+                              children: [
+                                _numberField(
+                                  label: 'Valor da inscrição (R\$)',
+                                  icon: Icons.attach_money_rounded,
+                                  initialValue: _valorInscricao,
+                                  obrigatorio: true,
+                                  onChanged: (value) {
+                                    _valorInscricao =
+                                        double.tryParse(value) ?? 0;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _buildToggleCard(
+                                  value: _permiteParcelamento,
+                                  icon: Icons.receipt_long_rounded,
+                                  title: 'Permite parcelamento?',
+                                  activeText: 'O evento permite parcelamento.',
+                                  inactiveText:
+                                      'O evento não permite parcelamento.',
+                                  activeColor: t.success,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _permiteParcelamento = value;
+                                    });
+                                  },
+                                ),
+                                if (_permiteParcelamento) ...[
+                                  const SizedBox(height: 8),
+                                  _numberField(
+                                    label: 'Máximo de parcelas',
+                                    icon: Icons.format_list_numbered_rounded,
+                                    initialValue: _maxParcelas,
+                                    onChanged: (value) {
+                                      _maxParcelas = int.tryParse(value) ?? 1;
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                _numberField(
+                                  label: 'Desconto à vista',
+                                  icon: Icons.percent_rounded,
+                                  suffixText: '%',
+                                  initialValue: _descontoAVista,
+                                  onChanged: (value) {
+                                    _descontoAVista = int.tryParse(value) ?? 0;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _buildDateField(
+                                  label: 'Data limite 1ª parcela',
+                                  emptyText: 'Não definido',
+                                  value: _dataLimitePrimeiraParcela == null
+                                      ? ''
+                                      : '${_dataLimitePrimeiraParcela!.day}/${_dataLimitePrimeiraParcela!.month}/${_dataLimitePrimeiraParcela!.year}',
+                                  enabled: _permiteParcelamento,
+                                  onTap: _selecionarDataLimite,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _camisaKey,
+                            icon: Icons.checkroom_rounded,
+                            title: 'Configurações de Camisa',
+                            subtitle:
+                                'Defina camisa, valores por tipo, tamanhos e modelagens.',
+                            color: t.warning,
+                            child: Column(
+                              children: [
+                                _buildToggleCard(
+                                  value: _temCamisa,
+                                  icon: Icons.checkroom_rounded,
+                                  title: 'Evento terá camisa?',
+                                  activeText:
+                                      'Este evento terá camisa disponível.',
+                                  inactiveText: 'Este evento não terá camisa.',
+                                  activeColor: t.warning,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _temCamisa = value;
+                                      if (!value) {
+                                        _tamanhosSelecionados = [];
+                                        _modelagensCamisaSelecionadas = [];
+                                        _tiposCamisaSelecionados = [];
+                                        _camisaObrigatoria = false;
+                                        _valorCamisa = 0;
+                                        _valoresPorTipoCamisa = {
+                                          _tipoManga: 0,
+                                          _tipoMangaLonga: 0,
+                                          _tipoRegata: 0,
+                                        };
+                                        _valorCamisaMangaController.clear();
+                                        _valorCamisaMangaLongaController
+                                            .clear();
+                                        _valorCamisaRegataController.clear();
+                                      } else {
+                                        if (_valoresPorTipoCamisa.isEmpty) {
+                                          _valoresPorTipoCamisa = {
+                                            _tipoManga: _valorCamisa,
+                                            _tipoMangaLonga: _valorCamisa,
+                                            _tipoRegata: _valorCamisa,
+                                          };
+                                          _sincronizarControllersValoresCamisa();
+                                        }
+                                        if (_tamanhosSelecionados.isEmpty) {
+                                          _tamanhosSelecionados = List.from(
+                                            _todosTamanhos,
+                                          );
+                                        }
+                                        if (_modelagensCamisaSelecionadas
+                                            .isEmpty) {
+                                          _modelagensCamisaSelecionadas =
+                                              List.from(_todasModelagensCamisa);
+                                        }
+                                        if (_tiposCamisaSelecionados.isEmpty) {
+                                          _tiposCamisaSelecionados = List.from(
+                                            _todosTiposCamisa,
+                                          );
+                                        }
+                                      }
+                                    });
+                                  },
+                                ),
+                                if (_temCamisa) ...[
+                                  const SizedBox(height: 12),
+                                  _valoresPorTipoCamisaCard(),
+                                  const SizedBox(height: 12),
+                                  Material(
+                                    color: t.cardAlt,
+                                    borderRadius: BorderRadius.circular(
                                       t.inputRadius,
                                     ),
-                                    border: Border.all(
-                                      color: t.border,
+                                    clipBehavior: Clip.antiAlias,
+                                    child: InkWell(
+                                      onTap: _selecionarTamanhos,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 14,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            t.inputRadius,
+                                          ),
+                                          border: Border.all(color: t.border),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.checkroom_rounded,
+                                              color: _ensureVisible(
+                                                t.primary,
+                                                t.cardAlt,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                _tamanhosSelecionados.isEmpty
+                                                    ? 'Nenhum tamanho selecionado'
+                                                    : _tamanhosSelecionados
+                                                          .join(', '),
+                                                style: TextStyle(
+                                                  color:
+                                                      _tamanhosSelecionados
+                                                          .isEmpty
+                                                      ? t.textSecondary
+                                                      : t.textPrimary,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.chevron_right_rounded,
+                                              color: t.textSecondary,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.checkroom_rounded,
-                                        color: _ensureVisible(
-                                          t.primary,
-                                          t.cardAlt,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          _tamanhosSelecionados.isEmpty
-                                              ? 'Nenhum tamanho selecionado'
-                                              : _tamanhosSelecionados
-                                              .join(', '),
-                                          style: TextStyle(
-                                            color:
-                                            _tamanhosSelecionados
-                                                .isEmpty
-                                                ? t.textSecondary
-                                                : t.textPrimary,
-                                            fontWeight:
-                                            FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        Icons.chevron_right_rounded,
-                                        color: t.textSecondary,
-                                      ),
-                                    ],
+                                  const SizedBox(height: 12),
+                                  _buildMultiSelectCard(
+                                    icon: Icons.style_rounded,
+                                    title: 'Modelagens disponíveis',
+                                    emptyText: 'Nenhuma modelagem selecionada',
+                                    values: _modelagensCamisaSelecionadas
+                                        .map(_modelagemCamisaLabel)
+                                        .join(', '),
+                                    onTap: _selecionarModelagensCamisa,
                                   ),
+                                  const SizedBox(height: 12),
+                                  _buildMultiSelectCard(
+                                    icon: Icons.design_services_rounded,
+                                    title: 'Tipos de camisa disponíveis',
+                                    emptyText: 'Nenhum tipo selecionado',
+                                    values: _tiposCamisaSelecionados
+                                        .map(_tipoCamisaLabel)
+                                        .join(', '),
+                                    onTap: _selecionarTiposCamisa,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildToggleCard(
+                                    value: _camisaObrigatoria,
+                                    icon: Icons.priority_high_rounded,
+                                    title: 'Camisa obrigatória?',
+                                    activeText:
+                                        'A camisa será obrigatória neste evento.',
+                                    inactiveText:
+                                        'A camisa será opcional neste evento.',
+                                    activeColor: t.error,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _camisaObrigatoria = value;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _certificadoKey,
+                            icon: Icons.card_membership_rounded,
+                            title: 'Certificados',
+                            subtitle:
+                                'Defina se este evento terá certificados.',
+                            color: t.success,
+                            child: Column(
+                              children: [
+                                _buildCertificadoSimples(),
+                                const SizedBox(height: 10),
+                                _buildCertificadoResumoCard(),
+                                if (_temCertificado) ...[
+                                  const SizedBox(height: 10),
+                                  _infoBox(
+                                    icon: Icons.info_rounded,
+                                    color: t.success,
+                                    text:
+                                        'Os certificados serão gerados usando as assinaturas configuradas aqui e os dados reais do evento.',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _webKey,
+                            icon: Icons.public_rounded,
+                            title: 'Portfólio Web',
+                            subtitle:
+                                'Controle se este evento será exibido no site institucional.',
+                            color: t.info,
+                            child: Column(
+                              children: [
+                                _buildPortfolioWebSimples(),
+                                if (_mostrarNoPortfolioWeb) ...[
+                                  const SizedBox(height: 10),
+                                  _infoBox(
+                                    icon: Icons.language_rounded,
+                                    color: t.info,
+                                    text:
+                                        'Este evento aparecerá na página de portfólio do site.',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            sectionKey: _linksKey,
+                            icon: Icons.link_rounded,
+                            title: 'Links',
+                            subtitle:
+                                'Fotos, vídeos, prévia e playlist do evento.',
+                            color: t.associacao,
+                            child: Column(
+                              children: [
+                                _formField(
+                                  controller: _linkFotosController,
+                                  label: 'Link de Fotos/Vídeos',
+                                  icon: Icons.photo_library_rounded,
+                                  keyboardType: TextInputType.url,
                                 ),
-                              ),
+                                const SizedBox(height: 12),
+                                _formField(
+                                  controller: _linkPreviaController,
+                                  label: 'Link da Prévia',
+                                  icon: Icons.play_circle_rounded,
+                                  keyboardType: TextInputType.url,
+                                ),
+                                const SizedBox(height: 12),
+                                _formField(
+                                  controller: _linkPlaylistController,
+                                  label: 'Link da Playlist',
+                                  icon: Icons.playlist_play_rounded,
+                                  keyboardType: TextInputType.url,
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            _buildMultiSelectCard(
-                              icon: Icons.style_rounded,
-                              title: 'Modelagens disponíveis',
-                              emptyText: 'Nenhuma modelagem selecionada',
-                              values: _modelagensCamisaSelecionadas
-                                  .map(_modelagemCamisaLabel)
-                                  .join(', '),
-                              onTap: _selecionarModelagensCamisa,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildMultiSelectCard(
-                              icon: Icons.design_services_rounded,
-                              title: 'Tipos de camisa disponíveis',
-                              emptyText: 'Nenhum tipo selecionado',
-                              values: _tiposCamisaSelecionados
-                                  .map(_tipoCamisaLabel)
-                                  .join(', '),
-                              onTap: _selecionarTiposCamisa,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildToggleCard(
-                              value: _camisaObrigatoria,
-                              icon: Icons.priority_high_rounded,
-                              title: 'Camisa obrigatória?',
-                              activeText:
-                              'A camisa será obrigatória neste evento.',
-                              inactiveText:
-                              'A camisa será opcional neste evento.',
-                              activeColor: t.error,
-                              onChanged: (value) {
-                                setState(() {
-                                  _camisaObrigatoria = value;
-                                });
-                              },
-                            ),
-                          ],
+                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _certificadoKey,
-                      icon: Icons.card_membership_rounded,
-                      title: 'Certificados',
-                      subtitle:
-                      'Defina se este evento terá certificados.',
-                      color: t.success,
-                      child: Column(
-                        children: [
-                          _buildCertificadoSimples(),
-                          const SizedBox(height: 10),
-                          _buildCertificadoResumoCard(),
-                          if (_temCertificado) ...[
-                            const SizedBox(height: 10),
-                            _infoBox(
-                              icon: Icons.info_rounded,
-                              color: t.success,
-                              text:
-                              'Os certificados serão gerados usando as assinaturas configuradas aqui e os dados reais do evento.',
-                            ),
-                          ],
-                        ],
+                  ),
+                ],
+              ),
+            ),
+      bottomNavigationBar: (!_podeSalvarEvento || _carregandoPermissoes)
+          ? null
+          : SafeArea(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+                decoration: BoxDecoration(
+                  color: t.surface,
+                  border: Border(top: BorderSide(color: t.border)),
+                  boxShadow: t.softShadow,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: t.textPrimary,
+                          side: BorderSide(color: t.border),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
+                          ),
+                        ),
+                        child: const Text(
+                          'CANCELAR',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _webKey,
-                      icon: Icons.public_rounded,
-                      title: 'Portfólio Web',
-                      subtitle:
-                      'Controle se este evento será exibido no site institucional.',
-                      color: t.info,
-                      child: Column(
-                        children: [
-                          _buildPortfolioWebSimples(),
-                          if (_mostrarNoPortfolioWeb) ...[
-                            const SizedBox(height: 10),
-                            _infoBox(
-                              icon: Icons.language_rounded,
-                              color: t.info,
-                              text:
-                              'Este evento aparecerá na página de portfólio do site.',
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _sectionCard(
-                      sectionKey: _linksKey,
-                      icon: Icons.link_rounded,
-                      title: 'Links',
-                      subtitle:
-                      'Fotos, vídeos, prévia e playlist do evento.',
-                      color: t.associacao,
-                      child: Column(
-                        children: [
-                          _formField(
-                            controller: _linkFotosController,
-                            label: 'Link de Fotos/Vídeos',
-                            icon: Icons.photo_library_rounded,
-                            keyboardType: TextInputType.url,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            (_isLoading ||
+                                _isUploadingBanner ||
+                                !_podeSalvarEvento)
+                            ? null
+                            : _salvar,
+                        icon: _isLoading || _isUploadingBanner
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _readableOn(t.primary),
+                                ),
+                              )
+                            : const Icon(Icons.save_rounded),
+                        label: Text(
+                          widget.evento == null ? 'CRIAR EVENTO' : 'ATUALIZAR',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: t.primary,
+                          foregroundColor: _readableOn(t.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w900,
                           ),
-                          const SizedBox(height: 12),
-                          _formField(
-                            controller: _linkPreviaController,
-                            label: 'Link da Prévia',
-                            icon: Icons.play_circle_rounded,
-                            keyboardType: TextInputType.url,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
-                          const SizedBox(height: 12),
-                          _formField(
-                            controller: _linkPlaylistController,
-                            label: 'Link da Playlist',
-                            icon: Icons.playlist_play_rounded,
-                            keyboardType: TextInputType.url,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: (!_podeSalvarEvento || _carregandoPermissoes)
-          ? null
-          : SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-          decoration: BoxDecoration(
-            color: t.surface,
-            border: Border(top: BorderSide(color: t.border)),
-            boxShadow: t.softShadow,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isLoading ? null : () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: t.textPrimary,
-                    side: BorderSide(color: t.border),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(t.buttonRadius),
-                    ),
-                  ),
-                  child: const Text(
-                    'CANCELAR',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed:
-                  (_isLoading || _isUploadingBanner || !_podeSalvarEvento)
-                      ? null
-                      : _salvar,
-                  icon: _isLoading || _isUploadingBanner
-                      ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _readableOn(t.primary),
-                    ),
-                  )
-                      : const Icon(Icons.save_rounded),
-                  label: Text(
-                    widget.evento == null ? 'CRIAR EVENTO' : 'ATUALIZAR',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: t.primary,
-                    foregroundColor: _readableOn(t.primary),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(t.buttonRadius),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -3438,9 +3484,4 @@ class _SectionShortcut {
   });
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-  info,
-}
+enum _SnackType { success, error, warning, info }

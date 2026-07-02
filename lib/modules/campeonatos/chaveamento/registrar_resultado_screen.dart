@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/campeonato_model.dart';
@@ -30,7 +30,8 @@ class RegistrarResultadoScreen extends StatefulWidget {
   });
 
   @override
-  State<RegistrarResultadoScreen> createState() => _RegistrarResultadoScreenState();
+  State<RegistrarResultadoScreen> createState() =>
+      _RegistrarResultadoScreenState();
 }
 
 class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
@@ -117,7 +118,10 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                 icon: const Icon(Icons.check_circle),
                 label: Text(
                   _isRegistrando ? 'REGISTRANDO...' : 'CONFIRMAR RESULTADO',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -189,31 +193,35 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : cor.withValues(alpha: 0.2),
+                      color: isSelected
+                          ? Colors.white
+                          : cor.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                       border: Border.all(color: cor, width: 3),
                     ),
                     child: fotoUrl != null
                         ? ClipRRect(
-                      borderRadius: BorderRadius.circular(40),
-                      child: CachedNetworkImage(
-                        imageUrl: fotoUrl,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        errorWidget: (context, url, error) => Icon(
-                          Icons.person,
-                          size: 40,
-                          color: isSelected ? cor : cor,
-                        ),
-                      ),
-                    )
+                            borderRadius: BorderRadius.circular(40),
+                            child: CachedNetworkImage(
+                              imageUrl: fotoUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Icon(
+                                Icons.person,
+                                size: 40,
+                                color: isSelected ? cor : cor,
+                              ),
+                            ),
+                          )
                         : Icon(
-                      Icons.person,
-                      size: 40,
-                      color: isSelected ? cor : cor,
-                    ),
+                            Icons.person,
+                            size: 40,
+                            color: isSelected ? cor : cor,
+                          ),
                   ),
                   const SizedBox(height: 12),
 
@@ -222,7 +230,9 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                     nome,
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: isSelected ? Colors.white : Colors.black,
                     ),
                     textAlign: TextAlign.center,
@@ -237,7 +247,9 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                       apelido,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isSelected ? Colors.white.withValues(alpha: 0.8) : Colors.grey.shade600,
+                        color: isSelected
+                            ? Colors.white.withValues(alpha: 0.8)
+                            : Colors.grey.shade600,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -247,7 +259,10 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
                   if (isSelected) ...[
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
@@ -314,11 +329,11 @@ class _RegistrarResultadoScreenState extends State<RegistrarResultadoScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('ℹ️ Instruções'),
         content: const Text(
-            'Clique no competidor vencedor para selecioná-lo.\n\n'
-                '🟡 Amarelo = Competidor 1\n'
-                '🔵 Azul = Competidor 2\n\n'
-                '• O botão verde confirma o resultado\n'
-                '• O vencedor avançará para a próxima rodada'
+          'Clique no competidor vencedor para selecioná-lo.\n\n'
+          '🟡 Amarelo = Competidor 1\n'
+          '🔵 Azul = Competidor 2\n\n'
+          '• O botão verde confirma o resultado\n'
+          '• O vencedor avançará para a próxima rodada',
         ),
         actions: [
           TextButton(

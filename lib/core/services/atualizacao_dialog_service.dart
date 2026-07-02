@@ -1,4 +1,4 @@
-﻿// lib/core/services/atualizacao_dialog_service.dart
+// lib/core/services/atualizacao_dialog_service.dart
 //
 // =====================================================
 // 🚀 SERVIÇO DE DIÁLOGO DE ATUALIZAÇÃO - UAI CAPOEIRA
@@ -42,7 +42,7 @@ import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_mod
 
 class AtualizacaoDialogService {
   static final AtualizacaoDialogService _instance =
-  AtualizacaoDialogService._internal();
+      AtualizacaoDialogService._internal();
 
   factory AtualizacaoDialogService() => _instance;
 
@@ -51,7 +51,7 @@ class AtualizacaoDialogService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final VersaoService _versaoService = VersaoService();
   final AtualizacaoDiretaService _atualizacaoService =
-  AtualizacaoDiretaService();
+      AtualizacaoDiretaService();
 
   bool _dialogoJaMostrado = false;
 
@@ -84,19 +84,21 @@ class AtualizacaoDialogService {
 
       final config = configDoc.data() ?? {};
 
-      final versaoAtualServidor =
-      (config['versao_atual'] ?? '1.0.0').toString().trim();
+      final versaoAtualServidor = (config['versao_atual'] ?? '1.0.0')
+          .toString()
+          .trim();
 
       if (versaoAtualServidor.isEmpty) return;
 
-      final String ultimaVersaoId =
-      (config['ultima_versao_id'] ?? '').toString().trim();
+      final String ultimaVersaoId = (config['ultima_versao_id'] ?? '')
+          .toString()
+          .trim();
 
       final bool atualizacaoObrigatoria =
           config['atualizacao_obrigatoria'] == true;
 
       final String versaoMinimaObrigatoria =
-      (config['versao_minima_obrigatoria'] ?? '').toString().trim();
+          (config['versao_minima_obrigatoria'] ?? '').toString().trim();
 
       final bool existeVersaoNova = _compararVersoes(
         versaoLocal,
@@ -117,12 +119,14 @@ class AtualizacaoDialogService {
         return;
       }
 
-      final apkExiste = await _atualizacaoService.apkExiste(versaoAtualServidor);
+      final apkExiste = await _atualizacaoService.apkExiste(
+        versaoAtualServidor,
+      );
 
       if (!apkExiste) {
         debugPrint(
           '⚠️ Existe versão nova ($versaoAtualServidor), '
-              'mas o APK não foi encontrado no Storage.',
+          'mas o APK não foi encontrado no Storage.',
         );
         return;
       }
@@ -221,7 +225,8 @@ class AtualizacaoDialogService {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -253,14 +258,13 @@ class AtualizacaoDialogService {
 
     final String titulo = versionModel?.titulo.trim().isNotEmpty == true
         ? versionModel!.titulo
-        : (config['titulo_atualizacao'] ?? 'Nova versão disponível')
-        .toString();
+        : (config['titulo_atualizacao'] ?? 'Nova versão disponível').toString();
 
     final String resumo = versionModel?.resumo.trim().isNotEmpty == true
         ? versionModel!.resumo
         : (config['mensagem_atualizacao'] ??
-        'Atualize para receber melhorias e correções.')
-        .toString();
+                  'Atualize para receber melhorias e correções.')
+              .toString();
 
     await showDialog<void>(
       context: context,
@@ -297,19 +301,19 @@ class AtualizacaoDialogService {
                           gradient: LinearGradient(
                             colors: obrigatoria
                                 ? [
-                              statusColor,
-                              Color.alphaBlend(
-                                Colors.black.withOpacity(0.16),
-                                statusColor,
-                              ),
-                            ]
+                                    statusColor,
+                                    Color.alphaBlend(
+                                      Colors.black.withOpacity(0.16),
+                                      statusColor,
+                                    ),
+                                  ]
                                 : [
-                              primary,
-                              Color.alphaBlend(
-                                Colors.black.withOpacity(0.10),
-                                primary,
-                              ),
-                            ],
+                                    primary,
+                                    Color.alphaBlend(
+                                      Colors.black.withOpacity(0.10),
+                                      primary,
+                                    ),
+                                  ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -617,10 +621,7 @@ class AtualizacaoDialogService {
 
     return Column(
       children: [
-        for (final section in sections) ...[
-          section,
-          const SizedBox(height: 9),
-        ],
+        for (final section in sections) ...[section, const SizedBox(height: 9)],
       ],
     );
   }
@@ -739,11 +740,7 @@ class AtualizacaoDialogService {
 
     return Row(
       children: [
-        Icon(
-          icon,
-          size: strong ? 19 : 18,
-          color: accent,
-        ),
+        Icon(icon, size: strong ? 19 : 18, color: accent),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
@@ -794,9 +791,7 @@ class AtualizacaoDialogService {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
         color: t.card,
-        border: Border(
-          top: BorderSide(color: t.border),
-        ),
+        border: Border(top: BorderSide(color: t.border)),
       ),
       child: Row(
         children: [

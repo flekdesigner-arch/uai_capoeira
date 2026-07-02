@@ -1,4 +1,4 @@
-﻿import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -10,10 +10,7 @@ import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 class TimelineMistaWidget extends StatefulWidget {
   final int limitePorPagina;
 
-  const TimelineMistaWidget({
-    super.key,
-    this.limitePorPagina = 20,
-  });
+  const TimelineMistaWidget({super.key, this.limitePorPagina = 20});
 
   @override
   State<TimelineMistaWidget> createState() => _TimelineMistaWidgetState();
@@ -57,8 +54,8 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -145,7 +142,9 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
           'data': evento.data,
           'titulo': evento.nome,
           'descricao': evento.descricao,
-          'imagens': evento.linkBanner != null ? [evento.linkBanner!] : <String>[],
+          'imagens': evento.linkBanner != null
+              ? [evento.linkBanner!]
+              : <String>[],
           'link': evento.linkFotosVideos ?? '',
           'linkPrevia': evento.previaVideo ?? '',
           'linkPlaylist': evento.linkPlaylist ?? '',
@@ -158,7 +157,9 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
       }).toList();
 
       final todos = [...publicacoes, ...eventos]
-        ..sort((a, b) => (b['data'] as DateTime).compareTo(a['data'] as DateTime));
+        ..sort(
+          (a, b) => (b['data'] as DateTime).compareTo(a['data'] as DateTime),
+        );
 
       if (publicacoesSnapshot.docs.isNotEmpty) {
         _ultimoDocPublicacao = publicacoesSnapshot.docs.last;
@@ -262,8 +263,9 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
               'data': evento.data,
               'titulo': evento.nome,
               'descricao': evento.descricao,
-              'imagens':
-              evento.linkBanner != null ? [evento.linkBanner!] : <String>[],
+              'imagens': evento.linkBanner != null
+                  ? [evento.linkBanner!]
+                  : <String>[],
               'link': evento.linkFotosVideos ?? '',
               'linkPrevia': evento.previaVideo ?? '',
               'linkPlaylist': evento.linkPlaylist ?? '',
@@ -282,8 +284,9 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
 
       if (novosItens.isNotEmpty && mounted) {
         final todos = [..._itensTimeline, ...novosItens]
-          ..sort((a, b) =>
-              (b['data'] as DateTime).compareTo(a['data'] as DateTime));
+          ..sort(
+            (a, b) => (b['data'] as DateTime).compareTo(a['data'] as DateTime),
+          );
 
         setState(() => _itensTimeline = todos);
       }
@@ -397,7 +400,8 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
           28,
         ),
         itemCount:
-        _itensTimeline.length + (_temMaisPublicacoes || _temMaisEventos ? 1 : 0),
+            _itensTimeline.length +
+            (_temMaisPublicacoes || _temMaisEventos ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _itensTimeline.length) {
             return _buildCarregandoMais();
@@ -540,19 +544,17 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: CircularProgressIndicator(color: t.primary),
-      ),
+      child: Center(child: CircularProgressIndicator(color: t.primary)),
     );
   }
 
   Widget _buildTimelineItem(
-      Map<String, dynamic> item,
-      bool isEvento,
-      Color corTipo,
-      int index,
-      bool isMobile,
-      ) {
+    Map<String, dynamic> item,
+    bool isEvento,
+    Color corTipo,
+    int index,
+    bool isMobile,
+  ) {
     final t = context.uai;
     final isUltimo = index == _itensTimeline.length - 1;
     final data = item['data'] as DateTime;
@@ -607,8 +609,8 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
                           isEvento
                               ? Icons.event_rounded
                               : _getIconPorTipo(
-                            item['tipo_item']?.toString() ?? '',
-                          ),
+                                  item['tipo_item']?.toString() ?? '',
+                                ),
                           color: _readableOn(accent),
                           size: verySmall ? 11 : 13,
                         ),
@@ -667,7 +669,9 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
                           child: Text(
                             item['descricao'].toString(),
                             style: TextStyle(
-                              fontSize: verySmall ? 13.5 : (isMobile ? 14.5 : 15),
+                              fontSize: verySmall
+                                  ? 13.5
+                                  : (isMobile ? 14.5 : 15),
                               color: t.textPrimary,
                               height: 1.34,
                               fontWeight: FontWeight.w500,
@@ -798,17 +802,19 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
   }
 
   Widget _buildLinks(
-      Map<String, dynamic> item,
-      bool isEvento,
-      Color corTipo,
-      bool verySmall,
-      ) {
+    Map<String, dynamic> item,
+    bool isEvento,
+    Color corTipo,
+    bool verySmall,
+  ) {
     final linkPrincipal = item['link']?.toString().trim() ?? '';
     final linkPrevia = item['linkPrevia']?.toString().trim() ?? '';
     final linkPlaylist = item['linkPlaylist']?.toString().trim() ?? '';
 
     final hasAnyLink =
-        linkPrincipal.isNotEmpty || linkPrevia.isNotEmpty || linkPlaylist.isNotEmpty;
+        linkPrincipal.isNotEmpty ||
+        linkPrevia.isNotEmpty ||
+        linkPlaylist.isNotEmpty;
 
     if (!hasAnyLink) return const SizedBox.shrink();
 
@@ -821,41 +827,41 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
       ),
       child: isEvento
           ? Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (linkPrincipal.isNotEmpty)
-            _buildLinkBotao(
-              icon: Icons.photo_library_rounded,
-              label: 'Fotos e vídeos',
-              url: linkPrincipal,
-              color: context.uai.info,
-              isMobile: true,
-            ),
-          if (linkPrevia.isNotEmpty)
-            _buildLinkBotao(
-              icon: Icons.play_circle_rounded,
-              label: 'Prévia do evento',
-              url: linkPrevia,
-              color: context.uai.error,
-              isMobile: true,
-            ),
-          if (linkPlaylist.isNotEmpty)
-            _buildLinkBotao(
-              icon: Icons.playlist_play_rounded,
-              label: 'Playlist',
-              url: linkPlaylist,
-              color: context.uai.success,
-              isMobile: true,
-            ),
-        ],
-      )
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (linkPrincipal.isNotEmpty)
+                  _buildLinkBotao(
+                    icon: Icons.photo_library_rounded,
+                    label: 'Fotos e vídeos',
+                    url: linkPrincipal,
+                    color: context.uai.info,
+                    isMobile: true,
+                  ),
+                if (linkPrevia.isNotEmpty)
+                  _buildLinkBotao(
+                    icon: Icons.play_circle_rounded,
+                    label: 'Prévia do evento',
+                    url: linkPrevia,
+                    color: context.uai.error,
+                    isMobile: true,
+                  ),
+                if (linkPlaylist.isNotEmpty)
+                  _buildLinkBotao(
+                    icon: Icons.playlist_play_rounded,
+                    label: 'Playlist',
+                    url: linkPlaylist,
+                    color: context.uai.success,
+                    isMobile: true,
+                  ),
+              ],
+            )
           : _buildLinkBotao(
-        icon: Icons.link_rounded,
-        label: 'Ver mais sobre este conteúdo',
-        url: linkPrincipal,
-        color: corTipo,
-        isMobile: true,
-      ),
+              icon: Icons.link_rounded,
+              label: 'Ver mais sobre este conteúdo',
+              url: linkPrincipal,
+              color: corTipo,
+              isMobile: true,
+            ),
     );
   }
 
@@ -875,11 +881,7 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.access_time_rounded,
-            size: 14,
-            color: t.textSecondary,
-          ),
+          Icon(Icons.access_time_rounded, size: 14, color: t.textSecondary),
           const SizedBox(width: 5),
           Expanded(
             child: Text(
@@ -1047,11 +1049,11 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
   }
 
   void _abrirImagemGrande(
-      BuildContext context,
-      String imageUrl,
-      int currentIndex,
-      int totalImages,
-      ) {
+    BuildContext context,
+    String imageUrl,
+    int currentIndex,
+    int totalImages,
+  ) {
     final t = context.uai;
 
     showDialog<void>(
@@ -1236,10 +1238,7 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
     return Container(
       color: t.cardAlt,
       child: Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: t.primary,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2, color: t.primary),
       ),
     );
   }
@@ -1249,17 +1248,11 @@ class _TimelineMistaWidgetState extends State<TimelineMistaWidget> {
 
     return Container(
       color: t.cardAlt,
-      child: Icon(
-        Icons.broken_image_rounded,
-        color: t.textMuted,
-      ),
+      child: Icon(Icons.broken_image_rounded, color: t.textMuted),
     );
   }
 
-  BoxDecoration _cardDecoration({
-    double? radius,
-    Color? borderColor,
-  }) {
+  BoxDecoration _cardDecoration({double? radius, Color? borderColor}) {
     final t = context.uai;
 
     return BoxDecoration(

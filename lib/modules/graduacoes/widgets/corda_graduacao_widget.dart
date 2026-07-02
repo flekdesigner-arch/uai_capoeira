@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/graduacoes/models/graduacao_model.dart';
@@ -40,9 +40,7 @@ class CordaGraduacaoWidget extends StatelessWidget {
           ),
           Positioned.fill(
             child: CustomPaint(
-              painter: CordaColorPainter(
-                cores: graduacao.cores,
-              ),
+              painter: CordaColorPainter(cores: graduacao.cores),
             ),
           ),
         ],

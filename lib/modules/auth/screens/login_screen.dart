@@ -8,6 +8,7 @@ import 'cadastro_screen.dart';
 import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_acesso_service.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/shared/services/validation_service.dart';
 
@@ -94,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _verificarAcessoENavegar(User user) async {
+  Future<void> _verificarAcessoENavegar(User user, {String? provider}) async {
     final hasAccess = await UserService.hasAccess(user.uid);
 
     if (!mounted) return;
@@ -128,6 +129,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _showPendingAccountDialog();
       return;
     }
+
+    final loginRegistrado = await UsuarioAcessoService()
+        .registrarUltimoLoginGestao(uid: user.uid, provider: provider);
+
+    debugPrint(
+      loginRegistrado
+          ? '✅ Login de gestão registrado para ${user.uid}'
+          : '⚠️ Login de gestão não foi registrado para ${user.uid}',
+    );
+
+    if (!mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
@@ -168,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      await _verificarAcessoENavegar(user);
+      await _verificarAcessoENavegar(user, provider: 'password');
     } on FirebaseAuthException catch (e) {
       _handleLoginError(e);
     } catch (e) {
@@ -248,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        await _verificarAcessoENavegar(user);
+        await _verificarAcessoENavegar(user, provider: 'google');
         return;
       }
 
@@ -294,7 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      await _verificarAcessoENavegar(user);
+      await _verificarAcessoENavegar(user, provider: 'google');
     } on FirebaseAuthException catch (e) {
       String message = 'Erro no login com Google';
 

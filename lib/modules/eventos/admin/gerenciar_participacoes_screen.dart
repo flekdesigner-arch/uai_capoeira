@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -14,10 +16,18 @@ class GerenciarParticipacoesScreen extends StatefulWidget {
 class _GerenciarParticipacoesScreenState
     extends State<GerenciarParticipacoesScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
 
   String _searchQuery = '';
   String? _filtroEvento;
   List<String> _eventosList = ['Todos'];
+  bool _checkingAccess = true;
+  bool _accessDenied = false;
+  bool _podeAdicionar = false;
+  bool _podeEditar = false;
 
   bool get _temFiltroAtivo =>
       _searchQuery.trim().isNotEmpty || _filtroEvento != null;
@@ -32,7 +42,7 @@ class _GerenciarParticipacoesScreenState
       });
     });
 
-    _carregarEventos();
+    _verificarAcesso();
   }
 
   @override
@@ -48,8 +58,8 @@ class _GerenciarParticipacoesScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -60,6 +70,50 @@ class _GerenciarParticipacoesScreenState
         .withLightness(bgIsDark ? 0.72 : 0.32)
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
+  }
+
+  Future<void> _verificarAcesso() async {
+    if (mounted) {
+      setState(() {
+        _checkingAccess = true;
+        _accessDenied = false;
+      });
+    }
+
+    final results = await Future.wait<bool>([
+      _accessGuard.canAny([
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_participantes_evento',
+        'pode_adicionar_participante_evento',
+        'pode_editar_participante_evento',
+        'pode_editar_dados_participacao_evento',
+        'pode_ver_detalhe_participacao_evento',
+        'pode_remover_participante_evento',
+      ]),
+      _accessGuard.canAnyDirect([
+        'pode_adicionar_participante_evento',
+        'pode_adcionar_aluno_a_eventos',
+        'pode_adicionar_aluno_a_eventos',
+      ]),
+      _accessGuard.canAnyDirect([
+        'pode_editar_dados_participacao_evento',
+        'pode_editar_participante_evento',
+        'pode_editar_participacao_evento',
+      ]),
+    ]);
+
+    if (!mounted) return;
+
+    setState(() {
+      _accessDenied = !results[0];
+      _podeAdicionar = results[1];
+      _podeEditar = results[2];
+      _checkingAccess = false;
+    });
+
+    if (results[0]) {
+      await _carregarEventos();
+    }
   }
 
   Future<void> _carregarEventos() async {
@@ -109,10 +163,20 @@ class _GerenciarParticipacoesScreenState
   }
 
   Future<void> _excluirParticipacao(
-      String participacaoId,
-      String alunoNome,
-      String eventoNome,
-      ) async {
+    String participacaoId,
+    String alunoNome,
+    String eventoNome,
+  ) async {
+    final permitido = await _accessGuard.revalidateAnyDirect(
+      context,
+      permissions: const [
+        'pode_remover_participante_evento',
+        'pode_remover_alunos_de_eventos',
+      ],
+      message: 'Você não tem permissão para remover participantes.',
+    );
+    if (!permitido) return;
+
     final t = context.uai;
     final error = _ensureVisible(t.error, t.surface);
 
@@ -165,10 +229,7 @@ class _GerenciarParticipacoesScreenState
                     const SizedBox(height: 14),
                     Text(
                       'Remover a participação de "$alunoNome" no evento "$eventoNome"?\n\nEssa ação não poderá ser desfeita.',
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     LayoutBuilder(
@@ -182,8 +243,9 @@ class _GerenciarParticipacoesScreenState
                             side: BorderSide(color: t.border),
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                           child: const Text(
@@ -200,11 +262,13 @@ class _GerenciarParticipacoesScreenState
                             backgroundColor: t.error,
                             foregroundColor: _readableOn(t.error),
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            textStyle:
-                            const TextStyle(fontWeight: FontWeight.w900),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                         );
@@ -259,9 +323,17 @@ class _GerenciarParticipacoesScreenState
   }
 
   Future<void> _editarParticipacao(
-      Map<String, dynamic> participacao,
-      String id,
-      ) {
+    Map<String, dynamic> participacao,
+    String id,
+  ) {
+    if (!_podeEditar) {
+      _showSnack(
+        'Você não tem permissão para editar participantes.',
+        type: _SnackType.error,
+      );
+      return Future.value();
+    }
+
     return _abrirFormulario(
       participacao: participacao,
       participacaoId: id,
@@ -270,9 +342,15 @@ class _GerenciarParticipacoesScreenState
   }
 
   Future<void> _adicionarParticipacao() {
-    return _abrirFormulario(
-      mensagemSucesso: '✅ Participação adicionada!',
-    );
+    if (!_podeAdicionar) {
+      _showSnack(
+        'Você não tem permissão para adicionar participantes.',
+        type: _SnackType.error,
+      );
+      return Future.value();
+    }
+
+    return _abrirFormulario(mensagemSucesso: '✅ Participação adicionada!');
   }
 
   Future<void> _abrirFormulario({
@@ -373,11 +451,13 @@ class _GerenciarParticipacoesScreenState
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             foregroundColor: t.textPrimary,
                             side: BorderSide(color: t.border),
-                            textStyle:
-                            const TextStyle(fontWeight: FontWeight.w900),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                         );
@@ -393,11 +473,13 @@ class _GerenciarParticipacoesScreenState
                             backgroundColor: t.primary,
                             foregroundColor: _readableOn(t.primary),
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            textStyle:
-                            const TextStyle(fontWeight: FontWeight.w900),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                         );
@@ -491,18 +573,35 @@ class _GerenciarParticipacoesScreenState
   Widget build(BuildContext context) {
     final t = context.uai;
 
+    if (_checkingAccess) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Participações',
+      );
+    }
+
+    if (_accessDenied) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Participações',
+        message: 'Você não tem permissão para acessar participantes do evento.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: t.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _adicionarParticipacao,
-        backgroundColor: t.primary,
-        foregroundColor: _readableOn(t.primary),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'NOVA',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ),
+      floatingActionButton: _podeAdicionar
+          ? FloatingActionButton.extended(
+              onPressed: _adicionarParticipacao,
+              backgroundColor: t.primary,
+              foregroundColor: _readableOn(t.primary),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'NOVA',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            )
+          : null,
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('participacoes_eventos')
@@ -569,7 +668,7 @@ class _GerenciarParticipacoesScreenState
                   child: _buildEmpty(
                     title: 'Nenhuma participação cadastrada',
                     subtitle:
-                    'Toque em Nova para cadastrar a primeira participação.',
+                        'Toque em Nova para cadastrar a primeira participação.',
                     showButton: true,
                   ),
                 )
@@ -579,7 +678,7 @@ class _GerenciarParticipacoesScreenState
                   child: _buildEmpty(
                     title: 'Nenhum resultado encontrado',
                     subtitle:
-                    'Tente limpar os filtros ou buscar por outro termo.',
+                        'Tente limpar os filtros ou buscar por outro termo.',
                     showButton: false,
                   ),
                 )
@@ -602,10 +701,7 @@ class _GerenciarParticipacoesScreenState
     );
   }
 
-  Widget _buildHero({
-    required int total,
-    required int exibindo,
-  }) {
+  Widget _buildHero({required int total, required int exibindo}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -712,17 +808,19 @@ class _GerenciarParticipacoesScreenState
               ),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                icon: Icon(
-                  Icons.close_rounded,
-                  color: onPrimary.withOpacity(0.86),
-                ),
-                onPressed: _searchController.clear,
-              )
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: onPrimary.withOpacity(0.86),
+                      ),
+                      onPressed: _searchController.clear,
+                    )
                   : null,
               filled: true,
               fillColor: onPrimary.withOpacity(0.14),
-              contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 14,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(t.inputRadius),
                 borderSide: BorderSide(color: onPrimary.withOpacity(0.16)),
@@ -773,12 +871,17 @@ class _GerenciarParticipacoesScreenState
   Widget _buildParticipacaoCard(Map<String, dynamic> participacao, String id) {
     final t = context.uai;
     final alunoNome = _safe(participacao, 'aluno_nome', 'Aluno não informado');
-    final eventoNome =
-    _safe(participacao, 'evento_nome', 'Evento não informado');
-    final tipoEvento =
-    _safe(participacao, 'tipo_evento', 'Tipo não informado');
-    final graduacao =
-    _safe(participacao, 'graduacao', 'Graduação não informada');
+    final eventoNome = _safe(
+      participacao,
+      'evento_nome',
+      'Evento não informado',
+    );
+    final tipoEvento = _safe(participacao, 'tipo_evento', 'Tipo não informado');
+    final graduacao = _safe(
+      participacao,
+      'graduacao',
+      'Graduação não informada',
+    );
     final dataEvento = _formatarData(participacao['data_evento']);
     final certificado = participacao['link_certificado']?.toString() ?? '';
     final temCertificado = certificado.trim().isNotEmpty;
@@ -839,16 +942,8 @@ class _GerenciarParticipacoesScreenState
                   runSpacing: 7,
                   children: [
                     _infoChip(Icons.calendar_month_rounded, dataEvento, t.info),
-                    _infoChip(
-                      Icons.category_rounded,
-                      tipoEvento,
-                      t.associacao,
-                    ),
-                    _infoChip(
-                      Icons.emoji_events_rounded,
-                      graduacao,
-                      t.warning,
-                    ),
+                    _infoChip(Icons.category_rounded, tipoEvento, t.associacao),
+                    _infoChip(Icons.emoji_events_rounded, graduacao, t.warning),
                     if (temCertificado)
                       _infoChip(
                         Icons.verified_rounded,
@@ -869,17 +964,20 @@ class _GerenciarParticipacoesScreenState
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => _editarParticipacao(participacao, id),
+                          onPressed: () =>
+                              _editarParticipacao(participacao, id),
                           icon: const Icon(Icons.edit_rounded, size: 18),
                           label: const Text('EDITAR'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _ensureVisible(t.info, t.cardAlt),
                             side: BorderSide(color: t.border),
-                            textStyle:
-                            const TextStyle(fontWeight: FontWeight.w900),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                         ),
@@ -891,7 +989,10 @@ class _GerenciarParticipacoesScreenState
                           onPressed: () => _abrirLink(certificado),
                           icon: const Icon(Icons.open_in_new_rounded),
                           style: IconButton.styleFrom(
-                            foregroundColor: _ensureVisible(t.success, t.cardAlt),
+                            foregroundColor: _ensureVisible(
+                              t.success,
+                              t.cardAlt,
+                            ),
                             backgroundColor: Color.alphaBlend(
                               t.success.withOpacity(0.09),
                               t.cardAlt,
@@ -1125,11 +1226,7 @@ class _GerenciarParticipacoesScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.event_busy_rounded,
-                size: 74,
-                color: t.textMuted,
-              ),
+              Icon(Icons.event_busy_rounded, size: 74, color: t.textMuted),
               const SizedBox(height: 14),
               Text(
                 title,
@@ -1169,10 +1266,7 @@ class _GerenciarParticipacoesScreenState
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -1380,8 +1474,8 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -1404,10 +1498,7 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
           .get();
 
       _alunosList = snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          'nome': doc.data()['nome'] ?? '',
-        };
+        return {'id': doc.id, 'nome': doc.data()['nome'] ?? ''};
       }).toList();
     } catch (e) {
       debugPrint('Erro ao carregar alunos: $e');
@@ -1585,116 +1676,113 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
                         Expanded(
                           child: carregando
                               ? Center(
-                            child: CircularProgressIndicator(
-                              color: accent,
-                            ),
-                          )
+                                  child: CircularProgressIndicator(
+                                    color: accent,
+                                  ),
+                                )
                               : filtrados.isEmpty
                               ? Center(
-                            child: Text(
-                              'Nenhum item encontrado.',
-                              style:
-                              TextStyle(color: t.textSecondary),
-                            ),
-                          )
-                              : ListView.separated(
-                            controller: scrollController,
-                            itemCount: filtrados.length,
-                            separatorBuilder: (_, __) =>
-                            const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final item = filtrados[index];
-                              final label =
-                                  item[labelKey]?.toString() ?? '';
-                              final subtitle =
-                                  subtitleBuilder?.call(item) ?? '';
-
-                              return Material(
-                                color: Color.alphaBlend(
-                                  accent.withOpacity(0.07),
-                                  t.cardAlt,
-                                ),
-                                borderRadius: BorderRadius.circular(
-                                  t.inputRadius,
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  borderRadius:
-                                  BorderRadius.circular(
-                                    t.inputRadius,
+                                  child: Text(
+                                    'Nenhum item encontrado.',
+                                    style: TextStyle(color: t.textSecondary),
                                   ),
-                                  onTap: () {
-                                    onSelected(item);
-                                    Navigator.pop(context);
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color:
-                                            accent.withOpacity(0.10),
-                                            borderRadius:
-                                            BorderRadius.circular(
-                                              t.buttonRadius,
-                                            ),
-                                          ),
-                                          child:
-                                          Icon(icon, color: accent),
+                                )
+                              : ListView.separated(
+                                  controller: scrollController,
+                                  itemCount: filtrados.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final item = filtrados[index];
+                                    final label =
+                                        item[labelKey]?.toString() ?? '';
+                                    final subtitle =
+                                        subtitleBuilder?.call(item) ?? '';
+
+                                    return Material(
+                                      color: Color.alphaBlend(
+                                        accent.withOpacity(0.07),
+                                        t.cardAlt,
+                                      ),
+                                      borderRadius: BorderRadius.circular(
+                                        t.inputRadius,
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(
+                                          t.inputRadius,
                                         ),
-                                        const SizedBox(width: 11),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        onTap: () {
+                                          onSelected(item);
+                                          Navigator.pop(context);
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: Row(
                                             children: [
-                                              Text(
-                                                label,
-                                                maxLines: 1,
-                                                overflow: TextOverflow
-                                                    .ellipsis,
-                                                style: TextStyle(
-                                                  color:
-                                                  t.textPrimary,
-                                                  fontWeight:
-                                                  FontWeight.w900,
+                                              Container(
+                                                width: 42,
+                                                height: 42,
+                                                decoration: BoxDecoration(
+                                                  color: accent.withOpacity(
+                                                    0.10,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        t.buttonRadius,
+                                                      ),
+                                                ),
+                                                child: Icon(
+                                                  icon,
+                                                  color: accent,
                                                 ),
                                               ),
-                                              if (subtitle
-                                                  .isNotEmpty) ...[
-                                                const SizedBox(
-                                                  height: 2,
+                                              const SizedBox(width: 11),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      label,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: t.textPrimary,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                    if (subtitle
+                                                        .isNotEmpty) ...[
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        subtitle,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color:
+                                                              t.textSecondary,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
                                                 ),
-                                                Text(
-                                                  subtitle,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                  TextOverflow
-                                                      .ellipsis,
-                                                  style: TextStyle(
-                                                    color: t
-                                                        .textSecondary,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
+                                              ),
+                                              Icon(
+                                                Icons.chevron_right_rounded,
+                                                color: accent,
+                                              ),
                                             ],
                                           ),
                                         ),
-                                        Icon(
-                                          Icons.chevron_right_rounded,
-                                          color: accent,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
                         ),
                       ],
                     ),
@@ -1917,7 +2005,9 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
                             height: 48,
                             decoration: BoxDecoration(
                               color: onPrimary.withOpacity(0.14),
-                              borderRadius: BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                               border: Border.all(
                                 color: onPrimary.withOpacity(0.16),
                               ),
@@ -1989,7 +2079,7 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
                           icon: Icons.info_rounded,
                           title: 'Informações da participação',
                           subtitle:
-                          'Dados exibidos no histórico do aluno e certificados.',
+                              'Dados exibidos no histórico do aluno e certificados.',
                           color: t.associacao,
                           children: [
                             TextFormField(
@@ -2126,19 +2216,21 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
                 onPressed: _isLoading ? null : _salvar,
                 icon: _isLoading
                     ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: _readableOn(t.primary),
-                  ),
-                )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _readableOn(t.primary),
+                        ),
+                      )
                     : const Icon(Icons.save_rounded),
-                label: Text(_isLoading
-                    ? 'SALVANDO...'
-                    : editando
-                    ? 'ATUALIZAR'
-                    : 'SALVAR'),
+                label: Text(
+                  _isLoading
+                      ? 'SALVANDO...'
+                      : editando
+                      ? 'ATUALIZAR'
+                      : 'SALVAR',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: t.primary,
                   foregroundColor: _readableOn(t.primary),
@@ -2170,9 +2262,4 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
   }
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-  info,
-}
+enum _SnackType { success, error, warning, info }

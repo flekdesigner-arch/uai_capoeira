@@ -24,9 +24,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class AreaAlunoEventosService {
   final FirebaseFirestore _db;
 
-  AreaAlunoEventosService({
-    FirebaseFirestore? firestore,
-  }) : _db = firestore ?? FirebaseFirestore.instance;
+  AreaAlunoEventosService({FirebaseFirestore? firestore})
+    : _db = firestore ?? FirebaseFirestore.instance;
 
   Future<List<AreaAlunoEventoResumo>> listarEventosEmAndamentoDoAluno({
     required Map<String, dynamic> aluno,
@@ -291,7 +290,8 @@ class AreaAlunoEventosService {
 
       return _GraduacaoNovaInfo(
         id: graduacaoId,
-        nome: nomeDireto ??
+        nome:
+            nomeDireto ??
             _textoLimpo(
               data['nome_graduacao'] ??
                   data['nome'] ??
@@ -299,26 +299,32 @@ class AreaAlunoEventosService {
                   data['descricao_completa'],
             ) ??
             '',
-        cor1: cor1Direta ??
+        cor1:
+            cor1Direta ??
             _textoLimpo(data['hex_cor1'] ?? data['graduacao_cor1']) ??
             '',
-        cor2: cor2Direta ??
+        cor2:
+            cor2Direta ??
             _textoLimpo(data['hex_cor2'] ?? data['graduacao_cor2']) ??
             '',
-        ponta1: ponta1Direta ??
+        ponta1:
+            ponta1Direta ??
             _textoLimpo(data['hex_ponta1'] ?? data['graduacao_ponta1']) ??
             '',
-        ponta2: ponta2Direta ??
+        ponta2:
+            ponta2Direta ??
             _textoLimpo(data['hex_ponta2'] ?? data['graduacao_ponta2']) ??
             '',
-        frase: fraseDireta ??
+        frase:
+            fraseDireta ??
             _textoLimpo(
               data['frase'] ??
                   data['frase_certificado'] ??
                   data['fraseCertificado'],
             ) ??
             '',
-        certificadoOuDiploma: certificadoOuDiplomaDireto ??
+        certificadoOuDiploma:
+            certificadoOuDiplomaDireto ??
             _textoLimpo(
               data['certificado_ou_diploma'] ??
                   data['certificadoOuDiploma'] ??
@@ -486,21 +492,21 @@ class AreaAlunoEventoResumo {
     required _PatrocinioParticipacaoInfo patrocinioInfo,
     required _GraduacaoNovaInfo graduacaoNovaInfo,
   }) {
-    final nomeEvento = _textoLimpo(
-      participacao['evento_nome'] ??
-          participacao['nome_evento'] ??
-          evento['nome'] ??
-          evento['titulo'],
-    ) ??
+    final nomeEvento =
+        _textoLimpo(
+          participacao['evento_nome'] ??
+              participacao['nome_evento'] ??
+              evento['nome'] ??
+              evento['titulo'],
+        ) ??
         'Evento';
 
-    final tipoEvento = _textoLimpo(
-      participacao['tipo_evento'] ?? evento['tipo'],
-    ) ??
-        'EVENTO';
+    final tipoEvento =
+        _textoLimpo(participacao['tipo_evento'] ?? evento['tipo']) ?? 'EVENTO';
 
     final statusEvento = _textoLimpo(evento['status']) ?? 'andamento';
-    final statusParticipacao = _textoLimpo(participacao['status']) ?? 'pendente';
+    final statusParticipacao =
+        _textoLimpo(participacao['status']) ?? 'pendente';
 
     final dataEvento = _converterData(
       participacao['data_evento'] ??
@@ -547,18 +553,20 @@ class AreaAlunoEventoResumo {
       statusParticipacao: statusParticipacao,
       dataEvento: dataEvento,
       cidade: _textoLimpo(evento['cidade'] ?? participacao['cidade']) ?? '',
-      local: _textoLimpo(
-        evento['local'] ??
-            evento['local_evento'] ??
-            participacao['local_evento'],
-      ) ??
+      local:
+          _textoLimpo(
+            evento['local'] ??
+                evento['local_evento'] ??
+                participacao['local_evento'],
+          ) ??
           '',
       logoEventoUrl: _extrairLogoEvento(evento, participacao) ?? '',
-      graduacaoAtual: _textoLimpo(
-        participacao['graduacao'] ??
-            participacao['graduacao_atual'] ??
-            participacao['graduacaoAtual'],
-      ) ??
+      graduacaoAtual:
+          _textoLimpo(
+            participacao['graduacao'] ??
+                participacao['graduacao_atual'] ??
+                participacao['graduacaoAtual'],
+          ) ??
           '',
       graduacaoNova: graduacaoNovaInfo.nome,
       graduacaoNovaId: graduacaoNovaInfo.id,
@@ -568,24 +576,27 @@ class AreaAlunoEventoResumo {
       graduacaoNovaPonta2: graduacaoNovaInfo.ponta2,
       graduacaoNovaFrase: graduacaoNovaInfo.frase,
       certificadoOuDiploma: graduacaoNovaInfo.certificadoOuDiploma,
-      alunoNome: _textoLimpo(
-        participacao['aluno_nome'] ??
-            participacao['nome_aluno'] ??
-            participacao['nome'],
-      ) ??
+      alunoNome:
+          _textoLimpo(
+            participacao['aluno_nome'] ??
+                participacao['nome_aluno'] ??
+                participacao['nome'],
+          ) ??
           'Aluno',
-      alunoCpf: _textoLimpo(
-        participacao['cpf'] ??
-            participacao['aluno_cpf'] ??
-            participacao['cpf_aluno'],
-      ) ??
+      alunoCpf:
+          _textoLimpo(
+            participacao['cpf'] ??
+                participacao['aluno_cpf'] ??
+                participacao['cpf_aluno'],
+          ) ??
           '',
-      alunoSexo: _textoLimpo(
-        participacao['sexo'] ??
-            participacao['aluno_sexo'] ??
-            participacao['sexo_aluno'] ??
-            participacao['genero'],
-      ) ??
+      alunoSexo:
+          _textoLimpo(
+            participacao['sexo'] ??
+                participacao['aluno_sexo'] ??
+                participacao['sexo_aluno'] ??
+                participacao['genero'],
+          ) ??
           '',
       tipoCamisa: _tipoCamisaLabel(participacao['tipo_camisa']),
       modelagemCamisa: _modelagemCamisaLabel(participacao['modelagem_camisa']),
@@ -771,9 +782,9 @@ class AreaAlunoEventoResumo {
   }
 
   static String? _extrairLogoEvento(
-      Map<String, dynamic> evento,
-      Map<String, dynamic> participacao,
-      ) {
+    Map<String, dynamic> evento,
+    Map<String, dynamic> participacao,
+  ) {
     final candidatos = <dynamic>[
       evento['linkBanner'],
       evento['link_banner'],

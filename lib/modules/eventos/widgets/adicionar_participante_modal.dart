@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
@@ -17,10 +17,12 @@ class AdicionarParticipanteModal extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<AdicionarParticipanteModal> createState() => _AdicionarParticipanteModalState();
+  State<AdicionarParticipanteModal> createState() =>
+      _AdicionarParticipanteModalState();
 }
 
-class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal> {
+class _AdicionarParticipanteModalState
+    extends State<AdicionarParticipanteModal> {
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -28,7 +30,8 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -79,7 +82,6 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     );
   }
 
-
   final GraduacaoService _graduacaoService = GraduacaoService();
 
   String? _tamanhoCamisaSelecionado;
@@ -100,7 +102,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     super.initState();
 
     valorInscricao = widget.evento.valorInscricao;
-    valorCamisa = widget.evento.temCamisa ? (widget.evento.valorCamisa ?? 0) : 0;
+    valorCamisa = widget.evento.temCamisa
+        ? (widget.evento.valorCamisa ?? 0)
+        : 0;
     valorTotal = valorInscricao + valorCamisa;
 
     debugPrint('🎯 Modal aberto para: ${widget.aluno['nome']}');
@@ -188,7 +192,10 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     final lista = widget.evento.tamanhosDisponiveis;
 
     if (lista.isNotEmpty) {
-      return lista.map((e) => e.toString().trim().toUpperCase()).where((e) => e.isNotEmpty).toList();
+      return lista
+          .map((e) => e.toString().trim().toUpperCase())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     return const [
@@ -287,9 +294,18 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
   // 🔥 PARSER DE DATA BRASILEIRA
   DateTime _parseDataBrasileira(String dataStr) {
     final meses = {
-      'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
-      'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
-      'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+      'janeiro': 1,
+      'fevereiro': 2,
+      'março': 3,
+      'abril': 4,
+      'maio': 5,
+      'junho': 6,
+      'julho': 7,
+      'agosto': 8,
+      'setembro': 9,
+      'outubro': 10,
+      'novembro': 11,
+      'dezembro': 12,
     };
 
     final parts = dataStr.toLowerCase().split(' ');
@@ -317,13 +333,17 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
   String _determinarCategoriaPorIdade() {
     debugPrint('🔍 ===== DETERMINANDO CATEGORIA =====');
     debugPrint('📦 Dados do aluno:');
-    debugPrint('   - data_nascimento: ${widget.aluno['data_nascimento']} (${widget.aluno['data_nascimento'].runtimeType})');
+    debugPrint(
+      '   - data_nascimento: ${widget.aluno['data_nascimento']} (${widget.aluno['data_nascimento'].runtimeType})',
+    );
     debugPrint('   - tipo_publico: ${widget.aluno['tipo_publico']}');
     debugPrint('   - graduacao: ${widget.aluno['graduacao']}');
 
     // 🔥 PRIORIDADE 1: Calcular pela data de nascimento (MAIS IMPORTANTE!)
     if (widget.aluno['data_nascimento'] != null) {
-      debugPrint('📅 data_nascimento encontrado: ${widget.aluno['data_nascimento']}');
+      debugPrint(
+        '📅 data_nascimento encontrado: ${widget.aluno['data_nascimento']}',
+      );
       final dataNascimento = _converterData(widget.aluno['data_nascimento']);
 
       if (dataNascimento != null) {
@@ -343,7 +363,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
 
     // 🔥 PRIORIDADE 2: Se não tem data, usa o tipo_publico do aluno (FALLBACK)
     if (widget.aluno['tipo_publico'] != null) {
-      debugPrint('⚠️ USANDO FALLBACK - tipo_publico: ${widget.aluno['tipo_publico']}');
+      debugPrint(
+        '⚠️ USANDO FALLBACK - tipo_publico: ${widget.aluno['tipo_publico']}',
+      );
       return widget.aluno['tipo_publico'];
     }
 
@@ -370,7 +392,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       return true;
     }
 
-    debugPrint('❌ Ainda não pode ir para ADULTO (nível $nivelAtual, idade $idade)');
+    debugPrint(
+      '❌ Ainda não pode ir para ADULTO (nível $nivelAtual, idade $idade)',
+    );
     return false;
   }
 
@@ -403,17 +427,22 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     debugPrint('📊 Graduação ID: $graduacaoAtualId');
 
     // 🔥 CASO 1: Aluno SEM graduação
-    if (nivelAtual == null || nivelAtual == 0 ||
-        graduacaoAtual == null || graduacaoAtual == 'SEM GRADUÇÃO') {
-
+    if (nivelAtual == null ||
+        nivelAtual == 0 ||
+        graduacaoAtual == null ||
+        graduacaoAtual == 'SEM GRADUÇÃO') {
       debugPrint('📌 CASO 1: Aluno SEM graduação');
 
       final String categoria = _determinarCategoriaPorIdade();
       debugPrint('📌 Categoria determinada: $categoria');
 
       // Busca TODAS as graduações da categoria
-      final todasGraduacoes = await _graduacaoService.buscarGraduacoesPorTipo(categoria);
-      debugPrint('📚 Total de graduações $categoria: ${todasGraduacoes.length}');
+      final todasGraduacoes = await _graduacaoService.buscarGraduacoesPorTipo(
+        categoria,
+      );
+      debugPrint(
+        '📚 Total de graduações $categoria: ${todasGraduacoes.length}',
+      );
 
       if (todasGraduacoes.isEmpty) {
         debugPrint('❌ NENHUMA graduação encontrada para $categoria!');
@@ -423,7 +452,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       // Filtra por idade mínima (se tiver data)
       if (widget.aluno['data_nascimento'] != null) {
         final dataNascimento = _converterData(widget.aluno['data_nascimento']);
-        final idade = dataNascimento != null ? _calcularIdade(dataNascimento) : 0;
+        final idade = dataNascimento != null
+            ? _calcularIdade(dataNascimento)
+            : 0;
 
         final viaveis = todasGraduacoes.where((grad) {
           final idadeMinima = grad['idade_minima'] ?? 0;
@@ -452,7 +483,8 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       graduacaoAtualObj = await _graduacaoService.buscarPorId(graduacaoAtualId);
     }
 
-    final String tipoAtual = graduacaoAtualObj?['tipo_publico'] ??
+    final String tipoAtual =
+        graduacaoAtualObj?['tipo_publico'] ??
         (graduacaoAtual?.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
 
     debugPrint('📌 Tipo da graduação atual: $tipoAtual');
@@ -461,11 +493,21 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     final todasGraduacoes = await _graduacaoService.buscarTodasGraduacoes();
 
     // Separa por categoria
-    final graduacoesInfantis = todasGraduacoes.where((g) => g['tipo_publico'] == 'INFANTIL').toList();
-    final graduacoesAdultas = todasGraduacoes.where((g) => g['tipo_publico'] == 'ADULTO').toList();
+    final graduacoesInfantis = todasGraduacoes
+        .where((g) => g['tipo_publico'] == 'INFANTIL')
+        .toList();
+    final graduacoesAdultas = todasGraduacoes
+        .where((g) => g['tipo_publico'] == 'ADULTO')
+        .toList();
 
-    graduacoesInfantis.sort((a, b) => (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0));
-    graduacoesAdultas.sort((a, b) => (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0));
+    graduacoesInfantis.sort(
+      (a, b) =>
+          (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0),
+    );
+    graduacoesAdultas.sort(
+      (a, b) =>
+          (a['nivel_graduacao'] ?? 0).compareTo(b['nivel_graduacao'] ?? 0),
+    );
 
     List<Map<String, dynamic>> resultados = [];
 
@@ -474,8 +516,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       debugPrint('📌 Aluno INFANTIL');
 
       // 1. Próximas graduações INFANTIS
-      final proximasInfantis = graduacoesInfantis.where((g) =>
-      (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0)).toList();
+      final proximasInfantis = graduacoesInfantis
+          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .toList();
       resultados.addAll(proximasInfantis);
       debugPrint('   • Próximas INFANTIS: ${proximasInfantis.length}');
 
@@ -503,8 +546,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     // 🔥 SE É ADULTO ATUALMENTE
     else {
       debugPrint('📌 Aluno ADULTO - só pode ir para níveis maiores');
-      final proximasAdultas = graduacoesAdultas.where((g) =>
-      (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0)).toList();
+      final proximasAdultas = graduacoesAdultas
+          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .toList();
       resultados.addAll(proximasAdultas);
       debugPrint('   • Próximas ADULTAS: ${proximasAdultas.length}');
     }
@@ -570,9 +614,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                   _buildValoresSection(),
                   const SizedBox(height: 16),
 
-                  if (widget.isBatizado) ...[
-                    _buildGraduacaoSection(),
-                  ],
+                  if (widget.isBatizado) ...[_buildGraduacaoSection()],
                 ],
               ),
             ),
@@ -605,9 +647,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 : null,
             child: widget.aluno['foto'] == null
                 ? Text(
-              widget.aluno['nome'][0].toUpperCase(),
-              style: TextStyle(color: context.uai.error),
-            )
+                    widget.aluno['nome'][0].toUpperCase(),
+                    style: TextStyle(color: context.uai.error),
+                  )
                 : null,
           ),
           SizedBox(width: 12),
@@ -617,17 +659,11 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
               children: [
                 Text(
                   widget.aluno['nome'],
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 Text(
                   'Graduação: $graduacaoText',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: context.uai.error,
-                  ),
+                  style: TextStyle(fontSize: 13, color: context.uai.error),
                 ),
               ],
             ),
@@ -643,7 +679,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
     final tipos = _tiposEvento();
 
     if (!modelagens.contains(_modelagemCamisaSelecionada)) {
-      _modelagemCamisaSelecionada = modelagens.isNotEmpty ? modelagens.first : 'NORMAL';
+      _modelagemCamisaSelecionada = modelagens.isNotEmpty
+          ? modelagens.first
+          : 'NORMAL';
     }
 
     if (!tipos.contains(_tipoCamisaSelecionado)) {
@@ -687,8 +725,9 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 onChanged: (value) {
                   if (value == null) return;
                   setState(() {
-                    _modelagemCamisaSelecionada =
-                        _normalizarModelagemCamisa(value);
+                    _modelagemCamisaSelecionada = _normalizarModelagemCamisa(
+                      value,
+                    );
                   });
                 },
               ),
@@ -721,10 +760,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 ),
                 dropdownColor: context.uai.surface,
                 items: tamanhos.map((tamanho) {
-                  return DropdownMenuItem(
-                    value: tamanho,
-                    child: Text(tamanho),
-                  );
+                  return DropdownMenuItem(value: tamanho, child: Text(tamanho));
                 }).toList(),
                 onChanged: (value) {
                   setState(() {
@@ -743,12 +779,15 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 ),
                 child: Text(
                   'Selecionado: '
-                      '${_modelagemCamisaLabel(_modelagemCamisaSelecionada)} • '
-                      '${_tipoCamisaLabel(_tipoCamisaSelecionado)} • '
-                      '${_tamanhoCamisaSelecionado ?? 'sem tamanho'}'
-                      ' • R\$ ${valorCamisa.toStringAsFixed(2).replaceAll('.', ',')}',
+                  '${_modelagemCamisaLabel(_modelagemCamisaSelecionada)} • '
+                  '${_tipoCamisaLabel(_tipoCamisaSelecionado)} • '
+                  '${_tamanhoCamisaSelecionado ?? 'sem tamanho'}'
+                  ' • R\$ ${valorCamisa.toStringAsFixed(2).replaceAll('.', ',')}',
                   style: TextStyle(
-                    color: _ensureVisible(context.uai.info, context.uai.surface),
+                    color: _ensureVisible(
+                      context.uai.info,
+                      context.uai.surface,
+                    ),
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                   ),
@@ -767,10 +806,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       children: [
         Text(
           '💰 Valores',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         SizedBox(height: 8),
         Container(
@@ -799,18 +835,12 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 Divider(height: 16),
                 Text(
                   'Total a pagar: R\$ ${valorTotal.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 if (widget.evento.permiteParcelamento)
                   Text(
                     'Parcelas: até ${widget.evento.maxParcelas}x',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.uai.success,
-                    ),
+                    style: TextStyle(fontSize: 12, color: context.uai.success),
                   ),
               ],
             ),
@@ -826,10 +856,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       children: [
         const Text(
           '🎓 Graduação',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
 
@@ -883,41 +910,60 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
 
   Widget _buildDropdownGraduacao(List<Map<String, dynamic>> graduacoes) {
     // Agrupa por tipo
-    final infantil = graduacoes.where((g) => g['tipo_publico'] == 'INFANTIL').toList();
-    final adulto = graduacoes.where((g) => g['tipo_publico'] == 'ADULTO').toList();
+    final infantil = graduacoes
+        .where((g) => g['tipo_publico'] == 'INFANTIL')
+        .toList();
+    final adulto = graduacoes
+        .where((g) => g['tipo_publico'] == 'ADULTO')
+        .toList();
 
     List<DropdownMenuItem<String>> items = [];
 
     if (infantil.isNotEmpty) {
-      items.add(DropdownMenuItem(
-        value: null,
-        enabled: false,
-        child: Padding(
-          padding: EdgeInsets.only(top: 4, bottom: 2),
-          child: Text('👶 GRADUAÇÕES INFANTIS',
-              style: TextStyle(fontWeight: FontWeight.bold, color: context.uai.info, fontSize: 13)),
+      items.add(
+        DropdownMenuItem(
+          value: null,
+          enabled: false,
+          child: Padding(
+            padding: EdgeInsets.only(top: 4, bottom: 2),
+            child: Text(
+              '👶 GRADUAÇÕES INFANTIS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: context.uai.info,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ),
-      ));
+      );
       items.addAll(infantil.map((grad) => _buildMenuItem(grad)));
     }
 
     if (adulto.isNotEmpty) {
       if (infantil.isNotEmpty) {
-        items.add(const DropdownMenuItem(
-          enabled: false,
-          child: Divider(height: 16),
-        ));
+        items.add(
+          const DropdownMenuItem(enabled: false, child: Divider(height: 16)),
+        );
       }
 
-      items.add(DropdownMenuItem(
-        value: null,
-        enabled: false,
-        child: Padding(
-          padding: EdgeInsets.only(top: 4, bottom: 2),
-          child: Text('👨 GRADUAÇÕES ADULTAS',
-              style: TextStyle(fontWeight: FontWeight.bold, color: context.uai.associacao, fontSize: 13)),
+      items.add(
+        DropdownMenuItem(
+          value: null,
+          enabled: false,
+          child: Padding(
+            padding: EdgeInsets.only(top: 4, bottom: 2),
+            child: Text(
+              '👨 GRADUAÇÕES ADULTAS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: context.uai.associacao,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ),
-      ));
+      );
       items.addAll(adulto.map((grad) => _buildMenuItem(grad)));
     }
 
@@ -940,7 +986,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 setState(() {
                   _graduacaoSelecionadaId = selectedId;
                   _graduacaoSelecionada = graduacoes.firstWhere(
-                        (g) => g['id'] == selectedId,
+                    (g) => g['id'] == selectedId,
                     orElse: () => <String, dynamic>{},
                   );
                 });
@@ -953,15 +999,13 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
             padding: EdgeInsets.only(top: 8),
             child: Text(
               'Nível: ${_graduacaoSelecionada?['nivel_graduacao'] ?? ''}',
-              style: TextStyle(
-                fontSize: 12,
-                color: context.uai.success,
-              ),
+              style: TextStyle(fontSize: 12, color: context.uai.success),
             ),
           ),
       ],
     );
   }
+
   DropdownMenuItem<String> _buildMenuItem(Map<String, dynamic> grad) {
     return DropdownMenuItem<String>(
       value: grad['id'],
@@ -977,9 +1021,15 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: [
-                    Color(int.parse(grad['hex_cor1'].replaceFirst('#', '0xff'))),
-                    Color(int.parse(grad['hex_cor2']?.replaceFirst('#', '0xff') ??
-                        grad['hex_cor1'].replaceFirst('#', '0xff'))),
+                    Color(
+                      int.parse(grad['hex_cor1'].replaceFirst('#', '0xff')),
+                    ),
+                    Color(
+                      int.parse(
+                        grad['hex_cor2']?.replaceFirst('#', '0xff') ??
+                            grad['hex_cor1'].replaceFirst('#', '0xff'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1002,7 +1052,8 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     TextSpan(
-                      text: ' • Nv ${grad['nivel_graduacao']} • Id ${grad['idade_minima']}+',
+                      text:
+                          ' • Nv ${grad['nivel_graduacao']} • Id ${grad['idade_minima']}+',
                       style: TextStyle(
                         fontSize: 11,
                         color: context.uai.textSecondary,
@@ -1017,6 +1068,7 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
       ),
     );
   }
+
   Widget _buildBotoes() {
     return Row(
       children: [
@@ -1069,9 +1121,13 @@ class _AdicionarParticipanteModalState extends State<AdicionarParticipanteModal>
 
     Navigator.pop(context, {
       'tamanhoCamisa': _tamanhoCamisaSelecionado,
-      'modelagemCamisa': _normalizarModelagemCamisa(_modelagemCamisaSelecionada),
+      'modelagemCamisa': _normalizarModelagemCamisa(
+        _modelagemCamisaSelecionada,
+      ),
       'tipoCamisa': _normalizarTipoCamisa(_tipoCamisaSelecionado),
-      'modelagem_camisa': _normalizarModelagemCamisa(_modelagemCamisaSelecionada),
+      'modelagem_camisa': _normalizarModelagemCamisa(
+        _modelagemCamisaSelecionada,
+      ),
       'tipo_camisa': _normalizarTipoCamisa(_tipoCamisaSelecionado),
       'valorCamisa': valorCamisa,
       'valor_camisa': valorCamisa,

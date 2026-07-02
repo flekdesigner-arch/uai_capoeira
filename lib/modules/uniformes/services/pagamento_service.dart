@@ -46,7 +46,6 @@ class PagamentoService {
 
       // 🔥 ATUALIZA O TOTAL PAGO NA PARTICIPAÇÃO (EM ANDAMENTO)
       await _atualizarTotalPago(eventoId, participacaoId);
-
     } catch (e) {
       debugPrint('❌ Erro ao registrar pagamento: $e');
       rethrow;
@@ -98,7 +97,10 @@ class PagamentoService {
   }
 
   // 🔥 ATUALIZA O TOTAL PAGO NA COLEÇÃO EM ANDAMENTO
-  Future<void> _atualizarTotalPago(String eventoId, String participacaoId) async {
+  Future<void> _atualizarTotalPago(
+    String eventoId,
+    String participacaoId,
+  ) async {
     try {
       final totalPago = await calcularTotalPago(
         eventoId: eventoId,
@@ -126,9 +128,9 @@ class PagamentoService {
             .collection('participacoes_eventos')
             .doc(participacaoId)
             .update({
-          'total_pago': totalPago,
-          'atualizado_em': FieldValue.serverTimestamp(),
-        });
+              'total_pago': totalPago,
+              'atualizado_em': FieldValue.serverTimestamp(),
+            });
         debugPrint('✅ Total pago atualizado na FINALIZADA');
       }
 
@@ -139,14 +141,14 @@ class PagamentoService {
           .collection('participacoes')
           .doc(participacaoId)
           .update({
-        'total_pago': totalPago,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
-
+            'total_pago': totalPago,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       debugPrint('❌ Erro ao atualizar total_pago: $e');
     }
   }
+
   // Excluir um pagamento
   Future<void> excluirPagamento({
     required String eventoId,

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:typed_data';
@@ -36,7 +36,8 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -47,7 +48,6 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
-
 
   MensagemAniversario? _mensagemAtual;
   bool _carregando = true;
@@ -111,8 +111,9 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
     try {
       if (Platform.isAndroid) {
         // Usar MethodChannel para chamar o MediaScanner no Android
-        await MethodChannel('com.example.uai_capoeira/media')
-            .invokeMethod('scanFile', {'path': path});
+        await MethodChannel(
+          'com.example.uai_capoeira/media',
+        ).invokeMethod('scanFile', {'path': path});
       }
     } catch (e) {
       print('Erro ao escanear arquivo: $e');
@@ -136,9 +137,13 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
 
       if (status.isGranted) {
         // Capturar o widget como imagem
-        RenderRepaintBoundary boundary = _repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+        RenderRepaintBoundary boundary =
+            _repaintKey.currentContext!.findRenderObject()
+                as RenderRepaintBoundary;
         ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-        ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        ByteData? byteData = await image.toByteData(
+          format: ui.ImageByteFormat.png,
+        );
         Uint8List pngBytes = byteData!.buffer.asUint8List();
 
         // Diretório de destino
@@ -162,7 +167,8 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
 
         if (directory != null) {
           // Nome do arquivo
-          String fileName = 'arte_aniversario_${DateTime.now().millisecondsSinceEpoch}.png';
+          String fileName =
+              'arte_aniversario_${DateTime.now().millisecondsSinceEpoch}.png';
           String filePath = '${directory.path}/$fileName';
 
           // Salvar arquivo
@@ -205,8 +211,8 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
       builder: (context) => AlertDialog(
         title: Text('Permissão necessária'),
         content: Text(
-            'Precisamos de permissão para salvar a arte no seu dispositivo. '
-                'Deseja abrir as configurações e permitir o acesso?'
+          'Precisamos de permissão para salvar a arte no seu dispositivo. '
+          'Deseja abrir as configurações e permitir o acesso?',
         ),
         actions: [
           TextButton(
@@ -263,13 +269,17 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                 child: Icon(Icons.photo_library, color: context.uai.info),
               ),
               title: Text('Abrir Galeria'),
-              subtitle: Text('Ver a arte na galeria', style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                'Ver a arte na galeria',
+                style: TextStyle(fontSize: 12),
+              ),
               onTap: () async {
                 Navigator.pop(context);
                 if (Platform.isAndroid) {
                   try {
-                    await MethodChannel('com.example.uai_capoeira/media')
-                        .invokeMethod('openGallery');
+                    await MethodChannel(
+                      'com.example.uai_capoeira/media',
+                    ).invokeMethod('openGallery');
                   } catch (e) {
                     // Se não conseguir abrir a galeria, mostra mensagem
                     if (mounted) {
@@ -295,7 +305,10 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                 child: Icon(Icons.share, color: context.uai.success),
               ),
               title: Text('Compartilhar'),
-              subtitle: Text('Enviar via WhatsApp ou outros apps', style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                'Enviar via WhatsApp ou outros apps',
+                style: TextStyle(fontSize: 12),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _compartilharArte(filePath);
@@ -313,7 +326,10 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                 child: Icon(Icons.folder_open, color: context.uai.warning),
               ),
               title: Text('Abrir Pasta'),
-              subtitle: Text('Ver arquivo no gerenciador de arquivos', style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                'Ver arquivo no gerenciador de arquivos',
+                style: TextStyle(fontSize: 12),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 // Abrir pasta não é fácil, então mostra localização
@@ -351,12 +367,13 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
     } catch (e) {
       print('Erro ao compartilhar: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao compartilhar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao compartilhar: $e')));
       }
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -366,8 +383,15 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
           'Arte de Aniversário',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         centerTitle: true,
         actions: [
@@ -380,18 +404,18 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
       ),
       body: _carregando
           ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: context.uai.error),
-            SizedBox(height: 20),
-            Text(
-              'Gerando arte especial...',
-              style: TextStyle(color: context.uai.textSecondary),
-            ),
-          ],
-        ),
-      )
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: context.uai.error),
+                  SizedBox(height: 20),
+                  Text(
+                    'Gerando arte especial...',
+                    style: TextStyle(color: context.uai.textSecondary),
+                  ),
+                ],
+              ),
+            )
           : _buildArte(),
     );
   }
@@ -458,7 +482,9 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                   width: quadradoSize,
                                   height: quadradoSize,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(quadradoSize * 0.05),
+                                    borderRadius: BorderRadius.circular(
+                                      quadradoSize * 0.05,
+                                    ),
                                     border: Border.all(
                                       color: Colors.white,
                                       width: 3,
@@ -472,26 +498,41 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                     ],
                                   ),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(quadradoSize * 0.05),
+                                    borderRadius: BorderRadius.circular(
+                                      quadradoSize * 0.05,
+                                    ),
                                     child: widget.fotoUrl != null
                                         ? CachedNetworkImage(
-                                      imageUrl: widget.fotoUrl!,
-                                      fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(
-                                        color: context.uai.border,
-                                        child: Center(
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        ),
-                                      ),
-                                      errorWidget: (context, url, error) => Container(
-                                        color: context.uai.border,
-                                        child: Icon(Icons.person, size: quadradoSize * 0.3),
-                                      ),
-                                    )
+                                            imageUrl: widget.fotoUrl!,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) =>
+                                                Container(
+                                                  color: context.uai.border,
+                                                  child: Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  ),
+                                                ),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    Container(
+                                                      color: context.uai.border,
+                                                      child: Icon(
+                                                        Icons.person,
+                                                        size:
+                                                            quadradoSize * 0.3,
+                                                      ),
+                                                    ),
+                                          )
                                         : Container(
-                                      color: context.uai.border,
-                                      child: Icon(Icons.person, size: quadradoSize * 0.3),
-                                    ),
+                                            color: context.uai.border,
+                                            child: Icon(
+                                              Icons.person,
+                                              size: quadradoSize * 0.3,
+                                            ),
+                                          ),
                                   ),
                                 ),
                               ),
@@ -506,7 +547,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 38 * (alturaReal/1600 * 1.3),
+                                    fontSize: 38 * (alturaReal / 1600 * 1.3),
                                     fontWeight: FontWeight.bold,
                                     fontFamily: 'Arial',
                                     shadows: const [
@@ -537,13 +578,17 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                     children: [
                                       for (var i = 0; i < linhas.length; i++)
                                         Padding(
-                                          padding: EdgeInsets.symmetric(vertical: 0),
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 0,
+                                          ),
                                           child: Text(
                                             linhas[i],
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               color: Colors.white,
-                                              fontSize: 32 * (alturaReal/1600 * 1.3),
+                                              fontSize:
+                                                  32 *
+                                                  (alturaReal / 1600 * 1.3),
                                               fontFamily: 'Arial',
                                               fontWeight: FontWeight.w600,
                                               height: 1.0,
@@ -610,7 +655,10 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
               width: double.infinity,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: context.uai.primary.withOpacity(0.5), width: 2),
+                border: Border.all(
+                  color: context.uai.primary.withOpacity(0.5),
+                  width: 2,
+                ),
               ),
               child: Material(
                 color: Colors.transparent,

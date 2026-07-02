@@ -1,8 +1,9 @@
-﻿import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/admin/criar_evento_screen.dart';
@@ -19,6 +20,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
   final TextEditingController _searchController = TextEditingController();
   final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
 
   String _searchQuery = '';
   String _statusFiltro = 'todos';
@@ -28,6 +32,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   bool _podeEditarEvento = false;
   bool _podeExcluirEvento = false;
   bool _carregandoPermissoes = true;
+  bool _acessoNegado = false;
 
   @override
   void initState() {
@@ -35,7 +40,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
 
     _searchController.addListener(() {
       if (!mounted) return;
-      setState(() => _searchQuery = _searchController.text.toLowerCase().trim());
+      setState(
+        () => _searchQuery = _searchController.text.toLowerCase().trim(),
+      );
     });
 
     _carregarPermissoes();
@@ -54,8 +61,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -70,10 +77,35 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
 
   Future<void> _carregarPermissoes() async {
     if (mounted) {
-      setState(() => _carregandoPermissoes = true);
+      setState(() {
+        _carregandoPermissoes = true;
+        _acessoNegado = false;
+      });
     }
 
     try {
+      final podeAcessar = await _accessGuard.canAny([
+        'pode_acessar_eventos',
+        'pode_ver_eventos',
+        'pode_criar_evento',
+        'pode_editar_evento',
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_participantes_evento',
+      ]);
+
+      if (!mounted) return;
+
+      if (!podeAcessar) {
+        setState(() {
+          _podeCriarEvento = false;
+          _podeEditarEvento = false;
+          _podeExcluirEvento = false;
+          _acessoNegado = true;
+          _carregandoPermissoes = false;
+        });
+        return;
+      }
+
       final results = await Future.wait<bool>([
         _permissaoService.temPermissao('pode_criar_evento'),
         _permissaoService.temPermissao('pode_editar_evento'),
@@ -86,6 +118,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         _podeCriarEvento = results[0];
         _podeEditarEvento = results[1];
         _podeExcluirEvento = results[2];
+        _acessoNegado = false;
         _carregandoPermissoes = false;
       });
     } catch (e) {
@@ -115,29 +148,31 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     );
   }
 
-  void _mostrarSemPermissao([
-    String mensagem = 'Você não tem permissão para realizar esta ação.',
-  ]) {
-    if (!mounted) return;
-    _showSnack(mensagem, type: _SnackType.warning);
-  }
-
   Future<void> _alternarPortfolioWeb(String eventoId, bool valorAtual) async {
-    if (!_podeEditarEvento) {
-      _mostrarSemPermissao('Você não tem permissão para alterar o portfólio web.');
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: 'pode_editar_evento',
+      message: 'Você não tem permissão para alterar o portfólio web.',
+    );
+    if (!permitido) {
       return;
     }
 
     try {
-      await FirebaseFirestore.instance.collection('eventos').doc(eventoId).update({
-        'mostrarNoPortfolioWeb': !valorAtual,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+      await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(eventoId)
+          .update({
+            'mostrarNoPortfolioWeb': !valorAtual,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
 
       if (!mounted) return;
 
       _showSnack(
-        !valorAtual ? 'Evento será mostrado no site 🌐' : 'Evento removido do site',
+        !valorAtual
+            ? 'Evento será mostrado no site 🌐'
+            : 'Evento removido do site',
         type: !valorAtual ? _SnackType.info : _SnackType.neutral,
       );
     } catch (e) {
@@ -148,8 +183,12 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   }
 
   Future<void> _excluirEvento(String eventoId, String nomeEvento) async {
-    if (!_podeExcluirEvento) {
-      _mostrarSemPermissao('Você não tem permissão para excluir eventos.');
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: 'pode_excluir_evento',
+      message: 'Você não tem permissão para excluir eventos.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -192,9 +231,14 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                                 height: 48,
                                 decoration: BoxDecoration(
                                   color: error.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
-                                child: Icon(Icons.warning_amber_rounded, color: error),
+                                child: Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: error,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -208,8 +252,12 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                                 ),
                               ),
                               IconButton(
-                                onPressed: () => Navigator.pop(dialogContext, false),
-                                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, false),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: t.textSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -235,9 +283,16 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Color.alphaBlend(error.withOpacity(0.10), t.cardAlt),
-                              borderRadius: BorderRadius.circular(t.inputRadius),
-                              border: Border.all(color: error.withOpacity(0.18)),
+                              color: Color.alphaBlend(
+                                error.withOpacity(0.10),
+                                t.cardAlt,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
+                              ),
+                              border: Border.all(
+                                color: error.withOpacity(0.18),
+                              ),
                             ),
                             child: Text(
                               nomeEvento,
@@ -251,20 +306,23 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                           TextField(
                             controller: confirmController,
                             style: TextStyle(color: t.textPrimary),
-                            decoration: _inputDecoration(
-                              label: 'Nome do evento',
-                              hint: 'Digite o nome exato',
-                              icon: Icons.edit_note_rounded,
-                            ).copyWith(
-                              suffixIcon: confirmController.text.isNotEmpty
-                                  ? Icon(
-                                isConfirmEnabled
-                                    ? Icons.check_circle_rounded
-                                    : Icons.error_rounded,
-                                color: isConfirmEnabled ? t.success : t.error,
-                              )
-                                  : null,
-                            ),
+                            decoration:
+                                _inputDecoration(
+                                  label: 'Nome do evento',
+                                  hint: 'Digite o nome exato',
+                                  icon: Icons.edit_note_rounded,
+                                ).copyWith(
+                                  suffixIcon: confirmController.text.isNotEmpty
+                                      ? Icon(
+                                          isConfirmEnabled
+                                              ? Icons.check_circle_rounded
+                                              : Icons.error_rounded,
+                                          color: isConfirmEnabled
+                                              ? t.success
+                                              : t.error,
+                                        )
+                                      : null,
+                                ),
                             onChanged: (value) {
                               setDialogState(() {
                                 isConfirmEnabled = value.trim() == nomeEvento;
@@ -277,13 +335,18 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                               final narrow = constraints.maxWidth < 380;
 
                               final cancel = OutlinedButton(
-                                onPressed: () => Navigator.pop(dialogContext, false),
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, false),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: t.textPrimary,
                                   side: BorderSide(color: t.border),
-                                  padding: const EdgeInsets.symmetric(vertical: 13),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 13,
+                                  ),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(t.buttonRadius),
+                                    borderRadius: BorderRadius.circular(
+                                      t.buttonRadius,
+                                    ),
                                   ),
                                 ),
                                 child: const Text(
@@ -303,16 +366,21 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                                   foregroundColor: _readableOn(t.error),
                                   disabledBackgroundColor: t.cardAlt,
                                   disabledForegroundColor: t.textMuted,
-                                  padding: const EdgeInsets.symmetric(vertical: 13),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 13,
+                                  ),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(t.buttonRadius),
+                                    borderRadius: BorderRadius.circular(
+                                      t.buttonRadius,
+                                    ),
                                   ),
                                 ),
                               );
 
                               if (narrow) {
                                 return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     cancel,
                                     const SizedBox(height: 10),
@@ -347,7 +415,10 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     if (confirm != true) return;
 
     try {
-      await FirebaseFirestore.instance.collection('eventos').doc(eventoId).delete();
+      await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(eventoId)
+          .delete();
 
       if (!mounted) return;
       _showSnack('Evento excluído com sucesso!', type: _SnackType.success);
@@ -359,12 +430,18 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   }
 
   Future<void> _alterarStatus(String eventoId, String statusAtual) async {
-    if (!_podeEditarEvento) {
-      _mostrarSemPermissao('Você não tem permissão para alterar o status do evento.');
-      return;
-    }
-
     final novoStatus = statusAtual == 'andamento' ? 'finalizado' : 'andamento';
+    final permissao = novoStatus == 'finalizado'
+        ? 'pode_finalizar_evento'
+        : 'pode_reabrir_evento';
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: permissao,
+      message: novoStatus == 'finalizado'
+          ? 'Você não tem permissão para finalizar eventos.'
+          : 'Você não tem permissão para reabrir eventos.',
+    );
+    if (!permitido) return;
 
     final confirmar = await showDialog<bool>(
       context: context,
@@ -428,23 +505,23 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                       novoStatus == 'andamento'
                           ? 'O evento entrará na área de eventos em andamento.'
                           : 'O evento será marcado como finalizado.',
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => Navigator.pop(dialogContext, false),
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: t.textPrimary,
                               side: BorderSide(color: t.border),
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                             child: const Text('CANCELAR'),
@@ -459,12 +536,18 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                               foregroundColor: _readableOn(accent),
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                             child: Text(
-                              novoStatus == 'andamento' ? 'INICIAR' : 'FINALIZAR',
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              novoStatus == 'andamento'
+                                  ? 'INICIAR'
+                                  : 'FINALIZAR',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
                         ),
@@ -482,10 +565,13 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     if (confirmar != true) return;
 
     try {
-      await FirebaseFirestore.instance.collection('eventos').doc(eventoId).update({
-        'status': novoStatus,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+      await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(eventoId)
+          .update({
+            'status': novoStatus,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
 
       if (!mounted) return;
 
@@ -500,14 +586,18 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     }
   }
 
-  void _abrirCadastroEvento({EventoModel? evento}) {
-    if (evento == null && !_podeCriarEvento) {
-      _mostrarSemPermissao('Você não tem permissão para criar eventos.');
-      return;
-    }
-
-    if (evento != null && !_podeEditarEvento) {
-      _mostrarSemPermissao('Você não tem permissão para editar eventos.');
+  Future<void> _abrirCadastroEvento({EventoModel? evento}) async {
+    final permissao = evento == null
+        ? 'pode_criar_evento'
+        : 'pode_editar_evento';
+    final permitido = await _accessGuard.revalidate(
+      context,
+      permission: permissao,
+      message: evento == null
+          ? 'Você não tem permissão para criar eventos.'
+          : 'Você não tem permissão para editar eventos.',
+    );
+    if (!permitido) {
       return;
     }
 
@@ -641,82 +731,103 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   Widget build(BuildContext context) {
     final t = context.uai;
 
+    if (_carregandoPermissoes) {
+      return Scaffold(
+        backgroundColor: t.background,
+        body: _buildLoadingState(),
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gerenciar eventos',
+        message: 'Você não tem permissão para acessar eventos.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: t.background,
       floatingActionButton: _podeCriarEvento
           ? FloatingActionButton.extended(
-        heroTag: 'fab_gerenciar_eventos_criar',
-        backgroundColor: t.primary,
-        foregroundColor: _readableOn(t.primary),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'Novo evento',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        onPressed: () => _abrirCadastroEvento(),
-      )
+              heroTag: 'fab_gerenciar_eventos_criar',
+              backgroundColor: t.primary,
+              foregroundColor: _readableOn(t.primary),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Novo evento',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              onPressed: _abrirCadastroEvento,
+            )
           : null,
       body: _carregandoPermissoes
           ? _buildLoadingState()
+          : _acessoNegado
+          ? PermissionAccessGuard.deniedScaffold(
+              context,
+              title: 'Gerenciar eventos',
+              message: 'Você não tem permissão para acessar eventos.',
+            )
           : CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(),
-          SliverToBoxAdapter(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _eventosStream(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return _buildErroState(
-                    'Erro ao carregar eventos: ${snapshot.error}',
-                  );
-                }
+              slivers: [
+                _buildSliverAppBar(),
+                SliverToBoxAdapter(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: _eventosStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return _buildErroState(
+                          'Erro ao carregar eventos: ${snapshot.error}',
+                        );
+                      }
 
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _buildLoadingState();
-                }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return _buildLoadingState();
+                      }
 
-                final docs = snapshot.data?.docs ?? [];
-                final eventos = docs
-                    .map((doc) => EventoModel.fromFirestore(doc))
-                    .toList();
+                      final docs = snapshot.data?.docs ?? [];
+                      final eventos = docs
+                          .map((doc) => EventoModel.fromFirestore(doc))
+                          .toList();
 
-                final eventosFiltrados = _filtrarEventos(eventos);
-                final resumo = _resumoEventos(eventos);
+                      final eventosFiltrados = _filtrarEventos(eventos);
+                      final resumo = _resumoEventos(eventos);
 
-                return Column(
-                  children: [
-                    _buildHero(resumo),
-                    _buildSearchAndFilters(),
-                    if (eventos.isEmpty)
-                      _buildEmptyState(
-                        titulo: 'Nenhum evento cadastrado',
-                        mensagem: _podeCriarEvento
-                            ? 'Crie o primeiro evento para começar a organizar inscrições, participantes e certificados.'
-                            : 'Nenhum evento foi cadastrado ainda.',
-                        mostrarBotao: _podeCriarEvento,
-                      )
-                    else if (eventosFiltrados.isEmpty)
-                      _buildEmptyState(
-                        titulo: 'Nenhum resultado',
-                        mensagem:
-                        'Nenhum evento encontrado para os filtros aplicados.',
-                        mostrarBotao: false,
-                      )
-                    else
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: _viewMode == 0
-                            ? _buildListView(eventosFiltrados)
-                            : _buildGridView(eventosFiltrados),
-                      ),
-                    const SizedBox(height: 110),
-                  ],
-                );
-              },
+                      return Column(
+                        children: [
+                          _buildHero(resumo),
+                          _buildSearchAndFilters(),
+                          if (eventos.isEmpty)
+                            _buildEmptyState(
+                              titulo: 'Nenhum evento cadastrado',
+                              mensagem: _podeCriarEvento
+                                  ? 'Crie o primeiro evento para começar a organizar inscrições, participantes e certificados.'
+                                  : 'Nenhum evento foi cadastrado ainda.',
+                              mostrarBotao: _podeCriarEvento,
+                            )
+                          else if (eventosFiltrados.isEmpty)
+                            _buildEmptyState(
+                              titulo: 'Nenhum resultado',
+                              mensagem:
+                                  'Nenhum evento encontrado para os filtros aplicados.',
+                              mostrarBotao: false,
+                            )
+                          else
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              child: _viewMode == 0
+                                  ? _buildListView(eventosFiltrados)
+                                  : _buildGridView(eventosFiltrados),
+                            ),
+                          const SizedBox(height: 110),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -948,19 +1059,23 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
           TextField(
             controller: _searchController,
             style: TextStyle(color: t.textPrimary),
-            decoration: _inputDecoration(
-              label: 'Buscar',
-              hint: 'Buscar por nome, cidade ou tipo...',
-              icon: Icons.search_rounded,
-            ).copyWith(
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                icon: Icon(Icons.clear_rounded, color: t.textSecondary),
-                onPressed: () => _searchController.clear(),
-              )
-                  : null,
-              prefixIcon: Icon(Icons.search_rounded, color: primary),
-            ),
+            decoration:
+                _inputDecoration(
+                  label: 'Buscar',
+                  hint: 'Buscar por nome, cidade ou tipo...',
+                  icon: Icons.search_rounded,
+                ).copyWith(
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.clear_rounded,
+                            color: t.textSecondary,
+                          ),
+                          onPressed: () => _searchController.clear(),
+                        )
+                      : null,
+                  prefixIcon: Icon(Icons.search_rounded, color: primary),
+                ),
           ),
           const SizedBox(height: 10),
           Align(
@@ -1000,13 +1115,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       label: Text(label),
       selectedColor: primary,
       backgroundColor: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
-      labelStyle: TextStyle(
-        color: foreground,
-        fontWeight: FontWeight.w900,
-      ),
-      side: BorderSide(
-        color: selected ? primary : primary.withOpacity(0.18),
-      ),
+      labelStyle: TextStyle(color: foreground, fontWeight: FontWeight.w900),
+      side: BorderSide(color: selected ? primary : primary.withOpacity(0.18)),
       onSelected: (_) => setState(() => _statusFiltro = value),
     );
   }
@@ -1166,12 +1276,12 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   }
 
   Widget _buildEventImage(
-      EventoModel evento,
-      Color corStatus, {
-        required double width,
-        required double height,
-        double radius = 16,
-      }) {
+    EventoModel evento,
+    Color corStatus, {
+    required double width,
+    required double height,
+    double radius = 16,
+  }) {
     final t = context.uai;
     final borderRadius = BorderRadius.circular(radius);
 
@@ -1183,37 +1293,32 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         color: Color.alphaBlend(corStatus.withOpacity(0.08), t.cardAlt),
         child: evento.linkBanner != null && evento.linkBanner!.isNotEmpty
             ? CachedNetworkImage(
-          imageUrl: evento.linkBanner!,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(color: t.cardAlt),
-          errorWidget: (context, url, error) =>
-              _buildFallbackImage(evento, corStatus),
-        )
+                imageUrl: evento.linkBanner!,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(color: t.cardAlt),
+                errorWidget: (context, url, error) =>
+                    _buildFallbackImage(evento, corStatus),
+              )
             : _buildFallbackImage(evento, corStatus),
       ),
     );
   }
 
   Widget _buildFallbackImage(EventoModel evento, Color corStatus) {
-    return Center(
-      child: Icon(
-        evento.iconeDoTipo,
-        color: corStatus,
-        size: 42,
-      ),
-    );
+    return Center(child: Icon(evento.iconeDoTipo, color: corStatus, size: 42));
   }
 
   Widget _buildEventInfo(
-      EventoModel evento,
-      Color corStatus, {
-        required bool compact,
-      }) {
+    EventoModel evento,
+    Color corStatus, {
+    required bool compact,
+  }) {
     final t = context.uai;
 
     return Column(
-      crossAxisAlignment:
-      compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: compact
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (!compact) _buildStatusPill(evento.status),
@@ -1279,8 +1384,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     final c = color ?? t.textSecondary;
 
     return Row(
-      mainAxisAlignment:
-      compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+      mainAxisAlignment: compact
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.start,
       children: [
         Icon(icon, size: compact ? 11 : 13, color: c),
         const SizedBox(width: 4),
@@ -1340,11 +1446,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
           borderRadius: BorderRadius.circular(12),
           boxShadow: t.softShadow,
         ),
-        child: Icon(
-          Icons.public_rounded,
-          color: _readableOn(color),
-          size: 15,
-        ),
+        child: Icon(Icons.public_rounded, color: _readableOn(color), size: 15),
       ),
     );
   }
@@ -1384,10 +1486,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       tooltip: evento.mostrarNoPortfolioWeb
           ? 'Remover do site'
           : 'Adicionar ao site',
-      onTap: () => _alternarPortfolioWeb(
-        evento.id!,
-        evento.mostrarNoPortfolioWeb,
-      ),
+      onTap: () =>
+          _alternarPortfolioWeb(evento.id!, evento.mostrarNoPortfolioWeb),
       small: small,
     );
   }
@@ -1607,10 +1707,4 @@ class _ResumoMiniCard {
   });
 }
 
-enum _SnackType {
-  success,
-  error,
-  warning,
-  info,
-  neutral,
-}
+enum _SnackType { success, error, warning, info, neutral }

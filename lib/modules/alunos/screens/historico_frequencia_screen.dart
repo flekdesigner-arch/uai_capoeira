@@ -138,7 +138,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -153,7 +154,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Color _onPrimary() {
     final t = context.uai;
     final temaEscuro =
-        t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+        t.background.computeLuminance() < 0.45 ||
+        t.surface.computeLuminance() < 0.45;
     if (temaEscuro) return Colors.white;
     return _readableOn(t.primary);
   }
@@ -212,7 +214,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
   void _iniciarTempoReal() {
     _tempoRealSub = _buildQuery().snapshots().listen(
-          (snapshot) {
+      (snapshot) {
         final resumo = _calcularResumo(snapshot.docs);
         _cache.saveToCache(_cacheKey, resumo);
         if (!mounted) return;
@@ -275,8 +277,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     final range = _periodoRange();
     if (range != null) {
       query = query
-          .where('data_aula', isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
-          .where('data_aula', isLessThanOrEqualTo: Timestamp.fromDate(range.end));
+          .where(
+            'data_aula',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(range.start),
+          )
+          .where(
+            'data_aula',
+            isLessThanOrEqualTo: Timestamp.fromDate(range.end),
+          );
     }
 
     if (_filtroTipoAula != 'TODAS') {
@@ -292,11 +300,20 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
     switch (_filtroPeriodo) {
       case 'Últimos 30 dias':
-        return DateTimeRange(start: hojeFim.subtract(const Duration(days: 30)), end: hojeFim);
+        return DateTimeRange(
+          start: hojeFim.subtract(const Duration(days: 30)),
+          end: hojeFim,
+        );
       case 'Últimos 60 dias':
-        return DateTimeRange(start: hojeFim.subtract(const Duration(days: 60)), end: hojeFim);
+        return DateTimeRange(
+          start: hojeFim.subtract(const Duration(days: 60)),
+          end: hojeFim,
+        );
       case 'Últimos 90 dias':
-        return DateTimeRange(start: hojeFim.subtract(const Duration(days: 90)), end: hojeFim);
+        return DateTimeRange(
+          start: hojeFim.subtract(const Duration(days: 90)),
+          end: hojeFim,
+        );
       case 'Este Mês':
         return DateTimeRange(
           start: DateTime(agora.year, agora.month, 1),
@@ -329,8 +346,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   _ResumoFrequenciaInteligente _calcularResumo(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final historico = <Map<String, dynamic>>[];
     final porDia = <String, int>{
       'seg': 0,
@@ -356,10 +373,13 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       final tipoAula = data['tipo_aula']?.toString().trim().isNotEmpty == true
           ? data['tipo_aula'].toString()
           : 'Aula';
-      final professor = data['professor_nome']?.toString() ??
+      final professor =
+          data['professor_nome']?.toString() ??
           data['professor']?.toString() ??
           'Não informado';
-      final dia = _normalizarDiaSemanaAbrev(data['dia_semana_abrev'] ?? data['dia_semana']);
+      final dia = _normalizarDiaSemanaAbrev(
+        data['dia_semana_abrev'] ?? data['dia_semana'],
+      );
 
       int diasEntre = 0;
       if (i < docs.length - 1) {
@@ -372,7 +392,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       if (presente) {
         presencas++;
         ultimaPresencaData ??= dataAula;
-        ultimaPresencaTexto ??= data['data_formatada']?.toString().trim().isNotEmpty == true
+        ultimaPresencaTexto ??=
+            data['data_formatada']?.toString().trim().isNotEmpty == true
             ? data['data_formatada'].toString()
             : _dateFormat.format(dataAula);
 
@@ -398,7 +419,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         'turma_nome': data['turma_nome']?.toString() ?? '',
         'academia_id': data['academia_id']?.toString() ?? '',
         'academia_nome': data['academia_nome']?.toString() ?? '',
-        'data_formatada': data['data_formatada']?.toString() ?? _dateFormat.format(dataAula),
+        'data_formatada':
+            data['data_formatada']?.toString() ?? _dateFormat.format(dataAula),
       });
     }
 
@@ -407,21 +429,32 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
     final sequencia = _calcularSequenciaAtual(historico);
     final melhorSequencia = _calcularMelhorSequencia(historico, presente: true);
-    final maiorSequenciaFaltas = _calcularMelhorSequencia(historico, presente: false);
+    final maiorSequenciaFaltas = _calcularMelhorSequencia(
+      historico,
+      presente: false,
+    );
     final tendencia = _calcularTendencia(historico);
     final perfil = _classificarPerfil(percentual, totalAulas);
     final diasSemPresenca = ultimaPresencaData == null
         ? null
         : DateTime.now()
-        .difference(DateTime(ultimaPresencaData.year, ultimaPresencaData.month, ultimaPresencaData.day))
-        .inDays
-        .clamp(0, 99999)
-        .toInt();
+              .difference(
+                DateTime(
+                  ultimaPresencaData.year,
+                  ultimaPresencaData.month,
+                  ultimaPresencaData.day,
+                ),
+              )
+              .inDays
+              .clamp(0, 99999)
+              .toInt();
     final estadoAtual = _classificarEstadoAtual(diasSemPresenca);
     final risco = _classificarRisco(
       percentual: percentual,
       totalAulas: totalAulas,
-      sequenciaFaltasAtual: sequencia.status == _StatusSequencia.falta ? sequencia.quantidade : 0,
+      sequenciaFaltasAtual: sequencia.status == _StatusSequencia.falta
+          ? sequencia.quantidade
+          : 0,
       diasSemPresenca: diasSemPresenca,
     );
     final diagnostico = _montarDiagnostico(
@@ -459,9 +492,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     );
   }
 
-  _SequenciaInfo _calcularSequenciaAtual(List<Map<String, dynamic>> historicoDesc) {
+  _SequenciaInfo _calcularSequenciaAtual(
+    List<Map<String, dynamic>> historicoDesc,
+  ) {
     if (historicoDesc.isEmpty) {
-      return const _SequenciaInfo(status: _StatusSequencia.nenhuma, quantidade: 0);
+      return const _SequenciaInfo(
+        status: _StatusSequencia.nenhuma,
+        quantidade: 0,
+      );
     }
 
     final primeiroStatus = historicoDesc.first['presente'] == true;
@@ -476,12 +514,17 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     }
 
     return _SequenciaInfo(
-      status: primeiroStatus ? _StatusSequencia.presenca : _StatusSequencia.falta,
+      status: primeiroStatus
+          ? _StatusSequencia.presenca
+          : _StatusSequencia.falta,
       quantidade: total,
     );
   }
 
-  int _calcularMelhorSequencia(List<Map<String, dynamic>> historicoDesc, {required bool presente}) {
+  int _calcularMelhorSequencia(
+    List<Map<String, dynamic>> historicoDesc, {
+    required bool presente,
+  }) {
     final cronologico = historicoDesc.reversed.toList();
     int atual = 0;
     int melhor = 0;
@@ -543,7 +586,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return _TendenciaInfo(
       status: _StatusTendencia.estavel,
       label: 'Estável',
-      descricao: 'O comportamento recente está parecido com o período anterior.',
+      descricao:
+          'O comportamento recente está parecido com o período anterior.',
       diferencaPercentual: diff,
     );
   }
@@ -724,7 +768,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       return 'Ainda não existem registros suficientes para analisar a frequência deste aluno no período selecionado.';
     }
 
-    final base = 'Compareceu em $presencas de $totalAulas aulas (${percentual.toStringAsFixed(0)}%).';
+    final base =
+        'Compareceu em $presencas de $totalAulas aulas (${percentual.toStringAsFixed(0)}%).';
     final estado = diasSemPresenca == null
         ? 'Não há última presença registrada.'
         : diasSemPresenca == 0
@@ -740,7 +785,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return '$estado $base Perfil: ${perfil.label}. Tendência: ${tendencia.label}. Risco: ${risco.label}.$sequenciaTxt';
   }
 
-  void _aplicarResumo(_ResumoFrequenciaInteligente resumo, {required String fonte}) {
+  void _aplicarResumo(
+    _ResumoFrequenciaInteligente resumo, {
+    required String fonte,
+  }) {
     if (!mounted) return;
 
     setState(() {
@@ -788,13 +836,20 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         .replaceAll('ú', 'u')
         .replaceAll('ç', 'c');
 
-    if (semAcento.startsWith('seg') || semAcento.contains('segunda')) return 'seg';
-    if (semAcento.startsWith('ter') || semAcento.contains('terca')) return 'ter';
-    if (semAcento.startsWith('qua') || semAcento.contains('quarta')) return 'qua';
-    if (semAcento.startsWith('qui') || semAcento.contains('quinta')) return 'qui';
-    if (semAcento.startsWith('sex') || semAcento.contains('sexta')) return 'sex';
-    if (semAcento.startsWith('sab') || semAcento.contains('sabado')) return 'sab';
-    if (semAcento.startsWith('dom') || semAcento.contains('domingo')) return 'dom';
+    if (semAcento.startsWith('seg') || semAcento.contains('segunda'))
+      return 'seg';
+    if (semAcento.startsWith('ter') || semAcento.contains('terca'))
+      return 'ter';
+    if (semAcento.startsWith('qua') || semAcento.contains('quarta'))
+      return 'qua';
+    if (semAcento.startsWith('qui') || semAcento.contains('quinta'))
+      return 'qui';
+    if (semAcento.startsWith('sex') || semAcento.contains('sexta'))
+      return 'sex';
+    if (semAcento.startsWith('sab') || semAcento.contains('sabado'))
+      return 'sab';
+    if (semAcento.startsWith('dom') || semAcento.contains('domingo'))
+      return 'dom';
 
     return semAcento.length >= 3 ? semAcento.substring(0, 3) : semAcento;
   }
@@ -849,7 +904,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       case 'Este Mês':
         return _monthNameFormat.format(agora).toUpperCase();
       case 'Mês Passado':
-        return _monthNameFormat.format(DateTime(agora.year, agora.month - 1, 1)).toUpperCase();
+        return _monthNameFormat
+            .format(DateTime(agora.year, agora.month - 1, 1))
+            .toUpperCase();
       case 'Últimos 3 Meses':
         final ini = DateTime(agora.year, agora.month - 2, 1);
         return '${_monthNameFormat.format(ini).toUpperCase()} - ${_monthNameFormat.format(agora).toUpperCase()}';
@@ -932,7 +989,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     if (_filtroPeriodo == periodo) return;
 
     if (periodo == 'Todos' &&
-        _cache.loadFromCache('freq_inteligente_${widget.alunoId}_Todos_$_filtroTipoAula') == null) {
+        _cache.loadFromCache(
+              'freq_inteligente_${widget.alunoId}_Todos_$_filtroTipoAula',
+            ) ==
+            null) {
       _confirmarFiltroTodos();
       return;
     }
@@ -951,7 +1011,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: context.uai.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        ),
         title: Row(
           children: [
             Icon(Icons.all_inclusive_rounded, color: context.uai.primary),
@@ -959,20 +1021,33 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Expanded(
               child: Text(
                 'Carregar todo histórico?',
-                style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],
         ),
         content: Text(
           'Esse filtro busca todos os logs do aluno. Depois da primeira busca, fica em cache por 30 minutos.',
-          style: TextStyle(color: context.uai.textSecondary, height: 1.35, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: context.uai.textSecondary,
+            height: 1.35,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCELAR'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: _appBarBg(), foregroundColor: _appBarFg()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _appBarBg(),
+              foregroundColor: _appBarFg(),
+            ),
             child: const Text('CARREGAR'),
           ),
         ],
@@ -1012,13 +1087,21 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           children: [
             Text(
               'Raio-X de Frequência',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _appBarFg()),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: _appBarFg(),
+              ),
             ),
             Text(
               widget.alunoNome,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _appBarFg().withOpacity(0.82)),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _appBarFg().withOpacity(0.82),
+              ),
             ),
           ],
         ),
@@ -1031,12 +1114,18 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Icon(Icons.wifi_off, color: t.warning, size: 20),
             ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _atualizar, tooltip: 'Atualizar'),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _atualizar,
+            tooltip: 'Atualizar',
+          ),
         ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth = constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth;
+          final maxWidth = constraints.maxWidth > 980
+              ? 980.0
+              : constraints.maxWidth;
 
           return Center(
             child: ConstrainedBox(
@@ -1084,7 +1173,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                       color: context.uai.primary.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.insights_rounded, color: context.uai.primary, size: 19),
+                    child: Icon(
+                      Icons.insights_rounded,
+                      color: context.uai.primary,
+                      size: 19,
+                    ),
                   ),
                   const SizedBox(width: 9),
                   Expanded(
@@ -1105,7 +1198,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                           _usaTempoReal
                               ? 'Este mês em tempo real'
                               : 'Busca única com cache de 30 minutos',
-                          style: TextStyle(color: context.uai.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                            color: context.uai.textSecondary,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -1154,9 +1250,20 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded, color: color, size: 14),
+          Icon(
+            _usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded,
+            color: color,
+            size: 14,
+          ),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
@@ -1165,23 +1272,39 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Widget _buildFiltroDropdownPeriodo() {
     return DropdownButtonFormField<String>(
       value: _filtroPeriodo,
-      style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w700),
+      style: TextStyle(
+        color: context.uai.textPrimary,
+        fontWeight: FontWeight.w700,
+      ),
       isExpanded: true,
       borderRadius: BorderRadius.circular(16),
       dropdownColor: context.uai.surface,
-      decoration: _inputDecorationFiltro(label: 'Período', icon: Icons.calendar_month_rounded, color: context.uai.primary),
+      decoration: _inputDecorationFiltro(
+        label: 'Período',
+        icon: Icons.calendar_month_rounded,
+        color: context.uai.primary,
+      ),
       items: _periodos.map((periodo) {
         return DropdownMenuItem<String>(
           value: periodo,
           child: Row(
             children: [
-              Icon(_iconePeriodo(periodo), size: 18, color: _filtroPeriodo == periodo ? context.uai.primary : context.uai.textSecondary),
+              Icon(
+                _iconePeriodo(periodo),
+                size: 18,
+                color: _filtroPeriodo == periodo
+                    ? context.uai.primary
+                    : context.uai.textSecondary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   periodo,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -1198,11 +1321,18 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Widget _buildFiltroDropdownTipoAula() {
     return DropdownButtonFormField<String>(
       value: _filtroTipoAula,
-      style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w700),
+      style: TextStyle(
+        color: context.uai.textPrimary,
+        fontWeight: FontWeight.w700,
+      ),
       isExpanded: true,
       borderRadius: BorderRadius.circular(16),
       dropdownColor: context.uai.surface,
-      decoration: _inputDecorationFiltro(label: 'Tipo de aula', icon: Icons.sports_martial_arts_rounded, color: context.uai.info),
+      decoration: _inputDecorationFiltro(
+        label: 'Tipo de aula',
+        icon: Icons.sports_martial_arts_rounded,
+        color: context.uai.info,
+      ),
       items: _tiposAula.map((tipo) {
         final label = tipo == 'TODAS' ? 'Todas as aulas' : _labelTipoAula(tipo);
         final color = tipo == 'TODAS' ? context.uai.info : _corTipoAula(tipo);
@@ -1211,13 +1341,20 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           value: tipo,
           child: Row(
             children: [
-              Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -1239,7 +1376,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, color: color, size: 20),
-      labelStyle: TextStyle(color: context.uai.textSecondary, fontWeight: FontWeight.w700),
+      labelStyle: TextStyle(
+        color: context.uai.textSecondary,
+        fontWeight: FontWeight.w700,
+      ),
       floatingLabelStyle: TextStyle(color: color, fontWeight: FontWeight.w900),
       filled: true,
       fillColor: context.uai.cardAlt,
@@ -1290,7 +1430,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             CircularProgressIndicator(color: context.uai.primary),
             const SizedBox(height: 16),
             Text(
-              _usaTempoReal ? 'Escutando chamadas deste mês...' : 'Calculando análise inteligente...',
+              _usaTempoReal
+                  ? 'Escutando chamadas deste mês...'
+                  : 'Calculando análise inteligente...',
               style: TextStyle(color: context.uai.textSecondary),
             ),
           ],
@@ -1307,15 +1449,32 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             children: [
               Icon(Icons.error_outline, size: 80, color: context.uai.error),
               const SizedBox(height: 16),
-              Text('Ops! Algo deu errado', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.uai.textPrimary)),
+              Text(
+                'Ops! Algo deu errado',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: context.uai.textPrimary,
+                ),
+              ),
               const SizedBox(height: 8),
-              Text(_mensagemErro, textAlign: TextAlign.center, style: TextStyle(color: context.uai.textSecondary, fontSize: 14)),
+              Text(
+                _mensagemErro,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _atualizar,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Tentar novamente'),
-                style: ElevatedButton.styleFrom(backgroundColor: _appBarBg(), foregroundColor: _appBarFg()),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _appBarBg(),
+                  foregroundColor: _appBarFg(),
+                ),
               ),
             ],
           ),
@@ -1333,7 +1492,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             const SizedBox(height: 80),
             Icon(Icons.history, size: 100, color: context.uai.border),
             const SizedBox(height: 16),
-            Text('Nenhum registro encontrado', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: context.uai.textMuted)),
+            Text(
+              'Nenhum registro encontrado',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, color: context.uai.textMuted),
+            ),
             const SizedBox(height: 8),
             Text(
               'Tente alterar o filtro ou confira se existem logs para este aluno.',
@@ -1368,7 +1531,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 Expanded(
                   child: Text(
                     'Histórico de aulas (${resumo.historicoItems.length})',
-                    style: TextStyle(color: context.uai.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: context.uai.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -1380,9 +1547,19 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.check_circle_outline, size: 28, color: context.uai.success.withOpacity(0.75)),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 28,
+                    color: context.uai.success.withOpacity(0.75),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Todos os registros do filtro foram carregados', style: TextStyle(fontSize: 13, color: context.uai.textMuted)),
+                  Text(
+                    'Todos os registros do filtro foram carregados',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.uai.textMuted,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1397,20 +1574,35 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _usaTempoReal ? context.uai.success.withOpacity(0.10) : context.uai.info.withOpacity(0.10),
+        color: _usaTempoReal
+            ? context.uai.success.withOpacity(0.10)
+            : context.uai.info.withOpacity(0.10),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _usaTempoReal ? context.uai.success.withOpacity(0.18) : context.uai.info.withOpacity(0.18)),
+        border: Border.all(
+          color: _usaTempoReal
+              ? context.uai.success.withOpacity(0.18)
+              : context.uai.info.withOpacity(0.18),
+        ),
       ),
       child: Row(
         children: [
-          Icon(_usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded, color: _usaTempoReal ? context.uai.success : context.uai.info, size: 20),
+          Icon(
+            _usaTempoReal ? Icons.bolt_rounded : Icons.cached_rounded,
+            color: _usaTempoReal ? context.uai.success : context.uai.info,
+            size: 20,
+          ),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
               _usaTempoReal
                   ? 'Este mês está em tempo real. Novas chamadas aparecem automaticamente.'
                   : 'Dados carregados por $_fonteDados às ${_formatHora(_ultimaBusca)}. Atualizar força nova busca.',
-              style: TextStyle(color: _usaTempoReal ? context.uai.success : context.uai.info, fontSize: 12, fontWeight: FontWeight.w600, height: 1.25),
+              style: TextStyle(
+                color: _usaTempoReal ? context.uai.success : context.uai.info,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
             ),
           ),
         ],
@@ -1419,14 +1611,21 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Widget _buildHeaderInteligente(_ResumoFrequenciaInteligente resumo) {
-    final perfilColor = _colorFromBase(resumo.perfil.corBase, background: context.uai.primary);
+    final perfilColor = _colorFromBase(
+      resumo.perfil.corBase,
+      background: context.uai.primary,
+    );
 
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
-          BoxShadow(color: context.uai.primary.withOpacity(0.22), blurRadius: 14, offset: const Offset(0, 6)),
+          BoxShadow(
+            color: context.uai.primary.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
         ],
         gradient: context.uai.primaryGradient,
       ),
@@ -1436,18 +1635,30 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(color: _onPrimary().withOpacity(0.14), borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(
+                color: _onPrimary().withOpacity(0.14),
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Text(
                 _tituloPeriodo(),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: _onPrimary(), fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                style: TextStyle(
+                  color: _onPrimary(),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
             const SizedBox(height: 6),
             Text(
               _subtituloPeriodo(),
               textAlign: TextAlign.center,
-              style: TextStyle(color: _onPrimary().withOpacity(0.78), fontSize: 11, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: _onPrimary().withOpacity(0.78),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 18),
             Stack(
@@ -1457,7 +1668,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                   width: 132,
                   height: 132,
                   child: CircularProgressIndicator(
-                    value: resumo.totalAulas > 0 ? resumo.percentualPresenca / 100 : 0,
+                    value: resumo.totalAulas > 0
+                        ? resumo.percentualPresenca / 100
+                        : 0,
                     strokeWidth: 12,
                     backgroundColor: _onPrimary().withOpacity(0.18),
                     valueColor: AlwaysStoppedAnimation<Color>(perfilColor),
@@ -1469,9 +1682,21 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                     const SizedBox(height: 3),
                     Text(
                       '${resumo.percentualPresenca.toStringAsFixed(0)}%',
-                      style: TextStyle(color: _onPrimary(), fontSize: 30, fontWeight: FontWeight.w900, height: 1),
+                      style: TextStyle(
+                        color: _onPrimary(),
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
                     ),
-                    Text('presença', style: TextStyle(color: _onPrimary().withOpacity(0.74), fontSize: 11, fontWeight: FontWeight.w700)),
+                    Text(
+                      'presença',
+                      style: TextStyle(
+                        color: _onPrimary().withOpacity(0.74),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1480,22 +1705,46 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Text(
               resumo.perfil.label,
               textAlign: TextAlign.center,
-              style: TextStyle(color: perfilColor, fontSize: 21, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: perfilColor,
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               resumo.perfil.descricao,
               textAlign: TextAlign.center,
-              style: TextStyle(color: _onPrimary().withOpacity(0.78), fontSize: 12, fontWeight: FontWeight.w600, height: 1.25),
+              style: TextStyle(
+                color: _onPrimary().withOpacity(0.78),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
             ),
             const SizedBox(height: 18),
             Row(
               children: [
-                _buildHeaderMini('Presenças', '${resumo.totalPresencas}', Icons.check_circle_rounded, context.uai.success.withOpacity(0.75)),
+                _buildHeaderMini(
+                  'Presenças',
+                  '${resumo.totalPresencas}',
+                  Icons.check_circle_rounded,
+                  context.uai.success.withOpacity(0.75),
+                ),
                 const SizedBox(width: 8),
-                _buildHeaderMini('Faltas', '${resumo.totalFaltas}', Icons.cancel_rounded, context.uai.error),
+                _buildHeaderMini(
+                  'Faltas',
+                  '${resumo.totalFaltas}',
+                  Icons.cancel_rounded,
+                  context.uai.error,
+                ),
                 const SizedBox(width: 8),
-                _buildHeaderMini('Aulas', '${resumo.totalAulas}', Icons.groups_rounded, _onPrimary()),
+                _buildHeaderMini(
+                  'Aulas',
+                  '${resumo.totalAulas}',
+                  Icons.groups_rounded,
+                  _onPrimary(),
+                ),
               ],
             ),
           ],
@@ -1504,7 +1753,12 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     );
   }
 
-  Widget _buildHeaderMini(String label, String value, IconData icon, Color color) {
+  Widget _buildHeaderMini(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 7),
@@ -1517,9 +1771,23 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           children: [
             Icon(icon, color: color, size: 18),
             const SizedBox(height: 5),
-            Text(value, style: TextStyle(color: _onPrimary(), fontSize: 17, fontWeight: FontWeight.w900)),
+            Text(
+              value,
+              style: TextStyle(
+                color: _onPrimary(),
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: _onPrimary().withOpacity(0.76), fontSize: 10, fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: TextStyle(
+                color: _onPrimary().withOpacity(0.76),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -1556,11 +1824,23 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Leitura inteligente', style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
+                Text(
+                  'Leitura inteligente',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
                 const SizedBox(height: 5),
                 Text(
                   resumo.diagnostico,
-                  style: TextStyle(color: context.uai.textSecondary, height: 1.32, fontSize: 12.5, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    height: 1.32,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -1580,12 +1860,20 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.dashboard_customize_rounded, color: context.uai.primary, size: 18),
+              Icon(
+                Icons.dashboard_customize_rounded,
+                color: context.uai.primary,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'As 3 leituras do aluno',
-                  style: TextStyle(color: context.uai.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -1595,16 +1883,33 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             builder: (context, constraints) {
               final isWide = constraints.maxWidth >= 620;
               final cards = [
-                _buildLeituraCard('Estado atual', resumo.estadoAtual, _textoEstadoAtual(resumo)),
-                _buildLeituraCard('Constância', resumo.perfil, '${resumo.totalPresencas}/${resumo.totalAulas} aulas'),
+                _buildLeituraCard(
+                  'Estado atual',
+                  resumo.estadoAtual,
+                  _textoEstadoAtual(resumo),
+                ),
+                _buildLeituraCard(
+                  'Constância',
+                  resumo.perfil,
+                  '${resumo.totalPresencas}/${resumo.totalAulas} aulas',
+                ),
                 _buildTendenciaCard(resumo.tendencia),
-                _buildLeituraCard('Risco', resumo.risco, resumo.risco.descricao),
+                _buildLeituraCard(
+                  'Risco',
+                  resumo.risco,
+                  resumo.risco.descricao,
+                ),
               ];
 
               if (!isWide) {
                 return Column(
                   children: cards
-                      .map((card) => Padding(padding: const EdgeInsets.only(bottom: 9), child: card))
+                      .map(
+                        (card) => Padding(
+                          padding: const EdgeInsets.only(bottom: 9),
+                          child: card,
+                        ),
+                      )
                       .toList(),
                 );
               }
@@ -1613,7 +1918,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 spacing: 10,
                 runSpacing: 10,
                 children: cards.map((card) {
-                  return SizedBox(width: (constraints.maxWidth - 10) / 2, child: card);
+                  return SizedBox(
+                    width: (constraints.maxWidth - 10) / 2,
+                    child: card,
+                  );
                 }).toList(),
               );
             },
@@ -1631,7 +1939,11 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return 'Há $dias dias';
   }
 
-  Widget _buildLeituraCard(String title, _ClassificacaoInfo info, String value) {
+  Widget _buildLeituraCard(
+    String title,
+    _ClassificacaoInfo info,
+    String value,
+  ) {
     final color = _colorFromBase(info.corBase);
 
     return Container(
@@ -1646,7 +1958,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(info.icone, color: color, size: 20),
           ),
           const SizedBox(width: 10),
@@ -1654,11 +1969,36 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: context.uai.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(info.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 13.5, fontWeight: FontWeight.w900)),
+                Text(
+                  info.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.uai.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w600)),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1685,7 +2025,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         : Icons.help_outline_rounded;
 
     final diff = tendencia.diferencaPercentual.round();
-    final diffText = diff == 0 ? 'sem variação' : '${diff > 0 ? '+' : ''}$diff%';
+    final diffText = diff == 0
+        ? 'sem variação'
+        : '${diff > 0 ? '+' : ''}$diff%';
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1699,7 +2041,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 10),
@@ -1707,11 +2052,36 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Tendência', style: TextStyle(color: context.uai.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                Text(
+                  'Tendência',
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(tendencia.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 13.5, fontWeight: FontWeight.w900)),
+                Text(
+                  tendencia.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(diffText, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.uai.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w600)),
+                Text(
+                  diffText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1736,10 +2106,21 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.local_fire_department_rounded, color: context.uai.warning, size: 18),
+              Icon(
+                Icons.local_fire_department_rounded,
+                color: context.uai.warning,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Sequências e comportamento', style: TextStyle(color: context.uai.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                child: Text(
+                  'Sequências e comportamento',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1749,7 +2130,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               _buildSequenciaMini(
                 label: 'Atual',
                 value: '${resumo.sequenciaAtual.quantidade}',
-                subtitle: resumo.sequenciaAtual.status == _StatusSequencia.presenca
+                subtitle:
+                    resumo.sequenciaAtual.status == _StatusSequencia.presenca
                     ? 'presença(s)'
                     : resumo.sequenciaAtual.status == _StatusSequencia.falta
                     ? 'falta(s)'
@@ -1803,11 +2185,39 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
           children: [
             Icon(icon, color: color, size: 18),
             const SizedBox(height: 5),
-            Text(value, style: TextStyle(color: color, fontSize: 19, fontWeight: FontWeight.w900, height: 1)),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
             const SizedBox(height: 3),
-            Text(label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.uai.textPrimary, fontSize: 10.5, fontWeight: FontWeight.w800)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 1),
-            Text(subtitle, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.uai.textSecondary, fontSize: 9.5, fontWeight: FontWeight.w600)),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -1815,7 +2225,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Widget _buildPresencasPorDia(_ResumoFrequenciaInteligente resumo) {
-    if (resumo.presencasPorDia.values.every((v) => v == 0)) return const SizedBox.shrink();
+    if (resumo.presencasPorDia.values.every((v) => v == 0))
+      return const SizedBox.shrink();
 
     final dias = [
       ['seg', 'Seg'],
@@ -1839,20 +2250,35 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               Icon(Icons.calendar_month, color: context.uai.primary, size: 18),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Presenças por dia da semana', style: TextStyle(color: context.uai.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                child: Text(
+                  'Presenças por dia da semana',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
-              final cardWidth = constraints.maxWidth < 420 ? (constraints.maxWidth - 18) / 4 : 42.0;
+              final cardWidth = constraints.maxWidth < 420
+                  ? (constraints.maxWidth - 18) / 4
+                  : 42.0;
               return Wrap(
                 spacing: 6,
                 runSpacing: 7,
                 alignment: WrapAlignment.center,
                 children: dias.map((dia) {
-                  return SizedBox(width: cardWidth, child: _buildDiaCard(dia[1], resumo.presencasPorDia[dia[0]] ?? 0));
+                  return SizedBox(
+                    width: cardWidth,
+                    child: _buildDiaCard(
+                      dia[1],
+                      resumo.presencasPorDia[dia[0]] ?? 0,
+                    ),
+                  );
                 }).toList(),
               );
             },
@@ -1869,15 +2295,35 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: ativo ? context.uai.primary.withOpacity(0.10) : context.uai.cardAlt,
+        color: ativo
+            ? context.uai.primary.withOpacity(0.10)
+            : context.uai.cardAlt,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: ativo ? context.uai.primary.withOpacity(0.24) : context.uai.border),
+        border: Border.all(
+          color: ativo
+              ? context.uai.primary.withOpacity(0.24)
+              : context.uai.border,
+        ),
       ),
       child: Column(
         children: [
-          Text(dia, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: ativo ? accent : context.uai.textMuted)),
+          Text(
+            dia,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: ativo ? accent : context.uai.textMuted,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text('$qtd', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: ativo ? accent : context.uai.textMuted)),
+          Text(
+            '$qtd',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: ativo ? accent : context.uai.textMuted,
+            ),
+          ),
         ],
       ),
     );
@@ -1898,7 +2344,14 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               Icon(Icons.school, color: context.uai.info, size: 18),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Presenças por tipo de aula', style: TextStyle(color: context.uai.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                child: Text(
+                  'Presenças por tipo de aula',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1907,9 +2360,15 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             spacing: 8,
             runSpacing: 8,
             children: resumo.presencasPorTipoAula.entries.map((entry) {
-              final cor = _ensureVisible(_corTipoAula(entry.key), context.uai.card);
+              final cor = _ensureVisible(
+                _corTipoAula(entry.key),
+                context.uai.card,
+              );
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: cor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -1918,11 +2377,32 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(color: cor, shape: BoxShape.circle)),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: cor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                     const SizedBox(width: 6),
-                    Text(_labelTipoAula(entry.key), style: TextStyle(fontSize: 11, color: cor, fontWeight: FontWeight.w600)),
+                    Text(
+                      _labelTipoAula(entry.key),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(width: 4),
-                    Text('${entry.value}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: cor)),
+                    Text(
+                      '${entry.value}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: cor,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -1958,7 +2438,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         elevation: presente ? 3 : 1,
         color: context.uai.card,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: context.uai.border)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: context.uai.border),
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => _mostrarDetalhesAula(item),
@@ -1973,13 +2456,27 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                       height: 12,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: presente ? context.uai.success : context.uai.error,
+                        color: presente
+                            ? context.uai.success
+                            : context.uai.error,
                         boxShadow: [
-                          BoxShadow(color: (presente ? context.uai.success : context.uai.error).withOpacity(0.4), blurRadius: 6),
+                          BoxShadow(
+                            color:
+                                (presente
+                                        ? context.uai.success
+                                        : context.uai.error)
+                                    .withOpacity(0.4),
+                            blurRadius: 6,
+                          ),
                         ],
                       ),
                     ),
-                    if (diasEntre > 0) Container(width: 2, height: 20, color: context.uai.border),
+                    if (diasEntre > 0)
+                      Container(
+                        width: 2,
+                        height: 20,
+                        color: context.uai.border,
+                      ),
                   ],
                 ),
                 const SizedBox(width: 14),
@@ -1992,18 +2489,33 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                           Expanded(
                             child: Text(
                               _dateFormat.format(data),
-                              style: TextStyle(color: context.uai.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: context.uai.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: presente ? context.uai.success.withOpacity(0.10) : context.uai.error.withOpacity(0.10),
+                              color: presente
+                                  ? context.uai.success.withOpacity(0.10)
+                                  : context.uai.error.withOpacity(0.10),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               presente ? 'PRESENTE' : 'AUSENTE',
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: presente ? context.uai.success : context.uai.error),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: presente
+                                    ? context.uai.success
+                                    : context.uai.error,
+                              ),
                             ),
                           ),
                         ],
@@ -2014,29 +2526,50 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                         runSpacing: 6,
                         children: [
                           _buildTag(_labelTipoAula(tipoAula), cor),
-                          if (diasEntre > 0) _buildTag('$diasEntre ${diasEntre == 1 ? 'dia' : 'dias'}', context.uai.warning),
+                          if (diasEntre > 0)
+                            _buildTag(
+                              '$diasEntre ${diasEntre == 1 ? 'dia' : 'dias'}',
+                              context.uai.warning,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 5),
                       Row(
                         children: [
-                          Icon(Icons.assignment_ind_rounded, size: 13, color: context.uai.associacao),
+                          Icon(
+                            Icons.assignment_ind_rounded,
+                            size: 13,
+                            color: context.uai.associacao,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               'Aula registrada por: $professor',
-                              style: TextStyle(fontSize: 12, color: context.uai.textSecondary, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.uai.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (obs.isNotEmpty) Icon(Icons.chat_bubble_outline, size: 14, color: context.uai.warning),
+                          if (obs.isNotEmpty)
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 14,
+                              color: context.uai.warning,
+                            ),
                         ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right, color: context.uai.textMuted, size: 20),
+                Icon(
+                  Icons.chevron_right,
+                  color: context.uai.textMuted,
+                  size: 20,
+                ),
               ],
             ),
           ),
@@ -2054,14 +2587,25 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: accent.withOpacity(0.30)),
       ),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: accent)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: accent,
+        ),
+      ),
     );
   }
 
   void _mostrarDetalhesAula(Map<String, dynamic> item) {
     showDialog<void>(
       context: context,
-      builder: (ctx) => _DetalheAulaDialog(item: item, alunoId: widget.alunoId, alunoNome: widget.alunoNome),
+      builder: (ctx) => _DetalheAulaDialog(
+        item: item,
+        alunoId: widget.alunoId,
+        alunoNome: widget.alunoNome,
+      ),
     );
   }
 }
@@ -2071,7 +2615,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 // ============================================
 
 enum _CorBase { sucesso, alerta, perigo, info, neutra }
+
 enum _StatusSequencia { presenca, falta, nenhuma }
+
 enum _StatusTendencia { melhorando, caindo, estavel, poucosDados }
 
 class _ClassificacaoInfo {
@@ -2172,10 +2718,14 @@ class _DetalheAulaDialog extends StatefulWidget {
   State<_DetalheAulaDialog> createState() => _DetalheAulaDialogState();
 }
 
-class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTickerProviderStateMixin {
+class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final DateFormat _timeFormat = DateFormat('HH:mm');
-  final DateFormat _fullDateFormat = DateFormat("EEEE, dd 'de' MMMM 'de' yyyy", 'pt_BR');
+  final DateFormat _fullDateFormat = DateFormat(
+    "EEEE, dd 'de' MMMM 'de' yyyy",
+    'pt_BR',
+  );
 
   bool _carregandoChamada = true;
   Map<String, dynamic>? _chamadaData;
@@ -2189,8 +2739,13 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
   void initState() {
     super.initState();
     _buscarChamada();
-    _piscaController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _piscaAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _piscaController, curve: Curves.easeInOut));
+    _piscaController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _piscaAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _piscaController, curve: Curves.easeInOut),
+    );
     _piscaController.repeat(reverse: true);
   }
 
@@ -2201,11 +2756,14 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
   }
 
   Color _readableOnLocal(Color background) {
-    return background.computeLuminance() > 0.48 ? const Color(0xFF111827) : const Color(0xFFFFFFFF);
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
   }
 
   Color _ensureVisibleLocal(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
     final bgIsDark = background.computeLuminance() < 0.45;
     final hsl = HSLColor.fromColor(color);
@@ -2215,12 +2773,17 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
         .toColor();
   }
 
-  Color _appBarBg() => Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() => Theme.of(context).appBarTheme.foregroundColor ?? _readableOnLocal(_appBarBg());
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ??
+      _readableOnLocal(_appBarBg());
 
   Color _onGradientText() {
     final t = context.uai;
-    final temaEscuro = t.background.computeLuminance() < 0.45 || t.surface.computeLuminance() < 0.45;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 ||
+        t.surface.computeLuminance() < 0.45;
     if (temaEscuro) return Colors.white;
     return _readableOnLocal(t.primary);
   }
@@ -2258,10 +2821,11 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
 
       if (query.docs.isNotEmpty) {
         final data = query.docs.first.data();
-        final alunos = (data['alunos'] as List<dynamic>?)
-            ?.whereType<Map>()
-            .map((a) => Map<String, dynamic>.from(a))
-            .toList() ??
+        final alunos =
+            (data['alunos'] as List<dynamic>?)
+                ?.whereType<Map>()
+                .map((a) => Map<String, dynamic>.from(a))
+                .toList() ??
             [];
 
         if (mounted) {
@@ -2345,8 +2909,16 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _buildChip(Icons.school_rounded, tipoAula, _corTipo(tipoAula)),
-                          _buildChip(Icons.assignment_ind_rounded, 'Aula registrada por: $professor', t.associacao),
+                          _buildChip(
+                            Icons.school_rounded,
+                            tipoAula,
+                            _corTipo(tipoAula),
+                          ),
+                          _buildChip(
+                            Icons.assignment_ind_rounded,
+                            'Aula registrada por: $professor',
+                            t.associacao,
+                          ),
                         ],
                       ),
                       if (observacao.isNotEmpty) ...[
@@ -2365,7 +2937,10 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                decoration: BoxDecoration(color: t.surface, border: Border(top: BorderSide(color: t.border))),
+                decoration: BoxDecoration(
+                  color: t.surface,
+                  border: Border(top: BorderSide(color: t.border)),
+                ),
                 child: ElevatedButton.icon(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close_rounded),
@@ -2375,7 +2950,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
                     foregroundColor: _appBarFg(),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.buttonRadius)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
+                    ),
                   ),
                 ),
               ),
@@ -2397,7 +2974,10 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
       padding: const EdgeInsets.fromLTRB(18, 16, 10, 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [statusColor, Color.alphaBlend(statusColor.withOpacity(0.80), t.primary)],
+          colors: [
+            statusColor,
+            Color.alphaBlend(statusColor.withOpacity(0.80), t.primary),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2423,28 +3003,55 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
                   widget.alunoNome.toUpperCase(),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: onStatus, fontSize: 17, height: 1.08, fontWeight: FontWeight.w900),
+                  style: TextStyle(
+                    color: onStatus,
+                    fontSize: 17,
+                    height: 1.08,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 7),
                 Wrap(
                   spacing: 7,
                   runSpacing: 7,
                   children: [
-                    _buildHeaderPill(icon: presente ? Icons.check_circle_rounded : Icons.cancel_rounded, label: presente ? 'PRESENTE' : 'AUSENTE', onColor: onStatus),
-                    _buildHeaderPill(icon: Icons.calendar_today_rounded, label: _fullDateFormat.format(data), onColor: onStatus),
-                    _buildHeaderPill(icon: Icons.access_time_rounded, label: _timeFormat.format(data), onColor: onStatus),
+                    _buildHeaderPill(
+                      icon: presente
+                          ? Icons.check_circle_rounded
+                          : Icons.cancel_rounded,
+                      label: presente ? 'PRESENTE' : 'AUSENTE',
+                      onColor: onStatus,
+                    ),
+                    _buildHeaderPill(
+                      icon: Icons.calendar_today_rounded,
+                      label: _fullDateFormat.format(data),
+                      onColor: onStatus,
+                    ),
+                    _buildHeaderPill(
+                      icon: Icons.access_time_rounded,
+                      label: _timeFormat.format(data),
+                      onColor: onStatus,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          IconButton(tooltip: 'Fechar', onPressed: () => Navigator.pop(context), icon: Icon(Icons.close_rounded, color: onStatus)),
+          IconButton(
+            tooltip: 'Fechar',
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.close_rounded, color: onStatus),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildHeaderPill({required IconData icon, required String label, required Color onColor}) {
+  Widget _buildHeaderPill({
+    required IconData icon,
+    required String label,
+    required Color onColor,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -2463,7 +3070,11 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: onColor, fontSize: 10.8, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: onColor,
+                fontSize: 10.8,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -2490,7 +3101,13 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
           Expanded(
             child: Text(
               observacao,
-              style: TextStyle(fontSize: 13, color: t.textPrimary, height: 1.3, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 13,
+                color: t.textPrimary,
+                height: 1.3,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -2510,7 +3127,14 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
             children: [
               CircularProgressIndicator(color: t.primary),
               const SizedBox(height: 12),
-              Text('Carregando detalhes da chamada...', textAlign: TextAlign.center, style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w600)),
+              Text(
+                'Carregando detalhes da chamada...',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -2529,7 +3153,12 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
           ),
           child: Text(
             _erro!,
-            style: TextStyle(color: _ensureVisibleLocal(t.error, t.card), fontSize: 13, fontWeight: FontWeight.w700, height: 1.3),
+            style: TextStyle(
+              color: _ensureVisibleLocal(t.error, t.card),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -2564,22 +3193,56 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
       ),
       child: Row(
         children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: primary.withOpacity(0.10), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.groups_rounded, color: primary)),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(Icons.groups_rounded, color: primary),
+          ),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(turmaNome, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: t.textPrimary)),
+                Text(
+                  turmaNome,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: t.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 3),
-                Text('$presentes presentes de $total alunos', style: TextStyle(fontSize: 11.5, color: t.textSecondary, fontWeight: FontWeight.w700)),
+                Text(
+                  '$presentes presentes de $total alunos',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: t.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(99)),
-            child: Text('$porcentagem%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _readableOnLocal(primary))),
+            decoration: BoxDecoration(
+              color: primary,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              '$porcentagem%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: _readableOnLocal(primary),
+              ),
+            ),
           ),
         ],
       ),
@@ -2588,11 +3251,19 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
 
   Widget _buildAlunoChamadaTile(Map<String, dynamic> aluno) {
     final t = context.uai;
-    final isDestaque = aluno['aluno_id']?.toString() == widget.alunoId || aluno['id']?.toString() == widget.alunoId;
-    final nome = aluno['aluno_nome']?.toString() ?? aluno['nome']?.toString() ?? 'Sem nome';
+    final isDestaque =
+        aluno['aluno_id']?.toString() == widget.alunoId ||
+        aluno['id']?.toString() == widget.alunoId;
+    final nome =
+        aluno['aluno_nome']?.toString() ??
+        aluno['nome']?.toString() ??
+        'Sem nome';
     final presente = aluno['presente'] == true;
     final observacao = aluno['observacao']?.toString() ?? '';
-    final statusColor = _ensureVisibleLocal(presente ? t.success : t.error, t.card);
+    final statusColor = _ensureVisibleLocal(
+      presente ? t.success : t.error,
+      t.card,
+    );
 
     return AnimatedBuilder(
       animation: _piscaAnimation,
@@ -2604,14 +3275,34 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
             margin: const EdgeInsets.only(bottom: 7),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isDestaque ? Color.alphaBlend(statusColor.withOpacity(0.12), t.card) : t.cardAlt,
+              color: isDestaque
+                  ? Color.alphaBlend(statusColor.withOpacity(0.12), t.card)
+                  : t.cardAlt,
               borderRadius: BorderRadius.circular(t.inputRadius),
-              border: Border.all(color: isDestaque ? statusColor : t.border, width: isDestaque ? 2.2 : 1),
-              boxShadow: isDestaque ? [BoxShadow(color: statusColor.withOpacity(0.22), blurRadius: 8, offset: const Offset(0, 3))] : null,
+              border: Border.all(
+                color: isDestaque ? statusColor : t.border,
+                width: isDestaque ? 2.2 : 1,
+              ),
+              boxShadow: isDestaque
+                  ? [
+                      BoxShadow(
+                        color: statusColor.withOpacity(0.22),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
             ),
             child: Row(
               children: [
-                Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: statusColor,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -2621,24 +3312,52 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
                         nome,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, fontWeight: isDestaque ? FontWeight.w900 : FontWeight.w700, color: isDestaque ? statusColor : t.textPrimary),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: isDestaque
+                              ? FontWeight.w900
+                              : FontWeight.w700,
+                          color: isDestaque ? statusColor : t.textPrimary,
+                        ),
                       ),
                       if (observacao.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: Text(observacao, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: t.textSecondary, fontStyle: FontStyle.italic)),
+                          child: Text(
+                            observacao,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: t.textSecondary,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
                         ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: Color.alphaBlend(statusColor.withOpacity(0.08), t.card),
+                    color: Color.alphaBlend(
+                      statusColor.withOpacity(0.08),
+                      t.card,
+                    ),
                     borderRadius: BorderRadius.circular(99),
                     border: Border.all(color: statusColor.withOpacity(0.14)),
                   ),
-                  child: Text(presente ? 'P' : 'A', style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w900)),
+                  child: Text(
+                    presente ? 'P' : 'A',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -2665,7 +3384,15 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog> with SingleTicke
           Icon(icon, size: 12, color: accent),
           const SizedBox(width: 5),
           Flexible(
-            child: Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: accent), overflow: TextOverflow.ellipsis),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: accent,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

@@ -52,23 +52,23 @@ class FrequenciaModel {
     // > 35 dias → 🔴 INATIVO(A)
 
     if (dias <= 4) {
-      cor = Colors.blue;      // 🔵 Azul
+      cor = Colors.blue; // 🔵 Azul
       nivel = "ALTA";
       statusTexto = "Treinou há $dias ${dias == 1 ? 'dia' : 'dias'}";
     } else if (dias <= 7) {
-      cor = Colors.green;     // 🟢 Verde
+      cor = Colors.green; // 🟢 Verde
       nivel = "MÉDIA";
       statusTexto = "Treinou há $dias dias";
     } else if (dias <= 14) {
-      cor = Colors.amber;     // 🟡 Amarelo
+      cor = Colors.amber; // 🟡 Amarelo
       nivel = "BAIXA";
       statusTexto = "Treinou há $dias dias";
     } else if (dias <= 35) {
-      cor = Colors.orange;    // 🟠 Laranja
+      cor = Colors.orange; // 🟠 Laranja
       nivel = "TURISTA";
       statusTexto = "Treinou há $dias dias";
     } else {
-      cor = Colors.red;       // 🔴 Vermelho
+      cor = Colors.red; // 🔴 Vermelho
       nivel = "INATIVO(A)";
       statusTexto = "Treinou há $dias dias";
     }

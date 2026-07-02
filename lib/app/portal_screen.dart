@@ -1,4 +1,4 @@
-﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/main.dart';
@@ -98,7 +98,9 @@ class PortalScreen extends StatelessWidget {
                     if (context.mounted) {
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => const MainScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const MainScreen(),
+                        ),
                       );
                     }
                   });
@@ -254,10 +256,7 @@ class PortalScreen extends StatelessWidget {
               // Email
               Text(
                 userData['email'] ?? '',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
 
@@ -306,10 +305,7 @@ class PortalScreen extends StatelessWidget {
               await FirebaseAuth.instance.signOut();
             },
             icon: const Icon(Icons.logout),
-            label: const Text(
-              'SAIR',
-              style: TextStyle(fontSize: 16),
-            ),
+            label: const Text('SAIR', style: TextStyle(fontSize: 16)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).primaryColor,
               foregroundColor: Colors.white,

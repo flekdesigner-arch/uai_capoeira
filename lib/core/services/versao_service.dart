@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/foundation.dart' show debugPrint; // 🔥 1. Import do debugPrint
+import 'package:flutter/foundation.dart'
+    show debugPrint; // 🔥 1. Import do debugPrint
 import 'dart:io' show Platform; // 🔥 2. Import do Platform
 
 class VersaoService {
@@ -54,7 +55,10 @@ class VersaoService {
   bool _compararVersoes(String local, String firebase) {
     try {
       final List<int> localParts = local.split('.').map(int.parse).toList();
-      final List<int> firebaseParts = firebase.split('.').map(int.parse).toList();
+      final List<int> firebaseParts = firebase
+          .split('.')
+          .map(int.parse)
+          .toList();
 
       for (int i = 0; i < firebaseParts.length; i++) {
         if (i >= localParts.length) return true;
@@ -71,14 +75,19 @@ class VersaoService {
   // 🚀 Abrir loja para atualizar
   Future<void> abrirLoja() async {
     // 🔥 5. Corrigido o ID do pacote (substitua pelo seu)
-    final String packageName = 'com.example.uai_capoeira'; // Mude para seu ID real!
+    final String packageName =
+        'com.example.uai_capoeira'; // Mude para seu ID real!
 
     final Uri url = Platform.isAndroid
         ? Uri.parse('market://details?id=$packageName')
-        : Uri.parse('https://apps.apple.com/app/idSEU_ID'); // Substitua pelo ID da Apple
+        : Uri.parse(
+            'https://apps.apple.com/app/idSEU_ID',
+          ); // Substitua pelo ID da Apple
 
     final Uri fallbackUrl = Platform.isAndroid
-        ? Uri.parse('https://play.google.com/store/apps/details?id=$packageName')
+        ? Uri.parse(
+            'https://play.google.com/store/apps/details?id=$packageName',
+          )
         : Uri.parse('https://apps.apple.com/app/idSEU_ID');
 
     try {

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:typed_data';
 
@@ -67,8 +67,8 @@ class _SignatureScreenState extends State<SignatureScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -129,7 +129,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
 
       setState(() {
         _erroMensagem =
-        'Erro: ${e.toString().replaceAll('Exception:', '').trim()}';
+            'Erro: ${e.toString().replaceAll('Exception:', '').trim()}';
       });
     } finally {
       if (mounted) {
@@ -276,8 +276,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
             left: 18 + padding.left,
             top: 16 + padding.top,
             child: _floatingGlassChip(
-              icon:
-              hasSignature ? Icons.check_circle_rounded : Icons.draw_rounded,
+              icon: hasSignature
+                  ? Icons.check_circle_rounded
+                  : Icons.draw_rounded,
               label: hasSignature ? 'Assinatura detectada' : 'Assine no quadro',
               color: hasSignature ? context.uai.success : context.uai.primary,
               forceLightCard: true,
@@ -557,7 +558,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
       style: OutlinedButton.styleFrom(
         foregroundColor: dark ? Colors.white : primary,
         side: BorderSide(
-          color: dark ? Colors.white.withOpacity(0.32) : primary.withOpacity(0.22),
+          color: dark
+              ? Colors.white.withOpacity(0.32)
+              : primary.withOpacity(0.22),
         ),
         backgroundColor: dark ? Colors.white.withOpacity(0.08) : t.card,
         padding: const EdgeInsets.symmetric(vertical: 13),
@@ -578,17 +581,17 @@ class _SignatureScreenState extends State<SignatureScreen> {
       onPressed: _isLoading ? null : _confirmarAssinatura,
       icon: _isLoading
           ? SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: _readableOn(safeBg),
-        ),
-      )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _readableOn(safeBg),
+              ),
+            )
           : Icon(
-        hasSignature ? Icons.check_rounded : Icons.draw_rounded,
-        size: 18,
-      ),
+              hasSignature ? Icons.check_rounded : Icons.draw_rounded,
+              size: 18,
+            ),
       label: Text(_isLoading ? 'PREPARANDO...' : 'USAR ASSINATURA'),
       style: ElevatedButton.styleFrom(
         backgroundColor: safeBg,
@@ -676,17 +679,16 @@ class _SignatureScreenState extends State<SignatureScreen> {
     );
   }
 
-  Widget _buildErrorBox({
-    bool compact = false,
-    bool forceLight = false,
-  }) {
+  Widget _buildErrorBox({bool compact = false, bool forceLight = false}) {
     final t = context.uai;
     final card = forceLight ? Colors.white : t.card;
     final danger = _ensureVisible(t.error, card);
     final textColor = forceLight ? const Color(0xFF7F1D1D) : danger;
 
     return Container(
-      margin: compact ? EdgeInsets.zero : const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      margin: compact
+          ? EdgeInsets.zero
+          : const EdgeInsets.fromLTRB(12, 6, 12, 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: forceLight
@@ -696,12 +698,12 @@ class _SignatureScreenState extends State<SignatureScreen> {
         border: Border.all(color: danger.withOpacity(0.18)),
         boxShadow: compact
             ? [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.10),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ]
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
             : null,
       ),
       child: Row(

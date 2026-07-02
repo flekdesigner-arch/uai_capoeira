@@ -1,10 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/alunos/services/aluno_historico_edicao_service.dart';
 import 'package:uai_capoeira/modules/site/services/site_config_service.dart';
+import 'package:xml/xml.dart' as xml;
 
 class AreaAlunoAdminScreen extends StatefulWidget {
   const AreaAlunoAdminScreen({super.key});
@@ -23,6 +28,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   bool _carregando = true;
   bool _salvando = false;
   final Set<String> _contasSelecionadas = {};
+  String? _contasCordaSvg;
+  final Map<String, Map<String, dynamic>> _contasGraduacoesCache = {};
+  final Map<String, String> _contasSvgCache = {};
 
   Map<String, dynamic> _config = {};
 
@@ -65,7 +73,18 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 7, vsync: this);
+    _carregarCordaSvgContas();
     _carregar();
+  }
+
+  Future<void> _carregarCordaSvgContas() async {
+    try {
+      final svg = await rootBundle.loadString('assets/images/corda.svg');
+      if (!mounted) return;
+      setState(() => _contasCordaSvg = svg);
+    } catch (e) {
+      debugPrint('Erro ao carregar corda.svg na aba Contas: $e');
+    }
   }
 
   @override
@@ -1811,6 +1830,23 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         }
       }
 
+      final alunoRef = FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId);
+      DocumentSnapshot<Map<String, dynamic>> alunoSnapshot;
+
+      try {
+        alunoSnapshot = await alunoRef.get(
+          const GetOptions(source: Source.server),
+        );
+      } catch (_) {
+        alunoSnapshot = await alunoRef.get();
+      }
+
+      final dadosAntes = alunoSnapshot.data() ?? <String, dynamic>{};
+      final dadosDepois = Map<String, dynamic>.from(dadosAntes)
+        ..addAll(updateAluno);
+
       final admin = await _dadosAdminAtual();
 
       updateAluno['ultima_atualizacao'] = FieldValue.serverTimestamp();
@@ -1820,10 +1856,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
       final batch = FirebaseFirestore.instance.batch();
 
-      batch.update(
-        FirebaseFirestore.instance.collection('alunos').doc(alunoId),
-        updateAluno,
-      );
+      batch.update(alunoRef, updateAluno);
 
       batch.update(doc.reference, {
         'status': 'aprovado',
@@ -1837,7 +1870,16 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
       await batch.commit();
 
-      if (mounted) Navigator.pop(context);
+      await AlunoHistoricoEdicaoService().registrarEdicaoPorSolicitacao(
+        alunoId: alunoId,
+        dadosAntes: dadosAntes,
+        dadosDepois: dadosDepois,
+        solicitacaoId: doc.id,
+        observacaoAluno: data['observacao_aluno']?.toString(),
+        observacaoAprovacao: 'Solicitação aprovada e aplicada no cadastro.',
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
 
       _mostrarSnack(
         '✅ Solicitação aprovada e cadastro atualizado.',
@@ -1985,10 +2027,27 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
             children: [
               TextField(
                 controller: _contasBuscaController,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
-                  labelText: 'Buscar contas vinculadas',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  labelText:
+                      'Buscar por aluno, turma, e-mail Google ou nome Google',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: context.uai.border),
+                  ),
+                  suffixIcon: _contasBuscaController.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Limpar busca',
+                          onPressed: () {
+                            _contasBuscaController.clear();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -2069,6 +2128,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           final haystack = [
             data['nome'],
             data['turma'],
+            data['graduacao_nome'],
+            data['graduacao_atual'],
+            data['graduacao_nova'],
+            data['graduacao'],
+            data['corda'],
+            data['corda_atual'],
+            data['faixa'],
             data['areaAlunoGoogleUid'],
             data['areaAlunoGoogleEmail'],
             data['areaAlunoGoogleNome'],
@@ -2083,6 +2149,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
               total: todosDocs.length,
               vinculadas: docsVinculados.length,
               semVinculo: todosDocs.length - docsVinculados.length,
+              filtradas: docs.length,
+              selecionadas: _contasSelecionadas.length,
+              buscaAtiva: busca.isNotEmpty,
             ),
             const SizedBox(height: 12),
             if (docsVinculados.isEmpty)
@@ -2100,7 +2169,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 text: 'A busca não encontrou contas vinculadas.',
               )
             else
-              ...docs.map(_buildContaAlunoTile),
+              _buildContasGridResponsivo(docs),
           ],
         );
       },
@@ -2120,6 +2189,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     required int total,
     required int vinculadas,
     required int semVinculo,
+    required int filtradas,
+    required int selecionadas,
+    required bool buscaAtiva,
   }) {
     return Wrap(
       spacing: 10,
@@ -2143,6 +2215,26 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           value: semVinculo.toString(),
           color: Colors.orange,
         ),
+        if (buscaAtiva)
+          _buildResumoPill(
+            icon: Icons.manage_search_rounded,
+            label: 'Resultados da busca',
+            value: filtradas.toString(),
+            color: context.uai.primary,
+          ),
+        if (selecionadas > 0)
+          _buildResumoPill(
+            icon: Icons.check_circle_rounded,
+            label: 'Selecionados',
+            value: selecionadas.toString(),
+            color: context.uai.warning,
+          ),
+        if (selecionadas > 0)
+          OutlinedButton.icon(
+            onPressed: () => setState(_contasSelecionadas.clear),
+            icon: const Icon(Icons.clear_all_rounded),
+            label: const Text('Limpar seleção'),
+          ),
       ],
     );
   }
@@ -2194,7 +2286,553 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     );
   }
 
+  Widget _buildContasGridResponsivo(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final colunas = _calcularColunasContas(width);
+        const spacing = 12.0;
+        final itemWidth = colunas == 1
+            ? width
+            : (width - spacing * (colunas - 1)) / colunas;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: docs
+              .map(
+                (doc) => SizedBox(
+                  width: itemWidth.isFinite ? itemWidth : double.infinity,
+                  child: _buildContaAlunoTile(doc),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  int _calcularColunasContas(double width) {
+    if (width >= 1500) return 3;
+    if (width >= 1100) return 2;
+    return 1;
+  }
+
   Widget _buildContaAlunoTile(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+
+    return FutureBuilder<String?>(
+      future: _getSvgConta(data),
+      builder: (context, snapshot) {
+        return _buildContaGoogleCard(
+          doc: doc,
+          data: data,
+          cordaSvg: snapshot.data,
+          carregandoCorda: snapshot.connectionState == ConnectionState.waiting,
+        );
+      },
+    );
+  }
+
+  Widget _buildContaGoogleCard({
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required Map<String, dynamic> data,
+    required String? cordaSvg,
+    required bool carregandoCorda,
+  }) {
+    final t = context.uai;
+    final selected = _contasSelecionadas.contains(doc.id);
+    final nome = _textoConta(data['nome'], fallback: 'Aluno');
+    final turma = _textoConta(data['turma'], fallback: 'Turma não informada');
+    final graduacao = _obterNomeGraduacaoConta(data);
+    final email = _textoConta(data['areaAlunoGoogleEmail']);
+    final googleNome = _textoConta(data['areaAlunoGoogleNome']);
+    final uid = _textoConta(data['areaAlunoGoogleUid']);
+    final vinculadoEm = _formatTimestamp(data['areaAlunoVinculadoEm']);
+    final ultimoAcesso = _formatTimestamp(
+      data['areaAlunoUltimoAcessoGoogleEm'],
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _toggleContaSelecionada(doc.id, !selected),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected
+                ? Color.alphaBlend(t.primary.withOpacity(0.08), t.card)
+                : t.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? t.primary : t.border,
+              width: selected ? 1.6 : 1,
+            ),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildAlunoFotoConta(data, nome),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                nome.toUpperCase(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14.5,
+                                  height: 1.08,
+                                ),
+                              ),
+                            ),
+                            Checkbox(
+                              value: selected,
+                              onChanged: (value) => _toggleContaSelecionada(
+                                doc.id,
+                                value == true,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              activeColor: t.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        _buildContaMiniInfo(
+                          icon: Icons.groups_rounded,
+                          text: turma,
+                        ),
+                        const SizedBox(height: 4),
+                        _buildContaMiniInfo(
+                          icon: Icons.workspace_premium_rounded,
+                          text: graduacao,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (cordaSvg != null || carregandoCorda) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 48,
+                      height: 60,
+                      child: Center(
+                        child: carregandoCorda
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: t.primary,
+                                ),
+                              )
+                            : SvgPicture.string(
+                                cordaSvg!,
+                                height: 56,
+                                fit: BoxFit.contain,
+                              ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildContaStatusChip(
+                    icon: Icons.verified_user_rounded,
+                    label: 'Google vinculado',
+                    color: t.success,
+                  ),
+                  _buildContaStatusChip(
+                    icon: Icons.school_rounded,
+                    label: turma,
+                    color: t.primary,
+                  ),
+                  if (!_isSemGraduacaoConta(graduacao))
+                    _buildContaStatusChip(
+                      icon: Icons.military_tech_rounded,
+                      label: graduacao,
+                      color: t.associacao,
+                    ),
+                  if (uid.isNotEmpty)
+                    _buildContaStatusChip(
+                      icon: Icons.fingerprint_rounded,
+                      label: 'UID ${_uidCurto(uid)}',
+                      color: t.warning,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: t.cardAlt,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.border),
+                ),
+                child: Column(
+                  children: [
+                    if (email.isNotEmpty)
+                      _buildContaMiniInfo(
+                        icon: Icons.alternate_email_rounded,
+                        text: email,
+                      ),
+                    if (googleNome.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      _buildContaMiniInfo(
+                        icon: Icons.person_pin_rounded,
+                        text: googleNome,
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    _buildContaMiniInfo(
+                      icon: Icons.link_rounded,
+                      text: vinculadoEm == '--'
+                          ? 'Data do vínculo não registrada'
+                          : 'Vinculado em $vinculadoEm',
+                    ),
+                    const SizedBox(height: 6),
+                    _buildContaMiniInfo(
+                      icon: Icons.history_rounded,
+                      text: ultimoAcesso == '--'
+                          ? 'Sem acesso Google registrado'
+                          : 'Último acesso Google $ultimoAcesso',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: () => _confirmarResetVinculos(alunoIds: [doc.id]),
+                  icon: const Icon(Icons.link_off_rounded, size: 17),
+                  label: const Text('Resetar vínculo'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: t.error,
+                    side: BorderSide(color: t.error.withOpacity(0.45)),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _toggleContaSelecionada(String alunoId, bool selected) {
+    setState(() {
+      if (selected) {
+        _contasSelecionadas.add(alunoId);
+      } else {
+        _contasSelecionadas.remove(alunoId);
+      }
+    });
+  }
+
+  Widget _buildAlunoFotoConta(Map<String, dynamic> data, String nome) {
+    final t = context.uai;
+    final fotoUrl = _textoConta(data['foto_perfil_aluno']);
+    final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
+
+    Widget fallback() {
+      return Container(
+        color: t.primary.withOpacity(0.12),
+        alignment: Alignment.center,
+        child: Text(
+          inicial,
+          style: TextStyle(
+            color: t.primary,
+            fontSize: 25,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: SizedBox(
+        width: 72,
+        height: 72,
+        child: fotoUrl.isEmpty
+            ? fallback()
+            : CachedNetworkImage(
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => fallback(),
+                errorWidget: (context, url, error) => fallback(),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildContaStatusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    final accent = _ensureVisible(color, context.uai.card);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accent.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContaMiniInfo({required IconData icon, required String text}) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: context.uai.textSecondary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _textoConta(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _uidCurto(String uid) {
+    if (uid.length <= 8) return uid;
+    return uid.substring(0, 8);
+  }
+
+  String _graduacaoKeyConta(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _obterNomeGraduacaoConta(Map<String, dynamic> data) {
+    final graduacaoId = _textoConta(data['graduacao_id']);
+    if (graduacaoId.isNotEmpty) {
+      final cached = _contasGraduacoesCache[graduacaoId];
+      if (cached != null) {
+        return _textoConta(
+          cached['nome_graduacao'] ?? cached['nome'],
+          fallback: graduacaoId,
+        );
+      }
+    }
+
+    final campos = [
+      data['graduacao_nome'],
+      data['graduacao_atual'],
+      data['graduacao_nova'],
+      data['graduacao'],
+      data['corda'],
+      data['corda_atual'],
+      data['faixa'],
+    ];
+
+    for (final value in campos) {
+      final text = _textoConta(value);
+      if (text.isNotEmpty && !_isSemGraduacaoConta(text)) {
+        return text;
+      }
+    }
+
+    return 'SEM GRADUACAO';
+  }
+
+  bool _isSemGraduacaoConta(String value) {
+    final normalized = value.toUpperCase().replaceAll('Ç', 'C');
+    return normalized == 'SEM GRADUACAO';
+  }
+
+  Future<String?> _getSvgConta(Map<String, dynamic> data) async {
+    final svgBase = _contasCordaSvg;
+    if (svgBase == null) return null;
+
+    final nomeGraduacao = _obterNomeGraduacaoConta(data);
+    if (nomeGraduacao.isEmpty || _isSemGraduacaoConta(nomeGraduacao)) {
+      return null;
+    }
+
+    final graduacaoId = _textoConta(data['graduacao_id']);
+    final cacheKey =
+        'conta_${graduacaoId}_${_graduacaoKeyConta(nomeGraduacao)}';
+    if (_contasSvgCache.containsKey(cacheKey)) return _contasSvgCache[cacheKey];
+
+    Map<String, dynamic>? graduacao;
+    if (graduacaoId.isNotEmpty) {
+      graduacao = await _carregarGraduacaoConta(
+        id: graduacaoId,
+        nomeFallback: nomeGraduacao,
+      );
+    }
+
+    graduacao ??= _contasGraduacoesCache[_graduacaoKeyConta(nomeGraduacao)];
+    graduacao ??= await _carregarGraduacaoConta(nome: nomeGraduacao);
+    if (graduacao == null) return null;
+
+    final document = xml.XmlDocument.parse(svgBase);
+    void changeColor(String id, Color color) {
+      final element = document.rootElement.descendants
+          .whereType<xml.XmlElement>()
+          .firstWhere(
+            (e) => e.getAttribute('id') == id,
+            orElse: () => xml.XmlElement(xml.XmlName('')),
+          );
+      if (element.name.local.isEmpty) return;
+
+      final hex =
+          '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+      final oldStyle = element.getAttribute('style') ?? '';
+      element.setAttribute('fill', hex);
+      element.setAttribute(
+        'style',
+        oldStyle.contains('fill:')
+            ? oldStyle.replaceAll(
+                RegExp(r'fill:\s*#[0-9a-fA-F]{3,8}'),
+                'fill:$hex',
+              )
+            : 'fill:$hex;$oldStyle',
+      );
+    }
+
+    changeColor('cor1', _colorFromHexConta(graduacao['hex_cor1']));
+    changeColor('cor2', _colorFromHexConta(graduacao['hex_cor2']));
+    changeColor('corponta1', _colorFromHexConta(graduacao['hex_ponta1']));
+    changeColor('corponta2', _colorFromHexConta(graduacao['hex_ponta2']));
+
+    final result = document.toXmlString();
+    _contasSvgCache[cacheKey] = result;
+    return result;
+  }
+
+  Future<Map<String, dynamic>?> _carregarGraduacaoConta({
+    String? id,
+    String? nome,
+    String? nomeFallback,
+  }) async {
+    try {
+      if (id != null && id.trim().isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('graduacoes')
+            .doc(id.trim())
+            .get();
+        if (doc.exists) {
+          final data = doc.data() ?? {};
+          _salvarGraduacaoContaNoCache(
+            doc.id,
+            data,
+            nomeFallback: nomeFallback,
+          );
+          return _contasGraduacoesCache[doc.id];
+        }
+      }
+
+      final nomeBusca = nome?.trim() ?? '';
+      if (nomeBusca.isEmpty) return null;
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('graduacoes')
+          .where('nome_graduacao', isEqualTo: nomeBusca)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isEmpty) return null;
+
+      final doc = snapshot.docs.first;
+      _salvarGraduacaoContaNoCache(doc.id, doc.data(), nomeFallback: nomeBusca);
+      return _contasGraduacoesCache[_graduacaoKeyConta(nomeBusca)];
+    } catch (e) {
+      debugPrint('Erro ao carregar graduação da conta: $e');
+      return null;
+    }
+  }
+
+  void _salvarGraduacaoContaNoCache(
+    String id,
+    Map<String, dynamic> data, {
+    String? nomeFallback,
+  }) {
+    final nome = _textoConta(
+      data['nome_graduacao'] ?? data['nome'] ?? data['titulo'],
+      fallback: nomeFallback ?? '',
+    );
+    if (nome.isEmpty) return;
+
+    final item = {...data, 'id': id, 'nome_graduacao': nome};
+    _contasGraduacoesCache[id] = item;
+    _contasGraduacoesCache[nome] = item;
+    _contasGraduacoesCache[_graduacaoKeyConta(nome)] = item;
+  }
+
+  Color _colorFromHexConta(dynamic value) {
+    final cleaned = value?.toString().replaceAll('#', '').trim() ?? '';
+    try {
+      if (cleaned.length == 6) {
+        return Color(int.parse('FF$cleaned', radix: 16));
+      }
+      if (cleaned.length == 8) {
+        return Color(int.parse(cleaned, radix: 16));
+      }
+    } catch (_) {
+      return context.uai.textMuted;
+    }
+    return context.uai.textMuted;
+  }
+
+  Widget buildContaAlunoTileAntigo(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data();
     final t = context.uai;
     final vinculado = _isContaGoogleVinculada(data);

@@ -260,7 +260,12 @@ Future<void> main() async {
       print('⚠️ Erro em mensagens (não crítico): $e');
     }
 
-    if (!kIsWeb) {
+    final supportsFirebaseMessaging =
+        kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+
+    if (!kIsWeb && supportsFirebaseMessaging) {
       FirebaseMessaging.onBackgroundMessage(
         _firebaseMessagingBackgroundHandler,
       );

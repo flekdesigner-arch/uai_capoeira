@@ -24,7 +24,8 @@ Future<void> main() async {
       'cidade': 'BOCAIUVA-MG',
       'modalidade': 'CAPOEIRA',
       'professor': 'TICO-TICO',
-      'logo_url': 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/JEmRdvRYw6JD14UcSnby.jpg',
+      'logo_url':
+          'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/JEmRdvRYw6JD14UcSnby.jpg',
       'whatsapp_url': 'https://chat.whatsapp.com/DmOMLyuoBou3Ax7WQvAbTE',
       'responsavel': 'TICO-TICO',
       'endereco': 'Centro de Convivio - Bocaiúva-MG',
@@ -38,7 +39,9 @@ Future<void> main() async {
     };
 
     // Criar documento da academia
-    final academiaRef = await firestore.collection('academias').add(academiaData);
+    final academiaRef = await firestore
+        .collection('academias')
+        .add(academiaData);
     print('✅ Academia criada: ${academiaRef.id}');
     print('   Nome: CENTRO DE CONVIVIO');
     print('   Cidade: BOCAIUVA-MG');
@@ -74,7 +77,8 @@ Future<void> main() async {
       {
         'nome': '19:00 AS 20:30',
         'horario': '19:00 às 20:30',
-        'logo_url': 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/x7fzZFECzpbjdTplh0g7.jpg',
+        'logo_url':
+            'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/x7fzZFECzpbjdTplh0g7.jpg',
         'cidade': 'BOCAIUVA-MG',
         'nucleo': 'CENTRO DE CONVIVIO',
         'modalidade': 'CAPOEIRA',
@@ -92,7 +96,8 @@ Future<void> main() async {
       {
         'nome': '18:00 AS 19:00',
         'horario': '18:00 às 19:00',
-        'logo_url': 'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/AqQPRSDgpWpmyD3UByd7.jpg',
+        'logo_url':
+            'https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/4h7FnX9U55pXjuDNV6k1/pub/AqQPRSDgpWpmyD3UByd7.jpg',
         'cidade': 'BOCAIUVA-MG',
         'nucleo': 'CENTRO DE CONVIVIO',
         'modalidade': 'CAPOEIRA',
@@ -106,7 +111,7 @@ Future<void> main() async {
         'faixa_etaria': 'Infantil (6-12 anos)',
         'criado_em': FieldValue.serverTimestamp(),
         'atualizado_em': FieldValue.serverTimestamp(),
-      }
+      },
     ];
 
     // Adicionar cada turma na subcoleção
@@ -160,7 +165,9 @@ Future<void> main() async {
     print('=' * 50);
 
     // ==================== CRIAR ÍNDICES (OPCIONAL) ====================
-    print('\n💡 DICA: Para melhor performance, crie estes índices no Firestore:');
+    print(
+      '\n💡 DICA: Para melhor performance, crie estes índices no Firestore:',
+    );
     print('''
 Coleção "academias":
 - cidade Ascending, status Ascending
@@ -170,7 +177,6 @@ Coleção "academias/{id}/turmas":
 - horario Ascending
 - status Ascending, capacidade_maxima Descending
 ''');
-
   } catch (e, stackTrace) {
     print('\n❌ ERRO DURANTE A EXECUÇÃO:');
     print('Erro: $e');

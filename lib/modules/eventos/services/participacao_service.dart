@@ -172,22 +172,19 @@ class ParticipacaoService {
           .collection('participacoes')
           .doc(docRef.id)
           .set({
-        'participacao_id': docRef.id,
-        'aluno_id': alunoId,
-        'aluno_nome': alunoNome,
-        'status': status,
-        'total_pago': 0,
-        'valor_total': valorInscricao + valorCamisa,
-        'tamanho_camisa': tamanhoCamisa,
-        'modelagem_camisa': modelagemFinal,
-        'tipo_camisa': tipoFinal,
-        'criado_em': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+            'participacao_id': docRef.id,
+            'aluno_id': alunoId,
+            'aluno_nome': alunoNome,
+            'status': status,
+            'total_pago': 0,
+            'valor_total': valorInscricao + valorCamisa,
+            'tamanho_camisa': tamanhoCamisa,
+            'modelagem_camisa': modelagemFinal,
+            'tipo_camisa': tipoFinal,
+            'criado_em': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
-      return {
-        'id': docRef.id,
-        ...participacao,
-      };
+      return {'id': docRef.id, ...participacao};
     } catch (e) {
       debugPrint('Erro ao adicionar participante: $e');
       rethrow;
@@ -196,10 +193,10 @@ class ParticipacaoService {
 
   /// 🔥 Método auxiliar para buscar participação em uma coleção específica
   Future<Map<String, dynamic>?> _buscarParticipacao(
-      String alunoId,
-      String eventoId,
-      String collection,
-      ) async {
+    String alunoId,
+    String eventoId,
+    String collection,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection(collection)
@@ -211,10 +208,7 @@ class ParticipacaoService {
       if (snapshot.docs.isEmpty) return null;
 
       final doc = snapshot.docs.first;
-      return {
-        'id': doc.id,
-        ...doc.data(),
-      };
+      return {'id': doc.id, ...doc.data()};
     } catch (e) {
       debugPrint('Erro ao buscar participação em $collection: $e');
       return null;
@@ -259,8 +253,8 @@ class ParticipacaoService {
 
   /// Lista todos os participantes EM ANDAMENTO de um evento
   Future<List<Map<String, dynamic>>> listarParticipantesEmAndamento(
-      String eventoId,
-      ) async {
+    String eventoId,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection(_emAndamentoCollection)
@@ -269,10 +263,7 @@ class ParticipacaoService {
           .get();
 
       return snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        return {'id': doc.id, ...doc.data()};
       }).toList();
     } catch (e) {
       debugPrint('Erro ao listar participantes em andamento: $e');
@@ -282,8 +273,8 @@ class ParticipacaoService {
 
   /// Lista todos os participantes FINALIZADOS de um evento
   Future<List<Map<String, dynamic>>> listarParticipantesFinalizados(
-      String eventoId,
-      ) async {
+    String eventoId,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection(_finalizadasCollection)
@@ -292,10 +283,7 @@ class ParticipacaoService {
           .get();
 
       return snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        return {'id': doc.id, ...doc.data()};
       }).toList();
     } catch (e) {
       debugPrint('Erro ao listar participantes finalizados: $e');
@@ -305,8 +293,8 @@ class ParticipacaoService {
 
   /// 🔥 Lista TODOS os participantes (em andamento + finalizados)
   Future<List<Map<String, dynamic>>> listarTodosParticipantes(
-      String eventoId,
-      ) async {
+    String eventoId,
+  ) async {
     try {
       final emAndamento = await listarParticipantesEmAndamento(eventoId);
       final finalizados = await listarParticipantesFinalizados(eventoId);
@@ -320,8 +308,8 @@ class ParticipacaoService {
 
   /// Lista todos os eventos que um aluno participou (busca nas duas coleções)
   Future<List<Map<String, dynamic>>> listarParticipantesPorAluno(
-      String alunoId,
-      ) async {
+    String alunoId,
+  ) async {
     try {
       final emAndamento = await _firestore
           .collection(_emAndamentoCollection)
@@ -349,9 +337,9 @@ class ParticipacaoService {
 
   /// Busca uma participação específica (nas duas coleções)
   Future<Map<String, dynamic>?> buscarParticipacao(
-      String alunoId,
-      String eventoId,
-      ) async {
+    String alunoId,
+    String eventoId,
+  ) async {
     try {
       // Tenta na coleção em andamento
       final emAndamento = await _buscarParticipacao(
@@ -383,9 +371,9 @@ class ParticipacaoService {
           .collection(_emAndamentoCollection)
           .doc(participacaoId)
           .update({
-        'presente': presente,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+            'presente': presente,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       debugPrint('Erro ao marcar presença: $e');
       rethrow;
@@ -399,9 +387,9 @@ class ParticipacaoService {
           .collection(_emAndamentoCollection)
           .doc(participacaoId)
           .update({
-        'status': novoStatus,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+            'status': novoStatus,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       debugPrint('Erro ao atualizar status: $e');
       rethrow;
@@ -500,7 +488,9 @@ class ParticipacaoService {
               .set(refUpdates, SetOptions(merge: true));
         }
       } catch (e) {
-        debugPrint('⚠️ Camisa atualizada, mas erro ao sincronizar referência do evento: $e');
+        debugPrint(
+          '⚠️ Camisa atualizada, mas erro ao sincronizar referência do evento: $e',
+        );
       }
     } catch (e) {
       debugPrint('Erro ao atualizar camisa: $e');
@@ -554,11 +544,13 @@ class ParticipacaoService {
     String? novaGraduacaoId,
   }) async {
     try {
-      final emAndamentoRef =
-      _firestore.collection(_emAndamentoCollection).doc(participacaoId);
+      final emAndamentoRef = _firestore
+          .collection(_emAndamentoCollection)
+          .doc(participacaoId);
 
-      final finalizadaRef =
-      _firestore.collection(_finalizadasCollection).doc(participacaoId);
+      final finalizadaRef = _firestore
+          .collection(_finalizadasCollection)
+          .doc(participacaoId);
 
       await _firestore.runTransaction((transaction) async {
         // 1️⃣ PEGA OS DADOS DA PARTICIPAÇÃO EM ANDAMENTO
@@ -582,13 +574,12 @@ class ParticipacaoService {
             ? linkRecebidoTela
             : linkAtualFirestore;
 
-        final graduacaoNovaFinal =
-        (novaGraduacao?.trim().isNotEmpty ?? false)
+        final graduacaoNovaFinal = (novaGraduacao?.trim().isNotEmpty ?? false)
             ? novaGraduacao
             : data['graduacao_nova']?.toString();
 
         final graduacaoNovaIdFinal =
-        (novaGraduacaoId?.trim().isNotEmpty ?? false)
+            (novaGraduacaoId?.trim().isNotEmpty ?? false)
             ? novaGraduacaoId
             : data['graduacao_nova_id']?.toString();
 
@@ -619,7 +610,11 @@ class ParticipacaoService {
         }
 
         // 3️⃣ SALVA NA COLEÇÃO DE FINALIZADAS COM O MESMO ID
-        transaction.set(finalizadaRef, dadosFinalizada, SetOptions(merge: true));
+        transaction.set(
+          finalizadaRef,
+          dadosFinalizada,
+          SetOptions(merge: true),
+        );
 
         // 4️⃣ REMOVE DA COLEÇÃO EM ANDAMENTO
         transaction.delete(emAndamentoRef);
@@ -640,22 +635,22 @@ class ParticipacaoService {
                 .collection('participacoes')
                 .doc(participacaoId)
                 .set({
-              'participacao_id': participacaoId,
-              'aluno_id': dadosFinalizados['aluno_id'],
-              'aluno_nome': dadosFinalizados['aluno_nome'],
-              'status': 'finalizado',
-              'total_pago': dadosFinalizados['total_pago'] ?? 0,
-              'valor_total':
-              _asDouble(dadosFinalizados['valor_inscricao']) +
-                  _asDouble(dadosFinalizados['valor_camisa']),
-              'tamanho_camisa': dadosFinalizados['tamanho_camisa'],
-              'modelagem_camisa': dadosFinalizados['modelagem_camisa'] ??
-                  modelagemNormal,
-              'tipo_camisa': dadosFinalizados['tipo_camisa'] ?? tipoManga,
-              'link_certificado': dadosFinalizados['link_certificado'],
-              'finalizado_em': FieldValue.serverTimestamp(),
-              'atualizado_em': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
+                  'participacao_id': participacaoId,
+                  'aluno_id': dadosFinalizados['aluno_id'],
+                  'aluno_nome': dadosFinalizados['aluno_nome'],
+                  'status': 'finalizado',
+                  'total_pago': dadosFinalizados['total_pago'] ?? 0,
+                  'valor_total':
+                      _asDouble(dadosFinalizados['valor_inscricao']) +
+                      _asDouble(dadosFinalizados['valor_camisa']),
+                  'tamanho_camisa': dadosFinalizados['tamanho_camisa'],
+                  'modelagem_camisa':
+                      dadosFinalizados['modelagem_camisa'] ?? modelagemNormal,
+                  'tipo_camisa': dadosFinalizados['tipo_camisa'] ?? tipoManga,
+                  'link_certificado': dadosFinalizados['link_certificado'],
+                  'finalizado_em': FieldValue.serverTimestamp(),
+                  'atualizado_em': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
           }
         }
       } catch (e) {
@@ -678,12 +673,15 @@ class ParticipacaoService {
 
       int total = participantes.length;
       int presentes = participantes.where((p) => p['presente'] == true).length;
-      int pendentes =
-          participantes.where((p) => p['status'] == 'pendente').length;
-      int finalizados =
-          participantes.where((p) => p['status'] == 'finalizado').length;
-      int quitados =
-          participantes.where((p) => p['status'] == 'quitado').length;
+      int pendentes = participantes
+          .where((p) => p['status'] == 'pendente')
+          .length;
+      int finalizados = participantes
+          .where((p) => p['status'] == 'finalizado')
+          .length;
+      int quitados = participantes
+          .where((p) => p['status'] == 'quitado')
+          .length;
 
       // Contagem de aguardando graduação
       int aguardandoGraduacao = participantes
@@ -784,14 +782,20 @@ class ParticipacaoService {
       final snapshotEmAndamento = await _firestore
           .collection(_emAndamentoCollection)
           .where('aluno_id', isEqualTo: alunoId)
-          .where('data_evento', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioDia))
+          .where(
+            'data_evento',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(inicioDia),
+          )
           .where('data_evento', isLessThan: Timestamp.fromDate(fimDia))
           .get();
 
       final snapshotFinalizadas = await _firestore
           .collection(_finalizadasCollection)
           .where('aluno_id', isEqualTo: alunoId)
-          .where('data_evento', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioDia))
+          .where(
+            'data_evento',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(inicioDia),
+          )
           .where('data_evento', isLessThan: Timestamp.fromDate(fimDia))
           .get();
 
@@ -805,9 +809,9 @@ class ParticipacaoService {
 
   /// Atualiza dados de uma participação (apenas em andamento)
   Future<void> atualizarParticipacao(
-      String participacaoId,
-      Map<String, dynamic> dados,
-      ) async {
+    String participacaoId,
+    Map<String, dynamic> dados,
+  ) async {
     try {
       dados['atualizado_em'] = FieldValue.serverTimestamp();
 
@@ -833,8 +837,8 @@ class ParticipacaoService {
 
   /// Busca participantes que aguardam graduação (apenas em andamento)
   Future<List<Map<String, dynamic>>> listarAguardandoGraduacao(
-      String eventoId,
-      ) async {
+    String eventoId,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection(_emAndamentoCollection)
@@ -844,10 +848,7 @@ class ParticipacaoService {
           .get();
 
       return snapshot.docs.map((doc) {
-        return {
-          'id': doc.id,
-          ...doc.data(),
-        };
+        return {'id': doc.id, ...doc.data()};
       }).toList();
     } catch (e) {
       debugPrint('Erro ao listar aguardando graduação: $e');
@@ -857,8 +858,8 @@ class ParticipacaoService {
 
   /// Busca participantes com saldo pendente (apenas em andamento)
   Future<List<Map<String, dynamic>>> listarInadimplentes(
-      String eventoId,
-      ) async {
+    String eventoId,
+  ) async {
     try {
       final participantes = await listarParticipantesEmAndamento(eventoId);
 
@@ -878,18 +879,18 @@ class ParticipacaoService {
 
   /// Atualiza o total pago de uma participação
   Future<void> atualizarTotalPago(
-      String participacaoId,
-      double novoTotalPago,
-      ) async {
+    String participacaoId,
+    double novoTotalPago,
+  ) async {
     try {
       // Atualiza na coleção EM ANDAMENTO
       await _firestore
           .collection(_emAndamentoCollection)
           .doc(participacaoId)
           .update({
-        'total_pago': novoTotalPago,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
+            'total_pago': novoTotalPago,
+            'atualizado_em': FieldValue.serverTimestamp(),
+          });
 
       debugPrint('💰 Total pago atualizado na EM ANDAMENTO: $novoTotalPago');
     } catch (e) {
@@ -913,7 +914,9 @@ class ParticipacaoService {
         debugPrint('   - valorInscricao: ${data['valor_inscricao']}');
         debugPrint('   - valorCamisa: ${data['valor_camisa']}');
         debugPrint('   - total_pago: ${data['total_pago']}');
-        debugPrint('   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}');
+        debugPrint(
+          '   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}',
+        );
         debugPrint('   - tipo_camisa: ${data['tipo_camisa'] ?? tipoManga}');
         return {'id': docEmAndamento.id, ...data};
       }
@@ -930,7 +933,9 @@ class ParticipacaoService {
         debugPrint('   - valorInscricao: ${data['valor_inscricao']}');
         debugPrint('   - valorCamisa: ${data['valor_camisa']}');
         debugPrint('   - total_pago: ${data['total_pago']}');
-        debugPrint('   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}');
+        debugPrint(
+          '   - modelagem_camisa: ${data['modelagem_camisa'] ?? modelagemNormal}',
+        );
         debugPrint('   - tipo_camisa: ${data['tipo_camisa'] ?? tipoManga}');
         return {'id': docFinalizada.id, ...data};
       }

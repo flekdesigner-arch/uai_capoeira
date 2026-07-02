@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -27,8 +27,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
   final FornecedorService _fornecedorService = FornecedorService();
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   // Controllers
   final _nomeController = TextEditingController();
@@ -61,8 +63,20 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   bool _possuiVariacoes = false;
   List<Map<String, dynamic>> _variacoes = [];
   final List<String> _tamanhosPadrao = [
-    'PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG',
-    '4A', '6A', '8A', '10A', '12A', '14A', 'Único'
+    'PP',
+    'P',
+    'M',
+    'G',
+    'GG',
+    'XG',
+    'XXG',
+    '4A',
+    '6A',
+    '8A',
+    '10A',
+    '12A',
+    '14A',
+    'Único',
   ];
 
   String? _fornecedorId;
@@ -76,8 +90,8 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -180,8 +194,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       imagem = CachedNetworkImage(
         imageUrl: _fotoUrl!,
         fit: BoxFit.contain,
-        placeholder: (_, __) =>
-            Center(child: CircularProgressIndicator(color: context.uai.primary)),
+        placeholder: (_, __) => Center(
+          child: CircularProgressIndicator(color: context.uai.primary),
+        ),
         errorWidget: (_, __, ___) =>
             Icon(Icons.broken_image, size: 80, color: context.uai.textMuted),
       );
@@ -199,8 +214,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
   void _adicionarVariacao() {
     final usedSizes = _variacoes.map((v) => v['tamanho'] as String).toSet();
-    final available =
-    _tamanhosPadrao.where((t) => !usedSizes.contains(t)).toList();
+    final available = _tamanhosPadrao
+        .where((t) => !usedSizes.contains(t))
+        .toList();
 
     if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -268,9 +284,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     try {
       String? fotoFinal = _fotoUrl;
       if (_fotoArquivo != null) {
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('estoque/${DateTime.now().millisecondsSinceEpoch}.jpg');
+        final ref = FirebaseStorage.instance.ref().child(
+          'estoque/${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
         if (kIsWeb) {
           final bytes = await _fotoArquivo!.readAsBytes();
           await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
@@ -285,9 +301,15 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'nome': _nomeController.text.toUpperCase().trim(),
           'categoria': _categoriaSelecionada,
           'preco_custo':
-          double.tryParse(_precoCustoController.text.replaceAll(',', '.')) ?? 0,
+              double.tryParse(
+                _precoCustoController.text.replaceAll(',', '.'),
+              ) ??
+              0,
           'preco_venda':
-          double.tryParse(_precoVendaController.text.replaceAll(',', '.')) ?? 0,
+              double.tryParse(
+                _precoVendaController.text.replaceAll(',', '.'),
+              ) ??
+              0,
           'fornecedor': _fornecedorNome ?? _fornecedorController.text.trim(),
           'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
@@ -302,8 +324,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
         String baseId;
         if (widget.itemId != null) {
-          await _uniformesService.adicionarItemEstoque(dadosBase,
-              itemId: widget.itemId);
+          await _uniformesService.adicionarItemEstoque(
+            dadosBase,
+            itemId: widget.itemId,
+          );
           baseId = widget.itemId!;
           final variacoesAntigas = await FirebaseFirestore.instance
               .collection('uniformes_estoque')
@@ -319,7 +343,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
         for (var variacao in _variacoes) {
           Map<String, dynamic> dadosVariacao = {
             'nome':
-            '${_nomeController.text.toUpperCase().trim()} ${variacao['tamanho']}',
+                '${_nomeController.text.toUpperCase().trim()} ${variacao['tamanho']}',
             'categoria': _categoriaSelecionada,
             'tamanho': variacao['tamanho'],
             'quantidade': variacao['quantidade'],
@@ -361,12 +385,17 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'categoria': _categoriaSelecionada,
           'tamanho': _tamanhoController.text.toUpperCase().trim(),
           'quantidade': int.tryParse(_quantidadeController.text) ?? 0,
-          'estoque_minimo':
-          int.tryParse(_estoqueMinimoController.text) ?? 5,
+          'estoque_minimo': int.tryParse(_estoqueMinimoController.text) ?? 5,
           'preco_custo':
-          double.tryParse(_precoCustoController.text.replaceAll(',', '.')) ?? 0,
+              double.tryParse(
+                _precoCustoController.text.replaceAll(',', '.'),
+              ) ??
+              0,
           'preco_venda':
-          double.tryParse(_precoVendaController.text.replaceAll(',', '.')) ?? 0,
+              double.tryParse(
+                _precoVendaController.text.replaceAll(',', '.'),
+              ) ??
+              0,
           'fornecedor': _fornecedorNome ?? _fornecedorController.text.trim(),
           'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
@@ -377,8 +406,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'status': 'ativo',
         };
 
-        await _uniformesService.adicionarItemEstoque(dados,
-            itemId: widget.itemId);
+        await _uniformesService.adicionarItemEstoque(
+          dados,
+          itemId: widget.itemId,
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -388,9 +419,12 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                     ? '✅ Item adicionado ao estoque!'
                     : '✅ Item atualizado!',
                 style: TextStyle(
-                    color: _readableOn(widget.itemId == null
+                  color: _readableOn(
+                    widget.itemId == null
                         ? context.uai.success
-                        : context.uai.info)),
+                        : context.uai.info,
+                  ),
+                ),
               ),
               backgroundColor: widget.itemId == null
                   ? context.uai.success
@@ -453,11 +487,13 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             onPressed: _isLoading ? null : _salvar,
             icon: _isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  color: fgPrimario, strokeWidth: 2),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: fgPrimario,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(Icons.save, color: fgPrimario),
             label: Text(
               _isLoading ? 'SALVANDO...' : 'SALVAR',
@@ -469,459 +505,485 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primario))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // FOTO
-            _buildCard(
-              titulo: 'FOTO DO ITEM',
-              child: Column(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTap: _mostrarFotoAmpliada,
-                        child: Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border:
-                            Border.all(color: context.uai.border),
-                            color: context.uai.cardAlt,
-                          ),
-                          child: _buildFotoPreview(),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _outlinedButton(
-                              icon: Icons.camera_alt,
-                              label: 'Câmera',
-                              onPressed: () => _escolherFoto(true),
-                            ),
-                            const SizedBox(height: 8),
-                            _outlinedButton(
-                              icon: Icons.photo_library,
-                              label: 'Galeria',
-                              onPressed: () => _escolherFoto(false),
-                            ),
-                            if (_fotoArquivo != null ||
-                                (_fotoUrl != null &&
-                                    _fotoUrl!.isNotEmpty))
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: TextButton.icon(
-                                  icon: Icon(Icons.delete,
-                                      size: 18,
-                                      color: context.uai.error),
-                                  label: Text(
-                                    'Remover foto',
-                                    style: TextStyle(
-                                        color: context.uai.error),
-                                  ),
-                                  onPressed: _removerFoto,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // INFORMAÇÕES BÁSICAS
-            _buildCard(
-              titulo: 'INFORMAÇÕES BÁSICAS',
-              child: Column(
-                children: [
-                  _buildTextField(
-                    controller: _nomeController,
-                    label: 'Nome do Item *',
-                    icon: Icons.inventory,
-                    hint: 'Ex: Camisa UAI Branca',
-                    validator: (v) =>
-                    v == null || v.isEmpty ? 'Campo obrigatório' : null,
-                    capital: true,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDropdownCategoria(),
-                  const SizedBox(height: 16),
-                  _buildSwitchListTile(
-                    title: 'Possui variações de tamanho?',
-                    subtitle: 'Ex: Camisa com P, M, G, GG',
-                    value: _possuiVariacoes,
-                    onChanged: (v) {
-                      setState(() {
-                        _possuiVariacoes = v;
-                        if (!v) _variacoes.clear();
-                      });
-                    },
-                  ),
-                  if (!_possuiVariacoes) ...[
-                    const SizedBox(height: 8),
-                    Row(
+                  // FOTO
+                  _buildCard(
+                    titulo: 'FOTO DO ITEM',
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _tamanhoController,
-                            label: 'Tamanho',
-                            icon: Icons.straighten,
-                            hint: 'P, M, G, GG, Único',
-                            capital: true,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _codigoBarrasController,
-                            label: 'Código de Barras',
-                            icon: Icons.qr_code,
-                            hint: 'SKU ou código',
-                          ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            GestureDetector(
+                              onTap: _mostrarFotoAmpliada,
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: context.uai.border),
+                                  color: context.uai.cardAlt,
+                                ),
+                                child: _buildFotoPreview(),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  _outlinedButton(
+                                    icon: Icons.camera_alt,
+                                    label: 'Câmera',
+                                    onPressed: () => _escolherFoto(true),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _outlinedButton(
+                                    icon: Icons.photo_library,
+                                    label: 'Galeria',
+                                    onPressed: () => _escolherFoto(false),
+                                  ),
+                                  if (_fotoArquivo != null ||
+                                      (_fotoUrl != null &&
+                                          _fotoUrl!.isNotEmpty))
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: TextButton.icon(
+                                        icon: Icon(
+                                          Icons.delete,
+                                          size: 18,
+                                          color: context.uai.error,
+                                        ),
+                                        label: Text(
+                                          'Remover foto',
+                                          style: TextStyle(
+                                            color: context.uai.error,
+                                          ),
+                                        ),
+                                        onPressed: _removerFoto,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ],
-              ),
-            ),
-
-            // VARIAÇÕES
-            if (_possuiVariacoes) ...[
-              const SizedBox(height: 16),
-              _buildCard(
-                titulo: 'VARIAÇÕES DE TAMANHO',
-                trailing: TextButton.icon(
-                  onPressed: _variacoes.length < _tamanhosPadrao.length
-                      ? _adicionarVariacao
-                      : null,
-                  icon: Icon(Icons.add,
-                      size: 18,
-                      color: _variacoes.length < _tamanhosPadrao.length
-                          ? primario
-                          : context.uai.textMuted),
-                  label: Text('Adicionar',
-                      style: TextStyle(
-                          color: primario.withOpacity(
-                              _variacoes.length < _tamanhosPadrao.length
-                                  ? 1.0
-                                  : 0.5))),
-                ),
-                child: _variacoes.isEmpty
-                    ? Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Nenhuma variação adicionada',
-                    style: TextStyle(
-                        color: context.uai.textMuted),
                   ),
-                )
-                    : Column(
-                  children: [
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics:
-                      const NeverScrollableScrollPhysics(),
-                      itemCount: _variacoes.length,
-                      itemBuilder: (context, index) {
-                        final variacao = _variacoes[index];
-                        final usedSizes = <String>{};
-                        for (int j = 0; j < _variacoes.length; j++) {
-                          if (j != index) {
-                            usedSizes.add(
-                                _variacoes[j]['tamanho'] as String);
-                          }
-                        }
-                        var availableSizes = _tamanhosPadrao
-                            .where((t) =>
-                        !usedSizes.contains(t))
-                            .toList();
-                        if (!availableSizes
-                            .contains(variacao['tamanho']) &&
-                            variacao['tamanho'] != null) {
-                          availableSizes.insert(
-                              0, variacao['tamanho']);
-                        }
-                        return Padding(
-                          padding:
-                          const EdgeInsets.only(bottom: 12),
-                          child: Row(
+                  const SizedBox(height: 16),
+
+                  // INFORMAÇÕES BÁSICAS
+                  _buildCard(
+                    titulo: 'INFORMAÇÕES BÁSICAS',
+                    child: Column(
+                      children: [
+                        _buildTextField(
+                          controller: _nomeController,
+                          label: 'Nome do Item *',
+                          icon: Icons.inventory,
+                          hint: 'Ex: Camisa UAI Branca',
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Campo obrigatório'
+                              : null,
+                          capital: true,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDropdownCategoria(),
+                        const SizedBox(height: 16),
+                        _buildSwitchListTile(
+                          title: 'Possui variações de tamanho?',
+                          subtitle: 'Ex: Camisa com P, M, G, GG',
+                          value: _possuiVariacoes,
+                          onChanged: (v) {
+                            setState(() {
+                              _possuiVariacoes = v;
+                              if (!v) _variacoes.clear();
+                            });
+                          },
+                        ),
+                        if (!_possuiVariacoes) ...[
+                          const SizedBox(height: 8),
+                          Row(
                             children: [
-                              SizedBox(
-                                width: 90,
-                                child: DropdownButtonFormField<
-                                    String>(
-                                  value: variacao['tamanho'],
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                      context.uai.textPrimary),
-                                  decoration:
-                                  _dropdownDecoration(
-                                      'Tam.'),
-                                  dropdownColor: context.uai.card,
-                                  menuMaxHeight: 200,
-                                  items: availableSizes.map((t) {
-                                    return DropdownMenuItem(
-                                      value: t,
-                                      child: Text(t,
-                                          style: TextStyle(
-                                              fontSize: 13,
-                                              color: context.uai
-                                                  .textPrimary)),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) {
-                                    setState(() {
-                                      _variacoes[index]['tamanho'] =
-                                          val;
-                                    });
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 4),
                               Expanded(
-                                flex: 2,
-                                child: _buildVariacaoField(
-                                  initial: variacao['quantidade']
-                                      .toString(),
-                                  label: 'Qtd.',
-                                  onChanged: (val) {
-                                    variacao['quantidade'] =
-                                        int.tryParse(val) ?? 0;
-                                  },
+                                child: _buildTextField(
+                                  controller: _tamanhoController,
+                                  label: 'Tamanho',
+                                  icon: Icons.straighten,
+                                  hint: 'P, M, G, GG, Único',
+                                  capital: true,
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 16),
                               Expanded(
-                                flex: 2,
-                                child: _buildVariacaoField(
-                                  initial: variacao['estoque_minimo']
-                                      .toString(),
-                                  label: 'Min.',
-                                  onChanged: (val) {
-                                    variacao['estoque_minimo'] =
-                                        int.tryParse(val) ?? 5;
-                                  },
+                                child: _buildTextField(
+                                  controller: _codigoBarrasController,
+                                  label: 'Código de Barras',
+                                  icon: Icons.qr_code,
+                                  hint: 'SKU ou código',
                                 ),
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                flex: 3,
-                                child: _buildVariacaoField(
-                                  initial: variacao['cor'] ?? '',
-                                  label: 'Cor',
-                                  onChanged: (val) {
-                                    variacao['cor'] = val.trim();
-                                  },
-                                  fontSize: 12,
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(Icons.remove_circle,
-                                    color: context.uai.error,
-                                    size: 20),
-                                onPressed: () =>
-                                    _removerVariacao(index),
-                                padding: EdgeInsets.zero,
-                                constraints:
-                                const BoxConstraints(),
                               ),
                             ],
                           ),
-                        );
-                      },
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '* Cada variação será um item separado no estoque',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: context.uai.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // ESTOQUE E PREÇOS
-            _buildCard(
-              titulo: 'ESTOQUE E PREÇOS',
-              child: Column(
-                children: [
-                  _buildSwitchListTile(
-                    title: 'Controlar Estoque',
-                    subtitle:
-                    'Desative para itens sem controle (ex: serviços)',
-                    value: _controlaEstoque,
-                    onChanged: (v) => setState(() => _controlaEstoque = v),
                   ),
-                  if (!_possuiVariacoes && _controlaEstoque) ...[
+
+                  // VARIAÇÕES
+                  if (_possuiVariacoes) ...[
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _quantidadeController,
-                            label: 'Quantidade Inicial',
-                            icon: Icons.numbers,
-                            hint: '0',
-                            keyboard: TextInputType.number,
+                    _buildCard(
+                      titulo: 'VARIAÇÕES DE TAMANHO',
+                      trailing: TextButton.icon(
+                        onPressed: _variacoes.length < _tamanhosPadrao.length
+                            ? _adicionarVariacao
+                            : null,
+                        icon: Icon(
+                          Icons.add,
+                          size: 18,
+                          color: _variacoes.length < _tamanhosPadrao.length
+                              ? primario
+                              : context.uai.textMuted,
+                        ),
+                        label: Text(
+                          'Adicionar',
+                          style: TextStyle(
+                            color: primario.withOpacity(
+                              _variacoes.length < _tamanhosPadrao.length
+                                  ? 1.0
+                                  : 0.5,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _estoqueMinimoController,
-                            label: 'Estoque Mínimo',
-                            icon: Icons.warning,
-                            hint: '5',
-                            keyboard: TextInputType.number,
+                      ),
+                      child: _variacoes.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                'Nenhuma variação adicionada',
+                                style: TextStyle(color: context.uai.textMuted),
+                              ),
+                            )
+                          : Column(
+                              children: [
+                                ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _variacoes.length,
+                                  itemBuilder: (context, index) {
+                                    final variacao = _variacoes[index];
+                                    final usedSizes = <String>{};
+                                    for (
+                                      int j = 0;
+                                      j < _variacoes.length;
+                                      j++
+                                    ) {
+                                      if (j != index) {
+                                        usedSizes.add(
+                                          _variacoes[j]['tamanho'] as String,
+                                        );
+                                      }
+                                    }
+                                    var availableSizes = _tamanhosPadrao
+                                        .where((t) => !usedSizes.contains(t))
+                                        .toList();
+                                    if (!availableSizes.contains(
+                                          variacao['tamanho'],
+                                        ) &&
+                                        variacao['tamanho'] != null) {
+                                      availableSizes.insert(
+                                        0,
+                                        variacao['tamanho'],
+                                      );
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 90,
+                                            child: DropdownButtonFormField<String>(
+                                              value: variacao['tamanho'],
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: context.uai.textPrimary,
+                                              ),
+                                              decoration: _dropdownDecoration(
+                                                'Tam.',
+                                              ),
+                                              dropdownColor: context.uai.card,
+                                              menuMaxHeight: 200,
+                                              items: availableSizes.map((t) {
+                                                return DropdownMenuItem(
+                                                  value: t,
+                                                  child: Text(
+                                                    t,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: context
+                                                          .uai
+                                                          .textPrimary,
+                                                    ),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                              onChanged: (val) {
+                                                setState(() {
+                                                  _variacoes[index]['tamanho'] =
+                                                      val;
+                                                });
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            flex: 2,
+                                            child: _buildVariacaoField(
+                                              initial: variacao['quantidade']
+                                                  .toString(),
+                                              label: 'Qtd.',
+                                              onChanged: (val) {
+                                                variacao['quantidade'] =
+                                                    int.tryParse(val) ?? 0;
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            flex: 2,
+                                            child: _buildVariacaoField(
+                                              initial:
+                                                  variacao['estoque_minimo']
+                                                      .toString(),
+                                              label: 'Min.',
+                                              onChanged: (val) {
+                                                variacao['estoque_minimo'] =
+                                                    int.tryParse(val) ?? 5;
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            flex: 3,
+                                            child: _buildVariacaoField(
+                                              initial: variacao['cor'] ?? '',
+                                              label: 'Cor',
+                                              onChanged: (val) {
+                                                variacao['cor'] = val.trim();
+                                              },
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.remove_circle,
+                                              color: context.uai.error,
+                                              size: 20,
+                                            ),
+                                            onPressed: () =>
+                                                _removerVariacao(index),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '* Cada variação será um item separado no estoque',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: context.uai.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  // ESTOQUE E PREÇOS
+                  _buildCard(
+                    titulo: 'ESTOQUE E PREÇOS',
+                    child: Column(
+                      children: [
+                        _buildSwitchListTile(
+                          title: 'Controlar Estoque',
+                          subtitle:
+                              'Desative para itens sem controle (ex: serviços)',
+                          value: _controlaEstoque,
+                          onChanged: (v) =>
+                              setState(() => _controlaEstoque = v),
+                        ),
+                        if (!_possuiVariacoes && _controlaEstoque) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _quantidadeController,
+                                  label: 'Quantidade Inicial',
+                                  icon: Icons.numbers,
+                                  hint: '0',
+                                  keyboard: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _estoqueMinimoController,
+                                  label: 'Estoque Mínimo',
+                                  icon: Icons.warning,
+                                  hint: '5',
+                                  keyboard: TextInputType.number,
+                                ),
+                              ),
+                            ],
                           ),
+                        ],
+                        const SizedBox(height: 16),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _precoCustoController,
+                                label: 'Preço de Custo',
+                                icon: Icons.attach_money,
+                                hint: '0,00',
+                                prefix: 'R\$ ',
+                                keyboard: TextInputType.number,
+                                onChanged: (v) {
+                                  if (v.isNotEmpty) _calcularPrecoSugerido();
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _precoVendaController,
+                                label: 'Preço de Venda *',
+                                icon: Icons.sell,
+                                hint: '0,00',
+                                prefix: 'R\$ ',
+                                keyboard: TextInputType.number,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Campo obrigatório';
+                                  }
+                                  if (double.tryParse(v.replaceAll(',', '.')) ==
+                                      0) {
+                                    return 'Preço deve ser maior que zero';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
+
                   const SizedBox(height: 16),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _precoCustoController,
-                          label: 'Preço de Custo',
-                          icon: Icons.attach_money,
-                          hint: '0,00',
-                          prefix: 'R\$ ',
-                          keyboard: TextInputType.number,
-                          onChanged: (v) {
-                            if (v.isNotEmpty) _calcularPrecoSugerido();
+
+                  // INFORMAÇÕES ADICIONAIS
+                  _buildCard(
+                    titulo: 'INFORMAÇÕES ADICIONAIS',
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Fornecedor',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: context.uai.textPrimary,
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _selecionarFornecedor,
+                              icon: Icon(Icons.add, size: 18, color: primario),
+                              label: Text(
+                                _fornecedorId == null ? 'Selecionar' : 'Trocar',
+                                style: TextStyle(color: primario),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildTextField(
+                          controller: _fornecedorController,
+                          label: 'Nome do fornecedor',
+                          icon: Icons.business,
+                          suffix: _fornecedorId != null
+                              ? IconButton(
+                                  icon: Icon(
+                                    Icons.clear,
+                                    color: context.uai.error,
+                                  ),
+                                  onPressed: _removerFornecedor,
+                                )
+                              : null,
+                          capital: true,
+                          onChanged: (_) {
+                            if (_fornecedorId != null) {
+                              _fornecedorId = null;
+                              _fornecedorNome = null;
+                            }
                           },
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _precoVendaController,
-                          label: 'Preço de Venda *',
-                          icon: Icons.sell,
-                          hint: '0,00',
-                          prefix: 'R\$ ',
-                          keyboard: TextInputType.number,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return 'Campo obrigatório';
-                            }
-                            if (double.tryParse(
-                                v.replaceAll(',', '.')) ==
-                                0) {
-                              return 'Preço deve ser maior que zero';
-                            }
-                            return null;
-                          },
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _descricaoController,
+                          label: 'Descrição',
+                          icon: Icons.description,
+                          hint: 'Descrição detalhada do item...',
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: ElevatedButton(
+                      onPressed: _salvar,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primario,
+                        foregroundColor: fgPrimario,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            context.uai.buttonRadius,
+                          ),
                         ),
                       ),
-                    ],
+                      child: const Text(
+                        'SALVAR ITEM',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // INFORMAÇÕES ADICIONAIS
-            _buildCard(
-              titulo: 'INFORMAÇÕES ADICIONAIS',
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Fornecedor',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              color: context.uai.textPrimary)),
-                      TextButton.icon(
-                        onPressed: _selecionarFornecedor,
-                        icon: Icon(Icons.add,
-                            size: 18, color: primario),
-                        label: Text(
-                          _fornecedorId == null
-                              ? 'Selecionar'
-                              : 'Trocar',
-                          style: TextStyle(color: primario),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTextField(
-                    controller: _fornecedorController,
-                    label: 'Nome do fornecedor',
-                    icon: Icons.business,
-                    suffix: _fornecedorId != null
-                        ? IconButton(
-                      icon: Icon(Icons.clear,
-                          color: context.uai.error),
-                      onPressed: _removerFornecedor,
-                    )
-                        : null,
-                    capital: true,
-                    onChanged: (_) {
-                      if (_fornecedorId != null) {
-                        _fornecedorId = null;
-                        _fornecedorNome = null;
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _descricaoController,
-                    label: 'Descrição',
-                    icon: Icons.description,
-                    hint: 'Descrição detalhada do item...',
-                    maxLines: 3,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: ElevatedButton(
-                onPressed: _salvar,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primario,
-                  foregroundColor: fgPrimario,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.buttonRadius),
-                  ),
-                ),
-                child: const Text(
-                  'SALVAR ITEM',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -949,9 +1011,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
               Text(
                 titulo,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: context.uai.textPrimary),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: context.uai.textPrimary,
+                ),
               ),
               if (trailing != null) trailing,
             ],
@@ -1000,8 +1063,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       controller: controller,
       keyboardType: keyboard,
       maxLines: maxLines,
-      textCapitalization:
-      capital ? TextCapitalization.characters : TextCapitalization.none,
+      textCapitalization: capital
+          ? TextCapitalization.characters
+          : TextCapitalization.none,
       style: TextStyle(color: context.uai.textPrimary),
       decoration: InputDecoration(
         labelText: label,
@@ -1057,10 +1121,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       ),
       dropdownColor: context.uai.card,
       items: _categorias
-          .map((categoria) => DropdownMenuItem(
-        value: categoria,
-        child: Text(categoria),
-      ))
+          .map(
+            (categoria) =>
+                DropdownMenuItem(value: categoria, child: Text(categoria)),
+          )
           .toList(),
       onChanged: (value) {
         setState(() {
@@ -1079,8 +1143,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   InputDecoration _dropdownDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle:
-      TextStyle(color: context.uai.textSecondary, fontSize: 11),
+      labelStyle: TextStyle(color: context.uai.textSecondary, fontSize: 11),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(context.uai.inputRadius),
         borderSide: BorderSide(color: context.uai.border),
@@ -1094,8 +1157,12 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
         borderSide: BorderSide(color: context.uai.primary, width: 1.4),
       ),
       isDense: true,
-      contentPadding:
-      const EdgeInsets.only(left: 6, right: 2, top: 4, bottom: 4),
+      contentPadding: const EdgeInsets.only(
+        left: 6,
+        right: 2,
+        top: 4,
+        bottom: 4,
+      ),
       filled: true,
       fillColor: context.uai.cardAlt,
     );
@@ -1109,7 +1176,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   }) {
     return SwitchListTile(
       title: Text(title, style: TextStyle(color: context.uai.textPrimary)),
-      subtitle: Text(subtitle, style: TextStyle(color: context.uai.textSecondary)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(color: context.uai.textSecondary),
+      ),
       value: value,
       onChanged: onChanged,
       activeColor: context.uai.primary,
@@ -1143,8 +1213,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           borderSide: BorderSide(color: context.uai.primary, width: 1.4),
         ),
         isDense: true,
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         filled: true,
         fillColor: context.uai.cardAlt,
       ),
@@ -1162,8 +1231,11 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             fit: BoxFit.cover,
             width: 120,
             height: 120,
-            errorBuilder: (_, __, ___) =>
-                Icon(Icons.photo_camera, size: 40, color: context.uai.textMuted),
+            errorBuilder: (_, __, ___) => Icon(
+              Icons.photo_camera,
+              size: 40,
+              color: context.uai.textMuted,
+            ),
           ),
         );
       } else {
@@ -1186,8 +1258,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
           ),
         ),
-        placeholder: (_, __) =>
-            Center(child: CircularProgressIndicator(color: context.uai.primary)),
+        placeholder: (_, __) => Center(
+          child: CircularProgressIndicator(color: context.uai.primary),
+        ),
         errorWidget: (_, __, ___) =>
             Icon(Icons.photo_camera, size: 40, color: context.uai.textMuted),
       );
@@ -1251,7 +1324,10 @@ class _SelecionarFornecedorDialogState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                  borderSide: BorderSide(color: context.uai.primary, width: 1.4),
+                  borderSide: BorderSide(
+                    color: context.uai.primary,
+                    width: 1.4,
+                  ),
                 ),
               ),
               onChanged: (v) => setState(() => _search = v.toLowerCase()),
@@ -1268,7 +1344,8 @@ class _SelecionarFornecedorDialogState
                   if (!snapshot.hasData) {
                     return Center(
                       child: CircularProgressIndicator(
-                          color: context.uai.primary),
+                        color: context.uai.primary,
+                      ),
                     );
                   }
                   var docs = snapshot.data!.docs;
@@ -1292,20 +1369,22 @@ class _SelecionarFornecedorDialogState
                     itemBuilder: (_, i) {
                       final data = docs[i].data() as Map<String, dynamic>;
                       return ListTile(
-                        leading: Icon(Icons.business,
-                            color: context.uai.primary),
-                        title: Text(data['nome'] ?? '',
-                            style: TextStyle(
-                                color: context.uai.textPrimary)),
-                        subtitle: Text(data['contato'] ?? '',
-                            style: TextStyle(
-                                color: context.uai.textSecondary)),
-                        onTap: () => Navigator.pop(
-                            context,
-                            <String, String>{
-                              'id': docs[i].id,
-                              'nome': (data['nome'] ?? '').toString(),
-                            }),
+                        leading: Icon(
+                          Icons.business,
+                          color: context.uai.primary,
+                        ),
+                        title: Text(
+                          data['nome'] ?? '',
+                          style: TextStyle(color: context.uai.textPrimary),
+                        ),
+                        subtitle: Text(
+                          data['contato'] ?? '',
+                          style: TextStyle(color: context.uai.textSecondary),
+                        ),
+                        onTap: () => Navigator.pop(context, <String, String>{
+                          'id': docs[i].id,
+                          'nome': (data['nome'] ?? '').toString(),
+                        }),
                       );
                     },
                   );

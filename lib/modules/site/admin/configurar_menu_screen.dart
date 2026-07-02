@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/site/services/site_config_service.dart';
 
@@ -38,7 +38,8 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -130,18 +131,19 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
             onPressed: _salvando ? null : _salvarOrdem,
             icon: _salvando
                 ? SizedBox(
-              width: 17,
-              height: 17,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _readableOn(t.primary),
-              ),
-            )
+                    width: 17,
+                    height: 17,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _readableOn(t.primary),
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR'),
             style: TextButton.styleFrom(
               foregroundColor:
-              Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(t.primary),
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                  _readableOn(t.primary),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
@@ -195,13 +197,13 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
             onPressed: _salvando ? null : _salvarOrdem,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _readableOn(t.primary),
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _readableOn(t.primary),
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR ORDEM'),
             style: ElevatedButton.styleFrom(
@@ -255,8 +257,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                 );
 
                 final content = Column(
-                  crossAxisAlignment:
-                  narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                  crossAxisAlignment: narrow
+                      ? CrossAxisAlignment.center
+                      : CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Organizar menu do site',
@@ -281,7 +284,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                     ),
                     const SizedBox(height: 11),
                     Wrap(
-                      alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                      alignment: narrow
+                          ? WrapAlignment.center
+                          : WrapAlignment.start,
                       spacing: 8,
                       runSpacing: 8,
                       children: [
@@ -300,11 +305,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
 
                 if (narrow) {
                   return Column(
-                    children: [
-                      icon,
-                      const SizedBox(height: 13),
-                      content,
-                    ],
+                    children: [icon, const SizedBox(height: 13), content],
                   );
                 }
 
@@ -323,10 +324,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
     );
   }
 
-  Widget _headerChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _headerChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -377,11 +375,18 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
             child: InkWell(
               onTap: null,
               borderRadius: BorderRadius.circular(t.cardRadius),
-              splashColor: isInicio ? Colors.transparent : color.withOpacity(0.08),
-              highlightColor: isInicio ? Colors.transparent : color.withOpacity(0.04),
+              splashColor: isInicio
+                  ? Colors.transparent
+                  : color.withOpacity(0.08),
+              highlightColor: isInicio
+                  ? Colors.transparent
+                  : color.withOpacity(0.04),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 78),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(t.cardRadius),
                   border: Border.all(
@@ -396,15 +401,19 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                       height: 48,
                       alignment: Alignment.center,
                       child: isInicio
-                          ? Icon(Icons.lock_rounded, color: t.textMuted, size: 20)
+                          ? Icon(
+                              Icons.lock_rounded,
+                              color: t.textMuted,
+                              size: 20,
+                            )
                           : ReorderableDragStartListener(
-                        index: index,
-                        child: Icon(
-                          Icons.drag_indicator_rounded,
-                          color: t.textMuted,
-                          size: 24,
-                        ),
-                      ),
+                              index: index,
+                              child: Icon(
+                                Icons.drag_indicator_rounded,
+                                color: t.textMuted,
+                                size: 24,
+                              ),
+                            ),
                     ),
                     const SizedBox(width: 9),
                     Container(
@@ -463,7 +472,10 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                     const SizedBox(width: 8),
                     if (!isInicio)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: color.withOpacity(0.09),
                           borderRadius: BorderRadius.circular(99),
@@ -479,7 +491,11 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                         ),
                       )
                     else
-                      Icon(Icons.push_pin_rounded, color: t.textMuted, size: 20),
+                      Icon(
+                        Icons.push_pin_rounded,
+                        color: t.textMuted,
+                        size: 20,
+                      ),
                   ],
                 ),
               ),

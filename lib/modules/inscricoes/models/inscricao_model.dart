@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';  // 👈 FALTANDO!
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 FALTANDO!
 
 class InscricaoModel {
   final String? id;

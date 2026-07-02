@@ -2,15 +2,21 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 
 class MigracaoGraduacoesScreen extends StatefulWidget {
   const MigracaoGraduacoesScreen({super.key});
 
   @override
-  State<MigracaoGraduacoesScreen> createState() => _MigracaoGraduacoesScreenState();
+  State<MigracaoGraduacoesScreen> createState() =>
+      _MigracaoGraduacoesScreenState();
 }
 
 class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
+
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isLoading = false;
   String _statusMessage = '';
   Color _statusColor = Colors.grey;
@@ -36,7 +42,42 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
     'corda': 'corda',
   };
 
+  @override
+  void initState() {
+    super.initState();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Você não tem permissão para executar migrações.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    return permitido;
+  }
+
   Future<void> _migrarGraduacoes() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() {
       _isLoading = true;
       _statusMessage = 'Iniciando migração...';
@@ -51,10 +92,14 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
     try {
       // PASSO 1: CARREGAR CSV
       _graduacoesLogs.add('📂 Carregando arquivo CSV...');
-      final String csvString = await rootBundle.loadString('assets/graduacoes.csv');
+      final String csvString = await rootBundle.loadString(
+        'assets/graduacoes.csv',
+      );
       List<Map<String, dynamic>> graduacoes = _parseCsv(csvString);
 
-      _graduacoesLogs.add('📊 Total de graduações no CSV: ${graduacoes.length}');
+      _graduacoesLogs.add(
+        '📊 Total de graduações no CSV: ${graduacoes.length}',
+      );
 
       if (graduacoes.isEmpty) {
         setState(() {
@@ -65,13 +110,17 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
         return;
       }
 
-      final CollectionReference graduacoesRef = FirebaseFirestore.instance.collection('graduacoes');
-      final CollectionReference alunosRef = FirebaseFirestore.instance.collection('alunos');
+      final CollectionReference graduacoesRef = FirebaseFirestore.instance
+          .collection('graduacoes');
+      final CollectionReference alunosRef = FirebaseFirestore.instance
+          .collection('alunos');
 
       // PASSO 2: MIGRAR CADA GRADUAÇÃO
       for (var graduacao in graduacoes) {
         try {
-          _graduacoesLogs.add('\n🔄 Processando: ${graduacao['nome_graduacao']} (nível ${graduacao['nivel_graduacao']})');
+          _graduacoesLogs.add(
+            '\n🔄 Processando: ${graduacao['nome_graduacao']} (nível ${graduacao['nivel_graduacao']})',
+          );
 
           // Verificar se já existe pelo nome_graduacao
           final querySnapshot = await graduacoesRef
@@ -106,7 +155,9 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
           });
 
           // PASSO 3: BUSCAR E ATUALIZAR ALUNOS COM ESTA GRADUAÇÃO
-          _graduacoesLogs.add('  🔍 Buscando alunos com graduacao_atual = "${graduacao['nome_graduacao']}"...');
+          _graduacoesLogs.add(
+            '  🔍 Buscando alunos com graduacao_atual = "${graduacao['nome_graduacao']}"...',
+          );
 
           // Buscar alunos que tenham graduacao_atual igual ao nome_graduacao
           final alunosSnapshot = await alunosRef
@@ -114,7 +165,9 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
               .get();
 
           if (alunosSnapshot.docs.isNotEmpty) {
-            _graduacoesLogs.add('  👥 Encontrados ${alunosSnapshot.docs.length} alunos com esta graduação');
+            _graduacoesLogs.add(
+              '  👥 Encontrados ${alunosSnapshot.docs.length} alunos com esta graduação',
+            );
 
             // Atualizar cada aluno
             for (var alunoDoc in alunosSnapshot.docs) {
@@ -122,7 +175,9 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                 final alunoData = alunoDoc.data() as Map<String, dynamic>;
                 final alunoNome = alunoData['nome'] ?? 'Nome não informado';
 
-                _alunosLogs.add('    👤 Aluno: $alunoNome (ID: ${alunoDoc.id})');
+                _alunosLogs.add(
+                  '    👤 Aluno: $alunoNome (ID: ${alunoDoc.id})',
+                );
 
                 // Campos de graduação que serão atualizados
                 final Map<String, dynamic> updateData = {
@@ -139,20 +194,24 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                 // Não vamos remover, apenas adicionar os novos campos
 
                 await alunosRef.doc(alunoDoc.id).update(updateData);
-                _alunosLogs.add('      ✅ Atualizado com ID da graduação: $graduacaoId');
+                _alunosLogs.add(
+                  '      ✅ Atualizado com ID da graduação: $graduacaoId',
+                );
 
                 setState(() {
                   _alunosAtualizadosCount++;
                 });
-
               } catch (e) {
-                _alunosLogs.add('      ❌ Erro ao atualizar aluno ${alunoDoc.id}: $e');
+                _alunosLogs.add(
+                  '      ❌ Erro ao atualizar aluno ${alunoDoc.id}: $e',
+                );
               }
             }
           } else {
-            _graduacoesLogs.add('  ℹ️ Nenhum aluno encontrado com esta graduação');
+            _graduacoesLogs.add(
+              '  ℹ️ Nenhum aluno encontrado com esta graduação',
+            );
           }
-
         } catch (e) {
           setState(() {
             _errorCount++;
@@ -168,11 +227,11 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
       _graduacoesLogs.add('❌ Erros: $_errorCount');
 
       setState(() {
-        _statusMessage = 'Migração concluída! ✅ $_successCount graduações, 👥 $_alunosAtualizadosCount alunos';
+        _statusMessage =
+            'Migração concluída! ✅ $_successCount graduações, 👥 $_alunosAtualizadosCount alunos';
         _statusColor = Colors.green;
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() {
         _statusMessage = 'Erro ao carregar arquivo: $e';
@@ -255,6 +314,21 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Migração de Graduações',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Migração de Graduações',
+        message: 'Você não tem permissão para executar migrações.',
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Migração de Graduações'),
@@ -334,10 +408,7 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                             'Alunos: $_alunosAtualizadosCount',
                             Colors.blue,
                           ),
-                          _buildStatusChip(
-                            'Erros: $_errorCount',
-                            Colors.red,
-                          ),
+                          _buildStatusChip('Erros: $_errorCount', Colors.red),
                         ],
                       ),
                     ],
@@ -352,13 +423,13 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
               onPressed: _isLoading ? null : _migrarGraduacoes,
               icon: _isLoading
                   ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.upload_file),
               label: Text(_isLoading ? 'Migrando...' : 'Iniciar Migração'),
               style: ElevatedButton.styleFrom(
@@ -408,10 +479,14 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                             final log = _graduacoesLogs[index];
                             Color textColor = Colors.black87;
 
-                            if (log.contains('✅')) textColor = Colors.green.shade700;
-                            else if (log.contains('❌')) textColor = Colors.red.shade700;
-                            else if (log.contains('👥')) textColor = Colors.blue.shade700;
-                            else if (log.contains('ℹ️')) textColor = Colors.orange.shade700;
+                            if (log.contains('✅'))
+                              textColor = Colors.green.shade700;
+                            else if (log.contains('❌'))
+                              textColor = Colors.red.shade700;
+                            else if (log.contains('👥'))
+                              textColor = Colors.blue.shade700;
+                            else if (log.contains('ℹ️'))
+                              textColor = Colors.orange.shade700;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 4),
@@ -420,7 +495,9 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: textColor,
-                                  fontWeight: log.contains('====') ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: log.contains('====')
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                               ),
                             );
@@ -469,8 +546,10 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                             final log = _alunosLogs[index];
                             Color textColor = Colors.blue.shade700;
 
-                            if (log.contains('✅')) textColor = Colors.green.shade700;
-                            else if (log.contains('❌')) textColor = Colors.red.shade700;
+                            if (log.contains('✅'))
+                              textColor = Colors.green.shade700;
+                            else if (log.contains('❌'))
+                              textColor = Colors.red.shade700;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 2),

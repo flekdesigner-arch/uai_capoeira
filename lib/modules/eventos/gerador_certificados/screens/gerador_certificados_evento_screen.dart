@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
 import 'package:uai_capoeira/modules/certificados/widgets/certificado_preview_widget.dart';
@@ -24,10 +26,7 @@ import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
 class GeradorCertificadosEventoScreen extends StatefulWidget {
   final EventoModel evento;
 
-  const GeradorCertificadosEventoScreen({
-    super.key,
-    required this.evento,
-  });
+  const GeradorCertificadosEventoScreen({super.key, required this.evento});
 
   @override
   State<GeradorCertificadosEventoScreen> createState() =>
@@ -37,23 +36,28 @@ class GeradorCertificadosEventoScreen extends StatefulWidget {
 class _GeradorCertificadosEventoScreenState
     extends State<GeradorCertificadosEventoScreen> {
   final CertificadoEventoMapperService _mapperService =
-  CertificadoEventoMapperService();
+      CertificadoEventoMapperService();
   final EventoService _eventoService = EventoService();
   final GeradorCertificadoEventoService _geradorService =
-  GeradorCertificadoEventoService();
+      GeradorCertificadoEventoService();
   final CertificadoLoteImpressaoService _loteService =
-  CertificadoLoteImpressaoService();
+      CertificadoLoteImpressaoService();
   final CertificadoPdfDiretoService _pdfDiretoService =
-  CertificadoPdfDiretoService();
+      CertificadoPdfDiretoService();
   final CertificadoSvgService _svgService = const CertificadoSvgService();
   final CertificadoZipShareService _zipShareService =
-  const CertificadoZipShareService();
+      const CertificadoZipShareService();
+  final PermissaoService _permissaoService = PermissaoService();
+  late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
+    service: _permissaoService,
+  );
 
   final GlobalKey _batchExportKey = GlobalKey();
 
   late CertificadoEventoData _eventoData;
 
   bool _carregando = true;
+  bool _acessoNegado = false;
   bool _processandoLote = false;
   String? _erro;
   String? _statusProcessamento;
@@ -63,7 +67,7 @@ class _GeradorCertificadosEventoScreenState
   static final Map<String, List<CertificadoParticipanteData>>
   _participantesCacheGlobal = <String, List<CertificadoParticipanteData>>{};
   static final Map<String, DateTime> _participantesCacheGlobalTimestamp =
-  <String, DateTime>{};
+      <String, DateTime>{};
 
   DateTime? _ultimoCarregamentoParticipantes;
   int _progressoAtual = 0;
@@ -72,8 +76,7 @@ class _GeradorCertificadosEventoScreenState
   CertificadoParticipanteData? _renderParticipante;
 
   String _busca = '';
-  CertificadoFiltroParticipantes _filtro =
-      CertificadoFiltroParticipantes.todos;
+  CertificadoFiltroParticipantes _filtro = CertificadoFiltroParticipantes.todos;
 
   List<CertificadoParticipanteData> _participantes = [];
   final Set<String> _selecionados = {};
@@ -87,9 +90,22 @@ class _GeradorCertificadosEventoScreenState
     );
     _eventoData = CertificadoEventoData.fromEvento(widget.evento);
 
-    _hidratarCacheGlobalInicial();
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final permitido = await _accessGuard.canAccess(
+        permission: 'pode_gerar_certificados_evento',
+      );
+      if (!mounted) return;
+
+      if (!permitido) {
+        setState(() {
+          _acessoNegado = true;
+          _carregando = false;
+        });
+        return;
+      }
+
+      _hidratarCacheGlobalInicial();
+
       debugPrint(
         '🧾 [GeradorCertificados] primeiro frame - sincronizando evento e participantes',
       );
@@ -107,7 +123,8 @@ class _GeradorCertificadosEventoScreenState
   String get _cacheKeyParticipantes => _eventoData.eventoId;
 
   bool get _existeCacheGlobalValido {
-    final timestamp = _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
+    final timestamp =
+        _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
     final participantes = _participantesCacheGlobal[_cacheKeyParticipantes];
 
     if (timestamp == null || participantes == null || participantes.isEmpty) {
@@ -117,8 +134,17 @@ class _GeradorCertificadosEventoScreenState
     return DateTime.now().difference(timestamp) < _cacheParticipantesDuracao;
   }
 
+  Future<bool> _revalidarGeracao() {
+    return _accessGuard.revalidate(
+      context,
+      permission: 'pode_gerar_certificados_evento',
+      message: 'Você não tem permissão para gerar certificados do evento.',
+    );
+  }
+
   void _hidratarCacheGlobalInicial() {
-    final timestamp = _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
+    final timestamp =
+        _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
     final participantes = _participantesCacheGlobal[_cacheKeyParticipantes];
 
     if (timestamp == null || participantes == null || participantes.isEmpty) {
@@ -140,12 +166,12 @@ class _GeradorCertificadosEventoScreenState
   }
 
   void _salvarCacheGlobalParticipantes(
-      List<CertificadoParticipanteData> participantes,
-      ) {
+    List<CertificadoParticipanteData> participantes,
+  ) {
     final timestamp = DateTime.now();
 
     _participantesCacheGlobal[_cacheKeyParticipantes] =
-    List<CertificadoParticipanteData>.from(participantes);
+        List<CertificadoParticipanteData>.from(participantes);
     _participantesCacheGlobalTimestamp[_cacheKeyParticipantes] = timestamp;
     _ultimoCarregamentoParticipantes = timestamp;
   }
@@ -157,8 +183,8 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -240,7 +266,7 @@ class _GeradorCertificadosEventoScreenState
     if (filtrados.isEmpty) return false;
 
     return filtrados.every(
-          (item) => _selecionados.contains(item.participacaoId),
+      (item) => _selecionados.contains(item.participacaoId),
     );
   }
 
@@ -275,6 +301,8 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _abrirTelaVinculoCsv() async {
+    if (!await _revalidarGeracao()) return;
+
     final eventoId = _eventoData.eventoId.trim().isNotEmpty
         ? _eventoData.eventoId.trim()
         : (widget.evento.id ?? '').trim();
@@ -332,15 +360,13 @@ class _GeradorCertificadosEventoScreenState
     }
   }
 
-  Future<void> _carregarParticipantes({
-    bool forcarServidor = false,
-  }) async {
+  Future<void> _carregarParticipantes({bool forcarServidor = false}) async {
     if (_processandoLote) return;
 
     if (!forcarServidor && _cacheParticipantesValido) {
       final cacheGlobal = _participantesCacheGlobal[_cacheKeyParticipantes];
       final cacheGlobalTimestamp =
-      _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
+          _participantesCacheGlobalTimestamp[_cacheKeyParticipantes];
 
       if (_participantes.isEmpty &&
           cacheGlobal != null &&
@@ -384,7 +410,7 @@ class _GeradorCertificadosEventoScreenState
       setState(() {
         _participantes = participantes;
         _selecionados.removeWhere(
-              (id) => participantes.every((item) => item.participacaoId != id),
+          (id) => participantes.every((item) => item.participacaoId != id),
         );
         _carregando = false;
       });
@@ -503,10 +529,10 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<CertificadoArquivoGerado> _renderizarCertificadoParaArquivo(
-      CertificadoParticipanteData participante, {
-        required bool incluirPdf,
-        required double pixelRatio,
-      }) async {
+    CertificadoParticipanteData participante, {
+    required bool incluirPdf,
+    required double pixelRatio,
+  }) async {
     setState(() {
       _renderParticipante = participante;
     });
@@ -514,19 +540,16 @@ class _GeradorCertificadosEventoScreenState
     await _aguardarRenderizacao();
 
     final pngBytes = await _geradorService
-        .capturarPngDaPreview(
-      _batchExportKey,
-      pixelRatio: pixelRatio,
-    )
+        .capturarPngDaPreview(_batchExportKey, pixelRatio: pixelRatio)
         .timeout(
-      const Duration(seconds: 25),
-      onTimeout: () {
-        throw Exception(
-          'Tempo esgotado ao capturar ${participante.alunoNome}. '
+          const Duration(seconds: 25),
+          onTimeout: () {
+            throw Exception(
+              'Tempo esgotado ao capturar ${participante.alunoNome}. '
               'Tente gerar menos certificados por vez.',
+            );
+          },
         );
-      },
-    );
 
     Uint8List? pdfBytes;
 
@@ -587,7 +610,7 @@ class _GeradorCertificadosEventoScreenState
         setState(() {
           _progressoAtual = i + 1;
           _statusProcessamento =
-          'Renderizando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+              'Renderizando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
         });
 
         final arquivo = await _renderizarCertificadoParaArquivo(
@@ -610,6 +633,7 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _gerarSelecionadosEVincular() async {
+    if (!await _revalidarGeracao()) return;
     if (_processandoLote) return;
 
     final selecionados = _participantesSelecionados;
@@ -622,7 +646,7 @@ class _GeradorCertificadosEventoScreenState
     final confirmar = await _confirmarAcao(
       titulo: 'Gerar e vincular certificados?',
       mensagem:
-      'O sistema vai gerar PDFs diretos, enviar para o Firebase Storage e vincular o novo link na participação. '
+          'O sistema vai gerar PDFs diretos, enviar para o Firebase Storage e vincular o novo link na participação. '
           'Se já existir certificado antigo no Firebase Storage, ele será removido. Links externos, como Drive, serão apenas substituídos.',
       confirmar: 'GERAR E VINCULAR',
     );
@@ -664,7 +688,7 @@ class _GeradorCertificadosEventoScreenState
         setState(() {
           _progressoAtual = i + 1;
           _statusProcessamento =
-          'Gerando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+              'Gerando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
           _renderParticipante = null;
           _addLogProcessamentoSemSetState(
             'Gerando PDF direto: ${participante.alunoNome}',
@@ -700,7 +724,7 @@ class _GeradorCertificadosEventoScreenState
 
         setState(() {
           _statusProcessamento =
-          'Vinculado ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+              'Vinculado ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
           _addLogProcessamentoSemSetState(
             'PDF enviado e link vinculado: ${participante.alunoNome}',
           );
@@ -751,6 +775,7 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _criarLotesImpressao() async {
+    if (!await _revalidarGeracao()) return;
     if (_processandoLote) return;
 
     final selecionados = _participantesSelecionados;
@@ -763,7 +788,7 @@ class _GeradorCertificadosEventoScreenState
     final confirmar = await _confirmarAcao(
       titulo: 'Criar lotes de impressão?',
       mensagem:
-      'Serão gerados PDFs multipágina em lotes de 10 certificados. Exemplo: 70 certificados viram 7 arquivos com 10 páginas.',
+          'Serão gerados PDFs multipágina em lotes de 10 certificados. Exemplo: 70 certificados viram 7 arquivos com 10 páginas.',
       confirmar: 'CRIAR LOTES',
     );
 
@@ -845,9 +870,9 @@ class _GeradorCertificadosEventoScreenState
   }
 
   String _nomeArquivoAlunoRelatorio(
-      CertificadoParticipanteData participante, {
-        required Map<String, int> nomesUsados,
-      }) {
+    CertificadoParticipanteData participante, {
+    required Map<String, int> nomesUsados,
+  }) {
     final base = participante.alunoNome
         .trim()
         .toUpperCase()
@@ -874,8 +899,8 @@ class _GeradorCertificadosEventoScreenState
   }
 
   List<CertificadoPacoteGraficaItem> _montarItensRelatorioGrafica(
-      List<CertificadoParticipanteData> participantes,
-      ) {
+    List<CertificadoParticipanteData> participantes,
+  ) {
     final nomesUsados = <String, int>{};
     final itens = <CertificadoPacoteGraficaItem>[];
 
@@ -940,7 +965,7 @@ class _GeradorCertificadosEventoScreenState
         _progressoAtual = itens.length;
         _progressoTotal = itens.length;
         _statusProcessamento =
-        'Montando PDF do relatório (${itens.length} itens)...';
+            'Montando PDF do relatório (${itens.length} itens)...';
         _addLogProcessamentoSemSetState(
           'Lista conferida. Gerando PDF do relatório...',
         );
@@ -959,7 +984,7 @@ class _GeradorCertificadosEventoScreenState
 
       setState(() {
         _statusProcessamento =
-        'Relatório pronto: ${tamanhoMb.toStringAsFixed(1)} MB';
+            'Relatório pronto: ${tamanhoMb.toStringAsFixed(1)} MB';
         _addLogProcessamentoSemSetState(
           'Relatório pronto para visualizar ou baixar.',
         );
@@ -1041,8 +1066,8 @@ class _GeradorCertificadosEventoScreenState
           ),
           content: Text(
             'Relatório da gráfica gerado com $totalItens certificado(s).'
-                '\nTamanho aproximado: ${tamanhoMb.toStringAsFixed(1)} MB'
-                '\n\nVocê pode visualizar/imprimir ou baixar/compartilhar sem gerar o ZIP novamente.',
+            '\nTamanho aproximado: ${tamanhoMb.toStringAsFixed(1)} MB'
+            '\n\nVocê pode visualizar/imprimir ou baixar/compartilhar sem gerar o ZIP novamente.',
             style: TextStyle(
               color: t.textSecondary,
               fontWeight: FontWeight.w700,
@@ -1052,10 +1077,7 @@ class _GeradorCertificadosEventoScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                'FECHAR',
-                style: TextStyle(color: t.textSecondary),
-              ),
+              child: Text('FECHAR', style: TextStyle(color: t.textSecondary)),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -1075,10 +1097,7 @@ class _GeradorCertificadosEventoScreenState
             ),
             ElevatedButton.icon(
               onPressed: () async {
-                await Printing.sharePdf(
-                  bytes: bytes,
-                  filename: nomeArquivo,
-                );
+                await Printing.sharePdf(bytes: bytes, filename: nomeArquivo);
               },
               icon: const Icon(Icons.download_rounded),
               label: const Text('BAIXAR'),
@@ -1094,6 +1113,7 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _criarPacoteGrafica() async {
+    if (!await _revalidarGeracao()) return;
     if (_processandoLote) return;
 
     final selecionados = _participantesSelecionados;
@@ -1106,7 +1126,7 @@ class _GeradorCertificadosEventoScreenState
     final confirmar = await _confirmarAcao(
       titulo: 'Criar ZIP para gráfica?',
       mensagem:
-      'Serão gerados PDFs individuais diretamente, sem captura de tela, e todos irão para um ZIP com o nome do aluno em cada arquivo. Esse modo é muito mais rápido e leve.',
+          'Serão gerados PDFs individuais diretamente, sem captura de tela, e todos irão para um ZIP com o nome do aluno em cada arquivo. Esse modo é muito mais rápido e leve.',
       confirmar: 'CRIAR ZIP',
     );
 
@@ -1172,9 +1192,7 @@ class _GeradorCertificadosEventoScreenState
         _addLogProcessamentoSemSetState(
           'ZIP montado com ${resultado.itens.length} PDF(s). Erros: ${resultado.erros.length}.',
         );
-        _addLogProcessamentoSemSetState(
-          'Registrando pacote no Firestore...',
-        );
+        _addLogProcessamentoSemSetState('Registrando pacote no Firestore...');
       });
 
       await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -1322,9 +1340,9 @@ class _GeradorCertificadosEventoScreenState
           ),
           content: Text(
             'Foram gerados $totalPdfs PDF(s) dentro do ZIP.'
-                '\nErros: $totalErros'
-                '\nTamanho aproximado: ${zipMb.toStringAsFixed(1)} MB'
-                '\n\nAgora escolha o que fazer com o arquivo.',
+            '\nErros: $totalErros'
+            '\nTamanho aproximado: ${zipMb.toStringAsFixed(1)} MB'
+            '\n\nAgora escolha o que fazer com o arquivo.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -1334,10 +1352,7 @@ class _GeradorCertificadosEventoScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                'FECHAR',
-                style: TextStyle(color: t.textSecondary),
-              ),
+              child: Text('FECHAR', style: TextStyle(color: t.textSecondary)),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -1346,7 +1361,7 @@ class _GeradorCertificadosEventoScreenState
                     bytes: pacote.zipBytes,
                     nomeArquivo: pacote.nomeArquivoZip,
                     texto:
-                    'Pacote de certificados do evento ${_eventoData.eventoNome}.',
+                        'Pacote de certificados do evento ${_eventoData.eventoNome}.',
                   );
                 } catch (e) {
                   if (!mounted) return;
@@ -1361,9 +1376,7 @@ class _GeradorCertificadosEventoScreenState
               },
               icon: const Icon(Icons.save_alt_rounded),
               label: const Text('SALVAR'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: t.primary,
-              ),
+              style: OutlinedButton.styleFrom(foregroundColor: t.primary),
             ),
             ElevatedButton.icon(
               onPressed: () async {
@@ -1372,7 +1385,7 @@ class _GeradorCertificadosEventoScreenState
                     bytes: pacote.zipBytes,
                     nomeArquivo: pacote.nomeArquivoZip,
                     texto:
-                    'Pacote de certificados do evento ${_eventoData.eventoNome}.',
+                        'Pacote de certificados do evento ${_eventoData.eventoNome}.',
                   );
                 } catch (e) {
                   if (!mounted) return;
@@ -1412,10 +1425,7 @@ class _GeradorCertificadosEventoScreenState
           backgroundColor: t.card,
           title: Text(
             titulo,
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             mensagem,
@@ -1428,10 +1438,7 @@ class _GeradorCertificadosEventoScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text(
-                'CANCELAR',
-                style: TextStyle(color: t.textSecondary),
-              ),
+              child: Text('CANCELAR', style: TextStyle(color: t.textSecondary)),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -1474,16 +1481,21 @@ class _GeradorCertificadosEventoScreenState
 
   void _mostrarInfo(String mensagem) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Certificados do evento',
+        message: 'Você não tem permissão para gerar certificados do evento.',
+      );
+    }
 
     return Scaffold(
       backgroundColor: t.background,
@@ -1501,8 +1513,9 @@ class _GeradorCertificadosEventoScreenState
             tooltip: 'Vincular certificados CSV',
           ),
           IconButton(
-            onPressed:
-            (_carregando || _processandoLote) ? null : _atualizarDoServidor,
+            onPressed: (_carregando || _processandoLote)
+                ? null
+                : _atualizarDoServidor,
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Forçar carregamento',
           ),
@@ -1510,19 +1523,12 @@ class _GeradorCertificadosEventoScreenState
       ),
       body: _processandoLote
           ? Stack(
-        children: [
-          Positioned.fill(
-            child: Container(color: t.background),
-          ),
-          _buildProcessamentoOverlay(),
-        ],
-      )
-          : Stack(
-        children: [
-          _buildMainBody(),
-          _buildRenderOculto(),
-        ],
-      ),
+              children: [
+                Positioned.fill(child: Container(color: t.background)),
+                _buildProcessamentoOverlay(),
+              ],
+            )
+          : Stack(children: [_buildMainBody(), _buildRenderOculto()]),
     );
   }
 
@@ -1847,9 +1853,7 @@ class _GeradorCertificadosEventoScreenState
       impressos: _totalImpressos,
       pendentes: _totalPendentes,
       comErro: _participantes
-          .where(
-            (item) => item.certificadoStatus.toLowerCase() == 'erro',
-      )
+          .where((item) => item.certificadoStatus.toLowerCase() == 'erro')
           .length,
       incluidosZip: _totalIncluidosZip,
       carregando: _processandoLote,
@@ -1929,11 +1933,7 @@ class _GeradorCertificadosEventoScreenState
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(
-                  Icons.refresh_rounded,
-                  color: t.textMuted,
-                  size: 18,
-                ),
+                Icon(Icons.refresh_rounded, color: t.textMuted, size: 18),
               ],
             ),
           ),
@@ -2010,7 +2010,9 @@ class _GeradorCertificadosEventoScreenState
     final progress = _progressoTotal <= 0
         ? null
         : (_progressoAtual / _progressoTotal).clamp(0.0, 1.0);
-    final percent = progress == null ? null : (progress * 100).toStringAsFixed(0);
+    final percent = progress == null
+        ? null
+        : (progress * 100).toStringAsFixed(0);
 
     final ultimosLogs = _logsProcessamento.length <= 8
         ? _logsProcessamento
@@ -2145,49 +2147,50 @@ class _GeradorCertificadosEventoScreenState
                       ),
                       child: ultimosLogs.isEmpty
                           ? Text(
-                        'Aguardando logs do processamento...',
-                        style: TextStyle(
-                          color: t.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
+                              'Aguardando logs do processamento...',
+                              style: TextStyle(
+                                color: t.textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
                           : ListView.builder(
-                        padding: EdgeInsets.zero,
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: ultimosLogs.length,
-                        itemBuilder: (context, index) {
-                          final log = ultimosLogs[index];
+                              padding: EdgeInsets.zero,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: ultimosLogs.length,
+                              itemBuilder: (context, index) {
+                                final log = ultimosLogs[index];
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 5),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.terminal_rounded,
-                                  color: primary,
-                                  size: 13,
-                                ),
-                                const SizedBox(width: 5),
-                                Expanded(
-                                  child: Text(
-                                    log,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: t.textSecondary,
-                                      fontSize: 10.2,
-                                      height: 1.12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 5),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.terminal_rounded,
+                                        color: primary,
+                                        size: 13,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Expanded(
+                                        child: Text(
+                                          log,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: t.textSecondary,
+                                            fontSize: 10.2,
+                                            height: 1.12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -2243,8 +2246,9 @@ class _GeradorCertificadosEventoScreenState
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 _eventoData.eventoNome,
@@ -2346,7 +2350,7 @@ class _GeradorCertificadosEventoScreenState
         icon: Icons.lock_outline_rounded,
         title: 'Evento ainda não está pronto',
         subtitle:
-        'Ative certificados e configure pelo menos uma assinatura na tela de criar/editar evento.',
+            'Ative certificados e configure pelo menos uma assinatura na tela de criar/editar evento.',
         color: t.warning,
       );
     }
@@ -2396,9 +2400,11 @@ class _GeradorCertificadosEventoScreenState
       evento: _eventoData,
       participante: participante,
       selecionado: _selecionados.contains(participante.participacaoId),
-      processando: _processando.contains(participante.participacaoId) ||
+      processando:
+          _processando.contains(participante.participacaoId) ||
           (_processandoLote &&
-              _renderParticipante?.participacaoId == participante.participacaoId),
+              _renderParticipante?.participacaoId ==
+                  participante.participacaoId),
       onSelecionar: (value) => _alternarSelecao(participante, value),
       onPreview: () => _abrirPreview(participante),
       onGerarPdf: () => _abrirPreview(participante),
@@ -2441,12 +2447,12 @@ class _GeradorCertificadosEventoScreenState
             ),
             child: loading
                 ? Padding(
-              padding: const EdgeInsets.all(16),
-              child: CircularProgressIndicator(
-                strokeWidth: 2.4,
-                color: accent,
-              ),
-            )
+                    padding: const EdgeInsets.all(16),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: accent,
+                    ),
+                  )
                 : Icon(icon, color: accent, size: 32),
           ),
           const SizedBox(height: 13),

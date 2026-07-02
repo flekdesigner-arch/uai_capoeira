@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -29,9 +29,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     _rastreioService.iniciarTela(
       'regimento',
       origem: 'site',
-      metadata: {
-        'descricao': 'Tela pública regimento',
-      },
+      metadata: {'descricao': 'Tela pública regimento'},
     );
     _rastreioService.marcarTempo('regimento_tempo');
     _scrollController.addListener(_registrarRolagem);
@@ -63,8 +61,8 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -114,8 +112,10 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
 
   Future<void> _carregarRegimento() async {
     try {
-      final doc =
-      await _firestore.collection('site_conteudo').doc('regimento').get();
+      final doc = await _firestore
+          .collection('site_conteudo')
+          .doc('regimento')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -174,7 +174,8 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
         'titulo': '⚖️ REGRAS GERAIS',
         'icone': Icons.gavel,
         'cor': 'info',
-        'conteudo': '🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).\n'
+        'conteudo':
+            '🚫 Proibido uso do uniforme em locais inadequados (bares, festas, baladas).\n'
             '❌ Não é permitido utilizar uniformes de outros grupos.\n'
             '📢 Participação em eventos externos deve ser comunicada antecipadamente.\n'
             '⏰ Cumprimento rigoroso dos horários de treinos, rodas e apresentações.\n'
@@ -190,7 +191,8 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
         'titulo': '🆕 NOVOS ALUNOS',
         'icone': Icons.person_add,
         'cor': 'success',
-        'conteudo': '⏳ Prazo de 2 meses para adquirir o uniforme completo.\n'
+        'conteudo':
+            '⏳ Prazo de 2 meses para adquirir o uniforme completo.\n'
             '👀 Durante esse período, o aluno será avaliado pelos professores.\n'
             '🎖️ Primeira graduação possível após 6 meses de treino regular.\n'
             '📅 Indicação para início das atividades: preferencialmente em uma segunda-feira.\n'
@@ -202,7 +204,8 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
         'titulo': '🎓 ALUNOS GRADUADOS',
         'icone': Icons.school,
         'cor': 'warning',
-        'conteudo': '🙏 Respeito, disciplina e comprometimento são indispensáveis.\n'
+        'conteudo':
+            '🙏 Respeito, disciplina e comprometimento são indispensáveis.\n'
             '👕 Uso do uniforme correto nos treinos e apresentações é obrigatório.\n'
             '⏳ Graduação só pode ser trocada após no mínimo 1 ano, conforme desempenho.\n'
             '🎭 Em eventos, utilizar somente o uniforme oficial (não camisas promocionais).\n'
@@ -213,7 +216,8 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
         'titulo': '⭐ FORMADOS',
         'icone': Icons.workspace_premium,
         'cor': 'associacao',
-        'conteudo': 'São considerados formados os monitores, instrutores, professores, contra-mestres e mestres.\n\n'
+        'conteudo':
+            'São considerados formados os monitores, instrutores, professores, contra-mestres e mestres.\n\n'
             '📚 Devem estar sempre ativos nos treinos e rodas, transmitindo conhecimento.\n'
             '🪘 Devem incentivar a prática dos instrumentos, cantos e fundamentos da capoeira.\n'
             '🌍 Representam o grupo dentro e fora da cidade, mantendo o nome da Associação com honra e responsabilidade.\n\n'
@@ -466,13 +470,10 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
   }
 
   int _totalLinhas() {
-    return _secoesRegimento.fold<int>(
-      0,
-          (total, secao) {
-        final conteudo = secao['conteudo']?.toString() ?? '';
-        return total + _linhasConteudo(conteudo).length;
-      },
-    );
+    return _secoesRegimento.fold<int>(0, (total, secao) {
+      final conteudo = secao['conteudo']?.toString() ?? '';
+      return total + _linhasConteudo(conteudo).length;
+    });
   }
 
   @override
@@ -487,17 +488,17 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
       child: _carregando
           ? _buildLoadingState()
           : RefreshIndicator(
-        color: t.primary,
-        backgroundColor: t.surface,
-        onRefresh: () async {
-          _rastreioService.registrarClique(
-            nome: 'atualizar_regimento',
-            origem: 'regimento',
-          );
-          await _carregarRegimento();
-        },
-        child: _buildContent(),
-      ),
+              color: t.primary,
+              backgroundColor: t.surface,
+              onRefresh: () async {
+                _rastreioService.registrarClique(
+                  nome: 'atualizar_regimento',
+                  origem: 'regimento',
+                );
+                await _carregarRegimento();
+              },
+              child: _buildContent(),
+            ),
     );
   }
 
@@ -587,16 +588,13 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.gavel_rounded,
-              color: onPrimary,
-              size: 38,
-            ),
+            child: Icon(Icons.gavel_rounded, color: onPrimary, size: 38),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Regimento Interno',
@@ -628,7 +626,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
                   _buildWhiteChip(
                     icon: Icons.article_rounded,
                     label:
-                    '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
+                        '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
                   ),
                   _buildWhiteChip(
                     icon: Icons.verified_rounded,
@@ -640,13 +638,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -661,10 +653,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     );
   }
 
-  Widget _buildWhiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildWhiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -790,10 +779,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: primary.withOpacity(0.14)),
           ),
-          child: Icon(
-            Icons.menu_book_rounded,
-            color: primary,
-          ),
+          child: Icon(Icons.menu_book_rounded, color: primary),
         ),
         const SizedBox(width: 11),
         Expanded(
@@ -873,10 +859,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     final titulo = _limparTitulo(tituloOriginal);
     final icone = _getIconFromName(secao['icone']);
     final cor = _ensureVisible(
-      _resolveColor(
-        secao['cor'],
-        fallback: _fallbackColor(index),
-      ),
+      _resolveColor(secao['cor'], fallback: _fallbackColor(index)),
       t.card,
     );
     final conteudo = secao['conteudo']?.toString() ?? '';
@@ -955,23 +938,23 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
               padding: EdgeInsets.all(isMobile ? 14 : 16),
               child: linhas.isEmpty
                   ? Text(
-                'Conteúdo não informado.',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontStyle: FontStyle.italic,
-                ),
-              )
+                      'Conteúdo não informado.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
                   : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(linhas.length, (i) {
-                  final linha = linhas[i];
-                  return _buildLinhaRegimento(
-                    linha: linha,
-                    cor: cor,
-                    isMobile: isMobile,
-                  );
-                }),
-              ),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: List.generate(linhas.length, (i) {
+                        final linha = linhas[i];
+                        return _buildLinhaRegimento(
+                          linha: linha,
+                          cor: cor,
+                          isMobile: isMobile,
+                        );
+                      }),
+                    ),
             ),
           ],
         ),
@@ -1073,11 +1056,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.description_outlined,
-                size: 74,
-                color: t.textMuted,
-              ),
+              Icon(Icons.description_outlined, size: 74, color: t.textMuted),
               const SizedBox(height: 14),
               Text(
                 'Nenhuma seção encontrada',
@@ -1092,10 +1071,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
               Text(
                 'Cadastre o conteúdo do regimento no painel administrativo.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: t.textSecondary,
-                  height: 1.3,
-                ),
+                style: TextStyle(color: t.textSecondary, height: 1.3),
               ),
             ],
           ),

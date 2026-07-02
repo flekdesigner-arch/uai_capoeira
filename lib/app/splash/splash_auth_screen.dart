@@ -49,10 +49,9 @@ class _SplashAuthScreenState extends State<SplashAuthScreen>
       // O timeout evita o app ficar preso no splash caso o stream demore.
       if (user == null) {
         try {
-          user = await FirebaseAuth.instance
-              .authStateChanges()
-              .first
-              .timeout(const Duration(seconds: 3));
+          user = await FirebaseAuth.instance.authStateChanges().first.timeout(
+            const Duration(seconds: 3),
+          );
         } on TimeoutException {
           debugPrint('⚠️ SplashAuthScreen: timeout aguardando FirebaseAuth.');
           user = FirebaseAuth.instance.currentUser;

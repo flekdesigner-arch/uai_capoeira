@@ -41,9 +41,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 
 class AppUpdateCheckService {
-  AppUpdateCheckService({
-    FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  AppUpdateCheckService({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
 
@@ -89,8 +88,9 @@ class AppUpdateCheckService {
 
       final config = configDoc.data() ?? {};
 
-      final versaoAtualServidor =
-      (config['versao_atual'] ?? '').toString().trim();
+      final versaoAtualServidor = (config['versao_atual'] ?? '')
+          .toString()
+          .trim();
 
       if (versaoAtualServidor.isEmpty) {
         return AppUpdateStatus.semConfiguracao(
@@ -99,14 +99,14 @@ class AppUpdateCheckService {
         );
       }
 
-      final ultimaVersaoId =
-      (config['ultima_versao_id'] ?? '').toString().trim();
+      final ultimaVersaoId = (config['ultima_versao_id'] ?? '')
+          .toString()
+          .trim();
 
       final versaoMinimaObrigatoria =
-      (config['versao_minima_obrigatoria'] ?? '').toString().trim();
+          (config['versao_minima_obrigatoria'] ?? '').toString().trim();
 
-      final atualizacaoObrigatoria =
-          config['atualizacao_obrigatoria'] == true;
+      final atualizacaoObrigatoria = config['atualizacao_obrigatoria'] == true;
 
       final precisaAtualizar = AppVersionModel.precisaAtualizar(
         versaoLocal: versaoLocal,
@@ -115,9 +115,9 @@ class AppUpdateCheckService {
 
       final estaAbaixoDaMinima = versaoMinimaObrigatoria.isNotEmpty
           ? AppVersionModel.precisaAtualizar(
-        versaoLocal: versaoLocal,
-        versaoRemota: versaoMinimaObrigatoria,
-      )
+              versaoLocal: versaoLocal,
+              versaoRemota: versaoMinimaObrigatoria,
+            )
           : false;
 
       final deveBloquear = atualizacaoObrigatoria && estaAbaixoDaMinima;
@@ -133,13 +133,13 @@ class AppUpdateCheckService {
       final titulo = versionModel?.titulo.trim().isNotEmpty == true
           ? versionModel!.titulo
           : (config['titulo_atualizacao'] ?? 'Nova versão disponível')
-          .toString();
+                .toString();
 
       final mensagem = versionModel?.resumo.trim().isNotEmpty == true
           ? versionModel!.resumo
           : (config['mensagem_atualizacao'] ??
-          'Atualize para receber melhorias e correções.')
-          .toString();
+                    'Atualize para receber melhorias e correções.')
+                .toString();
 
       final apkPath = versionModel?.storagePath.trim().isNotEmpty == true
           ? versionModel!.storagePath
@@ -201,7 +201,9 @@ class AppUpdateCheckService {
 
       return _buscarVersaoPorId(id);
     } catch (e) {
-      debugPrint('⚠️ AppUpdateCheckService: erro ao buscar versão por número: $e');
+      debugPrint(
+        '⚠️ AppUpdateCheckService: erro ao buscar versão por número: $e',
+      );
       return null;
     }
   }
@@ -300,7 +302,8 @@ class AppUpdateStatus {
 
   bool get estaAtualizado => !precisaAtualizar && !deveBloquear;
 
-  bool get temApkConfigurado => apkPath.trim().isNotEmpty || apkUrl.trim().isNotEmpty;
+  bool get temApkConfigurado =>
+      apkPath.trim().isNotEmpty || apkUrl.trim().isNotEmpty;
 
   String get statusLabel {
     if (deveBloquear) return 'Obrigatória';

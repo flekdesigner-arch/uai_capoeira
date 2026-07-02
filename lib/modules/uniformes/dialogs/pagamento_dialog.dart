@@ -25,15 +25,30 @@ class PagamentoDialog extends StatefulWidget {
 class _PagamentoDialogState extends State<PagamentoDialog> {
   final TextEditingController _valorController = TextEditingController();
   String? _formaPagamento = 'dinheiro';
-  final NumberFormat _realFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   bool _isLoading = false;
 
   final List<Map<String, dynamic>> _formasPagamento = [
     {'valor': 'dinheiro', 'label': 'Dinheiro', 'icone': Icons.money},
     {'valor': 'pix', 'label': 'PIX', 'icone': Icons.pix},
-    {'valor': 'cartao_credito', 'label': 'Cartão de Crédito', 'icone': Icons.credit_card},
-    {'valor': 'cartao_debito', 'label': 'Cartão de Débito', 'icone': Icons.credit_card},
-    {'valor': 'transferencia', 'label': 'Transferência', 'icone': Icons.compare_arrows},
+    {
+      'valor': 'cartao_credito',
+      'label': 'Cartão de Crédito',
+      'icone': Icons.credit_card,
+    },
+    {
+      'valor': 'cartao_debito',
+      'label': 'Cartão de Débito',
+      'icone': Icons.credit_card,
+    },
+    {
+      'valor': 'transferencia',
+      'label': 'Transferência',
+      'icone': Icons.compare_arrows,
+    },
   ];
 
   // Helpers de contraste
@@ -73,10 +88,7 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
       ),
       title: Text(
         'Registrar Pagamento',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: textPrimary,
-        ),
+        style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -105,17 +117,26 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Total:', style: TextStyle(fontSize: 12, color: textSecondary)),
+                      Text(
+                        'Total:',
+                        style: TextStyle(fontSize: 12, color: textSecondary),
+                      ),
                       Text(
                         _realFormat.format(widget.valorTotal),
-                        style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
                       ),
                     ],
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Já pago:', style: TextStyle(fontSize: 12, color: textSecondary)),
+                      Text(
+                        'Já pago:',
+                        style: TextStyle(fontSize: 12, color: textSecondary),
+                      ),
                       Text(
                         _realFormat.format(widget.valorPago),
                         style: TextStyle(color: success),
@@ -128,7 +149,10 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
                     children: [
                       Text(
                         'Restante:',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
                       ),
                       Text(
                         _realFormat.format(widget.valorRestante),
@@ -194,10 +218,7 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
                   children: [
                     Icon(forma['icone'], size: 20, color: success),
                     const SizedBox(width: 8),
-                    Text(
-                      forma['label'],
-                      style: TextStyle(color: textPrimary),
-                    ),
+                    Text(forma['label'], style: TextStyle(color: textPrimary)),
                   ],
                 ),
                 value: forma['valor'],
@@ -240,13 +261,12 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
       actions: [
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.pop(context),
-          child: Text(
-            'Cancelar',
-            style: TextStyle(color: primary),
-          ),
+          child: Text('Cancelar', style: TextStyle(color: primary)),
         ),
         ElevatedButton(
-          onPressed: _isLoading || widget.valorRestante <= 0 ? null : _confirmarPagamento,
+          onPressed: _isLoading || widget.valorRestante <= 0
+              ? null
+              : _confirmarPagamento,
           style: ElevatedButton.styleFrom(
             backgroundColor: success,
             foregroundColor: _readableOn(success),
@@ -256,24 +276,25 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
           ),
           child: _isLoading
               ? SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: _readableOn(success),
-            ),
-          )
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _readableOn(success),
+                  ),
+                )
               : Text(
-            'Registrar',
-            style: TextStyle(color: _readableOn(success)),
-          ),
+                  'Registrar',
+                  style: TextStyle(color: _readableOn(success)),
+                ),
         ),
       ],
     );
   }
 
   void _confirmarPagamento() {
-    double valor = double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0;
+    double valor =
+        double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0;
 
     if (valor <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(

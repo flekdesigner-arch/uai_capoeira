@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,7 +45,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final inscricao = await _campeonatoService.getInscricao(widget.inscricaoId);
+      final inscricao = await _campeonatoService.getInscricao(
+        widget.inscricaoId,
+      );
 
       if (mounted) {
         setState(() {
@@ -73,7 +75,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await _campeonatoService.atualizarStatusInscricao(widget.inscricaoId, novoStatus);
+      await _campeonatoService.atualizarStatusInscricao(
+        widget.inscricaoId,
+        novoStatus,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -162,10 +167,7 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                 const SizedBox(height: 16),
                 const Text(
                   '🗑️ EXCLUIR INSCRIÇÃO',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -269,7 +271,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                   onChanged: (value) {
                     setDialogState(() {
                       nomeConfirmacao = value;
-                      podeExcluir = value.trim().toUpperCase() == _inscricao!.nome.toUpperCase();
+                      podeExcluir =
+                          value.trim().toUpperCase() ==
+                          _inscricao!.nome.toUpperCase();
                     });
                   },
                   decoration: InputDecoration(
@@ -279,7 +283,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                     ),
                     filled: true,
                     fillColor: Colors.grey.shade50,
-                    errorText: podeExcluir ? null : 'O nome digitado não corresponde',
+                    errorText: podeExcluir
+                        ? null
+                        : 'O nome digitado não corresponde',
                   ),
                   textCapitalization: TextCapitalization.characters,
                 ),
@@ -293,9 +299,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
               ElevatedButton(
                 onPressed: podeExcluir
                     ? () {
-                  Navigator.pop(context);
-                  _confirmarExclusao();
-                }
+                        Navigator.pop(context);
+                        _confirmarExclusao();
+                      }
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
@@ -383,7 +389,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await _campeonatoService.adicionarObservacao(widget.inscricaoId, _observacao.trim());
+      await _campeonatoService.adicionarObservacao(
+        widget.inscricaoId,
+        _observacao.trim(),
+      );
 
       if (mounted) {
         setState(() => _observacao = '');
@@ -436,8 +445,12 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        final webUrl = Uri.parse('https://web.whatsapp.com/send?phone=$cleanedPhone' +
-            (mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''));
+        final webUrl = Uri.parse(
+          'https://web.whatsapp.com/send?phone=$cleanedPhone' +
+              (mensagem != null && mensagem.isNotEmpty
+                  ? '&text=${Uri.encodeComponent(mensagem)}'
+                  : ''),
+        );
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
@@ -454,12 +467,14 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     }
 
     // Verificar se é PDF
-    final isPdf = url.toLowerCase().contains('.pdf') ||
+    final isPdf =
+        url.toLowerCase().contains('.pdf') ||
         url.toLowerCase().contains('pdf') ||
         url.toLowerCase().contains('application%2Fpdf');
 
     // Verificar se é imagem
-    final isImage = url.toLowerCase().contains('.jpg') ||
+    final isImage =
+        url.toLowerCase().contains('.jpg') ||
         url.toLowerCase().contains('.jpeg') ||
         url.toLowerCase().contains('.png') ||
         url.toLowerCase().contains('.gif') ||
@@ -557,7 +572,8 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
       if (!mounted) return;
 
       // Usar Google Docs Viewer para visualizar dentro do app
-      final viewerUrl = 'https://docs.google.com/viewer?url=${Uri.encodeComponent(url)}&embedded=true';
+      final viewerUrl =
+          'https://docs.google.com/viewer?url=${Uri.encodeComponent(url)}&embedded=true';
 
       // Fechar snackbar
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -603,7 +619,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                   onPressed: () async {
                     try {
                       final uri = Uri.parse(url);
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
                     } catch (e) {
                       _mostrarMensagem('Erro ao abrir externamente');
                     }
@@ -616,7 +635,6 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
           ),
         ),
       );
-
     } catch (e) {
       debugPrint('❌ Erro ao abrir PDF: $e');
 
@@ -628,9 +646,13 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
       final fallback = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('⚠️ Erro ao abrir PDF'),
-          content: const Text('Não foi possível abrir o PDF no visualizador interno. Deseja abrir no navegador?'),
+          content: const Text(
+            'Não foi possível abrir o PDF no visualizador interno. Deseja abrir no navegador?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -662,9 +684,7 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => VisualizarTermoScreen(
-          inscricao: _inscricao!,
-        ),
+        builder: (context) => VisualizarTermoScreen(inscricao: _inscricao!),
       ),
     );
   }
@@ -715,9 +735,11 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     return InkWell(
       onTap: temContato
           ? () => _abrirWhatsApp(
-        numero,
-        mensagem: mensagemPadrao ?? 'Olá $nome! Sua inscrição no campeonato está sendo analisada.',
-      )
+              numero,
+              mensagem:
+                  mensagemPadrao ??
+                  'Olá $nome! Sua inscrição no campeonato está sendo analisada.',
+            )
           : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -725,7 +747,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
           color: temContato ? cor.withValues(alpha: 0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: temContato ? cor.withValues(alpha: 0.3) : Colors.grey.shade300,
+            color: temContato
+                ? cor.withValues(alpha: 0.3)
+                : Colors.grey.shade300,
           ),
         ),
         child: Column(
@@ -831,9 +855,7 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
           if (_isSaving)
             Container(
               color: Colors.black.withValues(alpha: 0.3),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),
@@ -901,7 +923,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                       ),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -928,7 +953,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                       ),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: inscricao.taxaPaga
                               ? Colors.green.withValues(alpha: 0.1)
@@ -938,7 +966,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                         child: Text(
                           inscricao.taxaPaga ? 'PAGO' : 'NÃO PAGO',
                           style: TextStyle(
-                            color: inscricao.taxaPaga ? Colors.green : Colors.orange,
+                            color: inscricao.taxaPaga
+                                ? Colors.green
+                                : Colors.orange,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -956,7 +986,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
           // Foto e Nome
           Card(
             elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -967,39 +999,50 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                     decoration: BoxDecoration(
                       color: Colors.amber.shade100,
                       borderRadius: BorderRadius.circular(40),
-                      border: Border.all(color: Colors.amber.shade400, width: 2),
+                      border: Border.all(
+                        color: Colors.amber.shade400,
+                        width: 2,
+                      ),
                     ),
-                    child: inscricao.fotoUrl != null && inscricao.fotoUrl!.isNotEmpty
+                    child:
+                        inscricao.fotoUrl != null &&
+                            inscricao.fotoUrl!.isNotEmpty
                         ? ClipRRect(
-                      borderRadius: BorderRadius.circular(40),
-                      child: CachedNetworkImage(
-                        imageUrl: inscricao.fotoUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        errorWidget: (context, url, error) => Center(
-                          child: Text(
-                            inscricao.nome.isNotEmpty ? inscricao.nome[0] : '?',
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber.shade900,
+                            borderRadius: BorderRadius.circular(40),
+                            child: CachedNetworkImage(
+                              imageUrl: inscricao.fotoUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Center(
+                                child: Text(
+                                  inscricao.nome.isNotEmpty
+                                      ? inscricao.nome[0]
+                                      : '?',
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              inscricao.nome.isNotEmpty
+                                  ? inscricao.nome[0]
+                                  : '?',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                        : Center(
-                      child: Text(
-                        inscricao.nome.isNotEmpty ? inscricao.nome[0] : '?',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber.shade900,
-                        ),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -1022,7 +1065,11 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            Icon(Icons.cake, size: 14, color: Colors.grey.shade500),
+                            Icon(
+                              Icons.cake,
+                              size: 14,
+                              color: Colors.grey.shade500,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               '$dataNascimentoFormatada (${inscricao.idade} anos)',
@@ -1066,7 +1113,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
               _buildInfoRow('Professor', inscricao.professorNome),
               _buildInfoRow('Contato Prof.', inscricao.professorContato),
               const Divider(height: 16),
-              _buildInfoRow('Graduação', inscricao.graduacaoNome ?? 'Não informada'),
+              _buildInfoRow(
+                'Graduação',
+                inscricao.graduacaoNome ?? 'Não informada',
+              ),
               _buildInfoRow('Grupo UAI', inscricao.isGrupoUai ? 'Sim' : 'Não'),
             ],
           ),
@@ -1079,7 +1129,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
             icon: Icons.emoji_events,
             color: Colors.purple,
             children: [
-              _buildInfoRow('Categoria', inscricao.categoriaNome ?? 'Não informada'),
+              _buildInfoRow(
+                'Categoria',
+                inscricao.categoriaNome ?? 'Não informada',
+              ),
               if (inscricao.categoriaId != null)
                 _buildInfoRow('ID', inscricao.categoriaId!),
             ],
@@ -1147,10 +1200,7 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                           ],
                         ),
                       ),
-                      Icon(
-                        Icons.chevron_right,
-                        color: Colors.grey.shade400,
-                      ),
+                      Icon(Icons.chevron_right, color: Colors.grey.shade400),
                     ],
                   ),
                 ),
@@ -1187,12 +1237,19 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Colors.grey.shade600,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Inscrição: ${_dateTimeFormat.format(inscricao.dataInscricao!)}',
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -1231,7 +1288,8 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                         numero: inscricao.contatoAluno,
                         nome: inscricao.nome,
                         cor: Colors.green,
-                        mensagemPadrao: 'Olá ${inscricao.nome}! Sua inscrição no campeonato está sendo analisada.',
+                        mensagemPadrao:
+                            'Olá ${inscricao.nome}! Sua inscrição no campeonato está sendo analisada.',
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1241,7 +1299,8 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                         numero: inscricao.professorContato,
                         nome: inscricao.professorNome,
                         cor: Colors.blue,
-                        mensagemPadrao: 'Olá ${inscricao.professorNome}! O aluno ${inscricao.nome} se inscreveu no campeonato.',
+                        mensagemPadrao:
+                            'Olá ${inscricao.professorNome}! O aluno ${inscricao.nome} se inscreveu no campeonato.',
                       ),
                     ),
                   ],
@@ -1282,7 +1341,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
             // Campo de observação
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -1316,10 +1377,12 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                         ),
                         child: _isSaving
                             ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Text('ADICIONAR'),
                       ),
                     ),
@@ -1341,7 +1404,8 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
     required IconData icone,
     required Color cor,
   }) {
-    final isPdf = url.toLowerCase().contains('.pdf') ||
+    final isPdf =
+        url.toLowerCase().contains('.pdf') ||
         url.toLowerCase().contains('pdf') ||
         url.toLowerCase().contains('application%2Fpdf');
 
@@ -1351,7 +1415,9 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
         color: isPdf ? Colors.red : cor,
       ),
       title: Text(isPdf ? '$titulo (PDF)' : titulo),
-      subtitle: Text(isPdf ? 'Clique para visualizar PDF' : 'Clique para visualizar'),
+      subtitle: Text(
+        isPdf ? 'Clique para visualizar PDF' : 'Clique para visualizar',
+      ),
       trailing: Icon(
         isPdf ? Icons.picture_as_pdf : Icons.visibility,
         color: isPdf ? Colors.red : cor,
@@ -1433,19 +1499,13 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
             width: 100,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
           ),
           Expanded(
             child: Text(
               value.isEmpty ? 'Não informado' : value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
         ],

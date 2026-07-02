@@ -22,7 +22,10 @@ class LogoService {
     }
 
     try {
-      final doc = await _firestore.collection('configuracoes').doc('logo').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('logo')
+          .get();
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
@@ -116,4 +119,5 @@ class LogoService {
         );
       },
     );
-  }}
+  }
+}

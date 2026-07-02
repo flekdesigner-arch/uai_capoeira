@@ -7,9 +7,8 @@ import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certifi
 class CertificadoEventoMapperService {
   final FirebaseFirestore _firestore;
 
-  CertificadoEventoMapperService({
-    FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  CertificadoEventoMapperService({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   static const String participacoesCollection =
       'participacoes_eventos_em_andamento';
@@ -50,9 +49,8 @@ class CertificadoEventoMapperService {
       }
 
       participantes.sort(
-            (a, b) => a.alunoNome.toUpperCase().compareTo(
-          b.alunoNome.toUpperCase(),
-        ),
+        (a, b) =>
+            a.alunoNome.toUpperCase().compareTo(b.alunoNome.toUpperCase()),
       );
 
       return participantes;
@@ -132,14 +130,14 @@ class CertificadoEventoMapperService {
     if (alunoId.trim().isEmpty) return null;
 
     try {
-      final doc = await _firestore.collection(alunosCollection).doc(alunoId).get();
+      final doc = await _firestore
+          .collection(alunosCollection)
+          .doc(alunoId)
+          .get();
 
       if (!doc.exists || doc.data() == null) return null;
 
-      return {
-        'id': doc.id,
-        ...doc.data()!,
-      };
+      return {'id': doc.id, ...doc.data()!};
     } catch (e) {
       debugPrint('⚠️ Erro ao buscar aluno $alunoId: $e');
       return null;
@@ -157,10 +155,7 @@ class CertificadoEventoMapperService {
 
       if (!doc.exists || doc.data() == null) return null;
 
-      return {
-        'id': doc.id,
-        ...doc.data()!,
-      };
+      return {'id': doc.id, ...doc.data()!};
     } catch (e) {
       debugPrint('⚠️ Erro ao buscar graduação $graduacaoId: $e');
       return null;
@@ -202,9 +197,7 @@ class CertificadoEventoMapperService {
         .update(data);
   }
 
-  Future<void> limparCertificadoGerado({
-    required String participacaoId,
-  }) async {
+  Future<void> limparCertificadoGerado({required String participacaoId}) async {
     if (participacaoId.trim().isEmpty) {
       throw Exception('ID da participação não informado.');
     }
@@ -213,15 +206,14 @@ class CertificadoEventoMapperService {
         .collection(participacoesCollection)
         .doc(participacaoId)
         .update({
-      'link_certificado': FieldValue.delete(),
-      'certificado_atualizado_em': FieldValue.serverTimestamp(),
-      'certificado_gerado': false,
-      'certificado_status': 'pendente',
-      'certificado_storage_path': FieldValue.delete(),
-      'certificado_tipo_arquivo': FieldValue.delete(),
-    });
+          'link_certificado': FieldValue.delete(),
+          'certificado_atualizado_em': FieldValue.serverTimestamp(),
+          'certificado_gerado': false,
+          'certificado_status': 'pendente',
+          'certificado_storage_path': FieldValue.delete(),
+          'certificado_tipo_arquivo': FieldValue.delete(),
+        });
   }
-
 
   Future<void> marcarParticipanteImpresso({
     required String participacaoId,
@@ -235,15 +227,18 @@ class CertificadoEventoMapperService {
         .collection(participacoesCollection)
         .doc(participacaoId)
         .update({
-      'certificado_impresso': impresso,
-      'certificado_impresso_em':
-      impresso ? FieldValue.serverTimestamp() : null,
-      'certificado_status': impresso ? 'impresso' : 'gerado',
-      'certificado_atualizado_em': FieldValue.serverTimestamp(),
-    });
+          'certificado_impresso': impresso,
+          'certificado_impresso_em': impresso
+              ? FieldValue.serverTimestamp()
+              : null,
+          'certificado_status': impresso ? 'impresso' : 'gerado',
+          'certificado_atualizado_em': FieldValue.serverTimestamp(),
+        });
   }
 
-  Map<String, int> contarStatus(List<CertificadoParticipanteData> participantes) {
+  Map<String, int> contarStatus(
+    List<CertificadoParticipanteData> participantes,
+  ) {
     var total = 0;
     var quitados = 0;
     var presentes = 0;

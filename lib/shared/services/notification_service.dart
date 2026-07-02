@@ -4,7 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
@@ -22,17 +23,36 @@ class NotificationService {
   FirebaseAuth get _auth => FirebaseAuth.instance;
 
   final FlutterLocalNotificationsPlugin _localNotifications =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   // ✅ CONTROLE DE ESTADO
   bool _isInitialized = false;
   bool _isRequestingPermission = false;
   Stream<String>? _tokenRefreshStream;
 
+  bool get _supportsFirebaseMessaging {
+    if (kIsWeb) return true;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  bool get _supportsLocalNotifications {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   // ═══════════════════════════════════════════════════════════
   // INICIALIZAR NOTIFICAÇÕES
   // ═══════════════════════════════════════════════════════════
   Future<void> initNotifications() async {
+    if (!_supportsFirebaseMessaging) {
+      print(
+        'Firebase Messaging ignorado nesta plataforma: $defaultTargetPlatform',
+      );
+      return;
+    }
+
     if (Firebase.apps.isEmpty) {
       print('⚠️ Firebase não inicializado. Aguardando...');
       try {
@@ -94,7 +114,9 @@ class NotificationService {
       }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print('📨 Notificação recebida em primeiro plano: ${message.messageId}');
+        print(
+          '📨 Notificação recebida em primeiro plano: ${message.messageId}',
+        );
         print('📨 Título: ${message.notification?.title}');
         print('📨 Corpo: ${message.notification?.body}');
         print('📨 Data: ${message.data}');
@@ -132,15 +154,18 @@ class NotificationService {
   // INICIALIZAR NOTIFICAÇÕES LOCAIS
   // ═══════════════════════════════════════════════════════════
   Future<void> _initializeLocalNotifications() async {
-    if (kIsWeb) {
-      print('🌐 PWA/Web: pulando inicialização de flutter_local_notifications.');
+    if (!_supportsLocalNotifications) {
+      print(
+        'flutter_local_notifications ignorado nesta plataforma: $defaultTargetPlatform',
+      );
       return;
     }
 
     const AndroidInitializationSettings androidSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings();
 
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
@@ -154,9 +179,10 @@ class NotificationService {
       },
     );
 
-    final androidPlugin =
-    _localNotifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.requestNotificationsPermission();
   }
@@ -170,6 +196,11 @@ class NotificationService {
   // PEGAR TOKEN CORRETO POR PLATAFORMA
   // ═══════════════════════════════════════════════════════════
   Future<String?> _getTokenForCurrentPlatform() async {
+    if (!_supportsFirebaseMessaging) {
+      print('Token FCM nao suportado nesta plataforma: $defaultTargetPlatform');
+      return null;
+    }
+
     if (kIsWeb) {
       return _fcm.getToken(vapidKey: _webVapidKey);
     }
@@ -182,8 +213,17 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<void> syncTokenForCurrentUser() async {
     try {
+      if (!_supportsFirebaseMessaging) {
+        print(
+          'Sincronizacao de token FCM ignorada nesta plataforma: $defaultTargetPlatform',
+        );
+        return;
+      }
+
       if (Firebase.apps.isEmpty) {
-        print('⚠️ Firebase ainda não inicializado. Não dá para sincronizar token.');
+        print(
+          '⚠️ Firebase ainda não inicializado. Não dá para sincronizar token.',
+        );
         return;
       }
 
@@ -194,8 +234,11 @@ class NotificationService {
         return;
       }
 
-      final NotificationSettings settings = await _fcm.getNotificationSettings();
-      print('🔔 Permissão atual para sincronizar: ${settings.authorizationStatus}');
+      final NotificationSettings settings = await _fcm
+          .getNotificationSettings();
+      print(
+        '🔔 Permissão atual para sincronizar: ${settings.authorizationStatus}',
+      );
 
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         print('⚠️ Permissão negada. Token não será sincronizado.');
@@ -210,7 +253,9 @@ class NotificationService {
           provisional: false,
         );
 
-        print('🔔 Permissão solicitada ao sincronizar: ${perm.authorizationStatus}');
+        print(
+          '🔔 Permissão solicitada ao sincronizar: ${perm.authorizationStatus}',
+        );
 
         if (!_isPermissionAllowed(perm.authorizationStatus)) {
           print('⚠️ Usuário não autorizou notificações.');
@@ -244,8 +289,9 @@ class NotificationService {
         return;
       }
 
-      final DocumentReference<Map<String, dynamic>> userRef =
-      _firestore.collection('usuarios').doc(user.uid);
+      final DocumentReference<Map<String, dynamic>> userRef = _firestore
+          .collection('usuarios')
+          .doc(user.uid);
 
       await userRef.set({
         'uid': user.uid,
@@ -258,7 +304,9 @@ class NotificationService {
         'token_versao_service': 2,
       }, SetOptions(merge: true));
 
-      print('✅ Token atual salvo e tokens antigos substituídos para: ${user.email}');
+      print(
+        '✅ Token atual salvo e tokens antigos substituídos para: ${user.email}',
+      );
     } catch (e) {
       print('❌ Erro ao salvar token no Firestore: $e');
     }
@@ -269,6 +317,13 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<void> removeToken() async {
     try {
+      if (!_supportsFirebaseMessaging) {
+        print(
+          'Remocao de token FCM ignorada nesta plataforma: $defaultTargetPlatform',
+        );
+        return;
+      }
+
       final User? user = _auth.currentUser;
       if (user == null) {
         print('⚠️ Nenhum usuário logado para remover token.');
@@ -281,8 +336,9 @@ class NotificationService {
         return;
       }
 
-      final DocumentReference<Map<String, dynamic>> userRef =
-      _firestore.collection('usuarios').doc(user.uid);
+      final DocumentReference<Map<String, dynamic>> userRef = _firestore
+          .collection('usuarios')
+          .doc(user.uid);
 
       final docSnapshot = await userRef.get();
 
@@ -312,8 +368,9 @@ class NotificationService {
         return;
       }
 
-      final DocumentReference<Map<String, dynamic>> userRef =
-      _firestore.collection('usuarios').doc(user.uid);
+      final DocumentReference<Map<String, dynamic>> userRef = _firestore
+          .collection('usuarios')
+          .doc(user.uid);
 
       final docSnapshot = await userRef.get();
 
@@ -335,23 +392,24 @@ class NotificationService {
   // NOTIFICAÇÃO LOCAL DE TESTE
   // ═══════════════════════════════════════════════════════════
   Future<void> testLocalNotification() async {
-    if (kIsWeb) {
-      print('🌐 PWA/Web: teste local via flutter_local_notifications não será usado.');
+    if (!_supportsLocalNotifications) {
+      print('Teste local ignorado nesta plataforma: $defaultTargetPlatform');
       return;
     }
 
     try {
-      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'test_channel',
-        'Canal de Teste',
-        channelDescription: 'Canal para testes locais de notificação',
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-        enableLights: true,
-        enableVibration: true,
-        playSound: true,
-      );
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+            'test_channel',
+            'Canal de Teste',
+            channelDescription: 'Canal para testes locais de notificação',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            enableLights: true,
+            enableVibration: true,
+            playSound: true,
+          );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
@@ -378,25 +436,28 @@ class NotificationService {
   // MOSTRAR NOTIFICAÇÃO LOCAL QUANDO APP ESTÁ ABERTO
   // ═══════════════════════════════════════════════════════════
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    if (kIsWeb) {
+    if (!_supportsLocalNotifications) {
       print('🌐 PWA/Web recebeu foreground message.');
-      print('🌐 Título: ${message.notification?.title ?? message.data['title']}');
+      print(
+        '🌐 Título: ${message.notification?.title ?? message.data['title']}',
+      );
       print('🌐 Corpo: ${message.notification?.body ?? message.data['body']}');
       return;
     }
 
     try {
-      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'default_channel',
-        'Notificações UAI',
-        channelDescription: 'Canal para notificações do app UAI Capoeira',
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-        enableLights: true,
-        enableVibration: true,
-        playSound: true,
-      );
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+            'default_channel',
+            'Notificações UAI',
+            channelDescription: 'Canal para notificações do app UAI Capoeira',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            enableLights: true,
+            enableVibration: true,
+            playSound: true,
+          );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
@@ -425,7 +486,9 @@ class NotificationService {
   Future<String?> getToken() async {
     try {
       final String? token = await _getTokenForCurrentPlatform();
-      print('🔔 Token atual consultado (${kIsWeb ? 'PWA/Web' : 'App'}): $token');
+      print(
+        '🔔 Token atual consultado (${kIsWeb ? 'PWA/Web' : 'App'}): $token',
+      );
       return token;
     } catch (e) {
       print('❌ Erro ao obter token: $e');
@@ -434,8 +497,8 @@ class NotificationService {
   }
 
   Future<void> subscribeToTopic(String topic) async {
-    if (kIsWeb) {
-      print('🌐 PWA/Web: inscrição em tópico ignorada para $topic.');
+    if (!_supportsFirebaseMessaging || kIsWeb) {
+      print('Inscricao em topico ignorada para $topic nesta plataforma.');
       return;
     }
 
@@ -448,8 +511,8 @@ class NotificationService {
   }
 
   Future<void> unsubscribeFromTopic(String topic) async {
-    if (kIsWeb) {
-      print('🌐 PWA/Web: remoção de tópico ignorada para $topic.');
+    if (!_supportsFirebaseMessaging || kIsWeb) {
+      print('Remocao de topico ignorada para $topic nesta plataforma.');
       return;
     }
 

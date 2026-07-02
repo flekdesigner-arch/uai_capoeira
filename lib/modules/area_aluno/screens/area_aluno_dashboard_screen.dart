@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:xml/xml.dart' as xml;
@@ -9,6 +10,7 @@ import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
+import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_config_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
@@ -46,9 +48,9 @@ class AreaAlunoDashboardScreen extends StatefulWidget {
 }
 
 class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
-  String? _svgContent;
   String? _cordaSvg;
   bool _vinculandoGoogle = false;
+  bool _tutorialPosVinculoMostrado = false;
 
   final RastreioSiteService _rastreioService = RastreioSiteService();
   final AreaAlunoSessionService _sessionService = AreaAlunoSessionService();
@@ -95,6 +97,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   void initState() {
     super.initState();
     _loadCordaSvg();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _talvezMostrarTutorialPosVinculo();
+    });
 
     _rastreioService.iniciarTela(
       'area_aluno_dashboard',
@@ -152,32 +157,140 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       final content = await DefaultAssetBundle.of(
         context,
       ).loadString('assets/images/corda.svg');
+      final graduacaoVisual = await _resolverGraduacaoVisual();
+      final cordaSvg = _montarCordaSvg(content, graduacaoVisual);
 
       if (!mounted) return;
 
       setState(() {
-        _svgContent = content;
-        _cordaSvg = _montarCordaSvg(widget.aluno);
+        _cordaSvg = cordaSvg;
       });
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar corda.svg no dashboard do aluno: $e');
     }
   }
 
-  String? _montarCordaSvg(Map<String, dynamic> aluno) {
-    if (_svgContent == null) return null;
+  Future<Map<String, dynamic>> _resolverGraduacaoVisual() async {
+    final nomeExibido = _graduacao;
+    final porNome = await _buscarGraduacaoPorNome(nomeExibido);
 
-    final cor1 = _pegarCor(aluno, ['graduacao_cor1', 'hex_cor1']);
-    final cor2 = _pegarCor(aluno, ['graduacao_cor2', 'hex_cor2']);
-    final ponta1 = _pegarCor(aluno, ['graduacao_ponta1', 'hex_ponta1']);
-    final ponta2 = _pegarCor(aluno, ['graduacao_ponta2', 'hex_ponta2']);
+    if (porNome != null) return porNome;
+
+    final porId = await _buscarGraduacaoPorId(
+      _safeText(
+        widget.aluno['graduacao_id'] ??
+            widget.aluno['graduacao_atual_id'] ??
+            widget.aluno['graduacaoId'] ??
+            widget.aluno['graduacaoAtualId'],
+        '',
+      ),
+    );
+
+    final nomePorId = _safeText(
+      porId?['nome_graduacao'] ?? porId?['nome'] ?? porId?['titulo'],
+      '',
+    );
+
+    if (porId != null &&
+        _normalizarTextoGraduacao(nomePorId) ==
+            _normalizarTextoGraduacao(nomeExibido)) {
+      return porId;
+    }
+
+    return {...widget.aluno, 'nome_graduacao': nomeExibido};
+  }
+
+  Future<Map<String, dynamic>?> _buscarGraduacaoPorNome(String nome) async {
+    final nomeNormalizado = _normalizarTextoGraduacao(nome);
+    if (nomeNormalizado.isEmpty ||
+        nomeNormalizado == _normalizarTextoGraduacao('Não informada')) {
+      return null;
+    }
+
+    try {
+      final db = FirebaseFirestore.instance;
+      for (final campo in const ['nome_graduacao', 'nome', 'titulo']) {
+        final snap = await db
+            .collection('graduacoes')
+            .where(campo, isEqualTo: nome)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          return {'id': snap.docs.first.id, ...snap.docs.first.data()};
+        }
+      }
+
+      final snap = await db.collection('graduacoes').limit(500).get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final candidatos = [
+          data['nome_graduacao'],
+          data['nome'],
+          data['titulo'],
+          data['descricaoCompleta'],
+          data['descricao_completa'],
+        ];
+
+        for (final candidato in candidatos) {
+          if (_normalizarTextoGraduacao(_safeText(candidato, '')) ==
+              nomeNormalizado) {
+            return {'id': doc.id, ...data};
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar graduação exibida "$nome": $e');
+    }
+
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _buscarGraduacaoPorId(
+    String graduacaoId,
+  ) async {
+    final id = graduacaoId.trim();
+    if (id.isEmpty || id == '0') return null;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('graduacoes')
+          .doc(id)
+          .get();
+      if (!doc.exists) return null;
+      return {'id': doc.id, ...?doc.data()};
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar graduação $graduacaoId: $e');
+      return null;
+    }
+  }
+
+  String _normalizarTextoGraduacao(String value) {
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
+
+    var normalized = value.trim();
+    for (var i = 0; i < withAccents.length; i++) {
+      normalized = normalized.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+
+    return normalized
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+  }
+
+  String? _montarCordaSvg(String svgContent, Map<String, dynamic> graduacao) {
+    final cor1 = _pegarCor(graduacao, ['hex_cor1', 'graduacao_cor1']);
+    final cor2 = _pegarCor(graduacao, ['hex_cor2', 'graduacao_cor2']);
+    final ponta1 = _pegarCor(graduacao, ['hex_ponta1', 'graduacao_ponta1']);
+    final ponta2 = _pegarCor(graduacao, ['hex_ponta2', 'graduacao_ponta2']);
 
     if (cor1 == null && cor2 == null && ponta1 == null && ponta2 == null) {
       return null;
     }
 
     try {
-      final document = xml.XmlDocument.parse(_svgContent!);
+      final document = xml.XmlDocument.parse(svgContent);
 
       void changeColor(String id, String? hexColor) {
         if (hexColor == null || hexColor.trim().isEmpty) return;
@@ -315,6 +428,183 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return result.user;
   }
 
+  Future<void> _confirmarVinculoGoogle() async {
+    if (_vinculandoGoogle) return;
+
+    _rastreioService.registrarClique(
+      nome: 'abrir_explicacao_vinculo_google',
+      origem: 'area_aluno_dashboard',
+      metadata: {'aluno_id': _alunoId, 'aluno_nome': _nome},
+    );
+
+    final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.surface);
+
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 20,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Container(
+              decoration: BoxDecoration(
+                color: t.surface,
+                borderRadius: BorderRadius.circular(t.cardRadius + 6),
+                border: Border.all(color: t.border),
+                boxShadow: t.cardShadow,
+              ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: Color.alphaBlend(
+                                accent.withOpacity(0.12),
+                                t.surface,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: accent.withOpacity(0.18),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.g_mobiledata_rounded,
+                              color: accent,
+                              size: 36,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Vincular conta Google',
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Conecte este cadastro ao e-mail escolhido.',
+                                  style: TextStyle(
+                                    color: t.textSecondary,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Para liberar o acesso completo, precisamos conectar o cadastro do aluno a uma conta Google.',
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 14,
+                          height: 1.4,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Essa conta será usada apenas para reconhecer com segurança quem está acessando a Área do Aluno. Nas próximas vezes, o aluno ou responsável poderá entrar com mais facilidade e segurança.',
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 13,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildVinculoInfoBlock(
+                        icon: Icons.badge_rounded,
+                        title: 'Não cria outro cadastro',
+                        text:
+                            'A conta Google apenas se conecta ao cadastro já existente do aluno.',
+                        color: t.info,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildVinculoInfoBlock(
+                        icon: Icons.family_restroom_rounded,
+                        title: 'Pode ser do aluno ou responsável',
+                        text:
+                            'Use o e-mail Google que será usado para acessar a Área do Aluno.',
+                        color: t.associacao,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildVinculoInfoBlock(
+                        icon: Icons.security_rounded,
+                        title: 'Mais segurança no acesso',
+                        text:
+                            'Depois de vincular, o acesso completo é liberado conforme as configurações do sistema.',
+                        color: t.success,
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            child: const Text('Agora não'),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            icon: const Icon(Icons.g_mobiledata_rounded),
+                            label: const Text('Vincular Google'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: accent,
+                              foregroundColor: _readableOn(accent),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmou != true || !mounted) return;
+
+    _rastreioService.registrarClique(
+      nome: 'confirmar_vinculo_google',
+      origem: 'area_aluno_dashboard',
+      metadata: {'aluno_id': _alunoId, 'aluno_nome': _nome},
+    );
+
+    await _vincularContaGoogle();
+  }
+
   Future<void> _vincularContaGoogle() async {
     if (_vinculandoGoogle) return;
 
@@ -324,7 +614,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
     try {
       final user = await _entrarComGoogle();
-      if (user == null) return;
+      if (user == null) {
+        _mostrarSnack('A vinculação foi cancelada.', errorColor);
+        return;
+      }
 
       final result = await FirebaseFunctions.instance
           .httpsCallable('vincularGoogleAreaAluno')
@@ -353,6 +646,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         'google_uid': user.uid,
         'google_email': user.email ?? '',
         'login_google_em': DateTime.now().toIso8601String(),
+        'mostrar_tutorial_pos_vinculo': true,
       };
 
       await _sessionService.salvarSessao(
@@ -363,7 +657,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
       if (!mounted) return;
 
-      _mostrarSnack('Conta vinculada. Acesso completo liberado.', successColor);
+      _mostrarSnack(
+        'Conta Google vinculada com sucesso. Acesso completo liberado!',
+        successColor,
+      );
 
       Navigator.pushReplacement(
         context,
@@ -390,6 +687,149 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     } finally {
       if (mounted) setState(() => _vinculandoGoogle = false);
     }
+  }
+
+  Future<void> _talvezMostrarTutorialPosVinculo() async {
+    if (_tutorialPosVinculoMostrado || !mounted) return;
+
+    final mostrar = widget.authPayload['mostrar_tutorial_pos_vinculo'] == true;
+    if (!mostrar) return;
+
+    _tutorialPosVinculoMostrado = true;
+
+    await _limparFlagTutorialPosVinculo();
+
+    if (!mounted) return;
+
+    _rastreioService.registrarEvento(
+      tipo: 'area_aluno',
+      nome: 'tutorial_pos_vinculo_exibido',
+      origem: 'area_aluno_dashboard',
+      metadata: {'aluno_id': _alunoId, 'aluno_nome': _nome},
+    );
+
+    await _mostrarTutorialAreaAluno();
+  }
+
+  Future<void> _limparFlagTutorialPosVinculo() async {
+    final authPayloadLimpo = Map<String, dynamic>.from(widget.authPayload)
+      ..remove('mostrar_tutorial_pos_vinculo');
+
+    try {
+      await _sessionService.salvarSessao(
+        aluno: widget.aluno,
+        config: widget.config,
+        authPayload: authPayloadLimpo,
+      );
+    } catch (e) {
+      debugPrint('Erro ao limpar tutorial pós-vínculo da sessão: $e');
+    }
+  }
+
+  Future<void> _mostrarTutorialAreaAluno() async {
+    final pages = const [
+      _TutorialAreaAlunoPage(
+        icon: Icons.verified_user_rounded,
+        title: 'Acesso completo liberado!',
+        text:
+            'Pronto! O cadastro foi vinculado à conta Google e a Área do Aluno está liberada conforme as permissões definidas pela coordenação.',
+      ),
+      _TutorialAreaAlunoPage(
+        icon: Icons.person_search_rounded,
+        title: 'Consulte seus dados',
+        text:
+            'Veja as informações do aluno, turma, graduação e dados cadastrados. Caso encontre algo errado, use a opção de solicitar alteração.',
+      ),
+      _TutorialAreaAlunoPage(
+        icon: Icons.fact_check_rounded,
+        title: 'Acompanhe a frequência',
+        text:
+            'Confira presenças e acompanhe a participação do aluno nas aulas.',
+      ),
+      _TutorialAreaAlunoPage(
+        icon: Icons.card_membership_rounded,
+        title: 'Eventos e certificados',
+        text:
+            'Veja eventos participados, certificados disponíveis e informações liberadas pela coordenação.',
+      ),
+      _TutorialAreaAlunoPage(
+        icon: Icons.security_rounded,
+        title: 'Mais segurança no acesso',
+        text:
+            'Nas próximas vezes, use a conta Google vinculada para acessar com mais segurança e praticidade.',
+      ),
+    ];
+
+    final pulou = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AreaAlunoTutorialSheet(
+        pages: pages,
+        theme: context.uai,
+        readableOn: _readableOn,
+      ),
+    );
+
+    _rastreioService.registrarEvento(
+      tipo: 'area_aluno',
+      nome: pulou == true
+          ? 'tutorial_pos_vinculo_pulado'
+          : 'tutorial_pos_vinculo_concluido',
+      origem: 'area_aluno_dashboard',
+      metadata: {'aluno_id': _alunoId, 'aluno_nome': _nome},
+    );
+  }
+
+  Widget _buildVinculoInfoBlock({
+    required IconData icon,
+    required String title,
+    required String text,
+    required Color color,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.surface);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withOpacity(0.08), t.surface),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withOpacity(0.14)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: accent, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _mostrarSnack(String mensagem, Color color) {
@@ -1859,7 +2299,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                 : CrossAxisAlignment.start,
             children: [
               Text(
-                'Proteja seu acesso',
+                jaVinculado
+                    ? 'Conta Google vinculada'
+                    : 'Libere o acesso completo',
                 style: TextStyle(
                   color: t.textPrimary,
                   fontSize: 17,
@@ -1869,8 +2311,8 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               const SizedBox(height: 5),
               Text(
                 jaVinculado
-                    ? 'Este perfil já possui uma conta Google vinculada${email.isNotEmpty ? ' ($email)' : ''}. Entre com essa conta para liberar o acesso completo.'
-                    : 'Vincule uma conta Google do aluno ou responsável para liberar o acesso completo à Área do Aluno.',
+                    ? 'Este cadastro já está conectado a uma conta Google${email.isNotEmpty ? '. Conta vinculada: $email' : '.'}'
+                    : 'Vincule uma conta Google do aluno ou responsável para conectar este cadastro ao e-mail escolhido.',
                 style: TextStyle(
                   color: t.textSecondary,
                   fontSize: 12.5,
@@ -1878,22 +2320,26 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (_areaConfig.exigeGoogleParaCompleto) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Algumas informações estão disponíveis apenas com conta vinculada.',
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
+              const SizedBox(height: 8),
+              Text(
+                jaVinculado
+                    ? 'Use a conta vinculada nas próximas vezes para entrar com mais segurança.'
+                    : 'Depois disso, a Área do Aluno poderá mostrar eventos, certificados, frequência e demais informações liberadas pela coordenação.',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
+              ),
             ],
           );
 
           final button = FilledButton.icon(
-            onPressed: _vinculandoGoogle ? null : _vincularContaGoogle,
+            onPressed: _vinculandoGoogle
+                ? null
+                : jaVinculado
+                ? _vincularContaGoogle
+                : _confirmarVinculoGoogle,
             icon: _vinculandoGoogle
                 ? const SizedBox(
                     width: 17,
@@ -2472,6 +2918,191 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       },
     );
   }
+}
+
+class _AreaAlunoTutorialSheet extends StatefulWidget {
+  final List<_TutorialAreaAlunoPage> pages;
+  final UaiThemeTokens theme;
+  final Color Function(Color background) readableOn;
+
+  const _AreaAlunoTutorialSheet({
+    required this.pages,
+    required this.theme,
+    required this.readableOn,
+  });
+
+  @override
+  State<_AreaAlunoTutorialSheet> createState() =>
+      _AreaAlunoTutorialSheetState();
+}
+
+class _AreaAlunoTutorialSheetState extends State<_AreaAlunoTutorialSheet> {
+  final PageController _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _proximo() {
+    if (_index >= widget.pages.length - 1) {
+      Navigator.pop(context, false);
+      return;
+    }
+
+    _controller.nextPage(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.theme;
+    final accent = t.primary;
+    final isLast = _index == widget.pages.length - 1;
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxWidth: 620,
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(t.cardRadius + 6),
+          border: Border.all(color: t.border),
+          boxShadow: t.cardShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 46,
+              height: 5,
+              decoration: BoxDecoration(
+                color: t.border,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Flexible(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: widget.pages.length,
+                onPageChanged: (value) => setState(() => _index = value),
+                itemBuilder: (context, index) {
+                  final page = widget.pages[index];
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(22, 24, 22, 12),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: Color.alphaBlend(
+                              accent.withOpacity(0.12),
+                              t.surface,
+                            ),
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(color: accent.withOpacity(0.18)),
+                          ),
+                          child: Icon(page.icon, color: accent, size: 38),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          page.title,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 22,
+                            height: 1.08,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          page.text,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 14,
+                            height: 1.42,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(widget.pages.length, (index) {
+                      final selected = index == _index;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: selected ? 22 : 7,
+                        height: 7,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          color: selected ? accent : t.border,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Pular'),
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        onPressed: _proximo,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: accent,
+                          foregroundColor: widget.readableOn(accent),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
+                          ),
+                        ),
+                        child: Text(isLast ? 'Começar' : 'Próximo'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TutorialAreaAlunoPage {
+  final IconData icon;
+  final String title;
+  final String text;
+
+  const _TutorialAreaAlunoPage({
+    required this.icon,
+    required this.title,
+    required this.text,
+  });
 }
 
 class _DashboardCardData {

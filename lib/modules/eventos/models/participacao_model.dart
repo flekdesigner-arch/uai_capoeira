@@ -224,8 +224,8 @@ class ParticipacaoModel {
   }
 
   factory ParticipacaoModel.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data() ?? {};
 
     return ParticipacaoModel.fromMap(doc.id, data);
@@ -255,10 +255,7 @@ class ParticipacaoModel {
             modelagemNormal,
       ),
       tipoCamisa: _normalizarTipoCamisa(
-        map['tipo_camisa'] ??
-            map['tipoCamisa'] ??
-            map['tipo'] ??
-            tipoManga,
+        map['tipo_camisa'] ?? map['tipoCamisa'] ?? map['tipo'] ?? tipoManga,
       ),
       linkCertificado: _nullableString(
         map['link_certificado'] ??
@@ -270,7 +267,9 @@ class ParticipacaoModel {
       ),
       presente: map['presente'] == true,
       status: _asString(map['status'], fallback: 'pendente'),
-      criadoEm: map['criado_em'] is Timestamp ? map['criado_em'] as Timestamp : null,
+      criadoEm: map['criado_em'] is Timestamp
+          ? map['criado_em'] as Timestamp
+          : null,
       atualizadoEm: map['atualizado_em'] is Timestamp
           ? map['atualizado_em'] as Timestamp
           : null,
@@ -324,9 +323,7 @@ class ParticipacaoModel {
       modelagemCamisa: _normalizarModelagem(
         modelagemCamisa ?? this.modelagemCamisa,
       ),
-      tipoCamisa: _normalizarTipoCamisa(
-        tipoCamisa ?? this.tipoCamisa,
-      ),
+      tipoCamisa: _normalizarTipoCamisa(tipoCamisa ?? this.tipoCamisa),
       linkCertificado: linkCertificado ?? this.linkCertificado,
       presente: presente ?? this.presente,
       status: status ?? this.status,

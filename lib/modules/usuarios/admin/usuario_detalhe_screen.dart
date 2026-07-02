@@ -962,6 +962,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           final statusConta = data['status_conta'] ?? 'pendente';
           final contato = data['contato'] ?? 'Contato não informado';
           final dataCadastro = data['data_cadastro'] as Timestamp?;
+          final ultimoLogin = data['ultimo_login'] as Timestamp?;
+          final ultimoAcesso = data['ultimo_acesso'] as Timestamp?;
           final ultimaAtualizacao = data['ultima_atualizacao'] as Timestamp?;
           final aprovadoEm = data['aprovado_em'] as Timestamp?;
           final aprovadoPor = data['aprovado_por'] as String?;
@@ -1033,6 +1035,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                                     const SizedBox(height: 14),
                                     _buildDatesCard(
                                       dataCadastro: dataCadastro,
+                                      ultimoLogin: ultimoLogin,
+                                      ultimoAcesso: ultimoAcesso,
                                       ultimaAtualizacao: ultimaAtualizacao,
                                       aprovadoEm: aprovadoEm,
                                     ),
@@ -1056,6 +1060,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                           const SizedBox(height: 14),
                           _buildDatesCard(
                             dataCadastro: dataCadastro,
+                            ultimoLogin: ultimoLogin,
+                            ultimoAcesso: ultimoAcesso,
                             ultimaAtualizacao: ultimaAtualizacao,
                             aprovadoEm: aprovadoEm,
                           ),
@@ -1489,6 +1495,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
   Widget _buildDatesCard({
     required Timestamp? dataCadastro,
+    required Timestamp? ultimoLogin,
+    required Timestamp? ultimoAcesso,
     required Timestamp? ultimaAtualizacao,
     required Timestamp? aprovadoEm,
   }) {
@@ -1502,6 +1510,18 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             Icons.calendar_today_rounded,
             'Data de cadastro',
             _formatTimestamp(dataCadastro),
+          ),
+          Divider(height: 20, color: context.uai.border),
+          _infoLine(
+            Icons.login_rounded,
+            'Último login',
+            _formatTimestamp(ultimoLogin),
+          ),
+          Divider(height: 20, color: context.uai.border),
+          _infoLine(
+            Icons.access_time_rounded,
+            'Último acesso',
+            _formatTimestamp(ultimoAcesso),
           ),
           Divider(height: 20, color: context.uai.border),
           _infoLine(

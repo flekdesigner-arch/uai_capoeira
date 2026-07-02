@@ -32,9 +32,9 @@ class PhoneMaskService {
 class _PhoneMaskFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue,
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     // Se apagou tudo, retorna vazio
     if (newValue.text.isEmpty) {
       return newValue;

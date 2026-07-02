@@ -21,15 +21,8 @@ class EditarCamisaModal extends StatefulWidget {
     this.tipoAtual,
     required this.entregue,
     required this.tamanhosDisponiveis,
-    this.modelagensDisponiveis = const [
-      'NORMAL',
-      'BABY_LOOK',
-    ],
-    this.tiposDisponiveis = const [
-      'MANGA',
-      'MANGA_LONGA',
-      'REGATA',
-    ],
+    this.modelagensDisponiveis = const ['NORMAL', 'BABY_LOOK'],
+    this.tiposDisponiveis = const ['MANGA', 'MANGA_LONGA', 'REGATA'],
     this.valoresPorTipoCamisa = const {},
   });
 
@@ -75,14 +68,14 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     _modelagemSelecionada = _normalizarModelagem(
       widget.modelagemAtual ?? modelagemNormal,
     );
-    _tipoSelecionado = _normalizarTipoCamisa(
-      widget.tipoAtual ?? tipoManga,
-    );
+    _tipoSelecionado = _normalizarTipoCamisa(widget.tipoAtual ?? tipoManga);
     _entregue = widget.entregue;
 
     final modelagens = _modelagens;
     if (!modelagens.contains(_modelagemSelecionada)) {
-      _modelagemSelecionada = modelagens.isNotEmpty ? modelagens.first : modelagemNormal;
+      _modelagemSelecionada = modelagens.isNotEmpty
+          ? modelagens.first
+          : modelagemNormal;
     }
 
     final tipos = _tipos;
@@ -91,7 +84,8 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     }
 
     final tamanhos = _tamanhos;
-    if (_tamanhoSelecionado != null && !tamanhos.contains(_tamanhoSelecionado)) {
+    if (_tamanhoSelecionado != null &&
+        !tamanhos.contains(_tamanhoSelecionado)) {
       _tamanhoSelecionado = null;
     }
   }
@@ -103,7 +97,8 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -153,10 +148,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     if (result.isEmpty) result.add(modelagemNormal);
 
     result.sort((a, b) {
-      final ordem = {
-        modelagemNormal: 0,
-        modelagemBabyLook: 1,
-      };
+      final ordem = {modelagemNormal: 0, modelagemBabyLook: 1};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -179,11 +171,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     if (result.isEmpty) result.add(tipoManga);
 
     result.sort((a, b) {
-      final ordem = {
-        tipoManga: 0,
-        tipoMangaLonga: 1,
-        tipoRegata: 2,
-      };
+      final ordem = {tipoManga: 0, tipoMangaLonga: 1, tipoRegata: 2};
 
       return (ordem[a] ?? 99).compareTo(ordem[b] ?? 99);
     });
@@ -272,7 +260,9 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     label: Text(
                       _modelagemLabel(modelagem),
                       style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : FontWeight.w700,
                         color: isSelected ? Colors.white : t.textPrimary,
                       ),
                     ),
@@ -283,9 +273,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     backgroundColor: t.cardAlt,
                     selectedColor: primary,
                     checkmarkColor: Colors.white,
-                    side: BorderSide(
-                      color: isSelected ? primary : t.border,
-                    ),
+                    side: BorderSide(color: isSelected ? primary : t.border),
                   );
                 }).toList(),
               ),
@@ -309,8 +297,12 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     label: Text(
                       _tipoLabel(tipo),
                       style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                        color: isSelected ? _readableOn(warning) : t.textPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : FontWeight.w700,
+                        color: isSelected
+                            ? _readableOn(warning)
+                            : t.textPrimary,
                       ),
                     ),
                     selected: isSelected,
@@ -320,9 +312,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     backgroundColor: t.cardAlt,
                     selectedColor: warning,
                     checkmarkColor: _readableOn(warning),
-                    side: BorderSide(
-                      color: isSelected ? warning : t.border,
-                    ),
+                    side: BorderSide(color: isSelected ? warning : t.border),
                   );
                 }).toList(),
               ),
@@ -346,7 +336,9 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     label: Text(
                       tamanho,
                       style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : FontWeight.w700,
                         color: isSelected ? Colors.white : t.textPrimary,
                       ),
                     ),
@@ -357,9 +349,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     backgroundColor: t.cardAlt,
                     selectedColor: info,
                     checkmarkColor: Colors.white,
-                    side: BorderSide(
-                      color: isSelected ? info : t.border,
-                    ),
+                    side: BorderSide(color: isSelected ? info : t.border),
                   );
                 }).toList(),
               ),
@@ -486,11 +476,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                   if (narrow) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        cancelar,
-                        const SizedBox(height: 8),
-                        salvar,
-                      ],
+                      children: [cancelar, const SizedBox(height: 8), salvar],
                     );
                   }
 
@@ -667,6 +653,7 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
         return 'Manga';
     }
   }
+
   double _valorDoTipoSelecionado() {
     final tipo = _normalizarTipoCamisa(_tipoSelecionado);
 
@@ -683,5 +670,4 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     if (value <= 0) return '';
     return 'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
   }
-
 }

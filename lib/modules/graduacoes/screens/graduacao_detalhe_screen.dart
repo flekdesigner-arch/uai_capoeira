@@ -9,10 +9,7 @@ import 'package:uai_capoeira/modules/graduacoes/admin/editar_graduacao_screen.da
 class GraduacaoDetalheScreen extends StatefulWidget {
   final String graduacaoId;
 
-  const GraduacaoDetalheScreen({
-    super.key,
-    required this.graduacaoId,
-  });
+  const GraduacaoDetalheScreen({super.key, required this.graduacaoId});
 
   @override
   State<GraduacaoDetalheScreen> createState() => _GraduacaoDetalheScreenState();
@@ -31,8 +28,9 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (mounted) {
         setState(() => _svgContent = content);
@@ -49,7 +47,8 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -98,14 +97,16 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isNotEmpty) {
           final style = element.getAttribute('style') ?? '';
           final hex = colorToHex(color).toLowerCase();
-          final newStyle =
-          style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
+          final newStyle = style.replaceAll(
+            RegExp(r'fill:#[0-9a-fA-F]{6}'),
+            '',
+          );
 
           element.setAttribute('style', 'fill:$hex;$newStyle');
         }
@@ -163,9 +164,8 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditarGraduacaoScreen(
-          graduacaoId: widget.graduacaoId,
-        ),
+        builder: (context) =>
+            EditarGraduacaoScreen(graduacaoId: widget.graduacaoId),
       ),
     );
   }
@@ -179,10 +179,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
       appBar: AppBar(
         title: const Text(
           'Detalhes da Graduação',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         actions: [
           IconButton(
@@ -200,12 +197,12 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting ||
               _svgContent == null) {
-            return Center(
-              child: CircularProgressIndicator(color: t.primary),
-            );
+            return Center(child: CircularProgressIndicator(color: t.primary));
           }
 
-          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              !snapshot.data!.exists) {
             return _buildErrorState();
           }
 
@@ -232,23 +229,23 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
                         constraints: const BoxConstraints(maxWidth: 1080),
                         child: isWide
                             ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 392,
-                              child: _buildHeroCard(data, modifiedSvg),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(child: _buildInfoContent(data)),
-                          ],
-                        )
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 392,
+                                    child: _buildHeroCard(data, modifiedSvg),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(child: _buildInfoContent(data)),
+                                ],
+                              )
                             : Column(
-                          children: [
-                            _buildHeroCard(data, modifiedSvg),
-                            const SizedBox(height: 14),
-                            _buildInfoContent(data),
-                          ],
-                        ),
+                                children: [
+                                  _buildHeroCard(data, modifiedSvg),
+                                  const SizedBox(height: 14),
+                                  _buildInfoContent(data),
+                                ],
+                              ),
                       ),
                     ),
                   ],
@@ -346,12 +343,12 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             child: modifiedSvg.isNotEmpty
                 ? SvgPicture.string(modifiedSvg, fit: BoxFit.contain)
                 : Center(
-              child: Icon(
-                Icons.image_not_supported_rounded,
-                color: t.textMuted,
-                size: 52,
-              ),
-            ),
+                    child: Icon(
+                      Icons.image_not_supported_rounded,
+                      color: t.textMuted,
+                      size: 52,
+                    ),
+                  ),
           ),
           const SizedBox(height: 14),
           Container(
@@ -369,9 +366,15 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _heroChip(Icons.leaderboard_rounded, 'Nível ${data['nivel_graduacao'] ?? '--'}'),
+              _heroChip(
+                Icons.leaderboard_rounded,
+                'Nível ${data['nivel_graduacao'] ?? '--'}',
+              ),
               if ((data['tipo_publico']?.toString() ?? '').trim().isNotEmpty)
-                _heroChip(Icons.groups_rounded, data['tipo_publico'].toString()),
+                _heroChip(
+                  Icons.groups_rounded,
+                  data['tipo_publico'].toString(),
+                ),
             ],
           ),
         ],
@@ -459,8 +462,8 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             _buildInfoTile(
               icon: Icons.description_rounded,
               label: 'Tipo documento',
-              value: data['certificado_ou_diploma']?.toString() ??
-                  'Não informado',
+              value:
+                  data['certificado_ou_diploma']?.toString() ?? 'Não informado',
             ),
           ],
         ),
@@ -673,11 +676,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  color: accent,
-                  size: 72,
-                ),
+                Icon(Icons.error_outline_rounded, color: accent, size: 72),
                 const SizedBox(height: 12),
                 Text(
                   'Erro ao carregar os dados da graduação.',
@@ -692,10 +691,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
                 Text(
                   'Verifique a conexão e tente novamente.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    fontSize: 12.5,
-                  ),
+                  style: TextStyle(color: t.textSecondary, fontSize: 12.5),
                 ),
               ],
             ),

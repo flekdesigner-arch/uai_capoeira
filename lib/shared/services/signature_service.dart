@@ -25,13 +25,13 @@ class SignatureService {
 
   // 🔥 CONVERTER ASSINATURA PARA IMAGEM - AGORA COM RECORTE E CENTRALIZAÇÃO
   Future<Uint8List?> signatureToImage(
-      BuildContext context,
-      List<List<Offset>> points, {
-        double padding = 20.0, // Espaço ao redor da assinatura
-        double strokeWidth = 3.0,
-        Color backgroundColor = Colors.white,
-        Color penColor = Colors.black,
-      }) async {
+    BuildContext context,
+    List<List<Offset>> points, {
+    double padding = 20.0, // Espaço ao redor da assinatura
+    double strokeWidth = 3.0,
+    Color backgroundColor = Colors.white,
+    Color penColor = Colors.black,
+  }) async {
     try {
       debugPrint('🎨 Convertendo assinatura para imagem...');
 
@@ -109,7 +109,10 @@ class SignatureService {
         for (int i = 0; i < stroke.length - 1; i++) {
           // Aplicar o offset para centralizar
           final p1 = Offset(stroke[i].dx + offsetX, stroke[i].dy + offsetY);
-          final p2 = Offset(stroke[i + 1].dx + offsetX, stroke[i + 1].dy + offsetY);
+          final p2 = Offset(
+            stroke[i + 1].dx + offsetX,
+            stroke[i + 1].dy + offsetY,
+          );
 
           canvas.drawLine(p1, p2, paint);
         }
@@ -122,9 +125,10 @@ class SignatureService {
       final img = await picture.toImage(width.toInt(), height.toInt());
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
 
-      debugPrint('✅ Assinatura convertida com sucesso - Tamanho final: ${width.toInt()}x${height.toInt()}');
+      debugPrint(
+        '✅ Assinatura convertida com sucesso - Tamanho final: ${width.toInt()}x${height.toInt()}',
+      );
       return byteData?.buffer.asUint8List();
-
     } catch (e) {
       debugPrint('❌ Erro ao converter assinatura: $e');
       return null;
@@ -150,7 +154,9 @@ class SignatureService {
       // Gerar nome único
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final random = Random().nextInt(10000);
-      final nomeLimpo = nomeResponsavel.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toLowerCase();
+      final nomeLimpo = nomeResponsavel
+          .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+          .toLowerCase();
       final fileName = 'assinatura_${nomeLimpo}_$timestamp$random.png';
 
       debugPrint('📁 Nome do arquivo: $fileName');
@@ -194,7 +200,6 @@ class SignatureService {
       }
 
       return imageUrl;
-
     } catch (e) {
       debugPrint('❌ Erro ao salvar assinatura: $e');
       return null;
@@ -220,7 +225,9 @@ class SignatureService {
       // Fazer upload do arquivo
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final random = Random().nextInt(10000);
-      final nomeLimpo = nomeResponsavel.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toLowerCase();
+      final nomeLimpo = nomeResponsavel
+          .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+          .toLowerCase();
       final fileName = 'assinatura_${nomeLimpo}_$timestamp$random.png';
 
       final ref = _storage.ref().child('assinaturas').child(fileName);
@@ -236,7 +243,6 @@ class SignatureService {
       debugPrint('🧹 Arquivo temporário removido');
 
       return imageUrl;
-
     } catch (e) {
       debugPrint('❌ Erro no método alternativo: $e');
       return null;

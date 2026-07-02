@@ -28,19 +28,12 @@ class EmDesenvolvimentoScreen extends StatelessWidget {
                 color: Colors.red.shade50,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                icone,
-                size: 80,
-                color: Colors.red.shade900,
-              ),
+              child: Icon(icone, size: 80, color: Colors.red.shade900),
             ),
             const SizedBox(height: 30),
             Text(
               titulo,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             const Text(
@@ -67,7 +60,10 @@ class EmDesenvolvimentoScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back),
               label: const Text('VOLTAR'),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 15,
+                ),
               ),
             ),
           ],

@@ -2,15 +2,22 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 
 class MigracaoParticipacoesScreen extends StatefulWidget {
   const MigracaoParticipacoesScreen({super.key});
 
   @override
-  State<MigracaoParticipacoesScreen> createState() => _MigracaoParticipacoesScreenState();
+  State<MigracaoParticipacoesScreen> createState() =>
+      _MigracaoParticipacoesScreenState();
 }
 
-class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScreen> {
+class _MigracaoParticipacoesScreenState
+    extends State<MigracaoParticipacoesScreen> {
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
+
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _isMigrating = false;
   String _statusMessage = '';
   int _successCount = 0;
@@ -21,9 +28,45 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
 
   // Cache para evitar buscas repetidas
   final Map<String, String> _alunosCache = {}; // nome do aluno -> id
-  final Map<String, Map<String, dynamic>> _eventosCache = {}; // nome do evento -> dados do evento
+  final Map<String, Map<String, dynamic>> _eventosCache =
+      {}; // nome do evento -> dados do evento
+
+  @override
+  void initState() {
+    super.initState();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(adminOnly: true);
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Você não tem permissão para executar migrações.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    return permitido;
+  }
 
   Future<void> _migrarParticipacoes() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() {
       _isMigrating = true;
       _statusMessage = 'Carregando arquivo de participações...';
@@ -42,11 +85,14 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
       await _carregarEventosCache();
 
       // 3️⃣ CARREGAR ARQUIVO JSON
-      final String jsonString = await rootBundle.loadString('assets/participacao_alunos_eventos.json');
+      final String jsonString = await rootBundle.loadString(
+        'assets/participacao_alunos_eventos.json',
+      );
       final List<dynamic> jsonList = json.decode(jsonString);
 
       setState(() {
-        _statusMessage = 'Arquivo carregado! Processando ${jsonList.length} participações...';
+        _statusMessage =
+            'Arquivo carregado! Processando ${jsonList.length} participações...';
       });
 
       // 4️⃣ PROCESSAR CADA PARTICIPAÇÃO
@@ -58,7 +104,8 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
           final nomeAluno = participacao['NOME']?.toString().trim() ?? '';
           final graduacao = participacao['GRADUAÇÃO']?.toString().trim() ?? '';
           final nomeEvento = participacao['EVENTO']?.toString().trim() ?? '';
-          final linkCertificado = participacao['CERTIFICADO']?.toString().trim() ?? '';
+          final linkCertificado =
+              participacao['CERTIFICADO']?.toString().trim() ?? '';
 
           if (nomeAluno.isEmpty) {
             setState(() {
@@ -71,7 +118,9 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
           if (nomeEvento.isEmpty) {
             setState(() {
               _errorCount++;
-              _errors.add('Item ${i + 1}: Nome do evento vazio para aluno $nomeAluno');
+              _errors.add(
+                'Item ${i + 1}: Nome do evento vazio para aluno $nomeAluno',
+              );
             });
             continue;
           }
@@ -116,32 +165,31 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
                 .collection('participacoes_eventos')
                 .doc(docId)
                 .update({
-              'link_certificado': linkCertificado,
-              'graduacao': graduacao,
-              'atualizado_em': FieldValue.serverTimestamp(),
-            });
+                  'link_certificado': linkCertificado,
+                  'graduacao': graduacao,
+                  'atualizado_em': FieldValue.serverTimestamp(),
+                });
           } else {
             // Criar nova participação
             await FirebaseFirestore.instance
                 .collection('participacoes_eventos')
                 .add({
-              'aluno_id': alunoId,
-              'aluno_nome': nomeAluno,
-              'evento_id': eventoId,
-              'evento_nome': nomeEvento,
-              'data_evento': dataEvento,
-              'tipo_evento': tipoEvento,
-              'graduacao': graduacao,
-              'link_certificado': linkCertificado,
-              'criado_em': FieldValue.serverTimestamp(),
-              'atualizado_em': FieldValue.serverTimestamp(),
-            });
+                  'aluno_id': alunoId,
+                  'aluno_nome': nomeAluno,
+                  'evento_id': eventoId,
+                  'evento_nome': nomeEvento,
+                  'data_evento': dataEvento,
+                  'tipo_evento': tipoEvento,
+                  'graduacao': graduacao,
+                  'link_certificado': linkCertificado,
+                  'criado_em': FieldValue.serverTimestamp(),
+                  'atualizado_em': FieldValue.serverTimestamp(),
+                });
           }
 
           setState(() {
             _successCount++;
           });
-
         } catch (e) {
           setState(() {
             _errorCount++;
@@ -154,7 +202,6 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
         _isMigrating = false;
         _statusMessage = 'Migração concluída!';
       });
-
     } catch (e) {
       setState(() {
         _isMigrating = false;
@@ -209,6 +256,21 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Migração de Participações',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Migração de Participações',
+        message: 'Você não tem permissão para executar migrações.',
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Migração de Participações'),
@@ -293,13 +355,13 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
                 onPressed: _isMigrating ? null : _migrarParticipacoes,
                 icon: _isMigrating
                     ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.cloud_upload),
                 label: Text(
                   _isMigrating ? 'MIGRANDO...' : 'INICIAR MIGRAÇÃO',
@@ -338,7 +400,9 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
                       child: Text(
                         _statusMessage,
                         style: TextStyle(
-                          color: _isMigrating ? Colors.blue.shade900 : Colors.green.shade900,
+                          color: _isMigrating
+                              ? Colors.blue.shade900
+                              : Colors.green.shade900,
                         ),
                       ),
                     ),
@@ -447,10 +511,7 @@ class _MigracaoParticipacoesScreenState extends State<MigracaoParticipacoesScree
           ),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 11,
-              color: color,
-            ),
+            style: TextStyle(fontSize: 11, color: color),
             textAlign: TextAlign.center,
           ),
         ],

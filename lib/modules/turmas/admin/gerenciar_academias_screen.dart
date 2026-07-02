@@ -1,6 +1,7 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'editar_academia_screen.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/turmas/admin/gerenciar_turmas_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/usuario_detalhe_screen.dart';
@@ -15,7 +16,10 @@ class GerenciarAcademiasScreen extends StatefulWidget {
 
 class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   String _filterCidade = 'Todas';
   String _filterModalidade = 'Todas';
   List<String> _cidades = ['Todas'];
@@ -26,7 +30,45 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarFiltros();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_academias',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _carregarFiltros();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_gerenciar_academias',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Você não tem permissão para gerenciar academias.',
+          ),
+          backgroundColor: context.uai.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    return permitido;
   }
 
   Color _readableOn(Color background) {
@@ -36,8 +78,8 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -62,9 +104,13 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Future<void> _carregarFiltros() async {
+    if (!await _revalidarAcesso()) return;
+
     try {
-      final snapshot =
-      await _firestore.collection('academias').orderBy('nome').get();
+      final snapshot = await _firestore
+          .collection('academias')
+          .orderBy('nome')
+          .get();
 
       final cidadesUnicas = <String>{'Todas'};
       final modalidadesUnicas = <String>{'Todas'};
@@ -135,10 +181,12 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                             height: 44,
                             decoration: BoxDecoration(
                               color: primary.withOpacity(0.12),
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
-                              border:
-                              Border.all(color: primary.withOpacity(0.16)),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
+                              border: Border.all(
+                                color: primary.withOpacity(0.16),
+                              ),
                             ),
                             child: Icon(icon, color: primary),
                           ),
@@ -177,12 +225,13 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                             child: Material(
                               color: selected
                                   ? Color.alphaBlend(
-                                primary.withOpacity(0.11),
-                                t.cardAlt,
-                              )
+                                      primary.withOpacity(0.11),
+                                      t.cardAlt,
+                                    )
                                   : t.cardAlt,
-                              borderRadius:
-                              BorderRadius.circular(t.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
+                              ),
                               clipBehavior: Clip.antiAlias,
                               child: InkWell(
                                 onTap: () {
@@ -195,8 +244,9 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                                     vertical: 12,
                                   ),
                                   decoration: BoxDecoration(
-                                    borderRadius:
-                                    BorderRadius.circular(t.inputRadius),
+                                    borderRadius: BorderRadius.circular(
+                                      t.inputRadius,
+                                    ),
                                     border: Border.all(
                                       color: selected
                                           ? primary.withOpacity(0.34)
@@ -304,11 +354,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
       backgroundColor: t.cardAlt,
       selectedColor: primary,
       side: BorderSide(color: selected ? primary : t.border),
-      avatar: Icon(
-        icon,
-        size: 18,
-        color: foreground,
-      ),
+      avatar: Icon(icon, size: 18, color: foreground),
       label: Text(
         label,
         style: TextStyle(
@@ -408,8 +454,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                           height: 48,
                           decoration: BoxDecoration(
                             color: accent.withOpacity(0.12),
-                            borderRadius:
-                            BorderRadius.circular(t.buttonRadius),
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                           child: Icon(
                             success
@@ -434,10 +479,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                     const SizedBox(height: 14),
                     Text(
                       message,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     SizedBox(
@@ -446,8 +488,9 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                         onPressed: () => Navigator.pop(context),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: success ? t.primary : t.error,
-                          foregroundColor:
-                          _readableOn(success ? t.primary : t.error),
+                          foregroundColor: _readableOn(
+                            success ? t.primary : t.error,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
@@ -471,6 +514,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
 
   Future<void> _calcularAtualizarContadores() async {
     if (!mounted) return;
+    if (!await _revalidarAcesso()) return;
 
     setState(() => _calculandoContadores = true);
 
@@ -551,7 +595,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
           success: true,
           title: 'Sucesso!',
           message:
-          'Contadores atualizados com sucesso!\nProcessadas $academiasProcessadas academias.',
+              'Contadores atualizados com sucesso!\nProcessadas $academiasProcessadas academias.',
         );
       }
     } catch (e) {
@@ -570,9 +614,11 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Future<void> _calcularContadoresAcademia(
-      String academiaId,
-      String academiaNome,
-      ) async {
+    String academiaId,
+    String academiaNome,
+  ) async {
+    if (!await _revalidarAcesso()) return;
+
     await _showLoadingDialog('Calculando $academiaNome...');
 
     try {
@@ -637,7 +683,8 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
         await _showResultDialog(
           success: true,
           title: 'Contadores atualizados!',
-          message: 'Academia "$academiaNome" atualizada.\n'
+          message:
+              'Academia "$academiaNome" atualizada.\n'
               'Total de alunos: $totalAlunosAcademia\n'
               'Total de turmas: ${turmasSnapshot.docs.length}\n'
               'Turmas ativas: $totalTurmasAtivas',
@@ -657,6 +704,9 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Future<void> _abrirAcademia({String? academiaId}) async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -671,6 +721,9 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
     required String academiaId,
     required String academiaNome,
   }) async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -684,6 +737,8 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
 
   Future<void> _abrirResponsavel(String? responsavelId) async {
     if (responsavelId == null || responsavelId.trim().isEmpty) return;
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
 
     await Navigator.push(
       context,
@@ -695,6 +750,21 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Gerenciar Academias',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gerenciar Academias',
+        message: 'Você não tem permissão para gerenciar academias.',
+      );
+    }
+
     final t = context.uai;
 
     return PopScope(
@@ -704,24 +774,22 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
         appBar: AppBar(
           title: const Text(
             'Gerenciar Academias',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           actions: [
             IconButton(
-              onPressed:
-              _calculandoContadores ? null : _calcularAtualizarContadores,
+              onPressed: _calculandoContadores
+                  ? null
+                  : _calcularAtualizarContadores,
               icon: _calculandoContadores
                   ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _readableOn(t.primary),
-                ),
-              )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _readableOn(t.primary),
+                      ),
+                    )
                   : const Icon(Icons.calculate_rounded),
               tooltip: 'Calcular contadores de alunos',
             ),
@@ -798,7 +866,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                               icon: Icons.search_off_rounded,
                               title: 'Nenhuma academia encontrada',
                               text:
-                              'Tente limpar os filtros ou buscar por outro termo.',
+                                  'Tente limpar os filtros ou buscar por outro termo.',
                               color: t.warning,
                               compact: true,
                             )
@@ -826,15 +894,10 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   Widget _buildLoadingState() {
     final t = context.uai;
 
-    return Center(
-      child: CircularProgressIndicator(color: t.primary),
-    );
+    return Center(child: CircularProgressIndicator(color: t.primary));
   }
 
-  Widget _buildHeroCard({
-    required int total,
-    required int filtradas,
-  }) {
+  Widget _buildHeroCard({required int total, required int filtradas}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -857,16 +920,13 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.business_rounded,
-              color: onPrimary,
-              size: 34,
-            ),
+            child: Icon(Icons.business_rounded, color: onPrimary, size: 34),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Academias e Núcleos',
@@ -890,8 +950,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
               ),
               const SizedBox(height: 12),
               Wrap(
-                alignment:
-                narrow ? WrapAlignment.center : WrapAlignment.start,
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
                 spacing: 8,
                 runSpacing: 8,
                 children: [
@@ -905,11 +964,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
 
           if (narrow) {
             return Column(
-              children: [
-                iconBox,
-                const SizedBox(height: 14),
-                text,
-              ],
+              children: [iconBox, const SizedBox(height: 14), text],
             );
           }
 
@@ -1008,8 +1063,8 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Widget _buildAcademiasGrid(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> academias,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> academias,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -1039,8 +1094,8 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
   }
 
   Widget _buildAcademiaCard(
-      QueryDocumentSnapshot<Map<String, dynamic>> academia,
-      ) {
+    QueryDocumentSnapshot<Map<String, dynamic>> academia,
+  ) {
     final t = context.uai;
     final data = academia.data();
 
@@ -1072,9 +1127,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
             border: Border.all(
-              color: isActive
-                  ? primary.withOpacity(0.16)
-                  : t.border,
+              color: isActive ? primary.withOpacity(0.16) : t.border,
             ),
             boxShadow: t.softShadow,
           ),
@@ -1142,10 +1195,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                       ),
                     ),
                   ),
-                  _buildPopupMenu(
-                    academiaId: academia.id,
-                    academiaNome: nome,
-                  ),
+                  _buildPopupMenu(academiaId: academia.id, academiaNome: nome),
                 ],
               ),
               const SizedBox(height: 13),
@@ -1162,7 +1212,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                     _buildInfoChip(
                       icon: Icons.check_circle_rounded,
                       label:
-                      '$turmasAtivasCount ativa${turmasAtivasCount != 1 ? 's' : ''}',
+                          '$turmasAtivasCount ativa${turmasAtivasCount != 1 ? 's' : ''}',
                       color: success,
                     ),
                   _buildInfoChip(
@@ -1206,8 +1256,9 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                             child: Text(
                               'Resp: $responsavelNome',
                               style: TextStyle(
-                                color:
-                                responsavelId != null ? info : t.textSecondary,
+                                color: responsavelId != null
+                                    ? info
+                                    : t.textSecondary,
                                 fontWeight: responsavelId != null
                                     ? FontWeight.w800
                                     : FontWeight.w600,
@@ -1234,11 +1285,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                 const SizedBox(height: 9),
                 Row(
                   children: [
-                    Icon(
-                      Icons.update_rounded,
-                      size: 13,
-                      color: t.textMuted,
-                    ),
+                    Icon(Icons.update_rounded, size: 13, color: t.textMuted),
                     const SizedBox(width: 5),
                     Text(
                       'Atualizado: ${_formatarData(ultimaAtualizacao)}',
@@ -1274,10 +1321,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
         if (value == 'editar') {
           _abrirAcademia(academiaId: academiaId);
         } else if (value == 'turmas') {
-          _abrirTurmas(
-            academiaId: academiaId,
-            academiaNome: academiaNome,
-          );
+          _abrirTurmas(academiaId: academiaId, academiaNome: academiaNome);
         } else if (value == 'calcular') {
           _calcularContadoresAcademia(academiaId, academiaNome);
         }
@@ -1422,10 +1466,7 @@ class _GerenciarAcademiasScreenState extends State<GerenciarAcademiasScreen> {
                 Text(
                   text,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    height: 1.35,
-                  ),
+                  style: TextStyle(color: t.textSecondary, height: 1.35),
                 ),
               ],
             ),

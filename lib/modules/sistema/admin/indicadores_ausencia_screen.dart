@@ -5,24 +5,29 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class IndicadoresAusenciaScreen extends StatefulWidget {
   const IndicadoresAusenciaScreen({super.key});
 
   @override
-  State<IndicadoresAusenciaScreen> createState() => _IndicadoresAusenciaScreenState();
+  State<IndicadoresAusenciaScreen> createState() =>
+      _IndicadoresAusenciaScreenState();
 }
 
 class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
 
   static const String _collection = 'configuracoes_sistema';
   static const String _document = 'indicadores_ausencia';
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _verificandoAcesso = true;
+  bool _acessoNegado = false;
   bool _ativo = true;
   bool _mostrarTextoUltimaPresenca = true;
 
@@ -36,7 +41,8 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -47,7 +53,6 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
-
 
   String _mensagemPadraoAlerta() {
     return 'Olá! Tudo bem? Aqui é da UAI Capoeira. Sentimos falta de {nome_aluno} nos treinos da turma {turma}. '
@@ -104,7 +109,44 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarConfiguracao();
+    _verificarAcesso();
+  }
+
+  Future<void> _verificarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_indicadores_ausencia',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _verificandoAcesso = false;
+      _acessoNegado = !permitido;
+    });
+
+    if (permitido) {
+      await _carregarConfiguracao();
+    }
+  }
+
+  Future<bool> _revalidarAcesso() async {
+    final permitido = await _accessGuard.canAccess(
+      permission: 'pode_configurar_indicadores_ausencia',
+    );
+    if (!mounted) return false;
+
+    if (!permitido) {
+      setState(() => _acessoNegado = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Você não tem permissão para configurar indicadores de ausência.',
+          ),
+          backgroundColor: context.uai.error,
+        ),
+      );
+    }
+
+    return permitido;
   }
 
   @override
@@ -116,6 +158,8 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   }
 
   Future<void> _carregarConfiguracao() async {
+    if (!await _revalidarAcesso()) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -125,9 +169,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
       final faixasRaw = data?['faixas'];
       final List<Map<String, dynamic>> faixasData = faixasRaw is List
           ? faixasRaw
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : _faixasPadrao();
 
       faixasData.sort((a, b) {
@@ -146,7 +190,8 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
 
       setState(() {
         _ativo = data?['ativo'] != false;
-        _mostrarTextoUltimaPresenca = data?['mostrar_texto_ultima_presenca'] != false;
+        _mostrarTextoUltimaPresenca =
+            data?['mostrar_texto_ultima_presenca'] != false;
         _isLoading = false;
       });
     } catch (e) {
@@ -164,7 +209,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Não foi possível carregar. Usando configuração padrão.'),
+            content: Text(
+              'Não foi possível carregar. Usando configuração padrão.',
+            ),
             backgroundColor: context.uai.warning,
           ),
         );
@@ -242,7 +289,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                             height: 46,
                             decoration: BoxDecoration(
                               color: accent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                             child: Icon(Icons.palette_rounded, color: accent),
                           ),
@@ -259,7 +308,10 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(dialogContext),
-                            icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: t.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -280,7 +332,10 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                         onChanged: (value) {
                           final normalized = _normalizarHex(value, '');
                           if (normalized.isEmpty) return;
-                          final color = _colorFromHex(normalized, fallback: pickedColor);
+                          final color = _colorFromHex(
+                            normalized,
+                            fallback: pickedColor,
+                          );
                           setDialogState(() => pickedColor = color);
                           onColorChanged(color);
                         },
@@ -308,13 +363,18 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: t.textSecondary,
                                 side: BorderSide(color: t.border),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               child: const Text('CANCELAR'),
@@ -326,9 +386,13 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: t.primary,
                                 foregroundColor: _readableOn(t.primary),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
                                 ),
                               ),
                               onPressed: () {
@@ -414,10 +478,7 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
           ),
           title: Text(
             'Restaurar padrão?',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
             'Isso volta as faixas para azul, verde, amarelo, laranja e vermelho.',
@@ -457,6 +518,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   }
 
   Future<void> _salvarConfiguracao() async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
     FocusScope.of(context).unfocus();
 
     final faixas = <Map<String, dynamic>>[];
@@ -471,7 +535,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
       if (dias <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Todas as faixas precisam ter quantidade de dias maior que zero.'),
+            content: Text(
+              'Todas as faixas precisam ter quantidade de dias maior que zero.',
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -534,9 +600,26 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_verificandoAcesso) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Indicadores de Ausência',
+      );
+    }
+
+    if (_acessoNegado) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Indicadores de Ausência',
+        message:
+            'Você não tem permissão para configurar indicadores de ausência.',
+      );
+    }
+
     final t = context.uai;
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -558,77 +641,82 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontal = constraints.maxWidth < 600 ? 14.0 : 22.0;
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final horizontal = constraints.maxWidth < 600 ? 14.0 : 22.0;
 
-            return ListView(
-              padding: EdgeInsets.fromLTRB(horizontal, 14, horizontal, 110),
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 980),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeader(context),
-                        const SizedBox(height: 14),
-                        _buildSwitches(context),
-                        const SizedBox(height: 14),
-                        _buildFaixasSection(context),
-                      ],
+                  return ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontal,
+                      14,
+                      horizontal,
+                      110,
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                    children: [
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 980),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildHeader(context),
+                              const SizedBox(height: 14),
+                              _buildSwitches(context),
+                              const SizedBox(height: 14),
+                              _buildFaixasSection(context),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
       bottomNavigationBar: _isLoading
           ? null
           : SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-          decoration: BoxDecoration(
-            color: t.cardAlt,
-            border: Border(top: BorderSide(color: t.border)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 14,
-                offset: const Offset(0, -4),
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                decoration: BoxDecoration(
+                  color: t.cardAlt,
+                  border: Border(top: BorderSide(color: t.border)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _salvarConfiguracao,
+                  icon: _isSaving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _readableOn(t.primary),
+                          ),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(
+                    _isSaving ? 'SALVANDO...' : 'SALVAR INDICADORES',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: t.primary,
+                    foregroundColor: _readableOn(t.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(t.buttonRadius),
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ),
-          child: ElevatedButton.icon(
-            onPressed: _isSaving ? null : _salvarConfiguracao,
-            icon: _isSaving
-                ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _readableOn(t.primary),
-              ),
-            )
-                : const Icon(Icons.save_rounded),
-            label: Text(
-              _isSaving ? 'SALVANDO...' : 'SALVAR INDICADORES',
-              style: const TextStyle(fontWeight: FontWeight.w900),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: t.primary,
-              foregroundColor: _readableOn(t.primary),
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -735,7 +823,8 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            onChanged: (value) => setState(() => _mostrarTextoUltimaPresenca = value),
+            onChanged: (value) =>
+                setState(() => _mostrarTextoUltimaPresenca = value),
           ),
         ],
       ),
@@ -805,7 +894,10 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         faixa.mensagemController,
       ]),
       builder: (context, _) {
-        final currentColor = _colorFromHex(faixa.corController.text, fallback: t.primary);
+        final currentColor = _colorFromHex(
+          faixa.corController.text,
+          fallback: t.primary,
+        );
         final currentVisible = _ensureVisible(currentColor, t.card);
         final label = faixa.labelController.text.trim().isEmpty
             ? 'Sem título'
@@ -813,14 +905,19 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         final dias = faixa.diasController.text.trim().isEmpty
             ? '?'
             : faixa.diasController.text.trim();
-        final mensagemPreenchida = faixa.mensagemController.text.trim().isNotEmpty;
+        final mensagemPreenchida = faixa.mensagemController.text
+            .trim()
+            .isNotEmpty;
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(currentVisible.withOpacity(expanded ? 0.08 : 0.045), t.card),
+            color: Color.alphaBlend(
+              currentVisible.withOpacity(expanded ? 0.08 : 0.045),
+              t.card,
+            ),
             borderRadius: BorderRadius.circular(t.cardRadius - 6),
             border: Border.all(
               color: expanded
@@ -882,7 +979,9 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                                   _buildMiniTag(
                                     context: context,
                                     icon: Icons.schedule_rounded,
-                                    label: isUltima ? 'até $dias dias ou mais' : 'até $dias dias',
+                                    label: isUltima
+                                        ? 'até $dias dias ou mais'
+                                        : 'até $dias dias',
                                     color: currentVisible,
                                   ),
                                   _buildMiniTag(
@@ -890,8 +989,12 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                                     icon: faixa.geraAlerta
                                         ? Icons.notifications_active_rounded
                                         : Icons.notifications_off_rounded,
-                                    label: faixa.geraAlerta ? 'gera alerta' : 'sem alerta',
-                                    color: faixa.geraAlerta ? currentVisible : t.textMuted,
+                                    label: faixa.geraAlerta
+                                        ? 'gera alerta'
+                                        : 'sem alerta',
+                                    color: faixa.geraAlerta
+                                        ? currentVisible
+                                        : t.textMuted,
                                   ),
                                   if (mensagemPreenchida)
                                     _buildMiniTag(
@@ -909,7 +1012,10 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
                         IconButton(
                           tooltip: 'Remover faixa',
                           onPressed: () => _removerFaixa(index),
-                          icon: Icon(Icons.delete_outline_rounded, color: t.error),
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            color: t.error,
+                          ),
                         ),
                         Icon(
                           expanded
@@ -1066,16 +1172,17 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         fontWeight: FontWeight.w700,
         height: 1.25,
       ),
-      decoration: _inputDecoration(
-        context: context,
-        label: 'Mensagem pronta do alerta',
-        hint: _mensagemPadraoAlerta(),
-        icon: Icons.message_rounded,
-      ).copyWith(
-        helperMaxLines: 4,
-        helperText:
-        'Variáveis: {nome_aluno}, {turma}, {indicador}, {dias}, {ultima_presenca}',
-      ),
+      decoration:
+          _inputDecoration(
+            context: context,
+            label: 'Mensagem pronta do alerta',
+            hint: _mensagemPadraoAlerta(),
+            icon: Icons.message_rounded,
+          ).copyWith(
+            helperMaxLines: 4,
+            helperText:
+                'Variáveis: {nome_aluno}, {turma}, {indicador}, {dias}, {ultima_presenca}',
+          ),
     );
   }
 
@@ -1199,11 +1306,14 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
   }
 
   Widget _buildAlertaSwitch(
-      BuildContext context,
-      _FaixaAusenciaController faixa,
-      ) {
+    BuildContext context,
+    _FaixaAusenciaController faixa,
+  ) {
     final t = context.uai;
-    final currentColor = _colorFromHex(faixa.corController.text, fallback: t.primary);
+    final currentColor = _colorFromHex(
+      faixa.corController.text,
+      fallback: t.primary,
+    );
     final visibleColor = _ensureVisible(currentColor, t.cardAlt);
 
     return Container(
@@ -1212,9 +1322,7 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
         color: t.cardAlt,
         borderRadius: BorderRadius.circular(t.inputRadius),
         border: Border.all(
-          color: faixa.geraAlerta
-              ? visibleColor.withOpacity(0.34)
-              : t.border,
+          color: faixa.geraAlerta ? visibleColor.withOpacity(0.34) : t.border,
         ),
       ),
       child: Row(
@@ -1289,10 +1397,7 @@ class _IndicadoresAusenciaScreenState extends State<IndicadoresAusenciaScreen> {
       controller: controller,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
-      style: TextStyle(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w800,
-      ),
+      style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800),
       decoration: _inputDecoration(
         context: context,
         label: label,
@@ -1331,9 +1436,7 @@ class _FaixaAusenciaController {
 
   factory _FaixaAusenciaController.fromMap(Map<String, dynamic> data) {
     return _FaixaAusenciaController(
-      diasController: TextEditingController(
-        text: '${data['ate_dias'] ?? ''}',
-      ),
+      diasController: TextEditingController(text: '${data['ate_dias'] ?? ''}'),
       corController: TextEditingController(
         text: data['cor']?.toString() ?? '#9E9E9E',
       ),
@@ -1341,11 +1444,13 @@ class _FaixaAusenciaController {
         text: data['label']?.toString() ?? '',
       ),
       mensagemController: TextEditingController(
-        text: data['mensagem_alerta']?.toString() ??
+        text:
+            data['mensagem_alerta']?.toString() ??
             data['mensagem']?.toString() ??
             '',
       ),
-      geraAlerta: data['gera_alerta'] == true ||
+      geraAlerta:
+          data['gera_alerta'] == true ||
           data['gerar_alerta'] == true ||
           data['alerta'] == true,
     );

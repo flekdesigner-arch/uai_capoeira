@@ -9,7 +9,10 @@ class AssistenteChatService {
 
   Future<Map<String, dynamic>> carregarConfiguracoesCompletas() async {
     try {
-      final doc = await _firestore.collection('config_site_assistente').doc('config').get();
+      final doc = await _firestore
+          .collection('config_site_assistente')
+          .doc('config')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -20,7 +23,8 @@ class AssistenteChatService {
           'regras': data['regras'] ?? _getRegrasPadrao(),
           'acoes': data['acoes'] ?? _getAcoesPadrao(),
           'aparencia': data['aparencia'] ?? _getAparenciaPadrao(),
-          'respostas_rapidas': data['respostas_rapidas'] ?? _getRespostasRapidasPadrao(),
+          'respostas_rapidas':
+              data['respostas_rapidas'] ?? _getRespostasRapidasPadrao(),
           'turmas_selecionadas': data['turmas_selecionadas'] ?? {},
         };
       } else {
@@ -35,7 +39,10 @@ class AssistenteChatService {
           'turmas_selecionadas': {},
           'criado_em': FieldValue.serverTimestamp(),
         };
-        await _firestore.collection('config_site_assistente').doc('config').set(configPadrao);
+        await _firestore
+            .collection('config_site_assistente')
+            .doc('config')
+            .set(configPadrao);
         return configPadrao;
       }
     } catch (e) {
@@ -113,14 +120,22 @@ class AssistenteChatService {
 
   String _traduzirDia(String dia) {
     switch (dia) {
-      case 'DOMINGO': return 'Domingo';
-      case 'SEGUNDA': return 'Segunda';
-      case 'TERCA': return 'Terça';
-      case 'QUARTA': return 'Quarta';
-      case 'QUINTA': return 'Quinta';
-      case 'SEXTA': return 'Sexta';
-      case 'SABADO': return 'Sábado';
-      default: return dia;
+      case 'DOMINGO':
+        return 'Domingo';
+      case 'SEGUNDA':
+        return 'Segunda';
+      case 'TERCA':
+        return 'Terça';
+      case 'QUARTA':
+        return 'Quarta';
+      case 'QUINTA':
+        return 'Quinta';
+      case 'SEXTA':
+        return 'Sexta';
+      case 'SABADO':
+        return 'Sábado';
+      default:
+        return dia;
     }
   }
 
@@ -128,7 +143,10 @@ class AssistenteChatService {
 
   Future<Map<String, dynamic>> buscarConfigInscricoes() async {
     try {
-      final doc = await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('inscricoes')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -169,7 +187,8 @@ class AssistenteChatService {
       'nome': 'Assistente UAI',
       'avatar': '🤖',
       'status': 'Online',
-      'mensagem_boas_vindas': 'Olá! Sou o assistente virtual da UAI Capoeira. Como posso ajudar você hoje? 🇧🇷',
+      'mensagem_boas_vindas':
+          'Olá! Sou o assistente virtual da UAI Capoeira. Como posso ajudar você hoje? 🇧🇷',
       'cor_assistente': '#FF0000',
       'icone_botao': '💬',
     };
@@ -197,10 +216,19 @@ class AssistenteChatService {
 
   Map<String, dynamic> _getRegrasPadrao() {
     return {
-      'descricao_geral': 'Você é o assistente virtual oficial do Grupo UAI Capoeira. Seja educado, acolhedor e responda apenas sobre o grupo.',
+      'descricao_geral':
+          'Você é o assistente virtual oficial do Grupo UAI Capoeira. Seja educado, acolhedor e responda apenas sobre o grupo.',
       'limitar_assuntos': true,
-      'assuntos_permitidos': ['capoeira', 'treinos', 'inscrições', 'campeonato', 'graduações', 'história'],
-      'resposta_fora_tema': 'Desculpe, só posso responder perguntas sobre a UAI Capoeira. Como posso ajudar com treinos, inscrições ou campeonato?',
+      'assuntos_permitidos': [
+        'capoeira',
+        'treinos',
+        'inscrições',
+        'campeonato',
+        'graduações',
+        'história',
+      ],
+      'resposta_fora_tema':
+          'Desculpe, só posso responder perguntas sobre a UAI Capoeira. Como posso ajudar com treinos, inscrições ou campeonato?',
       'tom_respostas': 'Acolhedor e profissional',
       'maximo_caracteres': 500,
     };
@@ -210,25 +238,50 @@ class AssistenteChatService {
     return {
       'inscricao': {
         'ativo': true,
-        'palavras_chave': ['inscrição', 'aula experimental', 'quero treinar', 'como faço para treinar', 'matrícula', 'quero me inscrever'],
+        'palavras_chave': [
+          'inscrição',
+          'aula experimental',
+          'quero treinar',
+          'como faço para treinar',
+          'matrícula',
+          'quero me inscrever',
+        ],
         'texto_botao': '📝 FAZER INSCRIÇÃO',
         'tela_destino': 'InscricaoPublicaScreen',
       },
       'campeonato': {
         'ativo': true,
-        'palavras_chave': ['campeonato', 'competição', 'torneio', '1° campeonato', 'evento'],
+        'palavras_chave': [
+          'campeonato',
+          'competição',
+          'torneio',
+          '1° campeonato',
+          'evento',
+        ],
         'texto_botao': '🏆 VER CAMPEONATO',
         'tela_destino': 'InscricaoCampeonatoScreen',
       },
       'whatsapp': {
         'ativo': true,
-        'palavras_chave': ['contato', 'whatsapp', 'falar com professor', 'telefone', 'ligar'],
+        'palavras_chave': [
+          'contato',
+          'whatsapp',
+          'falar com professor',
+          'telefone',
+          'ligar',
+        ],
         'texto_botao': '📱 FALAR NO WHATSAPP',
         'url_base': 'https://wa.me/5538999999999',
       },
       'maps': {
         'ativo': true,
-        'palavras_chave': ['endereço', 'localização', 'onde fica', 'como chegar', 'maps'],
+        'palavras_chave': [
+          'endereço',
+          'localização',
+          'onde fica',
+          'como chegar',
+          'maps',
+        ],
         'texto_botao': '🗺️ VER MAPA',
         'url_base': 'https://maps.google.com/?q=',
       },
@@ -257,11 +310,16 @@ class AssistenteChatService {
         'Quanto custa a mensalidade?',
       ],
       'respostas': {
-        'Qual o horário dos treinos?': 'Os treinos acontecem às terças e quintas, das 19h às 21h, no Centro Cultural de Bocaiuva.',
-        'Como faço uma inscrição?': 'Para se inscrever, clique no botão abaixo e preencha o formulário. [ACAO:inscricao]',
-        'Onde fica o grupo?': 'Estamos na Rua das Flores, 123 - Centro, Bocaiuva/MG. Clique no botão para ver no mapa! [ACAO:maps]',
-        'Tem campeonato?': 'Sim! Estamos com o 1° Campeonato UAI Capoeira. Clique abaixo para mais informações! [ACAO:campeonato]',
-        'Quanto custa a mensalidade?': r'A mensalidade é R$ 80,00. A primeira aula experimental é gratuita!',
+        'Qual o horário dos treinos?':
+            'Os treinos acontecem às terças e quintas, das 19h às 21h, no Centro Cultural de Bocaiuva.',
+        'Como faço uma inscrição?':
+            'Para se inscrever, clique no botão abaixo e preencha o formulário. [ACAO:inscricao]',
+        'Onde fica o grupo?':
+            'Estamos na Rua das Flores, 123 - Centro, Bocaiuva/MG. Clique no botão para ver no mapa! [ACAO:maps]',
+        'Tem campeonato?':
+            'Sim! Estamos com o 1° Campeonato UAI Capoeira. Clique abaixo para mais informações! [ACAO:campeonato]',
+        'Quanto custa a mensalidade?':
+            r'A mensalidade é R$ 80,00. A primeira aula experimental é gratuita!',
       },
     };
   }
@@ -273,15 +331,19 @@ class AssistenteChatService {
     final info = config['informacoes'] as Map<String, dynamic>;
     final regras = config['regras'] as Map<String, dynamic>;
     final acoes = config['acoes'] as Map<String, dynamic>;
-    final respostasRapidas = config['respostas_rapidas'] as Map<String, dynamic>;
+    final respostasRapidas =
+        config['respostas_rapidas'] as Map<String, dynamic>;
 
     final configInscricoes = await buscarConfigInscricoes();
     final turmas = await buscarTodasTurmas();
     final turmasSelecionadas = config['turmas_selecionadas'] ?? {};
 
-    final turmasAtivas = turmas.where((t) => turmasSelecionadas[t['id']] == true).toList();
+    final turmasAtivas = turmas
+        .where((t) => turmasSelecionadas[t['id']] == true)
+        .toList();
 
-    String contexto = '''
+    String contexto =
+        '''
 ${regras['descricao_geral']}
 
 PERFIL DO ASSISTENTE:
@@ -311,7 +373,8 @@ INFORMAÇÕES DO GRUPO UAI CAPOEIRA:
       contexto += 'Nenhuma turma disponível no momento.\n';
     } else {
       for (var turma in turmasAtivas) {
-        contexto += '''
+        contexto +=
+            '''
 - Turma: ${turma['nome']} (${turma['nivel']})
   Dias: ${(turma['dias'] as List).join(', ')}
   Horário: ${turma['horario_inicio']} às ${turma['horario_fim']}
@@ -322,7 +385,8 @@ INFORMAÇÕES DO GRUPO UAI CAPOEIRA:
       }
     }
 
-    contexto += '''
+    contexto +=
+        '''
 
 REGRAS IMPORTANTES:
 1. ${regras['descricao_geral']}
@@ -334,7 +398,8 @@ AÇÕES ESPECIAIS (coloque no final da resposta quando detectar intenção):
 
     acoes.forEach((key, value) {
       if (value['ativo'] == true) {
-        contexto += '- Quando o usuário perguntar sobre ${(value['palavras_chave'] as List).join(" ou ")}, responda com [ACAO:$key] no final\n';
+        contexto +=
+            '- Quando o usuário perguntar sobre ${(value['palavras_chave'] as List).join(" ou ")}, responda com [ACAO:$key] no final\n';
       }
     });
 
@@ -348,7 +413,8 @@ RESPOSTAS PRÉ-DEFINIDAS:
       contexto += '- Pergunta: "$pergunta" -> Resposta: "$resposta"\n';
     });
 
-    contexto += '''
+    contexto +=
+        '''
 
 EXEMPLOS DE RESPOSTAS CORRETAS:
 
@@ -380,7 +446,10 @@ Lembre-se: Seja ${regras['tom_respostas'].toString().toLowerCase()} e sempre aju
 
   // ==================== CHAMAR GEMINI ====================
 
-  Future<String> enviarMensagem(String mensagem, Map<String, dynamic> config) async {
+  Future<String> enviarMensagem(
+    String mensagem,
+    Map<String, dynamic> config,
+  ) async {
     try {
       final contexto = await montarContextoCompleto(config);
 
@@ -390,7 +459,8 @@ Lembre-se: Seja ${regras['tom_respostas'].toString().toLowerCase()} e sempre aju
         'contexto': contexto,
       });
 
-      return result.data['resposta'] ?? 'Desculpe, não consegui processar sua pergunta.';
+      return result.data['resposta'] ??
+          'Desculpe, não consegui processar sua pergunta.';
     } catch (e) {
       print('Erro ao chamar Cloud Function: $e');
       return 'Ops! Estou com problemas técnicos. Tente novamente mais tarde.';
@@ -420,7 +490,8 @@ String turmasAtivosParaResposta(List<Map<String, dynamic>> turmas) {
   for (var turma in turmas) {
     resultado += "\n• 🥋 ${turma['nome']} (${turma['nivel']})\n";
     resultado += "  📅 Dias: ${(turma['dias'] as List).join(', ')}\n";
-    resultado += "  ⏰ Horário: ${turma['horario_inicio']} às ${turma['horario_fim']}\n";
+    resultado +=
+        "  ⏰ Horário: ${turma['horario_inicio']} às ${turma['horario_fim']}\n";
     resultado += "  📍 Local: ${turma['local']}\n";
   }
   return resultado;

@@ -15,8 +15,8 @@ class MensagemAniversario {
 
   // Construtor para criar a partir do Firestore
   factory MensagemAniversario.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data()!;
     return MensagemAniversario(
       id: doc.id,

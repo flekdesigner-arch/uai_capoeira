@@ -13,8 +13,10 @@ class SelecionarItemDialog extends StatefulWidget {
 class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   @override
   void dispose() {
@@ -32,8 +34,8 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -107,35 +109,44 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                 decoration: InputDecoration(
                   hintText: 'Pesquisar item...',
                   hintStyle: TextStyle(color: context.uai.textMuted),
-                  prefixIcon:
-                  Icon(Icons.search, color: context.uai.textSecondary),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: context.uai.textSecondary,
+                  ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear,
-                        color: context.uai.textSecondary),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
+                          icon: Icon(
+                            Icons.clear,
+                            color: context.uai.textSecondary,
+                          ),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
                       : null,
                   filled: true,
                   fillColor: context.uai.cardAlt,
                   border: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(
-                        color: context.uai.primary, width: 1.4),
+                      color: context.uai.primary,
+                      width: 1.4,
+                    ),
                   ),
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
@@ -157,9 +168,9 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                   var itens = snapshot.data!.docs.where((doc) {
                     if (_searchQuery.isEmpty) return true;
                     var data = doc.data() as Map<String, dynamic>;
-                    return (data['nome'] ?? '')
-                        .toLowerCase()
-                        .contains(_searchQuery.toLowerCase());
+                    return (data['nome'] ?? '').toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    );
                   }).toList();
 
                   if (itens.isEmpty) {
@@ -167,21 +178,22 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.inventory_2_outlined,
-                              size: 50, color: context.uai.textMuted),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 50,
+                            color: context.uai.textMuted,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             'Nenhum item encontrado',
-                            style:
-                            TextStyle(color: context.uai.textSecondary),
+                            style: TextStyle(color: context.uai.textSecondary),
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton(
                             onPressed: () => Navigator.pop(context),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: context.uai.primary,
-                              foregroundColor:
-                              _readableOn(context.uai.primary),
+                              foregroundColor: _readableOn(context.uai.primary),
                             ),
                             child: const Text('Voltar'),
                           ),
@@ -197,26 +209,27 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                       var data = doc.data() as Map<String, dynamic>;
 
                       int quantidade = data['quantidade'] ?? 0;
-                      bool controlaEstoque =
-                          data['controla_estoque'] ?? true;
-                      bool semEstoque =
-                          controlaEstoque && quantidade <= 0;
+                      bool controlaEstoque = data['controla_estoque'] ?? true;
+                      bool semEstoque = controlaEstoque && quantidade <= 0;
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         child: Material(
                           color: context.uai.card,
                           borderRadius: BorderRadius.circular(
-                              context.uai.cardRadius),
+                            context.uai.cardRadius,
+                          ),
                           clipBehavior: Clip.antiAlias,
                           elevation: 0,
                           child: Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(
-                                  context.uai.cardRadius),
-                              border:
-                              Border.all(color: context.uai.border),
+                                context.uai.cardRadius,
+                              ),
+                              border: Border.all(color: context.uai.border),
                             ),
                             child: ListTile(
                               leading: Container(
@@ -224,12 +237,9 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                                 height: 40,
                                 decoration: BoxDecoration(
                                   color: semEstoque
-                                      ? context.uai.textMuted
-                                      .withOpacity(0.15)
-                                      : context.uai.success
-                                      .withOpacity(0.15),
-                                  borderRadius:
-                                  BorderRadius.circular(8),
+                                      ? context.uai.textMuted.withOpacity(0.15)
+                                      : context.uai.success.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Icon(
                                   Icons.shopping_bag,
@@ -260,9 +270,12 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                               onTap: semEstoque
                                   ? null
                                   : () {
-                                _showQuantidadeDialog(
-                                    context, doc.id, data);
-                              },
+                                      _showQuantidadeDialog(
+                                        context,
+                                        doc.id,
+                                        data,
+                                      );
+                                    },
                             ),
                           ),
                         ),
@@ -279,10 +292,10 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
   }
 
   void _showQuantidadeDialog(
-      BuildContext context,
-      String itemId,
-      Map<String, dynamic> data,
-      ) {
+    BuildContext context,
+    String itemId,
+    Map<String, dynamic> data,
+  ) {
     final quantidadeController = TextEditingController();
     int quantidadeMaxima = data['quantidade'] ?? 999;
     bool controlaEstoque = data['controla_estoque'] ?? true;
@@ -313,28 +326,33 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                 style: TextStyle(color: context.uai.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Quantidade',
-                  labelStyle:
-                  TextStyle(color: context.uai.textSecondary),
-                  helperText:
-                  controlaEstoque ? 'Máximo: $quantidadeMaxima' : null,
+                  labelStyle: TextStyle(color: context.uai.textSecondary),
+                  helperText: controlaEstoque
+                      ? 'Máximo: $quantidadeMaxima'
+                      : null,
                   helperStyle: TextStyle(color: context.uai.textMuted),
                   filled: true,
                   fillColor: context.uai.cardAlt,
                   border: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: context.uai.border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius:
-                    BorderRadius.circular(context.uai.inputRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(
-                        color: context.uai.primary, width: 1.4),
+                      color: context.uai.primary,
+                      width: 1.4,
+                    ),
                   ),
                 ),
               ),
@@ -350,13 +368,11 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
             ),
             ElevatedButton(
               onPressed: () {
-                int quantidade =
-                    int.tryParse(quantidadeController.text) ?? 1;
+                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
                 if (quantidade <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text(
-                          'Quantidade deve ser maior que 0'),
+                      content: const Text('Quantidade deve ser maior que 0'),
                       backgroundColor: context.uai.error,
                     ),
                   );
@@ -366,7 +382,8 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                          'Quantidade máxima disponível: $quantidadeMaxima'),
+                        'Quantidade máxima disponível: $quantidadeMaxima',
+                      ),
                       backgroundColor: context.uai.error,
                     ),
                   );

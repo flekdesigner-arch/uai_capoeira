@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uai_capoeira/modules/alunos/screens/aluno_detalhe_screen.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -17,6 +19,12 @@ Color _onCard(BuildContext context) => _readableOn(context.uai.card);
 Color _onCardMuted(BuildContext context) => _onCard(context).withOpacity(0.68);
 Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
+// Cache em memória para fotos antigas de chamadas.
+// Evita FutureBuilder/consulta aluno por aluno dentro dos cards.
+class _FotosAlunosChamadaCache {
+  static final Map<String, String> fotosPorAlunoId = <String, String>{};
+  static final Set<String> idsConsultados = <String>{};
+}
 
 class ListasChamadaScreen extends StatefulWidget {
   final String turmaId;
@@ -44,7 +52,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -57,9 +66,59 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
-  Color _onCardMuted([BuildContext? c]) => _onCard(c ?? context).withOpacity(0.68);
-  Color _onPrimary([BuildContext? c]) => _readableOn((c ?? context).uai.primary);
+  Color _onCardMuted([BuildContext? c]) =>
+      _onCard(c ?? context).withOpacity(0.68);
+  Color _onPrimary([BuildContext? c]) =>
+      _readableOn((c ?? context).uai.primary);
 
+  Color _appButtonBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appButtonFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ??
+      _readableOn(_appButtonBg());
+
+  bool _temaPrimarioMuitoClaroEmFundoEscuro() {
+    final primary = context.uai.primary;
+    final surface = context.uai.surface;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        surface.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.58;
+  }
+
+  Color _modalHeaderBg() {
+    final primary = context.uai.primary;
+
+    // Proteção para temas tipo Verde Neon ou tema personalizado muito claro
+    // em base escura. Mantém a identidade da cor, mas tira o efeito "radioativo"
+    // e melhora a leitura dentro do modal.
+    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
+      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+    }
+
+    return primary;
+  }
+
+  Gradient _modalHeaderGradient(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+    final end = hsl
+        .withLightness(
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -74,6 +133,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   bool _temMaisChamadas = true;
   bool _carregandoBuscaCompleta = false;
   String _erroDetalhe = '';
+  bool _abrindoPerfilAluno = false;
 
   // 🔥 CACHE INTELIGENTE DO CALENDÁRIO
   // Evita ficar lendo o Firebase toda vez que abrir/trocar o mês.
@@ -121,7 +181,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     _buscaController.dispose();
     super.dispose();
   }
-
 
   void _onBuscaChanged() {
     _buscaDebounce?.cancel();
@@ -173,6 +232,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
           _temMaisChamadas = docsNovos.length == _limitePorPagina;
         });
+
+        unawaited(_carregarFotosFallbackDasChamadas(docsNovos));
 
         if (docsNovos.isEmpty) break;
 
@@ -226,14 +287,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             final chamadasDoMes = _chamadasDoMes(mesVisivel);
             final carregandoMes = _calendarioMesEstaCarregando(mesVisivel);
 
-            final primeiraSemana = DateTime(mesVisivel.year, mesVisivel.month, 1);
+            final primeiraSemana = DateTime(
+              mesVisivel.year,
+              mesVisivel.month,
+              1,
+            );
             final primeiroDiaGrade = primeiraSemana.subtract(
               Duration(days: primeiraSemana.weekday - 1),
             );
 
             final diasGrade = List.generate(
               42,
-                  (index) => DateTime(
+              (index) => DateTime(
                 primeiroDiaGrade.year,
                 primeiroDiaGrade.month,
                 primeiroDiaGrade.day + index,
@@ -298,12 +363,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         Container(
                                           padding: EdgeInsets.all(10),
                                           decoration: BoxDecoration(
-                                            color: context.uai.card.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(15),
+                                            color: context.uai.card.withOpacity(
+                                              0.15,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              15,
+                                            ),
                                           ),
                                           child: Icon(
                                             Icons.calendar_month_rounded,
-                                            color: _readableOn(context.uai.primary),
+                                            color: _readableOn(
+                                              context.uai.primary,
+                                            ),
                                             size: 26,
                                           ),
                                         ),
@@ -312,17 +383,22 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                           child: Text(
                                             'Calendário de Chamadas',
                                             style: TextStyle(
-                                              color: _readableOn(context.uai.primary),
+                                              color: _readableOn(
+                                                context.uai.primary,
+                                              ),
                                               fontWeight: FontWeight.bold,
                                               fontSize: 18,
                                             ),
                                           ),
                                         ),
                                         IconButton(
-                                          onPressed: () => Navigator.pop(dialogContext),
+                                          onPressed: () =>
+                                              Navigator.pop(dialogContext),
                                           icon: Icon(
                                             Icons.close_rounded,
-                                            color: _readableOn(context.uai.primary),
+                                            color: _readableOn(
+                                              context.uai.primary,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -331,7 +407,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                     Row(
                                       children: [
                                         IconButton(
-                                          onPressed: carregandoMes ? null : () => trocarMes(-1),
+                                          onPressed: carregandoMes
+                                              ? null
+                                              : () => trocarMes(-1),
                                           icon: Icon(
                                             Icons.chevron_left_rounded,
                                             color: _onCard(context),
@@ -358,7 +436,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                                     ? 'Carregando chamadas do mês...'
                                                     : '${chamadasDoMes.length} chamada${chamadasDoMes.length == 1 ? '' : 's'} no mês',
                                                 style: TextStyle(
-                                                  color: context.uai.card.withOpacity(0.78),
+                                                  color: context.uai.card
+                                                      .withOpacity(0.78),
                                                   fontSize: 11,
                                                 ),
                                               ),
@@ -366,7 +445,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                           ),
                                         ),
                                         IconButton(
-                                          onPressed: carregandoMes ? null : () => trocarMes(1),
+                                          onPressed: carregandoMes
+                                              ? null
+                                              : () => trocarMes(1),
                                           icon: Icon(
                                             Icons.chevron_right_rounded,
                                             color: _onCard(context),
@@ -387,10 +468,12 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                     if (carregandoMes) ...[
                                       LinearProgressIndicator(
                                         minHeight: 3,
-                                        backgroundColor: context.uai.error.withOpacity(0.10),
-                                        valueColor: AlwaysStoppedAnimation<Color>(
-                                          context.uai.primary,
-                                        ),
+                                        backgroundColor: context.uai.error
+                                            .withOpacity(0.10),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              context.uai.primary,
+                                            ),
                                       ),
                                       const SizedBox(height: 12),
                                     ],
@@ -408,14 +491,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                     const SizedBox(height: 6),
                                     GridView.builder(
                                       shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
                                       gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 7,
-                                        crossAxisSpacing: 5,
-                                        mainAxisSpacing: 5,
-                                        childAspectRatio: 0.94,
-                                      ),
+                                          const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 7,
+                                            crossAxisSpacing: 5,
+                                            mainAxisSpacing: 5,
+                                            childAspectRatio: 0.94,
+                                          ),
                                       itemCount: diasGrade.length,
                                       itemBuilder: (context, index) {
                                         final dia = diasGrade[index];
@@ -423,15 +507,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
                                         return _buildDiaCalendario(
                                           dia: dia,
-                                          mesAtual: dia.month == mesVisivel.month,
+                                          mesAtual:
+                                              dia.month == mesVisivel.month,
                                           chamadasDia: chamadasDia,
                                           onTap: chamadasDia.isEmpty
                                               ? null
-                                              : () => _abrirChamadasDoDiaCalendario(
-                                            dialogContext: dialogContext,
-                                            dia: dia,
-                                            chamadasDia: chamadasDia,
-                                          ),
+                                              : () =>
+                                                    _abrirChamadasDoDiaCalendario(
+                                                      dialogContext:
+                                                          dialogContext,
+                                                      dia: dia,
+                                                      chamadasDia: chamadasDia,
+                                                    ),
                                         );
                                       },
                                     ),
@@ -448,7 +535,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                           child: OutlinedButton.icon(
                                             onPressed: () {
                                               setState(() {
-                                                _dataSelecionadaCalendario = null;
+                                                _dataSelecionadaCalendario =
+                                                    null;
                                               });
                                               Navigator.pop(dialogContext);
                                             },
@@ -462,12 +550,29 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         SizedBox(width: 10),
                                         Expanded(
                                           child: ElevatedButton.icon(
-                                            onPressed: () => Navigator.pop(dialogContext),
+                                            onPressed: () =>
+                                                Navigator.pop(dialogContext),
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-                                              foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+                                              backgroundColor:
+                                                  Theme.of(context)
+                                                      .appBarTheme
+                                                      .backgroundColor ??
+                                                  context.uai.primary,
+                                              foregroundColor:
+                                                  Theme.of(context)
+                                                      .appBarTheme
+                                                      .foregroundColor ??
+                                                  _readableOn(
+                                                    Theme.of(context)
+                                                            .appBarTheme
+                                                            .backgroundColor ??
+                                                        context.uai.primary,
+                                                  ),
                                             ),
-                                            icon: const Icon(Icons.check_rounded, size: 16),
+                                            icon: const Icon(
+                                              Icons.check_rounded,
+                                              size: 16,
+                                            ),
                                             label: const Text('Concluir'),
                                           ),
                                         ),
@@ -533,9 +638,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarChamadasDoMesCalendario(
-      DateTime mes, {
-        bool forceRefresh = false,
-      }) async {
+    DateTime mes, {
+    bool forceRefresh = false,
+  }) async {
     final chave = _chaveMes(mes);
 
     if (!forceRefresh && _cacheChamadasPorMes.containsKey(chave)) return;
@@ -555,7 +660,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           .collection('chamadas')
           .where('turma_id', isEqualTo: widget.turmaId)
           .where('academia_id', isEqualTo: widget.academiaId)
-          .where('data_chamada', isGreaterThanOrEqualTo: Timestamp.fromDate(inicio))
+          .where(
+            'data_chamada',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
+          )
           .where('data_chamada', isLessThan: Timestamp.fromDate(fim))
           .orderBy('data_chamada', descending: true)
           .get(const GetOptions(source: Source.server));
@@ -577,12 +685,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           final dataA = a.data()['data_chamada'];
           final dataB = b.data()['data_chamada'];
 
-          final dtA = dataA is Timestamp ? dataA.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
-          final dtB = dataB is Timestamp ? dataB.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+          final dtA = dataA is Timestamp
+              ? dataA.toDate()
+              : DateTime.fromMillisecondsSinceEpoch(0);
+          final dtB = dataB is Timestamp
+              ? dataB.toDate()
+              : DateTime.fromMillisecondsSinceEpoch(0);
 
           return dtB.compareTo(dtA);
         });
       });
+
+      unawaited(_carregarFotosFallbackDasChamadas(snapshot.docs));
     } catch (e) {
       debugPrint('Erro ao carregar mês do calendário: $e');
 
@@ -636,6 +750,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             : null;
         _temMaisChamadas = querySnapshot.docs.length == _limitePorPagina;
       });
+
+      unawaited(_carregarFotosFallbackDasChamadas(querySnapshot.docs));
     } catch (e) {
       debugPrint('Erro ao carregar chamadas: $e');
       if (!mounted) return;
@@ -667,6 +783,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         }
         _temMaisChamadas = querySnapshot.docs.length == _limitePorPagina;
       });
+
+      unawaited(_carregarFotosFallbackDasChamadas(querySnapshot.docs));
     } catch (e) {
       debugPrint('Erro ao carregar mais chamadas: $e');
       if (mounted) {
@@ -698,14 +816,16 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
     final dataBusca = dataChamada is Timestamp
         ? '${DateFormat('dd/MM/yyyy').format(dataChamada.toDate())} '
-        '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
-        '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
+              '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
+              '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
         : '';
 
     final buffer = StringBuffer()
       ..write('$tipo $professor $dataFmt $dataBusca ')
       ..write('${data['turma_nome'] ?? ''} ${data['academia_nome'] ?? ''} ')
-      ..write('$presentes presentes ${total - presentes} ausentes $total alunos ');
+      ..write(
+        '$presentes presentes ${total - presentes} ausentes $total alunos ',
+      );
 
     for (final aluno in alunos) {
       if (aluno is Map) {
@@ -767,12 +887,13 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return normalized.toLowerCase().trim();
   }
 
-
   bool _mesmoDia(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoDia(DateTime dia) {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoDia(
+    DateTime dia,
+  ) {
     final dataFmt = DateFormat('yyyy-MM-dd').format(dia);
 
     return _chamadas.where((doc) {
@@ -792,7 +913,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     }).toList();
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoMes(DateTime mes) {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoMes(
+    DateTime mes,
+  ) {
     final cached = _cacheChamadasPorMes[_chaveMes(mes)];
     final origem = cached ?? _chamadas;
 
@@ -824,7 +947,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }) {
     final hoje = DateTime.now();
     final isHoje = _mesmoDia(dia, hoje);
-    final isSelecionado = _dataSelecionadaCalendario != null &&
+    final isSelecionado =
+        _dataSelecionadaCalendario != null &&
         _mesmoDia(dia, _dataSelecionadaCalendario!);
     final temChamada = chamadasDia.isNotEmpty;
     final tipoPrincipal = temChamada
@@ -868,10 +992,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               return FittedBox(
                 fit: BoxFit.scaleDown,
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: 28,
-                    maxWidth: 46,
-                  ),
+                  constraints: BoxConstraints(minWidth: 28, maxWidth: 46),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -905,15 +1026,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                           height: 5,
                           child: isHoje
                               ? Center(
-                            child: Container(
-                              width: 5,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: context.uai.primaryDark,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          )
+                                  child: Container(
+                                    width: 5,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: context.uai.primaryDark,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                )
                               : null,
                         ),
                       if (chamadasDia.length > 1) ...[
@@ -1015,7 +1136,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   SizedBox(height: 14),
                   Row(
                     children: [
-                      Icon(Icons.event_note_rounded, color: context.uai.primary),
+                      Icon(
+                        Icons.event_note_rounded,
+                        color: context.uai.primary,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -1037,7 +1161,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                         final chamada = chamadasDia[index];
                         final data = chamada.data();
                         final tipo = data['tipo_aula']?.toString() ?? 'OUTRO';
-                        final professor = data['professor_nome']?.toString() ?? 'Professor';
+                        final professor =
+                            data['professor_nome']?.toString() ?? 'Professor';
                         final presentes = _parseInt(data['presentes']);
                         final total = _parseInt(data['total_alunos']);
                         final cor = _getTipoAulaColor(tipo);
@@ -1143,12 +1268,13 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildResumoCalendarioMes(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
+  ) {
     final porTipo = <String, int>{};
 
     for (final chamada in chamadasDoMes) {
-      final tipo = chamada.data()['tipo_aula']?.toString().toUpperCase() ?? 'OUTRO';
+      final tipo =
+          chamada.data()['tipo_aula']?.toString().toUpperCase() ?? 'OUTRO';
       porTipo[tipo] = (porTipo[tipo] ?? 0) + 1;
     }
 
@@ -1199,7 +1325,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
-  Future<void> _editarChamada(QueryDocumentSnapshot<Map<String, dynamic>> chamada) async {
+  Future<void> _editarChamada(
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
     if (!_temPermissao('pode_editar_chamada')) {
       _mostrarSnackBarSemPermissao();
       return;
@@ -1231,7 +1359,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           children: [
             Icon(Icons.lock, color: _onCard(context), size: 18),
             SizedBox(width: 8),
-            Expanded(child: Text('Você não tem permissão para editar chamadas')),
+            Expanded(
+              child: Text('Você não tem permissão para editar chamadas'),
+            ),
           ],
         ),
         backgroundColor: context.uai.primaryDark,
@@ -1247,7 +1377,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final chamadaDay = DateTime(date.year, date.month, date.day);
 
-    if (chamadaDay == today) return 'Hoje • ${DateFormat('HH:mm').format(date)}';
+    if (chamadaDay == today)
+      return 'Hoje • ${DateFormat('HH:mm').format(date)}';
     if (chamadaDay == today.subtract(const Duration(days: 1))) {
       return 'Ontem • ${DateFormat('HH:mm').format(date)}';
     }
@@ -1303,19 +1434,38 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   Widget _buildHeaderResumo() {
     final chamadas = _chamadasFiltradas;
     final totalChamadas = chamadas.length;
-    final totalAlunosSomados = chamadas.fold<int>(0, (s, d) => s + _parseInt(d.data()['total_alunos']));
-    final totalPresentes = chamadas.fold<int>(0, (s, d) => s + _parseInt(d.data()['presentes']));
-    final media = totalAlunosSomados > 0 ? (totalPresentes / totalAlunosSomados) : 0.0;
+    final totalAlunosSomados = chamadas.fold<int>(
+      0,
+      (s, d) => s + _parseInt(d.data()['total_alunos']),
+    );
+    final totalPresentes = chamadas.fold<int>(
+      0,
+      (s, d) => s + _parseInt(d.data()['presentes']),
+    );
+    final media = totalAlunosSomados > 0
+        ? (totalPresentes / totalAlunosSomados)
+        : 0.0;
+
+    // Usa a mesma proteção aplicada no modal de edição.
+    // No Verde Neon, o primary é muito claro em cima de base escura;
+    // por isso o header é suavizado e os textos/ícones passam a usar
+    // uma cor legível contra o fundo real do bloco.
+    final headerBg = _modalHeaderBg();
+    final headerGradient = _modalHeaderGradient(headerBg);
+    final headerFg = _readableOn(headerBg);
+    final headerMuted = headerFg.withOpacity(0.78);
+    final headerGlass = headerFg.withOpacity(0.13);
+    final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Container(
       margin: EdgeInsets.fromLTRB(16, 12, 16, 10),
       padding: EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: context.uai.primaryGradient,
+        gradient: headerGradient,
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.25),
+            color: headerBg.withOpacity(0.25),
             blurRadius: 16,
             offset: Offset(0, 8),
           ),
@@ -1329,10 +1479,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               Container(
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.card.withOpacity(0.16),
+                  color: headerGlass,
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: headerFg.withOpacity(0.12)),
                 ),
-                child: Icon(Icons.assignment_turned_in_rounded, color: _onPrimary(context), size: 26),
+                child: Icon(
+                  Icons.assignment_turned_in_rounded,
+                  color: headerFg,
+                  size: 26,
+                ),
               ),
               SizedBox(width: 12),
               Expanded(
@@ -1341,14 +1496,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   children: [
                     Text(
                       'Histórico de Chamadas',
-                      style: TextStyle(color: _onPrimary(context), fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: headerFg,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     SizedBox(height: 3),
                     Text(
                       widget.turmaNome,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: _onPrimary(context).withOpacity(0.76), fontSize: 12),
+                      style: TextStyle(color: headerMuted, fontSize: 12),
                     ),
                   ],
                 ),
@@ -1356,12 +1515,17 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: context.uai.card.withOpacity(0.15),
+                  color: headerGlass,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: headerFg.withOpacity(0.12)),
                 ),
                 child: Text(
                   '${(media * 100).round()}%',
-                  style: TextStyle(color: _onPrimary(context), fontWeight: FontWeight.bold, fontSize: 16),
+                  style: TextStyle(
+                    color: headerFg,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
             ],
@@ -1369,9 +1533,27 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           SizedBox(height: 16),
           Row(
             children: [
-              _buildResumoMini('Chamadas', '$totalChamadas', Icons.list_alt_rounded),
-              _buildResumoMini('Presentes', '$totalPresentes', Icons.check_circle_rounded),
-              _buildResumoMini('Média', '${(media * 100).round()}%', Icons.trending_up_rounded),
+              _buildResumoMini(
+                'Chamadas',
+                '$totalChamadas',
+                Icons.list_alt_rounded,
+                headerFg,
+                headerBg,
+              ),
+              _buildResumoMini(
+                'Presentes',
+                '$totalPresentes',
+                Icons.check_circle_rounded,
+                headerFg,
+                headerBg,
+              ),
+              _buildResumoMini(
+                'Média',
+                '${(media * 100).round()}%',
+                Icons.trending_up_rounded,
+                headerFg,
+                headerBg,
+              ),
             ],
           ),
           SizedBox(height: 14),
@@ -1380,8 +1562,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             child: LinearProgressIndicator(
               value: media,
               minHeight: 8,
-              backgroundColor: _onPrimary(context).withOpacity(0.20),
-              valueColor: AlwaysStoppedAnimation<Color>(_onPrimary(context)),
+              backgroundColor: headerFg.withOpacity(0.20),
+              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
             ),
           ),
         ],
@@ -1389,23 +1571,40 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
-  Widget _buildResumoMini(String label, String value, IconData icon) {
+  Widget _buildResumoMini(
+    String label,
+    String value,
+    IconData icon,
+    Color headerFg,
+    Color headerBg,
+  ) {
+    final accent = _ensureVisible(headerFg, headerBg);
     return Expanded(
       child: Container(
         margin: EdgeInsets.only(right: 8),
         padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: _onPrimary(context).withOpacity(0.12),
+          color: headerFg.withOpacity(0.12),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _onPrimary(context).withOpacity(0.15)),
+          border: Border.all(color: headerFg.withOpacity(0.15)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: _onPrimary(context), size: 18),
+            Icon(icon, color: accent, size: 18),
             SizedBox(height: 5),
-            Text(value, style: TextStyle(color: _onPrimary(context), fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              value,
+              style: TextStyle(
+                color: accent,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             SizedBox(height: 2),
-            Text(label, style: TextStyle(color: _onPrimary(context).withOpacity(0.76), fontSize: 10)),
+            Text(
+              label,
+              style: TextStyle(color: headerFg.withOpacity(0.76), fontSize: 10),
+            ),
           ],
         ),
       ),
@@ -1476,7 +1675,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide(color: context.uai.primary, width: 1.4),
               ),
-              contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
             ),
           ),
           if (dataSelecionadaTexto != null) ...[
@@ -1487,11 +1689,17 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               decoration: BoxDecoration(
                 color: context.uai.success.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: context.uai.success.withOpacity(0.16)),
+                border: Border.all(
+                  color: context.uai.success.withOpacity(0.16),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.event_available_rounded, color: context.uai.success, size: 18),
+                  Icon(
+                    Icons.event_available_rounded,
+                    color: context.uai.success,
+                    size: 18,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1504,11 +1712,16 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     ),
                   ),
                   InkWell(
-                    onTap: () => setState(() => _dataSelecionadaCalendario = null),
+                    onTap: () =>
+                        setState(() => _dataSelecionadaCalendario = null),
                     borderRadius: BorderRadius.circular(20),
                     child: Padding(
                       padding: EdgeInsets.all(4),
-                      child: Icon(Icons.close_rounded, size: 18, color: context.uai.success),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: context.uai.success,
+                      ),
                     ),
                   ),
                 ],
@@ -1520,33 +1733,51 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                ..._tiposAula.map((tipo) => _buildFiltroChip(
-                  label: tipo == 'TODOS' ? 'Todos tipos' : tipo,
-                  selected: _filtroTipo == tipo,
-                  icon: tipo == 'TODOS' ? Icons.category_rounded : _getTipoAulaIcon(tipo),
-                  color: tipo == 'TODOS' ? context.uai.primary : _getTipoAulaColor(tipo),
-                  onTap: () => setState(() => _filtroTipo = tipo),
-                )),
+                ..._tiposAula.map(
+                  (tipo) => _buildFiltroChip(
+                    label: tipo == 'TODOS' ? 'Todos tipos' : tipo,
+                    selected: _filtroTipo == tipo,
+                    icon: tipo == 'TODOS'
+                        ? Icons.category_rounded
+                        : _getTipoAulaIcon(tipo),
+                    color: tipo == 'TODOS'
+                        ? context.uai.primary
+                        : _getTipoAulaColor(tipo),
+                    onTap: () => setState(() => _filtroTipo = tipo),
+                  ),
+                ),
                 _buildFiltroChip(
                   label: 'Com falta',
                   selected: _filtroStatus == 'COM_FALTA',
                   icon: Icons.warning_amber_rounded,
                   color: context.uai.warning,
-                  onTap: () => setState(() => _filtroStatus = _filtroStatus == 'COM_FALTA' ? 'TODOS' : 'COM_FALTA'),
+                  onTap: () => setState(
+                    () => _filtroStatus = _filtroStatus == 'COM_FALTA'
+                        ? 'TODOS'
+                        : 'COM_FALTA',
+                  ),
                 ),
                 _buildFiltroChip(
                   label: '100%',
                   selected: _filtroStatus == '100',
                   icon: Icons.verified_rounded,
                   color: context.uai.success,
-                  onTap: () => setState(() => _filtroStatus = _filtroStatus == '100' ? 'TODOS' : '100'),
+                  onTap: () => setState(
+                    () => _filtroStatus = _filtroStatus == '100'
+                        ? 'TODOS'
+                        : '100',
+                  ),
                 ),
                 _buildFiltroChip(
                   label: 'Vazia',
                   selected: _filtroStatus == 'VAZIA',
                   icon: Icons.person_off_rounded,
                   color: context.uai.primaryDark,
-                  onTap: () => setState(() => _filtroStatus = _filtroStatus == 'VAZIA' ? 'TODOS' : 'VAZIA'),
+                  onTap: () => setState(
+                    () => _filtroStatus = _filtroStatus == 'VAZIA'
+                        ? 'TODOS'
+                        : 'VAZIA',
+                  ),
                 ),
               ],
             ),
@@ -1581,14 +1812,28 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 15, color: selected ? Colors.white : context.uai.textSecondary),
+              Icon(
+                icon,
+                size: 15,
+                color: selected
+                    ? _readableOn(context.uai.primary)
+                    : _ensureVisible(
+                        context.uai.textSecondary,
+                        context.uai.card,
+                      ),
+              ),
               SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : context.uai.textSecondary,
+                  color: selected
+                      ? _readableOn(context.uai.primary)
+                      : _ensureVisible(
+                          context.uai.textSecondary,
+                          context.uai.card,
+                        ),
                 ),
               ),
             ],
@@ -1598,18 +1843,25 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
-  Widget _buildCardChamada(QueryDocumentSnapshot<Map<String, dynamic>> chamada, int index) {
+  Widget _buildCardChamada(
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+    int index,
+  ) {
     final data = chamada.data();
     final dataChamada = data['data_chamada'] as Timestamp?;
     final presentes = _parseInt(data['presentes']);
     final ausentes = _parseInt(data['ausentes']);
     final totalAlunos = _parseInt(data['total_alunos']);
     final alunos = data['alunos'] as List? ?? [];
-    final percentualPresenca = totalAlunos > 0 ? (presentes / totalAlunos) : 0.0;
+    final percentualPresenca = totalAlunos > 0
+        ? (presentes / totalAlunos)
+        : 0.0;
     final tipoAula = data['tipo_aula']?.toString() ?? 'Não informado';
     final professorNome = data['professor_nome']?.toString() ?? 'Não informado';
     final podeEditar = _temPermissao('pode_editar_chamada');
     final statusColor = _getStatusColor(percentualPresenca);
+    final statusAccent = _ensureVisible(statusColor, context.uai.card);
+    final cardFg = _readableOn(context.uai.card);
     final tipoColor = _getTipoAulaColor(tipoAula);
 
     return Container(
@@ -1618,7 +1870,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: statusColor.withOpacity(0.10),
+            color: statusAccent.withOpacity(0.10),
             blurRadius: 14,
             offset: Offset(0, 6),
           ),
@@ -1631,14 +1883,16 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: statusColor.withOpacity(0.12)),
+          side: BorderSide(color: statusAccent.withOpacity(0.18)),
         ),
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             tilePadding: EdgeInsets.fromLTRB(16, 12, 12, 12),
             childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
             leading: SizedBox(
               width: 54,
               height: 54,
@@ -1652,14 +1906,28 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                       value: percentualPresenca,
                       strokeWidth: 5,
                       backgroundColor: context.uai.border,
-                      valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                      valueColor: AlwaysStoppedAnimation<Color>(statusAccent),
                     ),
                   ),
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('${(percentualPresenca * 100).toInt()}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
-                      Text('$presentes/$totalAlunos', style: TextStyle(fontSize: 8, color: _onCardMuted(context))),
+                      Text(
+                        '${(percentualPresenca * 100).toInt()}%',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          color: statusAccent,
+                        ),
+                      ),
+                      Text(
+                        '$presentes/$totalAlunos',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          color: cardFg.withOpacity(0.78),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -1674,15 +1942,27 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     children: [
                       Text(
                         _formatarData(dataChamada),
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _onCard(context)),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _onCard(context),
+                        ),
                       ),
                       SizedBox(height: 7),
                       Wrap(
                         spacing: 7,
                         runSpacing: 6,
                         children: [
-                          _buildTag(tipoAula, _getTipoAulaIcon(tipoAula), tipoColor),
-                          _buildTag('Prof. ${professorNome.split(' ').first}', Icons.person_rounded, context.uai.associacao),
+                          _buildTag(
+                            tipoAula,
+                            _getTipoAulaIcon(tipoAula),
+                            tipoColor,
+                          ),
+                          _buildTag(
+                            'Prof. ${professorNome.split(' ').first}',
+                            Icons.person_rounded,
+                            context.uai.associacao,
+                          ),
                         ],
                       ),
                     ],
@@ -1694,10 +1974,16 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     decoration: BoxDecoration(
                       color: context.uai.info.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: context.uai.info.withOpacity(0.16)),
+                      border: Border.all(
+                        color: context.uai.info.withOpacity(0.16),
+                      ),
                     ),
                     child: IconButton(
-                      icon: Icon(Icons.tune_rounded, size: 19, color: context.uai.info),
+                      icon: Icon(
+                        Icons.tune_rounded,
+                        size: 19,
+                        color: context.uai.info,
+                      ),
                       onPressed: () => _editarChamada(chamada),
                       tooltip: 'Editar chamada completa',
                       padding: EdgeInsets.all(8),
@@ -1710,9 +1996,19 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               padding: EdgeInsets.only(top: 10),
               child: Row(
                 children: [
-                  _buildMiniStatItem(icon: Icons.check_circle_rounded, value: presentes.toString(), color: context.uai.success, label: 'Presentes'),
+                  _buildMiniStatItem(
+                    icon: Icons.check_circle_rounded,
+                    value: presentes.toString(),
+                    color: context.uai.success,
+                    label: 'Presentes',
+                  ),
                   SizedBox(width: 12),
-                  _buildMiniStatItem(icon: Icons.cancel_rounded, value: ausentes.toString(), color: _ensureVisible(context.uai.error, context.uai.card), label: 'Ausentes'),
+                  _buildMiniStatItem(
+                    icon: Icons.cancel_rounded,
+                    value: ausentes.toString(),
+                    color: _ensureVisible(context.uai.error, context.uai.card),
+                    label: 'Ausentes',
+                  ),
                 ],
               ),
             ),
@@ -1720,12 +2016,20 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               Divider(height: 20, color: context.uai.border),
               Row(
                 children: [
-                  Icon(Icons.people_alt_rounded, size: 16, color: _onCardMuted(context)),
+                  Icon(
+                    Icons.people_alt_rounded,
+                    size: 16,
+                    color: _onCardMuted(context),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Lista de Alunos (${alunos.length})',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _onCard(context)),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _onCard(context),
+                      ),
                     ),
                   ),
                   TextButton.icon(
@@ -1743,7 +2047,13 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               if (alunos.length > 8)
                 Padding(
                   padding: EdgeInsets.only(top: 6),
-                  child: Text('+ ${alunos.length - 8} alunos restantes', style: TextStyle(fontSize: 12, color: _onCardMuted(context))),
+                  child: Text(
+                    '+ ${alunos.length - 8} alunos restantes',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _onCardMuted(context),
+                    ),
+                  ),
                 ),
               SizedBox(height: 14),
               Row(
@@ -1769,7 +2079,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _editarChamada(chamada),
-                        style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary, foregroundColor: Colors.white),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _appButtonBg(),
+                          foregroundColor: _appButtonFg(),
+                        ),
                         icon: const Icon(Icons.edit_calendar_rounded, size: 16),
                         label: const Text('Editar'),
                       ),
@@ -1799,66 +2112,388 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         children: [
           Icon(icon, size: 13, color: accent),
           SizedBox(width: 5),
-          Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent), overflow: TextOverflow.ellipsis),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
+  }
+
+  String _alunoIdFromMap(Map<String, dynamic> alunoMap) {
+    return (alunoMap['aluno_id'] ?? alunoMap['id'] ?? alunoMap['uid'] ?? '')
+        .toString()
+        .trim();
+  }
+
+  String _alunoNomeFromMap(Map<String, dynamic> alunoMap) {
+    return (alunoMap['aluno_nome'] ?? alunoMap['nome'] ?? 'Sem nome')
+        .toString()
+        .trim();
+  }
+
+  String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
+    final value =
+        alunoMap['foto_perfil_aluno'] ??
+        alunoMap['foto_url'] ??
+        alunoMap['foto'] ??
+        alunoMap['imagem_url'] ??
+        alunoMap['avatar_url'];
+
+    final foto = value?.toString().trim();
+    if (foto == null || foto.isEmpty) return null;
+    return foto;
+  }
+
+  String? _fotoAlunoChamada(Map<String, dynamic> alunoMap) {
+    final fotoSnapshot = _alunoFotoFromMap(alunoMap);
+    if (fotoSnapshot != null && fotoSnapshot.isNotEmpty) return fotoSnapshot;
+
+    final alunoId = _alunoIdFromMap(alunoMap);
+    if (alunoId.isEmpty) return null;
+    return _FotosAlunosChamadaCache.fotosPorAlunoId[alunoId];
+  }
+
+  List<String> _idsAlunosSemFotoNaChamada(Iterable<dynamic> alunosRaw) {
+    final ids = <String>{};
+
+    for (final raw in alunosRaw) {
+      if (raw is! Map) continue;
+      final alunoMap = Map<String, dynamic>.from(raw);
+      final alunoId = _alunoIdFromMap(alunoMap);
+      if (alunoId.isEmpty) continue;
+      if (_alunoFotoFromMap(alunoMap) != null) continue;
+      if (_FotosAlunosChamadaCache.idsConsultados.contains(alunoId)) continue;
+      ids.add(alunoId);
+    }
+
+    return ids.toList();
+  }
+
+  Future<void> _carregarFotosFallbackDosAlunos(List<String> alunoIds) async {
+    final pendentes = alunoIds
+        .where((id) => id.trim().isNotEmpty)
+        .where((id) => !_FotosAlunosChamadaCache.idsConsultados.contains(id))
+        .toSet()
+        .toList();
+
+    if (pendentes.isEmpty) return;
+
+    for (var i = 0; i < pendentes.length; i += 10) {
+      final lote = pendentes.skip(i).take(10).toList();
+      _FotosAlunosChamadaCache.idsConsultados.addAll(lote);
+
+      try {
+        final snapshot = await _firestore
+            .collection('alunos')
+            .where(FieldPath.documentId, whereIn: lote)
+            .get(const GetOptions(source: Source.server));
+
+        for (final doc in snapshot.docs) {
+          final foto = _alunoFotoFromMap(doc.data());
+          if (foto != null && foto.isNotEmpty) {
+            _FotosAlunosChamadaCache.fotosPorAlunoId[doc.id] = foto;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao carregar fotos em lote da chamada: $e');
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _carregarFotosFallbackDasChamadas(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chamadas,
+  ) async {
+    final ids = <String>{};
+
+    for (final chamada in chamadas) {
+      final alunosRaw = chamada.data()['alunos'];
+      if (alunosRaw is List) {
+        ids.addAll(_idsAlunosSemFotoNaChamada(alunosRaw));
+      }
+    }
+
+    await _carregarFotosFallbackDosAlunos(ids.toList());
+  }
+
+  String _iniciaisAluno(String nome) {
+    final ignorar = {'DE', 'DA', 'DO', 'DAS', 'DOS', 'E'};
+    final partes = nome
+        .trim()
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty && !ignorar.contains(p))
+        .toList();
+
+    if (partes.isEmpty) return '?';
+    if (partes.length == 1) return partes.first.characters.take(2).join();
+    return '${partes.first.characters.first}${partes.last.characters.first}';
+  }
+
+  Widget _buildAlunoAvatarResumo({
+    required String nome,
+    required bool presente,
+    required String? fotoUrl,
+    required Color background,
+  }) {
+    final statusBase = presente ? context.uai.success : context.uai.error;
+    final statusAccent = _ensureVisible(statusBase, background);
+    final avatarBg = Color.alphaBlend(
+      statusAccent.withOpacity(0.18),
+      background,
+    );
+    final avatarFg = _readableOn(avatarBg);
+
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: avatarBg,
+        shape: BoxShape.circle,
+        border: Border.all(color: statusAccent.withOpacity(0.25)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: fotoUrl != null && fotoUrl.isNotEmpty
+          ? CachedNetworkImage(
+              imageUrl: fotoUrl,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Center(
+                child: Text(
+                  _iniciaisAluno(nome),
+                  style: TextStyle(
+                    color: avatarFg,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              errorWidget: (context, url, error) => Center(
+                child: Text(
+                  _iniciaisAluno(nome),
+                  style: TextStyle(
+                    color: avatarFg,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            )
+          : Center(
+              child: Text(
+                _iniciaisAluno(nome),
+                style: TextStyle(
+                  color: avatarFg,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+    );
+  }
+
+  Future<void> _abrirPerfilAlunoResumo(Map<String, dynamic> alunoMap) async {
+    if (_abrindoPerfilAluno) return;
+
+    final alunoId = _alunoIdFromMap(alunoMap);
+    final nome = _alunoNomeFromMap(alunoMap);
+
+    if (alunoId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível abrir o perfil de $nome. Este registro de chamada não possui ID do aluno.',
+          ),
+          backgroundColor: context.uai.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _abrindoPerfilAluno = true;
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => AlunoDetalheScreen(alunoId: alunoId)),
+      );
+    } finally {
+      _abrindoPerfilAluno = false;
+    }
   }
 
   Widget _buildAlunoResumoLinha(Map<String, dynamic> alunoMap) {
-    final nome = alunoMap['aluno_nome']?.toString() ?? 'Sem nome';
+    final alunoId = _alunoIdFromMap(alunoMap);
+    final nome = _alunoNomeFromMap(alunoMap);
     final presente = alunoMap['presente'] == true;
-    final observacao = alunoMap['observacao']?.toString() ?? '';
+    final observacao = alunoMap['observacao']?.toString().trim() ?? '';
+    final fotoUrl = _fotoAlunoChamada(alunoMap);
+
+    final statusBase = presente ? context.uai.success : context.uai.error;
+    final rowBg = Color.alphaBlend(
+      statusBase.withOpacity(0.08),
+      context.uai.cardAlt,
+    );
+    final rowFg = _readableOn(rowBg);
+    final statusAccent = _ensureVisible(statusBase, rowBg);
+    final noteAccent = _ensureVisible(context.uai.warning, rowBg);
 
     return Container(
-      margin: EdgeInsets.only(bottom: 7),
-      padding: EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 7),
       decoration: BoxDecoration(
-        color: Color.alphaBlend((presente ? context.uai.success : context.uai.error).withOpacity(0.08), context.uai.cardAlt),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: (presente ? context.uai.success : context.uai.error).withOpacity(0.20)),
+        color: rowBg,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: statusAccent.withOpacity(0.20)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: presente ? context.uai.success : context.uai.primaryDark),
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _abrirPerfilAlunoResumo(alunoMap),
+          borderRadius: BorderRadius.circular(15),
+          child: Padding(
+            padding: const EdgeInsets.all(9),
+            child: Row(
               children: [
-                Text(nome, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _onCard(context)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (observacao.isNotEmpty)
-                  Text(observacao, style: TextStyle(fontSize: 10, color: context.uai.warning, fontStyle: FontStyle.italic), maxLines: 1, overflow: TextOverflow.ellipsis),
+                _buildAlunoAvatarResumo(
+                  nome: nome,
+                  presente: presente,
+                  fotoUrl: fotoUrl,
+                  background: rowBg,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nome,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: rowFg,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (observacao.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.note_rounded,
+                                size: 12,
+                                color: noteAccent,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  observacao,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: noteAccent,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Text(
+                          alunoId.isEmpty
+                              ? 'Registro antigo sem vínculo do aluno'
+                              : 'Tocar para abrir perfil',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: rowFg.withOpacity(0.58),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusAccent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: statusAccent.withOpacity(0.18)),
+                  ),
+                  child: Text(
+                    presente ? 'PRESENTE' : 'AUSENTE',
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                      color: statusAccent,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  alunoId.isEmpty
+                      ? Icons.info_outline_rounded
+                      : Icons.chevron_right_rounded,
+                  size: 18,
+                  color: rowFg.withOpacity(0.50),
+                ),
               ],
             ),
           ),
-          Text(
-            presente ? 'PRESENTE' : 'AUSENTE',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: presente ? context.uai.success : context.uai.primaryDark),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildMiniStatItem({required IconData icon, required String value, required Color color, required String label}) {
+  Widget _buildMiniStatItem({
+    required IconData icon,
+    required String value,
+    required Color color,
+    required String label,
+  }) {
     final accent = _ensureVisible(color, context.uai.card);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(color: accent.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: accent),
           SizedBox(width: 4),
-          Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: accent)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: accent,
+            ),
+          ),
           SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 10, color: accent.withOpacity(0.90))),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: accent.withOpacity(0.90)),
+          ),
         ],
       ),
     );
@@ -1874,19 +2509,45 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Listas de Chamada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            Text(widget.turmaNome, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: (Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary)).withOpacity(0.72))),
+            Text(
+              'Listas de Chamada',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              widget.turmaNome,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color:
+                    (Theme.of(context).appBarTheme.foregroundColor ??
+                            _readableOn(
+                              Theme.of(context).appBarTheme.backgroundColor ??
+                                  context.uai.primary,
+                            ))
+                        .withOpacity(0.72),
+              ),
+            ),
           ],
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         actions: [
           IconButton(
             onPressed: _carregarPrimeirasChamadas,
             icon: Container(
-              decoration: BoxDecoration(color: context.uai.card.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: context.uai.card.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
               padding: EdgeInsets.all(6),
               child: Icon(Icons.refresh_rounded, size: 20),
             ),
@@ -1901,63 +2562,99 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           : _chamadas.isEmpty
           ? _buildEmptyScreen()
           : RefreshIndicator(
-        onRefresh: _carregarPrimeirasChamadas,
-        color: context.uai.primary,
-        backgroundColor: context.uai.surface,
-        displacement: 40,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeaderResumo()),
-            SliverToBoxAdapter(child: _buildFiltros()),
-            if (chamadasFiltradas.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.search_off_rounded, size: 70, color: context.uai.textMuted),
-                        SizedBox(height: 12),
-                        Text('Nenhuma chamada nesse filtro', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: context.uai.textSecondary)),
-                        SizedBox(height: 6),
-                        Text('Limpe a busca ou altere os filtros.', textAlign: TextAlign.center, style: TextStyle(color: context.uai.textMuted)),
-                      ],
+              onRefresh: _carregarPrimeirasChamadas,
+              color: context.uai.primary,
+              backgroundColor: context.uai.surface,
+              displacement: 40,
+              child: CustomScrollView(
+                controller: _scrollController,
+                physics: BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  SliverToBoxAdapter(child: _buildHeaderResumo()),
+                  SliverToBoxAdapter(child: _buildFiltros()),
+                  if (chamadasFiltradas.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(30),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off_rounded,
+                                size: 70,
+                                color: context.uai.textMuted,
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                'Nenhuma chamada nesse filtro',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: context.uai.textSecondary,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Limpe a busca ou altere os filtros.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: context.uai.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index == chamadasFiltradas.length)
+                            return _buildLoadingMaisItem();
+                          return _buildCardChamada(
+                            chamadasFiltradas[index],
+                            index,
+                          );
+                        },
+                        childCount:
+                            chamadasFiltradas.length +
+                            (_temMaisChamadas ? 1 : 0),
+                      ),
                     ),
-                  ),
-                ),
-              )
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    if (index == chamadasFiltradas.length) return _buildLoadingMaisItem();
-                    return _buildCardChamada(chamadasFiltradas[index], index);
-                  },
-                  childCount: chamadasFiltradas.length + (_temMaisChamadas ? 1 : 0),
-                ),
+                  SliverToBoxAdapter(child: SizedBox(height: 90)),
+                ],
               ),
-            SliverToBoxAdapter(child: SizedBox(height: 90)),
-          ],
-        ),
-      ),
+            ),
       floatingActionButton: _chamadas.isNotEmpty
           ? FloatingActionButton.extended(
-        onPressed: () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(0, duration: Duration(milliseconds: 450), curve: Curves.easeInOut);
-          }
-        },
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: Icon(Icons.arrow_upward_rounded),
-        label: Text('Topo'),
-      )
+              onPressed: () {
+                if (_scrollController.hasClients) {
+                  _scrollController.animateTo(
+                    0,
+                    duration: Duration(milliseconds: 450),
+                    curve: Curves.easeInOut,
+                  );
+                }
+              },
+              backgroundColor:
+                  Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+              foregroundColor:
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                  _readableOn(
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                        context.uai.primary,
+                  ),
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              icon: Icon(Icons.arrow_upward_rounded),
+              label: Text('Topo'),
+            )
           : null,
     );
   }
@@ -1968,24 +2665,35 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       child: Center(
         child: _isLoadingMais
             ? Column(
-          children: [
-            CircularProgressIndicator(color: context.uai.primary),
-            SizedBox(height: 8),
-            Text('Carregando mais chamadas...', style: TextStyle(fontSize: 12, color: context.uai.textSecondary)),
-          ],
-        )
+                children: [
+                  CircularProgressIndicator(color: context.uai.primary),
+                  SizedBox(height: 8),
+                  Text(
+                    'Carregando mais chamadas...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.uai.textSecondary,
+                    ),
+                  ),
+                ],
+              )
             : ElevatedButton.icon(
-          onPressed: _carregarMaisChamadas,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: context.uai.surface,
-            foregroundColor: context.uai.primary,
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
-          icon: Icon(Icons.history_rounded, size: 16),
-          label: Text('Carregar mais chamadas'),
-        ),
+                onPressed: _carregarMaisChamadas,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.uai.surface,
+                  foregroundColor: context.uai.primary,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                ),
+                icon: Icon(Icons.history_rounded, size: 16),
+                label: Text('Carregar mais chamadas'),
+              ),
       ),
     );
   }
@@ -2006,19 +2714,37 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     height: 64,
                     child: CircularProgressIndicator(
                       strokeWidth: 4,
-                      valueColor: AlwaysStoppedAnimation<Color>(context.uai.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        context.uai.primary,
+                      ),
                       backgroundColor: context.uai.error.withOpacity(0.16),
                     ),
                   ),
                 ),
-                Center(child: Icon(Icons.list_alt_rounded, size: 32, color: context.uai.primary)),
+                Center(
+                  child: Icon(
+                    Icons.list_alt_rounded,
+                    size: 32,
+                    color: context.uai.primary,
+                  ),
+                ),
               ],
             ),
           ),
           SizedBox(height: 20),
-          Text('Carregando chamadas...', style: TextStyle(fontSize: 16, color: _onCard(context), fontWeight: FontWeight.w700)),
+          Text(
+            'Carregando chamadas...',
+            style: TextStyle(
+              fontSize: 16,
+              color: _onCard(context),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           SizedBox(height: 8),
-          Text('Organizando dados da turma', style: TextStyle(fontSize: 12, color: context.uai.textMuted)),
+          Text(
+            'Organizando dados da turma',
+            style: TextStyle(fontSize: 12, color: context.uai.textMuted),
+          ),
         ],
       ),
     );
@@ -2034,21 +2760,51 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             Container(
               width: 108,
               height: 108,
-              decoration: BoxDecoration(color: context.uai.error.withOpacity(0.10), shape: BoxShape.circle),
-              child: Icon(Icons.error_outline_rounded, size: 54, color: context.uai.error.withOpacity(0.70)),
+              decoration: BoxDecoration(
+                color: context.uai.error.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline_rounded,
+                size: 54,
+                color: context.uai.error.withOpacity(0.70),
+              ),
             ),
             SizedBox(height: 20),
-            Text('Ops! Algo deu errado', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: context.uai.error)),
+            Text(
+              'Ops! Algo deu errado',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: context.uai.error,
+              ),
+            ),
             SizedBox(height: 12),
             Text(
-              _erroDetalhe.isEmpty ? 'Não foi possível carregar as listas de chamada.' : _erroDetalhe,
+              _erroDetalhe.isEmpty
+                  ? 'Não foi possível carregar as listas de chamada.'
+                  : _erroDetalhe,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: context.uai.textSecondary),
             ),
             SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _carregarPrimeirasChamadas,
-              style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary, foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary), padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                    context.uai.primary,
+                foregroundColor:
+                    Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 26,
+                  vertical: 13,
+                ),
+              ),
               icon: Icon(Icons.refresh_rounded, size: 18),
               label: Text('Tentar novamente'),
             ),
@@ -2068,21 +2824,53 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             Container(
               width: 124,
               height: 124,
-              decoration: BoxDecoration(color: context.uai.error.withOpacity(0.16), shape: BoxShape.circle),
-              child: Icon(Icons.list_alt_rounded, size: 62, color: context.uai.primary),
+              decoration: BoxDecoration(
+                color: context.uai.error.withOpacity(0.16),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.list_alt_rounded,
+                size: 62,
+                color: context.uai.primary,
+              ),
             ),
             SizedBox(height: 24),
-            Text('Nenhuma chamada registrada', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.uai.textPrimary)),
+            Text(
+              'Nenhuma chamada registrada',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: context.uai.textPrimary,
+              ),
+            ),
             SizedBox(height: 10),
             Text(
               'Esta turma ainda não possui registros de chamada.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: _onCardMuted(context), height: 1.45),
+              style: TextStyle(
+                fontSize: 14,
+                color: _onCardMuted(context),
+                height: 1.45,
+              ),
             ),
             SizedBox(height: 28),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary, foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                    context.uai.primary,
+                foregroundColor:
+                    Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 13,
+                ),
+              ),
               icon: Icon(Icons.arrow_back_rounded, size: 18),
               label: Text('Voltar para turma'),
             ),
@@ -2092,7 +2880,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 }
-
 
 class _DiaSemanaHeader extends StatelessWidget {
   final String label;
@@ -2135,9 +2922,10 @@ class _EditarChamadaDialog extends StatefulWidget {
   State<_EditarChamadaDialog> createState() => _EditarChamadaDialogState();
 }
 
-
-class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleTickerProviderStateMixin {
+class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Map<String, Future<String?>> _fotoAlunoFutures = {};
   final TextEditingController _buscaController = TextEditingController();
   final TextEditingController _professorController = TextEditingController();
 
@@ -2179,23 +2967,39 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   void initState() {
     super.initState();
 
-    _alunosOriginal = widget.alunos.map((a) => Map<String, dynamic>.from(a)).toList();
-    _alunosEdit = widget.alunos.map((a) => Map<String, dynamic>.from(a)).toList();
+    _alunosOriginal = widget.alunos
+        .map((a) => Map<String, dynamic>.from(a))
+        .toList();
+    _alunosEdit = widget.alunos
+        .map((a) => Map<String, dynamic>.from(a))
+        .toList();
     _observacaoControllers = {};
 
     for (var aluno in _alunosEdit) {
-      final alunoId = aluno['aluno_id']?.toString() ?? aluno['id']?.toString() ?? '';
+      final alunoId =
+          aluno['aluno_id']?.toString() ?? aluno['id']?.toString() ?? '';
       aluno['aluno_id'] = alunoId;
-      aluno['aluno_nome'] = aluno['aluno_nome']?.toString() ?? aluno['nome']?.toString() ?? 'Sem nome';
+      aluno['aluno_nome'] =
+          aluno['aluno_nome']?.toString() ??
+          aluno['nome']?.toString() ??
+          'Sem nome';
       aluno['presente'] = aluno['presente'] == true;
-      _observacaoControllers[alunoId] = TextEditingController(text: aluno['observacao']?.toString() ?? '');
+      _observacaoControllers[alunoId] = TextEditingController(
+        text: aluno['observacao']?.toString() ?? '',
+      );
     }
 
-    _dataChamadaOriginal = (widget.chamadaData['data_chamada'] as Timestamp?)?.toDate() ?? DateTime.now();
+    _dataChamadaOriginal =
+        (widget.chamadaData['data_chamada'] as Timestamp?)?.toDate() ??
+        DateTime.now();
     _dataChamadaEdit = _dataChamadaOriginal;
-    _tipoAulaOriginal = widget.chamadaData['tipo_aula']?.toString() ?? 'OBJETIVA';
-    _tipoAulaEdit = _tiposAula.contains(_tipoAulaOriginal.toUpperCase()) ? _tipoAulaOriginal.toUpperCase() : 'OUTRO';
-    _professorNomeOriginal = widget.chamadaData['professor_nome']?.toString() ?? 'Professor';
+    _tipoAulaOriginal =
+        widget.chamadaData['tipo_aula']?.toString() ?? 'OBJETIVA';
+    _tipoAulaEdit = _tiposAula.contains(_tipoAulaOriginal.toUpperCase())
+        ? _tipoAulaOriginal.toUpperCase()
+        : 'OUTRO';
+    _professorNomeOriginal =
+        widget.chamadaData['professor_nome']?.toString() ?? 'Professor';
     _professorIdOriginal = widget.chamadaData['professor_id']?.toString() ?? '';
     _professorController.text = _professorNomeOriginal;
 
@@ -2203,9 +3007,20 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
       setState(() => _buscaAluno = _buscaController.text.trim());
     });
 
-    _animationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.35), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack));
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.35), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutBack,
+          ),
+        );
   }
 
   @override
@@ -2224,12 +3039,16 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
       final presente = a['presente'] == true;
       if (_filtroAluno == 'PRESENTES' && !presente) return false;
       if (_filtroAluno == 'AUSENTES' && presente) return false;
-      if (_filtroAluno == 'COM_OBS' && (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ?? true)) return false;
+      if (_filtroAluno == 'COM_OBS' &&
+          (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ?? true))
+        return false;
 
       if (_buscaAluno.isEmpty) return true;
       final termo = _normalizar(_buscaAluno);
       final nome = _normalizar(a['aluno_nome']?.toString() ?? '');
-      final obs = _normalizar(_observacaoControllers[a['aluno_id']]?.text ?? '');
+      final obs = _normalizar(
+        _observacaoControllers[a['aluno_id']]?.text ?? '',
+      );
       return nome.contains(termo) || obs.contains(termo);
     }).toList();
   }
@@ -2257,15 +3076,87 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
 
   String _diaSemanaAbrev(DateTime data) {
     switch (data.weekday) {
-      case DateTime.monday: return 'seg';
-      case DateTime.tuesday: return 'ter';
-      case DateTime.wednesday: return 'qua';
-      case DateTime.thursday: return 'qui';
-      case DateTime.friday: return 'sex';
-      case DateTime.saturday: return 'sab';
-      case DateTime.sunday: return 'dom';
-      default: return 'seg';
+      case DateTime.monday:
+        return 'seg';
+      case DateTime.tuesday:
+        return 'ter';
+      case DateTime.wednesday:
+        return 'qua';
+      case DateTime.thursday:
+        return 'qui';
+      case DateTime.friday:
+        return 'sex';
+      case DateTime.saturday:
+        return 'sab';
+      case DateTime.sunday:
+        return 'dom';
+      default:
+        return 'seg';
     }
+  }
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
+
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.74 : 0.30)
+        .withSaturation((hsl.saturation + 0.12).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  Color _appButtonBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appButtonFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ??
+      _readableOn(_appButtonBg());
+
+  bool _temaPrimarioMuitoClaroEmFundoEscuro() {
+    final primary = context.uai.primary;
+    final surface = context.uai.surface;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        surface.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.58;
+  }
+
+  Color _modalHeaderBg() {
+    final primary = context.uai.primary;
+
+    // Proteção para temas tipo Verde Neon ou tema personalizado muito claro
+    // em base escura. Mantém a identidade da cor, mas tira o efeito "radioativo"
+    // e melhora a leitura dentro do modal.
+    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
+      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+    }
+
+    return primary;
+  }
+
+  Gradient _modalHeaderGradient(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+    final end = hsl
+        .withLightness(
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
   }
 
   bool _mesAtual(DateTime data) {
@@ -2279,18 +3170,17 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Map<String, dynamic> _materializarIncrements(
-      Map<String, dynamic> raw, {
-        bool incrementContext = false,
-      }) {
+    Map<String, dynamic> raw, {
+    bool incrementContext = false,
+  }) {
     final result = <String, dynamic>{};
 
     raw.forEach((key, value) {
-      final shouldIncrementThisInt = incrementContext ||
-          key == 'total' ||
-          key == 'mes' ||
-          key == 'semana';
+      final shouldIncrementThisInt =
+          incrementContext || key == 'total' || key == 'mes' || key == 'semana';
 
-      final childIncrementContext = incrementContext ||
+      final childIncrementContext =
+          incrementContext ||
           key == 'porAno' ||
           key == 'porMes' ||
           key == 'porSemana' ||
@@ -2334,7 +3224,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     _addNestedDelta(child, path.sublist(1), delta);
   }
 
-  void _aplicarDeltaContador(Map<String, dynamic> contador, DateTime data, int delta) {
+  void _aplicarDeltaContador(
+    Map<String, dynamic> contador,
+    DateTime data,
+    int delta,
+  ) {
     if (delta == 0) return;
     final ano = data.year.toString();
     final mes = _mesKey(data);
@@ -2349,10 +3243,15 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     if (_semanaAtual(data)) _addNestedDelta(contador, ['semana'], delta);
   }
 
-  Map<String, dynamic> _montarLogData(Map<String, dynamic> aluno, DateTime dataChamada, String chamadaId) {
+  Map<String, dynamic> _montarLogData(
+    Map<String, dynamic> aluno,
+    DateTime dataChamada,
+    String chamadaId,
+  ) {
     final alunoId = aluno['aluno_id']?.toString() ?? '';
     return {
-      'log_id': 'log_${widget.chamadaData['turma_id']}_${alunoId}_${_dataFormatada(dataChamada)}',
+      'log_id':
+          'log_${widget.chamadaData['turma_id']}_${alunoId}_${_dataFormatada(dataChamada)}',
       'chamada_id': chamadaId,
       'aluno_id': alunoId,
       'aluno_nome': aluno['aluno_nome']?.toString() ?? 'Sem nome',
@@ -2367,7 +3266,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
       'tipo_aula': _tipoAulaEdit,
       'observacao': _observacaoControllers[alunoId]?.text.trim() ?? '',
       'professor_id': _professorIdOriginal,
-      'professor_nome': _professorController.text.trim().isEmpty ? 'Professor' : _professorController.text.trim(),
+      'professor_nome': _professorController.text.trim().isEmpty
+          ? 'Professor'
+          : _professorController.text.trim(),
       'atualizado_em': FieldValue.serverTimestamp(),
       'tipo_registro': 'chamada_turma_editada',
     };
@@ -2416,57 +3317,80 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Future<bool> _confirmarAlteracoesImportantes() async {
-    final mudouData = _dataFormatada(_dataChamadaEdit) != _dataFormatada(_dataChamadaOriginal);
+    final mudouData =
+        _dataFormatada(_dataChamadaEdit) !=
+        _dataFormatada(_dataChamadaOriginal);
     final mudouTipo = _tipoAulaEdit != _tipoAulaOriginal.toUpperCase();
-    final mudouProfessor = _professorController.text.trim() != _professorNomeOriginal;
+    final mudouProfessor =
+        _professorController.text.trim() != _professorNomeOriginal;
     int mudancasAlunos = 0;
 
-    final originalPorId = {for (final a in _alunosOriginal) (a['aluno_id'] ?? '').toString(): a};
+    final originalPorId = {
+      for (final a in _alunosOriginal) (a['aluno_id'] ?? '').toString(): a,
+    };
     for (final aluno in _alunosEdit) {
       final id = aluno['aluno_id']?.toString() ?? '';
       final original = originalPorId[id];
       final obsNova = _observacaoControllers[id]?.text.trim() ?? '';
       final obsAntiga = original?['observacao']?.toString() ?? '';
-      if ((original?['presente'] == true) != (aluno['presente'] == true) || obsNova != obsAntiga) {
+      if ((original?['presente'] == true) != (aluno['presente'] == true) ||
+          obsNova != obsAntiga) {
         mudancasAlunos++;
       }
     }
 
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirmar edição da chamada'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Serão atualizados:'),
-            SizedBox(height: 12),
-            if (mudouData) _buildBulletPoint('Data/hora da chamada'),
-            if (mudouTipo) _buildBulletPoint('Tipo da aula'),
-            if (mudouProfessor) _buildBulletPoint('Professor registrado'),
-            _buildBulletPoint('$mudancasAlunos aluno(s) com presença/observação alterada'),
-            SizedBox(height: 12),
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(color: context.uai.warning.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: context.uai.warning.withOpacity(0.28))),
-              child: Text(
-                'Os logs e contadores de frequência serão ajustados automaticamente.',
-                style: TextStyle(color: context.uai.warning, fontWeight: FontWeight.w600),
-              ),
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Confirmar edição da chamada'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Serão atualizados:'),
+                SizedBox(height: 12),
+                if (mudouData) _buildBulletPoint('Data/hora da chamada'),
+                if (mudouTipo) _buildBulletPoint('Tipo da aula'),
+                if (mudouProfessor) _buildBulletPoint('Professor registrado'),
+                _buildBulletPoint(
+                  '$mudancasAlunos aluno(s) com presença/observação alterada',
+                ),
+                SizedBox(height: 12),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: context.uai.warning.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: context.uai.warning.withOpacity(0.28),
+                    ),
+                  ),
+                  child: Text(
+                    'Os logs e contadores de frequência serão ajustados automaticamente.',
+                    style: TextStyle(
+                      color: context.uai.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary, foregroundColor: Colors.white),
-            child: const Text('Salvar edição'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _appButtonBg(),
+                  foregroundColor: _appButtonFg(),
+                ),
+                child: const Text('Salvar edição'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
   }
 
@@ -2481,6 +3405,84 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         ],
       ),
     );
+  }
+
+  String? _fotoAlunoFromMap(Map<String, dynamic> alunoMap) {
+    final value =
+        alunoMap['foto_perfil_aluno'] ??
+        alunoMap['foto_url'] ??
+        alunoMap['foto'] ??
+        alunoMap['imagem_url'] ??
+        alunoMap['avatar_url'];
+
+    final foto = value?.toString().trim();
+    if (foto == null || foto.isEmpty) return null;
+    return foto;
+  }
+
+  Future<Map<String, String>> _buscarFotosAlunosCadastroEmLote(
+    List<String> alunoIds,
+  ) async {
+    final resultado = <String, String>{};
+    final pendentes = alunoIds
+        .where((id) => id.trim().isNotEmpty)
+        .toSet()
+        .toList();
+
+    for (var i = 0; i < pendentes.length; i += 10) {
+      final lote = pendentes.skip(i).take(10).toList();
+      try {
+        final snapshot = await _firestore
+            .collection('alunos')
+            .where(FieldPath.documentId, whereIn: lote)
+            .get(const GetOptions(source: Source.server));
+
+        for (final doc in snapshot.docs) {
+          final foto = _fotoAlunoFromMap(doc.data());
+          if (foto != null && foto.isNotEmpty) {
+            resultado[doc.id] = foto;
+            _fotoAlunoFutures[doc.id] = Future.value(foto);
+            _FotosAlunosChamadaCache.fotosPorAlunoId[doc.id] = foto;
+            _FotosAlunosChamadaCache.idsConsultados.add(doc.id);
+          }
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar fotos em lote para edição da chamada: $e');
+      }
+    }
+
+    return resultado;
+  }
+
+  Future<void> _enriquecerAlunosComFotosAntesDeSalvar() async {
+    final idsSemFoto = <String>{};
+
+    for (final aluno in _alunosEdit) {
+      final alunoId =
+          aluno['aluno_id']?.toString() ?? aluno['id']?.toString() ?? '';
+      if (alunoId.isEmpty) continue;
+
+      final fotoAtual = _fotoAlunoFromMap(aluno);
+      if (fotoAtual != null) {
+        aluno['foto_perfil_aluno'] = fotoAtual;
+        _FotosAlunosChamadaCache.fotosPorAlunoId[alunoId] = fotoAtual;
+      } else {
+        idsSemFoto.add(alunoId);
+      }
+    }
+
+    final fotosCadastro = await _buscarFotosAlunosCadastroEmLote(
+      idsSemFoto.toList(),
+    );
+
+    for (final aluno in _alunosEdit) {
+      final alunoId =
+          aluno['aluno_id']?.toString() ?? aluno['id']?.toString() ?? '';
+      final fotoCadastro = fotosCadastro[alunoId];
+      if (fotoCadastro != null && fotoCadastro.isNotEmpty) {
+        aluno['foto_perfil_aluno'] = fotoCadastro;
+      }
+    }
   }
 
   Future<void> _salvarEdicaoCompleta() async {
@@ -2502,27 +3504,38 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     try {
       for (var aluno in _alunosEdit) {
         final alunoId = aluno['aluno_id']?.toString() ?? '';
-        aluno['observacao'] = _observacaoControllers[alunoId]?.text.trim() ?? '';
+        aluno['observacao'] =
+            _observacaoControllers[alunoId]?.text.trim() ?? '';
       }
+
+      await _enriquecerAlunosComFotosAntesDeSalvar();
 
       final presentes = _alunosEdit.where((a) => a['presente'] == true).length;
       final totalAlunos = _alunosEdit.length;
       final ausentes = totalAlunos - presentes;
-      final porcentagem = totalAlunos > 0 ? ((presentes / totalAlunos) * 100).round() : 0;
+      final porcentagem = totalAlunos > 0
+          ? ((presentes / totalAlunos) * 100).round()
+          : 0;
       final dataFormatadaNova = _dataFormatada(_dataChamadaEdit);
       final dataFormatadaAntiga = _dataFormatada(_dataChamadaOriginal);
       final turmaId = widget.chamadaData['turma_id']?.toString() ?? '';
 
       final batch = _firestore.batch();
-      final chamadaRef = _firestore.collection('chamadas').doc(widget.chamadaId);
-      final originalPorId = {for (final a in _alunosOriginal) (a['aluno_id'] ?? '').toString(): a};
+      final chamadaRef = _firestore
+          .collection('chamadas')
+          .doc(widget.chamadaId);
+      final originalPorId = {
+        for (final a in _alunosOriginal) (a['aluno_id'] ?? '').toString(): a,
+      };
 
       batch.update(chamadaRef, {
         'data_chamada': Timestamp.fromDate(_dataChamadaEdit),
         'data_formatada': dataFormatadaNova,
         'dia_semana_abrev': _diaSemanaAbrev(_dataChamadaEdit),
         'tipo_aula': _tipoAulaEdit,
-        'professor_nome': _professorController.text.trim().isEmpty ? 'Professor' : _professorController.text.trim(),
+        'professor_nome': _professorController.text.trim().isEmpty
+            ? 'Professor'
+            : _professorController.text.trim(),
         'professor_id': _professorIdOriginal,
         'alunos': _alunosEdit,
         'presentes': presentes,
@@ -2574,17 +3587,27 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
 
         if (presenteAntes) {
           _aplicarDeltaContador(contadorRaw, _dataChamadaOriginal, -1);
-          _addNestedDelta(legacyRaw, ['contadores', _mesKey(_dataChamadaOriginal)], -1);
+          _addNestedDelta(legacyRaw, [
+            'contadores',
+            _mesKey(_dataChamadaOriginal),
+          ], -1);
         }
         if (presenteDepois) {
           _aplicarDeltaContador(contadorRaw, _dataChamadaEdit, 1);
-          _addNestedDelta(legacyRaw, ['contadores', _mesKey(_dataChamadaEdit)], 1);
+          _addNestedDelta(legacyRaw, [
+            'contadores',
+            _mesKey(_dataChamadaEdit),
+          ], 1);
         }
 
         final contadorUpdate = _materializarIncrements(contadorRaw);
         if (contadorUpdate.isNotEmpty) {
           batch.set(
-            _firestore.collection('alunos').doc(alunoId).collection('contadores').doc('frequencia_dashboard'),
+            _firestore
+                .collection('alunos')
+                .doc(alunoId)
+                .collection('contadores')
+                .doc('frequencia_dashboard'),
             contadorUpdate,
             SetOptions(merge: true),
           );
@@ -2592,7 +3615,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
 
         final legacyUpdate = _materializarIncrements(legacyRaw);
         if (legacyUpdate.isNotEmpty) {
-          batch.set(_firestore.collection('alunos').doc(alunoId), legacyUpdate, SetOptions(merge: true));
+          batch.set(
+            _firestore.collection('alunos').doc(alunoId),
+            legacyUpdate,
+            SetOptions(merge: true),
+          );
         }
 
         final logsAntigos = await _firestore
@@ -2602,19 +3629,28 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
             .where('data_formatada', isEqualTo: dataFormatadaAntiga)
             .get();
 
-        final logData = _montarLogData(aluno, _dataChamadaEdit, widget.chamadaId);
+        final logData = _montarLogData(
+          aluno,
+          _dataChamadaEdit,
+          widget.chamadaId,
+        );
 
         if (logsAntigos.docs.isNotEmpty) {
-          batch.set(logsAntigos.docs.first.reference, logData, SetOptions(merge: true));
+          batch.set(
+            logsAntigos.docs.first.reference,
+            logData,
+            SetOptions(merge: true),
+          );
           for (final extra in logsAntigos.docs.skip(1)) {
             batch.delete(extra.reference);
           }
         } else {
           final logId = 'log_${turmaId}_${alunoId}_$dataFormatadaNova';
-          batch.set(_firestore.collection('log_presenca_alunos').doc(logId), {
-            ...logData,
-            'registrado_em': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          batch.set(
+            _firestore.collection('log_presenca_alunos').doc(logId),
+            {...logData, 'registrado_em': FieldValue.serverTimestamp()},
+            SetOptions(merge: true),
+          );
         }
       }
 
@@ -2650,9 +3686,14 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.check_circle, color: context.uai.card),
+                Icon(
+                  Icons.check_circle,
+                  color: _readableOn(context.uai.success),
+                ),
                 SizedBox(width: 8),
-                Expanded(child: Text('Chamada atualizada com logs e contadores!')),
+                Expanded(
+                  child: Text('Chamada atualizada com logs e contadores!'),
+                ),
               ],
             ),
             backgroundColor: context.uai.success,
@@ -2668,7 +3709,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           _mostrarProgresso = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar edição: $e'), backgroundColor: context.uai.error, duration: const Duration(seconds: 6)),
+          SnackBar(
+            content: Text('Erro ao salvar edição: $e'),
+            backgroundColor: context.uai.error,
+            duration: const Duration(seconds: 6),
+          ),
         );
       }
     } finally {
@@ -2684,7 +3729,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   Future<void> _recalcularUltimosDoAluno(String alunoId) async {
     try {
       final alunoRef = _firestore.collection('alunos').doc(alunoId);
-      final contadorRef = alunoRef.collection('contadores').doc('frequencia_dashboard');
+      final contadorRef = alunoRef
+          .collection('contadores')
+          .doc('frequencia_dashboard');
 
       final ultimaPresencaQuery = await _firestore
           .collection('log_presenca_alunos')
@@ -2753,26 +3800,46 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           children: [
             Text('Esta ação irá:'),
             SizedBox(height: 12),
-            _buildBulletPoint('Deletar a chamada do dia ${DateFormat('dd/MM/yyyy').format(dataChamada)}'),
+            _buildBulletPoint(
+              'Deletar a chamada do dia ${DateFormat('dd/MM/yyyy').format(dataChamada)}',
+            ),
             _buildBulletPoint('Remover os logs da chamada'),
-            _buildBulletPoint('Decrementar contadores dos $presentes alunos presentes'),
+            _buildBulletPoint(
+              'Decrementar contadores dos $presentes alunos presentes',
+            ),
             _buildBulletPoint('Recalcular última presença e última chamada'),
             SizedBox(height: 12),
             Container(
               padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(color: context.uai.error.withOpacity(0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: context.uai.error.withOpacity(0.28))),
-              child: Text('Atenção: esta operação não pode ser desfeita.', style: TextStyle(color: context.uai.primaryDark, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(
+                color: context.uai.error.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: context.uai.error.withOpacity(0.28)),
+              ),
+              child: Text(
+                'Atenção: esta operação não pode ser desfeita.',
+                style: TextStyle(
+                  color: context.uai.primaryDark,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar'),
+          ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _confirmarExclusao();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: context.uai.primaryDark, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.uai.primaryDark,
+              foregroundColor: _readableOn(context.uai.primaryDark),
+            ),
             child: Text('Continuar'),
           ),
         ],
@@ -2787,10 +3854,16 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         title: Text('Confirmar exclusão'),
         content: Text('Tem certeza absoluta que deseja excluir esta chamada?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: context.uai.primaryDark, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.uai.primaryDark,
+              foregroundColor: _readableOn(context.uai.primaryDark),
+            ),
             child: const Text('Sim, excluir'),
           ),
         ],
@@ -2812,7 +3885,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     _animationController.forward();
 
     try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('excluirChamada');
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
+        'excluirChamada',
+      );
       await callable.call({
         'chamadaId': widget.chamadaId,
         'turmaId': widget.chamadaData['turma_id'],
@@ -2833,7 +3908,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.delete_forever, color: context.uai.card),
+                Icon(
+                  Icons.delete_forever,
+                  color: _readableOn(context.uai.warning),
+                ),
                 SizedBox(width: 8),
                 Expanded(child: Text('Chamada excluída com sucesso!')),
               ],
@@ -2851,7 +3929,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           _mostrarProgresso = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: context.uai.error, duration: const Duration(seconds: 6)),
+          SnackBar(
+            content: Text('Erro ao excluir: $e'),
+            backgroundColor: context.uai.error,
+            duration: const Duration(seconds: 6),
+          ),
         );
       }
     } finally {
@@ -2876,65 +3958,131 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: _mostrarProgresso
-          ? FadeTransition(opacity: _fadeAnimation, child: SlideTransition(position: _slideAnimation, child: _buildProgressScreen()))
+          ? FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: _buildProgressScreen(),
+              ),
+            )
           : _buildEditScreen(presentes, ausentes),
     );
   }
 
   Widget _buildEditScreen(int presentes, int ausentes) {
-    final percentual = _alunosEdit.isNotEmpty ? presentes / _alunosEdit.length : 0.0;
+    final percentual = _alunosEdit.isNotEmpty
+        ? presentes / _alunosEdit.length
+        : 0.0;
+    final headerBg = _modalHeaderBg();
+    final headerGradient = _modalHeaderGradient(headerBg);
+    final headerFg = _readableOn(headerBg);
+    final headerMuted = headerFg.withOpacity(0.78);
+    final headerSoft = headerFg.withOpacity(0.14);
+    final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Column(
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(18, 14, 18, 16),
           decoration: BoxDecoration(
-            gradient: context.uai.primaryGradient,
+            gradient: headerGradient,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
             bottom: false,
             child: Column(
               children: [
-                Center(child: Container(width: 44, height: 4, decoration: BoxDecoration(color: context.uai.card.withOpacity(0.35), borderRadius: BorderRadius.circular(2)))),
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: headerFg.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
                 SizedBox(height: 16),
                 Row(
                   children: [
                     Container(
                       padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: context.uai.card.withOpacity(0.16), borderRadius: BorderRadius.circular(16)),
-                      child: Icon(Icons.edit_calendar_rounded, color: _onCard(context), size: 26),
+                      decoration: BoxDecoration(
+                        color: headerSoft,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                      ),
+                      child: Icon(
+                        Icons.edit_calendar_rounded,
+                        color: headerFg,
+                        size: 26,
+                      ),
                     ),
                     SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Editar chamada completa', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: context.uai.card)),
+                          Text(
+                            'Editar chamada completa',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: headerFg,
+                            ),
+                          ),
                           SizedBox(height: 4),
-                          Text(widget.turmaNome, style: TextStyle(fontSize: 13, color: context.uai.card.withOpacity(0.78))),
+                          Text(
+                            widget.turmaNome,
+                            style: TextStyle(fontSize: 13, color: headerMuted),
+                          ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.delete_rounded, color: context.uai.card),
-                      onPressed: _isSaving || _isDeleting ? null : _mostrarPreviewExclusao,
+                      icon: Icon(Icons.delete_rounded, color: headerFg),
+                      onPressed: _isSaving || _isDeleting
+                          ? null
+                          : _mostrarPreviewExclusao,
                       tooltip: 'Excluir chamada',
                     ),
                     IconButton(
-                      icon: Icon(Icons.close, color: context.uai.card),
-                      onPressed: _isSaving || _isDeleting ? null : () => Navigator.pop(context),
+                      icon: Icon(Icons.close, color: headerFg),
+                      onPressed: _isSaving || _isDeleting
+                          ? null
+                          : () => Navigator.pop(context),
                     ),
                   ],
                 ),
                 SizedBox(height: 14),
                 Row(
                   children: [
-                    _buildHeaderStat('Presentes', '$presentes', Icons.check_circle_rounded, context.uai.success.withOpacity(0.55)),
+                    _buildHeaderStat(
+                      'Presentes',
+                      '$presentes',
+                      Icons.check_circle_rounded,
+                      context.uai.success,
+                      headerFg,
+                      headerBg,
+                    ),
                     SizedBox(width: 8),
-                    _buildHeaderStat('Ausentes', '$ausentes', Icons.cancel_rounded, context.uai.error.withOpacity(0.28)),
+                    _buildHeaderStat(
+                      'Ausentes',
+                      '$ausentes',
+                      Icons.cancel_rounded,
+                      context.uai.error,
+                      headerFg,
+                      headerBg,
+                    ),
                     SizedBox(width: 8),
-                    _buildHeaderStat('Frequência', '${(percentual * 100).round()}%', Icons.trending_up_rounded, context.uai.warning.withOpacity(0.65)),
+                    _buildHeaderStat(
+                      'Frequência',
+                      '${(percentual * 100).round()}%',
+                      Icons.trending_up_rounded,
+                      context.uai.warning,
+                      headerFg,
+                      headerBg,
+                    ),
                   ],
                 ),
                 SizedBox(height: 12),
@@ -2943,8 +4091,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   child: LinearProgressIndicator(
                     value: percentual,
                     minHeight: 7,
-                    backgroundColor: context.uai.card.withOpacity(0.20),
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    backgroundColor: headerFg.withOpacity(0.20),
+                    valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                   ),
                 ),
               ],
@@ -2965,7 +4113,12 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
               if (_alunosFiltrados.isEmpty)
                 Padding(
                   padding: EdgeInsets.all(30),
-                  child: Center(child: Text('Nenhum aluno encontrado no filtro.', style: TextStyle(color: context.uai.textSecondary))),
+                  child: Center(
+                    child: Text(
+                      'Nenhum aluno encontrado no filtro.',
+                      style: TextStyle(color: context.uai.textSecondary),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -2975,17 +4128,44 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     );
   }
 
-  Widget _buildHeaderStat(String label, String value, IconData icon, Color color) {
+  Widget _buildHeaderStat(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+    Color headerFg,
+    Color headerBg,
+  ) {
+    final accent = _ensureVisible(color, headerBg);
+
     return Expanded(
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(color: context.uai.card.withOpacity(0.13), borderRadius: BorderRadius.circular(16), border: Border.all(color: context.uai.card.withOpacity(0.12))),
+        decoration: BoxDecoration(
+          color: headerFg.withOpacity(0.13),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: headerFg.withOpacity(0.12)),
+        ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, color: accent, size: 18),
             SizedBox(height: 4),
-            Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(label, style: TextStyle(color: context.uai.card.withOpacity(0.76), fontSize: 10)),
+            Text(
+              value,
+              style: TextStyle(
+                color: headerFg,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: headerFg.withOpacity(0.82),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),
@@ -2993,9 +4173,42 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Widget _buildInfoCard() {
+    final outerBg = context.uai.background;
+    final fieldBg = context.uai.card;
+    final fieldFg = _readableOn(fieldBg);
+    final mutedFg = fieldFg.withOpacity(0.66);
+    final primaryOnField = _ensureVisible(context.uai.primary, fieldBg);
+    final border = context.uai.border;
+
+    InputDecoration fieldDecoration({
+      required String label,
+      required IconData icon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: mutedFg, fontWeight: FontWeight.w600),
+        prefixIcon: Icon(icon, color: primaryOnField),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primaryOnField, width: 1.4),
+        ),
+        filled: true,
+        fillColor: fieldBg,
+      );
+    }
+
     return Container(
       padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(color: context.uai.background, borderRadius: BorderRadius.circular(18), border: Border.all(color: context.uai.border)),
+      decoration: BoxDecoration(
+        color: outerBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
       child: Column(
         children: [
           Row(
@@ -3006,17 +4219,36 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: _onCard(context), borderRadius: BorderRadius.circular(14), border: Border.all(color: context.uai.border)),
+                    decoration: BoxDecoration(
+                      color: fieldBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: border),
+                    ),
                     child: Row(
                       children: [
-                        Icon(Icons.calendar_month_rounded, color: context.uai.primary),
+                        Icon(
+                          Icons.calendar_month_rounded,
+                          color: primaryOnField,
+                        ),
                         SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Data e hora', style: TextStyle(fontSize: 10, color: context.uai.textSecondary)),
-                              Text(DateFormat('dd/MM/yyyy HH:mm').format(_dataChamadaEdit), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                              Text(
+                                'Data e hora',
+                                style: TextStyle(fontSize: 10, color: mutedFg),
+                              ),
+                              Text(
+                                DateFormat(
+                                  'dd/MM/yyyy HH:mm',
+                                ).format(_dataChamadaEdit),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: fieldFg,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -3030,26 +4262,33 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
           SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: _tipoAulaEdit,
-            decoration: InputDecoration(
-              labelText: 'Tipo de aula',
-              prefixIcon: Icon(Icons.school_rounded),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true,
-              fillColor: context.uai.card,
+            dropdownColor: context.uai.surface,
+            iconEnabledColor: primaryOnField,
+            style: TextStyle(color: fieldFg, fontWeight: FontWeight.w800),
+            decoration: fieldDecoration(
+              label: 'Tipo de aula',
+              icon: Icons.school_rounded,
             ),
-            items: _tiposAula.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-            onChanged: _isSaving || _isDeleting ? null : (v) => setState(() => _tipoAulaEdit = v ?? 'OBJETIVA'),
+            items: _tiposAula
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e,
+                    child: Text(e, style: TextStyle(color: fieldFg)),
+                  ),
+                )
+                .toList(),
+            onChanged: _isSaving || _isDeleting
+                ? null
+                : (v) => setState(() => _tipoAulaEdit = v ?? 'OBJETIVA'),
           ),
           SizedBox(height: 12),
           TextField(
             controller: _professorController,
             enabled: !_isSaving && !_isDeleting,
-            decoration: InputDecoration(
-              labelText: 'Professor registrado',
-              prefixIcon: Icon(Icons.person_rounded),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true,
-              fillColor: context.uai.card,
+            style: TextStyle(color: fieldFg, fontWeight: FontWeight.w700),
+            decoration: fieldDecoration(
+              label: 'Professor registrado',
+              icon: Icons.person_rounded,
             ),
           ),
         ],
@@ -3062,26 +4301,61 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
       spacing: 8,
       runSpacing: 8,
       children: [
-        _buildActionChip('Marcar filtrados', Icons.check_circle_rounded, context.uai.success, () => _marcarTodos(true)),
-        _buildActionChip('Desmarcar filtrados', Icons.cancel_rounded, context.uai.error, () => _marcarTodos(false)),
-        _buildActionChip('Inverter filtrados', Icons.swap_horiz_rounded, context.uai.info, _inverterFiltrados),
+        _buildActionChip(
+          'Marcar filtrados',
+          Icons.check_circle_rounded,
+          context.uai.success,
+          () => _marcarTodos(true),
+        ),
+        _buildActionChip(
+          'Desmarcar filtrados',
+          Icons.cancel_rounded,
+          context.uai.error,
+          () => _marcarTodos(false),
+        ),
+        _buildActionChip(
+          'Inverter filtrados',
+          Icons.swap_horiz_rounded,
+          context.uai.info,
+          _inverterFiltrados,
+        ),
       ],
     );
   }
 
-  Widget _buildActionChip(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildActionChip(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    final base = context.uai.card;
+    final accent = _ensureVisible(color, base);
+    final fill = Color.alphaBlend(accent.withOpacity(0.10), base);
+
     return InkWell(
       onTap: _isSaving || _isDeleting ? null : onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(0.25))),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: accent.withOpacity(0.25)),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 15, color: color),
+            Icon(icon, size: 15, color: accent),
             SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: accent,
+              ),
+            ),
           ],
         ),
       ),
@@ -3089,17 +4363,40 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Widget _buildBuscaEFiltrosAluno() {
+    final fieldBg = context.uai.cardAlt;
+    final fieldFg = _readableOn(fieldBg);
+    final iconColor = _ensureVisible(context.uai.primary, fieldBg);
+
     return Column(
       children: [
         TextField(
           controller: _buscaController,
+          style: TextStyle(color: fieldFg, fontWeight: FontWeight.w700),
+          cursorColor: iconColor,
           decoration: InputDecoration(
             hintText: 'Buscar aluno ou observação...',
-            prefixIcon: Icon(Icons.search_rounded),
-            suffixIcon: _buscaAluno.isEmpty ? null : IconButton(icon: Icon(Icons.close), onPressed: () => _buscaController.clear()),
+            hintStyle: TextStyle(color: fieldFg.withOpacity(0.55)),
+            prefixIcon: Icon(Icons.search_rounded, color: iconColor),
+            suffixIcon: _buscaAluno.isEmpty
+                ? null
+                : IconButton(
+                    icon: Icon(Icons.close, color: fieldFg.withOpacity(0.72)),
+                    onPressed: () => _buscaController.clear(),
+                  ),
             filled: true,
-            fillColor: context.uai.cardAlt,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            fillColor: fieldBg,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: context.uai.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: context.uai.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: iconColor, width: 1.4),
+            ),
           ),
         ),
         SizedBox(height: 10),
@@ -3117,15 +4414,33 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
 
   Widget _buildAlunoFilter(String value, String label) {
     final selected = _filtroAluno == value;
+    final selectedBg = context.uai.primary;
+    final unselectedBg = context.uai.cardAlt;
+    final bg = selected ? selectedBg : unselectedBg;
+    final fg = selected
+        ? _readableOn(selectedBg)
+        : _readableOn(unselectedBg).withOpacity(0.82);
+    final borderColor = selected ? selectedBg : context.uai.border;
+
     return Expanded(
       child: Padding(
         padding: EdgeInsets.only(right: 6),
         child: ChoiceChip(
-          label: Text(label, style: TextStyle(fontSize: 10)),
+          label: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: fg,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           selected: selected,
           onSelected: (_) => setState(() => _filtroAluno = value),
-          selectedColor: context.uai.error.withOpacity(0.16),
-          backgroundColor: context.uai.cardAlt,
+          selectedColor: selectedBg,
+          backgroundColor: unselectedBg,
+          disabledColor: context.uai.border,
+          side: BorderSide(color: borderColor.withOpacity(selected ? 1 : 0.55)),
+          checkmarkColor: fg,
         ),
       ),
     );
@@ -3135,14 +4450,24 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
     final alunoId = aluno['aluno_id']?.toString() ?? '';
     final nome = aluno['aluno_nome']?.toString() ?? 'Sem nome';
     final presente = aluno['presente'] == true;
+    final statusBase = presente ? context.uai.success : context.uai.error;
+    final cardBg = Color.alphaBlend(
+      statusBase.withOpacity(0.12),
+      context.uai.cardAlt,
+    );
+    final statusAccent = _ensureVisible(statusBase, cardBg);
+    final cardFg = _readableOn(cardBg);
+    final noteBg = context.uai.card;
+    final noteFg = _readableOn(noteBg);
+    final warning = _ensureVisible(context.uai.warning, noteBg);
 
     return AnimatedContainer(
       duration: Duration(milliseconds: 200),
       margin: EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: presente ? context.uai.success.withOpacity(0.10).withOpacity(0.70) : context.uai.error.withOpacity(0.10).withOpacity(0.55),
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: presente ? context.uai.success.withOpacity(0.28) : context.uai.error.withOpacity(0.16)),
+        border: Border.all(color: statusAccent.withOpacity(0.28)),
       ),
       child: Padding(
         padding: EdgeInsets.all(12),
@@ -3152,29 +4477,52 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
               children: [
                 Switch(
                   value: presente,
-                  activeColor: context.uai.success,
-                  onChanged: _isSaving || _isDeleting ? null : (v) => setState(() => aluno['presente'] = v),
+                  activeColor: statusAccent,
+                  onChanged: _isSaving || _isDeleting
+                      ? null
+                      : (v) => setState(() => aluno['presente'] = v),
                 ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(nome, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: presente ? context.uai.success : context.uai.primary), maxLines: 2, overflow: TextOverflow.ellipsis),
-                      Text(presente ? 'Presente' : 'Ausente', style: TextStyle(fontSize: 11, color: presente ? context.uai.success : context.uai.primaryDark)),
+                      Text(
+                        nome,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: cardFg,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        presente ? 'Presente' : 'Ausente',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cardFg.withOpacity(0.72),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.note_add_rounded, color: context.uai.warning),
+                  icon: Icon(
+                    Icons.note_add_rounded,
+                    color: _ensureVisible(context.uai.warning, cardBg),
+                  ),
                   onPressed: _isSaving || _isDeleting
                       ? null
                       : () {
-                    setState(() {
-                      final atual = _observacaoControllers[alunoId]?.text ?? '';
-                      if (atual.isEmpty) _observacaoControllers[alunoId]?.text = '';
-                    });
-                  },
+                          setState(() {
+                            final atual =
+                                _observacaoControllers[alunoId]?.text ?? '';
+                            if (atual.isEmpty)
+                              _observacaoControllers[alunoId]?.text = '';
+                          });
+                        },
                 ),
               ],
             ),
@@ -3184,17 +4532,34 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
               enabled: !_isSaving && !_isDeleting,
               decoration: InputDecoration(
                 hintText: 'Observação do aluno...',
-                prefixIcon: Icon(Icons.note_rounded, size: 18, color: context.uai.warning),
+                hintStyle: TextStyle(color: noteFg.withOpacity(0.55)),
+                prefixIcon: Icon(Icons.note_rounded, size: 18, color: warning),
                 filled: true,
-                fillColor: context.uai.card,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: context.uai.border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: context.uai.border)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: context.uai.info)),
+                fillColor: noteBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.uai.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.uai.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: _ensureVisible(context.uai.info, noteBg),
+                  ),
+                ),
                 isDense: true,
               ),
               minLines: 1,
               maxLines: 3,
-              style: TextStyle(fontSize: 13),
+              style: TextStyle(
+                fontSize: 13,
+                color: noteFg,
+                fontWeight: FontWeight.w600,
+              ),
+              cursorColor: _ensureVisible(context.uai.info, noteBg),
               onChanged: (_) => setState(() {}),
             ),
           ],
@@ -3204,29 +4569,76 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Widget _buildRodapeAcoes() {
+    final buttonBg = _appButtonBg();
+    final buttonFg = _appButtonFg();
+    final footerBg = context.uai.card;
+    final cancelFg = _readableOn(footerBg).withOpacity(0.76);
+
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: context.uai.card,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: Offset(0, -5))],
+        color: footerBg,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: Offset(0, -5),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Expanded(
             child: TextButton(
-              onPressed: (_isSaving || _isDeleting) ? null : () => Navigator.pop(context),
-              style: TextButton.styleFrom(padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              child: Text('Cancelar', style: TextStyle(fontSize: 15, color: context.uai.textSecondary)),
+              onPressed: (_isSaving || _isDeleting)
+                  ? null
+                  : () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                foregroundColor: cancelFg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: cancelFg,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
           SizedBox(width: 12),
           Expanded(
             flex: 2,
             child: ElevatedButton.icon(
-              onPressed: (_isSaving || _isDeleting) ? null : _salvarEdicaoCompleta,
-              style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary, foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary), padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              icon: _isSaving ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.uai.card)) : Icon(Icons.save_rounded),
-              label: Text(_isSaving ? 'Salvando...' : 'Salvar tudo', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              onPressed: (_isSaving || _isDeleting)
+                  ? null
+                  : _salvarEdicaoCompleta,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: buttonBg,
+                foregroundColor: buttonFg,
+                padding: EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: _isSaving
+                  ? SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: buttonFg,
+                      ),
+                    )
+                  : Icon(Icons.save_rounded),
+              label: Text(
+                _isSaving ? 'Salvando...' : 'Salvar tudo',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],
@@ -3235,51 +4647,107 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 
   Widget _buildProgressScreen() {
-    final progress = _totalEtapas > 0 ? (_etapaAtual / _totalEtapas).clamp(0.0, 1.0) : 0.0;
+    final progress = _totalEtapas > 0
+        ? (_etapaAtual / _totalEtapas).clamp(0.0, 1.0)
+        : 0.0;
+    final headerBg = _modalHeaderBg();
+    final headerGradient = _modalHeaderGradient(headerBg);
+    final headerFg = _readableOn(headerBg);
+    final headerMuted = headerFg.withOpacity(0.80);
+    final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Column(
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(20, 18, 20, 22),
           decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [context.uai.primary, context.uai.primaryDark]),
+            gradient: headerGradient,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
             bottom: false,
             child: Column(
               children: [
-                Center(child: Container(width: 44, height: 4, decoration: BoxDecoration(color: context.uai.card.withOpacity(0.3), borderRadius: BorderRadius.circular(2)))),
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: headerFg.withOpacity(0.30),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
                 SizedBox(height: 20),
                 Row(
                   children: [
                     Container(
                       padding: EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: context.uai.card.withOpacity(0.18), borderRadius: BorderRadius.circular(16)),
-                      child: Icon(_isDeleting ? Icons.delete_sweep_rounded : Icons.sync_rounded, color: _onCard(context), size: 30),
+                      decoration: BoxDecoration(
+                        color: headerFg.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                      ),
+                      child: Icon(
+                        _isDeleting
+                            ? Icons.delete_sweep_rounded
+                            : Icons.sync_rounded,
+                        color: headerFg,
+                        size: 30,
+                      ),
                     ),
                     SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_isDeleting ? 'Excluindo chamada' : 'Atualizando chamada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: context.uai.card)),
+                          Text(
+                            _isDeleting
+                                ? 'Excluindo chamada'
+                                : 'Atualizando chamada',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: headerFg,
+                            ),
+                          ),
                           SizedBox(height: 4),
-                          Text(widget.turmaNome, style: TextStyle(fontSize: 13, color: context.uai.card.withOpacity(0.80))),
+                          Text(
+                            widget.turmaNome,
+                            style: TextStyle(fontSize: 13, color: headerMuted),
+                          ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(color: context.uai.card.withOpacity(0.18), borderRadius: BorderRadius.circular(20)),
-                      child: Text('$_etapaAtual/$_totalEtapas', style: TextStyle(color: _onCard(context), fontWeight: FontWeight.bold)),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: headerFg.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                      ),
+                      child: Text(
+                        '$_etapaAtual/$_totalEtapas',
+                        style: TextStyle(
+                          color: headerFg,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
                 SizedBox(height: 18),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(value: progress, backgroundColor: context.uai.card.withOpacity(0.2), valueColor: AlwaysStoppedAnimation<Color>(Colors.white), minHeight: 9),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: headerFg.withOpacity(0.20),
+                    valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                    minHeight: 9,
+                  ),
                 ),
               ],
             ),
@@ -3294,15 +4762,53 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
                 children: [
                   Container(
                     padding: EdgeInsets.all(26),
-                    decoration: BoxDecoration(color: context.uai.error.withOpacity(0.10), shape: BoxShape.circle),
-                    child: Icon(_operacaoAtual.startsWith('✅') ? Icons.check_circle_rounded : Icons.cloud_sync_rounded, color: _operacaoAtual.startsWith('✅') ? context.uai.success : context.uai.primary, size: 72),
+                    decoration: BoxDecoration(
+                      color: context.uai.error.withOpacity(0.10),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _operacaoAtual.startsWith('✅')
+                          ? Icons.check_circle_rounded
+                          : Icons.cloud_sync_rounded,
+                      color: _operacaoAtual.startsWith('✅')
+                          ? _ensureVisible(
+                              context.uai.success,
+                              context.uai.card,
+                            )
+                          : _ensureVisible(
+                              context.uai.primary,
+                              context.uai.card,
+                            ),
+                      size: 72,
+                    ),
                   ),
                   SizedBox(height: 24),
-                  Text(_operacaoAtual, textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.uai.textPrimary)),
+                  Text(
+                    _operacaoAtual,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: context.uai.textPrimary,
+                    ),
+                  ),
                   SizedBox(height: 8),
-                  Text(_detalheOperacao, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: context.uai.textSecondary)),
+                  Text(
+                    _detalheOperacao,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.uai.textSecondary,
+                    ),
+                  ),
                   SizedBox(height: 24),
-                  if (!_operacaoAtual.startsWith('✅')) CircularProgressIndicator(color: context.uai.primary),
+                  if (!_operacaoAtual.startsWith('✅'))
+                    CircularProgressIndicator(
+                      color: _ensureVisible(
+                        context.uai.primary,
+                        context.uai.card,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -3313,7 +4819,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog> with SingleT
   }
 }
 
-class DetalhesChamadaScreen extends StatelessWidget {
+class DetalhesChamadaScreen extends StatefulWidget {
   final String chamadaId;
   final Map<String, dynamic> data;
   final String turmaNome;
@@ -3325,10 +4831,42 @@ class DetalhesChamadaScreen extends StatelessWidget {
     required this.turmaNome,
   });
 
+  @override
+  State<DetalhesChamadaScreen> createState() => _DetalhesChamadaScreenState();
+}
+
+class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
+  final TextEditingController _buscaController = TextEditingController();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  bool _abrindoPerfilAluno = false;
+  String _busca = '';
+  String _filtro = 'TODOS';
+
+  @override
+  void initState() {
+    super.initState();
+    _buscaController.addListener(() {
+      if (!mounted) return;
+      setState(() => _busca = _buscaController.text.trim());
+    });
+
+    unawaited(_carregarFotosFallbackDetalhes());
+  }
+
+  @override
+  void dispose() {
+    _buscaController.dispose();
+    super.dispose();
+  }
+
   String _formatarData(Timestamp? timestamp) {
     if (timestamp == null) return 'Data não registrada';
     final date = timestamp.toDate();
-    return DateFormat("EEEE, dd 'de' MMMM 'de' yyyy 'às' HH:mm", 'pt_BR').format(date);
+    return DateFormat(
+      "EEEE, dd 'de' MMMM 'de' yyyy 'às' HH:mm",
+      'pt_BR',
+    ).format(date);
   }
 
   Color _getStatusColor(BuildContext context, double percentual) {
@@ -3338,8 +4876,8 @@ class DetalhesChamadaScreen extends StatelessWidget {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -3352,25 +4890,239 @@ class DetalhesChamadaScreen extends StatelessWidget {
         .toColor();
   }
 
+  bool _temaPrimarioMuitoClaroEmFundoEscuro(BuildContext context) {
+    final primary = context.uai.primary;
+    final surface = context.uai.surface;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        surface.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.58;
+  }
+
+  Color _headerDetalhesBg(BuildContext context) {
+    final primary = context.uai.primary;
+
+    if (_temaPrimarioMuitoClaroEmFundoEscuro(context)) {
+      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+    }
+
+    return primary;
+  }
+
+  Gradient _headerDetalhesGradient(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+    final end = hsl
+        .withLightness(
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
+
+  int _parseInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  String _normalizar(String text) {
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUCnN';
+    var normalized = text;
+    for (int i = 0; i < withAccents.length; i++) {
+      normalized = normalized.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    return normalized.toLowerCase().trim();
+  }
+
+  String _alunoIdFromMap(Map<String, dynamic> alunoMap) {
+    return (alunoMap['aluno_id'] ?? alunoMap['id'] ?? alunoMap['uid'] ?? '')
+        .toString()
+        .trim();
+  }
+
+  String _alunoNomeFromMap(Map<String, dynamic> alunoMap) {
+    return (alunoMap['aluno_nome'] ?? alunoMap['nome'] ?? 'Sem nome')
+        .toString()
+        .trim();
+  }
+
+  String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
+    final value =
+        alunoMap['foto_perfil_aluno'] ??
+        alunoMap['foto_url'] ??
+        alunoMap['foto'] ??
+        alunoMap['imagem_url'] ??
+        alunoMap['avatar_url'];
+
+    final foto = value?.toString().trim();
+    if (foto == null || foto.isEmpty) return null;
+    return foto;
+  }
+
+  String? _fotoAlunoDetalhes(Map<String, dynamic> alunoMap) {
+    final fotoSnapshot = _alunoFotoFromMap(alunoMap);
+    if (fotoSnapshot != null && fotoSnapshot.isNotEmpty) return fotoSnapshot;
+
+    final alunoId = _alunoIdFromMap(alunoMap);
+    if (alunoId.isEmpty) return null;
+    return _FotosAlunosChamadaCache.fotosPorAlunoId[alunoId];
+  }
+
+  Future<void> _carregarFotosFallbackDetalhes() async {
+    final alunosRaw = widget.data['alunos'];
+    if (alunosRaw is! List) return;
+
+    final ids = <String>{};
+    for (final raw in alunosRaw) {
+      if (raw is! Map) continue;
+      final alunoMap = Map<String, dynamic>.from(raw);
+      final alunoId = _alunoIdFromMap(alunoMap);
+      if (alunoId.isEmpty) continue;
+      if (_alunoFotoFromMap(alunoMap) != null) continue;
+      if (_FotosAlunosChamadaCache.idsConsultados.contains(alunoId)) continue;
+      ids.add(alunoId);
+    }
+
+    if (ids.isEmpty) return;
+
+    for (var i = 0; i < ids.length; i += 10) {
+      final lote = ids.skip(i).take(10).toList();
+      _FotosAlunosChamadaCache.idsConsultados.addAll(lote);
+
+      try {
+        final snapshot = await _firestore
+            .collection('alunos')
+            .where(FieldPath.documentId, whereIn: lote)
+            .get(const GetOptions(source: Source.server));
+
+        for (final doc in snapshot.docs) {
+          final foto = _alunoFotoFromMap(doc.data());
+          if (foto != null && foto.isNotEmpty) {
+            _FotosAlunosChamadaCache.fotosPorAlunoId[doc.id] = foto;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao carregar fotos em lote nos detalhes: $e');
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  String _iniciaisAluno(String nome) {
+    final ignorar = {'DE', 'DA', 'DO', 'DAS', 'DOS', 'E'};
+    final partes = nome
+        .trim()
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty && !ignorar.contains(p))
+        .toList();
+
+    if (partes.isEmpty) return '?';
+    if (partes.length == 1) return partes.first.characters.take(2).join();
+    return '${partes.first.characters.first}${partes.last.characters.first}';
+  }
+
+  List<Map<String, dynamic>> _alunosFiltrados(
+    List<Map<String, dynamic>> alunos,
+  ) {
+    final termo = _normalizar(_busca);
+
+    return alunos.where((aluno) {
+      final presente = aluno['presente'] == true;
+      final observacao = aluno['observacao']?.toString() ?? '';
+      final nome = _alunoNomeFromMap(aluno);
+
+      if (_filtro == 'PRESENTES' && !presente) return false;
+      if (_filtro == 'AUSENTES' && presente) return false;
+      if (_filtro == 'COM_OBS' && observacao.trim().isEmpty) return false;
+
+      if (termo.isEmpty) return true;
+      return _normalizar(
+        '$nome $observacao ${presente ? 'presente' : 'ausente'}',
+      ).contains(termo);
+    }).toList();
+  }
+
+  Future<void> _abrirPerfilAluno(String alunoId) async {
+    if (_abrindoPerfilAluno) return;
+
+    if (alunoId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Este registro de chamada não possui ID do aluno.',
+          ),
+          backgroundColor: context.uai.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _abrindoPerfilAluno = true;
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AlunoDetalheScreen(alunoId: alunoId),
+        ),
+      );
+    } finally {
+      _abrindoPerfilAluno = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dataChamada = data['data_chamada'] as Timestamp?;
-    final presentes = data['presentes'] ?? 0;
-    final ausentes = data['ausentes'] ?? 0;
-    final totalAlunos = data['total_alunos'] ?? 0;
-    final alunos = data['alunos'] as List? ?? [];
+    final dataChamada = widget.data['data_chamada'] as Timestamp?;
+    final presentes = _parseInt(widget.data['presentes']);
+    final ausentes = _parseInt(widget.data['ausentes']);
+    final totalAlunos = _parseInt(widget.data['total_alunos']);
+    final alunosRaw = widget.data['alunos'] as List? ?? [];
+    final alunos = alunosRaw
+        .whereType<Map>()
+        .map((a) => Map<String, dynamic>.from(a))
+        .toList();
+
     final percentual = totalAlunos > 0 ? (presentes / totalAlunos) : 0.0;
-    final tipoAula = data['tipo_aula']?.toString() ?? 'Não informado';
-    final professorNome = data['professor_nome']?.toString() ?? 'Não informado';
+    final tipoAula = widget.data['tipo_aula']?.toString() ?? 'Não informado';
+    final professorNome =
+        widget.data['professor_nome']?.toString() ?? 'Não informado';
 
-    final alunosPresentes = alunos.where((a) => (a['presente'] ?? false)).toList();
-    final alunosAusentes = alunos.where((a) => !(a['presente'] ?? false)).toList();
+    final alunosVisiveis = _alunosFiltrados(alunos);
+    final alunosPresentes = alunosVisiveis
+        .where((a) => a['presente'] == true)
+        .toList();
+    final alunosAusentes = alunosVisiveis
+        .where((a) => a['presente'] != true)
+        .toList();
+    final totalObs = alunos
+        .where((a) => (a['observacao']?.toString().trim().isNotEmpty ?? false))
+        .length;
 
-    final headerFg = _readableOn(context.uai.primary);
+    final headerBg = _headerDetalhesBg(context);
+    final headerGradient = _headerDetalhesGradient(headerBg);
+    final headerFg = _readableOn(headerBg);
     final headerMuted = headerFg.withOpacity(0.78);
     final statusAccent = _ensureVisible(
       _getStatusColor(context, percentual),
-      context.uai.primary,
+      headerBg,
     );
 
     return Scaffold(
@@ -3379,26 +5131,55 @@ class DetalhesChamadaScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Detalhes da Chamada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            Text(turmaNome, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary)).withOpacity(0.72))),
+            const Text(
+              'Detalhes da Chamada',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              widget.turmaNome,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color:
+                    (Theme.of(context).appBarTheme.foregroundColor ??
+                            _readableOn(
+                              Theme.of(context).appBarTheme.backgroundColor ??
+                                  context.uai.primary,
+                            ))
+                        .withOpacity(0.72),
+              ),
+            ),
           ],
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
+            ),
         elevation: 0,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       ),
       body: CustomScrollView(
-        physics: BouncingScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
             child: Container(
-              margin: EdgeInsets.all(16),
-              padding: EdgeInsets.all(22),
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                gradient: context.uai.primaryGradient,
+                gradient: headerGradient,
                 borderRadius: BorderRadius.circular(22),
-                boxShadow: [BoxShadow(color: context.uai.primary.withOpacity(0.25), blurRadius: 16, offset: Offset(0, 7))],
+                boxShadow: [
+                  BoxShadow(
+                    color: headerBg.withOpacity(0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
@@ -3408,111 +5189,409 @@ class DetalhesChamadaScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Chamada Registrada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: headerFg)),
-                            SizedBox(height: 5),
-                            Text(_formatarData(dataChamada), style: TextStyle(fontSize: 12, color: headerMuted, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Chamada Registrada',
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                                color: headerFg,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              _formatarData(dataChamada),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: headerMuted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                       Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: headerFg.withOpacity(0.16), shape: BoxShape.circle, border: Border.all(color: headerFg.withOpacity(0.14))),
-                        child: Icon(Icons.assignment_turned_in_rounded, size: 28, color: headerFg),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: headerFg.withOpacity(0.16),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: headerFg.withOpacity(0.14)),
+                        ),
+                        child: Icon(
+                          Icons.assignment_turned_in_rounded,
+                          size: 28,
+                          color: headerFg,
+                        ),
                       ),
                     ],
                   ),
-                  SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: _buildInfoPill(context, Icons.school_rounded, tipoAula, headerFg)),
-                      SizedBox(width: 10),
-                      Expanded(child: _buildInfoPill(context, Icons.person_rounded, 'Prof. $professorNome', headerFg)),
-                    ],
+                  const SizedBox(height: 16),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final narrow = constraints.maxWidth < 560;
+                      final chips = [
+                        _buildInfoPill(
+                          context,
+                          Icons.school_rounded,
+                          tipoAula,
+                          headerFg,
+                        ),
+                        _buildInfoPill(
+                          context,
+                          Icons.person_rounded,
+                          'Prof. $professorNome',
+                          headerFg,
+                        ),
+                      ];
+
+                      if (narrow) {
+                        return Column(
+                          children: [
+                            chips[0],
+                            const SizedBox(height: 8),
+                            chips[1],
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          Expanded(child: chips[0]),
+                          const SizedBox(width: 10),
+                          Expanded(child: chips[1]),
+                        ],
+                      );
+                    },
                   ),
-                  SizedBox(height: 22),
+                  const SizedBox(height: 22),
                   Stack(
                     alignment: Alignment.center,
                     children: [
                       SizedBox(
                         width: 126,
                         height: 126,
-                        child: CircularProgressIndicator(value: percentual, strokeWidth: 12, backgroundColor: headerFg.withOpacity(0.22), valueColor: AlwaysStoppedAnimation<Color>(statusAccent)),
+                        child: CircularProgressIndicator(
+                          value: percentual,
+                          strokeWidth: 12,
+                          backgroundColor: headerFg.withOpacity(0.22),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            statusAccent,
+                          ),
+                        ),
                       ),
                       Column(
                         children: [
-                          Text('${(percentual * 100).toInt()}%', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: headerFg)),
-                          Text('Presença', style: TextStyle(fontSize: 12, color: headerMuted, fontWeight: FontWeight.w600)),
+                          Text(
+                            '${(percentual * 100).toInt()}%',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                              color: headerFg,
+                            ),
+                          ),
+                          Text(
+                            'Presença',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: headerMuted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
-                  SizedBox(height: 22),
+                  const SizedBox(height: 22),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildSimpleStatDetail(context: context, value: presentes.toString(), label: 'Presentes', color: _ensureVisible(context.uai.success, context.uai.primary), icon: Icons.check_circle_rounded, foreground: headerFg),
-                      _buildSimpleStatDetail(context: context, value: ausentes.toString(), label: 'Ausentes', color: _ensureVisible(context.uai.error, context.uai.primary), icon: Icons.cancel_rounded, foreground: headerFg),
-                      _buildSimpleStatDetail(context: context, value: totalAlunos.toString(), label: 'Total', color: _ensureVisible(context.uai.info, context.uai.primary), icon: Icons.people_rounded, foreground: headerFg),
+                      _buildSimpleStatDetail(
+                        context: context,
+                        value: presentes.toString(),
+                        label: 'Presentes',
+                        color: context.uai.success,
+                        icon: Icons.check_circle_rounded,
+                        foreground: headerFg,
+                        background: headerBg,
+                      ),
+                      _buildSimpleStatDetail(
+                        context: context,
+                        value: ausentes.toString(),
+                        label: 'Ausentes',
+                        color: context.uai.error,
+                        icon: Icons.cancel_rounded,
+                        foreground: headerFg,
+                        background: headerBg,
+                      ),
+                      _buildSimpleStatDetail(
+                        context: context,
+                        value: totalAlunos.toString(),
+                        label: 'Total',
+                        color: context.uai.info,
+                        icon: Icons.people_rounded,
+                        foreground: headerFg,
+                        background: headerBg,
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
           ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-            sliver: SliverToBoxAdapter(child: _buildSectionTitle('Alunos Presentes', alunosPresentes.length, context.uai.success)),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                final aluno = alunosPresentes[index];
-                return _buildAlunoTile(
-                  context: context,
-                  nome: aluno['aluno_nome']?.toString() ?? 'Sem nome',
-                  presente: true,
-                  observacao: aluno['observacao']?.toString() ?? '',
-                );
-              },
-              childCount: alunosPresentes.length,
+          SliverToBoxAdapter(
+            child: _buildBuscaEFiltrosDetalhes(
+              total: alunos.length,
+              presentes: alunos.where((a) => a['presente'] == true).length,
+              ausentes: alunos.where((a) => a['presente'] != true).length,
+              observacoes: totalObs,
             ),
           ),
-          if (alunosAusentes.isNotEmpty) ...[
+          if (alunosVisiveis.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off_rounded,
+                        size: 64,
+                        color: context.uai.textMuted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Nenhum aluno encontrado',
+                        style: TextStyle(
+                          color: context.uai.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Limpe a busca ou altere os filtros.',
+                        style: TextStyle(color: context.uai.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else ...[
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-              sliver: SliverToBoxAdapter(child: _buildSectionTitle('Alunos Ausentes', alunosAusentes.length, context.uai.primaryDark)),
-            ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final aluno = alunosAusentes[index];
-                  return _buildAlunoTile(
-                    context: context,
-                    nome: aluno['aluno_nome']?.toString() ?? 'Sem nome',
-                    presente: false,
-                    observacao: aluno['observacao']?.toString() ?? '',
-                  );
-                },
-                childCount: alunosAusentes.length,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              sliver: SliverToBoxAdapter(
+                child: _buildSectionTitle(
+                  context,
+                  'Alunos Presentes',
+                  alunosPresentes.length,
+                  context.uai.success,
+                ),
               ),
             ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                return _buildAlunoTile(
+                  context: context,
+                  aluno: alunosPresentes[index],
+                  presente: true,
+                );
+              }, childCount: alunosPresentes.length),
+            ),
+            if (alunosAusentes.isNotEmpty) ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                sliver: SliverToBoxAdapter(
+                  child: _buildSectionTitle(
+                    context,
+                    'Alunos Ausentes',
+                    alunosAusentes.length,
+                    context.uai.error,
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  return _buildAlunoTile(
+                    context: context,
+                    aluno: alunosAusentes[index],
+                    presente: false,
+                  );
+                }, childCount: alunosAusentes.length),
+              ),
+            ],
           ],
-          SliverToBoxAdapter(child: SizedBox(height: 90)),
+          const SliverToBoxAdapter(child: SizedBox(height: 90)),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.pop(context),
         backgroundColor: context.uai.surface,
-        foregroundColor: context.uai.primary,
+        foregroundColor: _ensureVisible(
+          context.uai.primary,
+          context.uai.surface,
+        ),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: Icon(Icons.arrow_back_rounded),
-        label: Text('Voltar'),
+        icon: const Icon(Icons.arrow_back_rounded),
+        label: const Text('Voltar'),
       ),
     );
   }
 
-  Widget _buildInfoPill(BuildContext context, IconData icon, String text, Color color) {
+  Widget _buildBuscaEFiltrosDetalhes({
+    required int total,
+    required int presentes,
+    required int ausentes,
+    required int observacoes,
+  }) {
+    final fieldBg = context.uai.card;
+    final fieldFg = _readableOn(fieldBg);
+    final iconColor = _ensureVisible(context.uai.primary, fieldBg);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.uai.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.uai.border),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: _buscaController,
+            style: TextStyle(color: fieldFg, fontWeight: FontWeight.w700),
+            cursorColor: iconColor,
+            decoration: InputDecoration(
+              hintText: 'Buscar aluno ou observação...',
+              hintStyle: TextStyle(color: fieldFg.withOpacity(0.55)),
+              prefixIcon: Icon(Icons.search_rounded, color: iconColor),
+              suffixIcon: _busca.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: fieldFg.withOpacity(0.72),
+                      ),
+                      onPressed: () => _buscaController.clear(),
+                    ),
+              filled: true,
+              fillColor: fieldBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: context.uai.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: context.uai.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: iconColor, width: 1.4),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFiltroDetalhes(
+                  'TODOS',
+                  'Todos',
+                  total,
+                  Icons.people_rounded,
+                  context.uai.primary,
+                ),
+                _buildFiltroDetalhes(
+                  'PRESENTES',
+                  'Presentes',
+                  presentes,
+                  Icons.check_circle_rounded,
+                  context.uai.success,
+                ),
+                _buildFiltroDetalhes(
+                  'AUSENTES',
+                  'Ausentes',
+                  ausentes,
+                  Icons.cancel_rounded,
+                  context.uai.error,
+                ),
+                _buildFiltroDetalhes(
+                  'COM_OBS',
+                  'Com obs.',
+                  observacoes,
+                  Icons.note_alt_rounded,
+                  context.uai.warning,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFiltroDetalhes(
+    String value,
+    String label,
+    int count,
+    IconData icon,
+    Color color,
+  ) {
+    final selected = _filtro == value;
+    final bg = selected ? color : context.uai.card;
+    final fg = selected
+        ? _readableOn(bg)
+        : _ensureVisible(color, context.uai.card);
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: () => setState(() => _filtro = value),
+        borderRadius: BorderRadius.circular(22),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? bg
+                : Color.alphaBlend(fg.withOpacity(0.08), context.uai.card),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: selected ? bg : fg.withOpacity(0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                '$label ($count)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoPill(
+    BuildContext context,
+    IconData icon,
+    String text,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
@@ -3540,11 +5619,24 @@ class DetalhesChamadaScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title, int total, Color color) {
+  Widget _buildSectionTitle(
+    BuildContext context,
+    String title,
+    int total,
+    Color color,
+  ) {
+    final accent = _ensureVisible(color, context.uai.background);
     return Row(
       children: [
-        Text('$title ($total)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        const Expanded(child: Divider(indent: 12)),
+        Text(
+          '$title ($total)',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: accent,
+          ),
+        ),
+        Expanded(child: Divider(indent: 12, color: context.uai.border)),
       ],
     );
   }
@@ -3556,18 +5648,29 @@ class DetalhesChamadaScreen extends StatelessWidget {
     required Color color,
     required IconData icon,
     required Color foreground,
+    required Color background,
   }) {
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final neonHeader =
+        !bgIsDark && context.uai.background.computeLuminance() < 0.28;
+    final mainText = neonHeader ? _readableOn(background) : foreground;
+    final mutedText = mainText.withOpacity(neonHeader ? 0.82 : 0.74);
+    final iconAccent = neonHeader
+        ? _readableOn(background)
+        : _ensureVisible(color, background);
+    final chipBg = mainText.withOpacity(neonHeader ? 0.16 : 0.14);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: foreground.withOpacity(0.14),
+            color: chipBg,
             shape: BoxShape.circle,
-            border: Border.all(color: foreground.withOpacity(0.14)),
+            border: Border.all(color: mainText.withOpacity(0.16)),
           ),
-          child: Icon(icon, size: 20, color: color),
+          child: Icon(icon, size: 20, color: iconAccent),
         ),
         const SizedBox(height: 5),
         Text(
@@ -3575,14 +5678,14 @@ class DetalhesChamadaScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.bold,
-            color: color,
+            color: mainText,
           ),
         ),
         Text(
           label,
           style: TextStyle(
             fontSize: 10,
-            color: foreground.withOpacity(0.74),
+            color: mutedText,
             fontWeight: FontWeight.w700,
           ),
           textAlign: TextAlign.center,
@@ -3591,46 +5694,263 @@ class DetalhesChamadaScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAlunoTile({required BuildContext context, required String nome, required bool presente, required String observacao}) {
+  Widget _buildAlunoTile({
+    required BuildContext context,
+    required Map<String, dynamic> aluno,
+    required bool presente,
+  }) {
+    final alunoId = _alunoIdFromMap(aluno);
+    final nome = _alunoNomeFromMap(aluno);
+    final fotoUrl = _fotoAlunoDetalhes(aluno);
+    final observacao = aluno['observacao']?.toString().trim() ?? '';
+
+    final cardBg = context.uai.card;
+    final cardAltBg = context.uai.cardAlt;
+    final statusBase = presente ? context.uai.success : context.uai.error;
+    final statusAccent = _ensureVisible(statusBase, cardBg);
+    final badgeBg = Color.alphaBlend(statusAccent.withOpacity(0.16), cardAltBg);
+    final badgeFg = _ensureVisible(statusAccent, badgeBg);
+    final iconBg = Color.alphaBlend(statusAccent.withOpacity(0.18), cardAltBg);
+    final noteAccent = _ensureVisible(context.uai.warning, cardBg);
+    final nameColor = _readableOn(cardBg);
+
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Card(
+        color: cardBg,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         elevation: 1,
-        child: Padding(
-          padding: EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(width: 40, height: 40, decoration: BoxDecoration(color: presente ? context.uai.success.withOpacity(0.10) : context.uai.error.withOpacity(0.10), shape: BoxShape.circle), child: Icon(presente ? Icons.check_rounded : Icons.close_rounded, color: presente ? context.uai.success : context.uai.primaryDark, size: 20)),
-              SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(nome, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _onCard(context), decoration: !presente ? TextDecoration.lineThrough : null)),
-                    if (observacao.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(top: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _abrirPerfilAluno(alunoId),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  _buildAlunoAvatarDetalhes(
+                    nome: nome,
+                    fotoUrl: fotoUrl,
+                    presente: presente,
+                    background: iconBg,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          nome,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: nameColor,
+                            decoration: !presente
+                                ? TextDecoration.lineThrough
+                                : null,
+                            decorationColor: nameColor.withOpacity(0.55),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              alunoId.isEmpty
+                                  ? Icons.info_outline_rounded
+                                  : Icons.open_in_new_rounded,
+                              size: 12,
+                              color: nameColor.withOpacity(0.58),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                alunoId.isEmpty
+                                    ? 'Registro antigo sem vínculo do aluno'
+                                    : 'Tocar para abrir perfil',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: nameColor.withOpacity(0.58),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (observacao.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.note_rounded,
+                                  size: 12,
+                                  color: noteAccent,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    observacao,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: noteAccent,
+                                      fontStyle: FontStyle.italic,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusAccent.withOpacity(0.14)),
+                    ),
+                    child: Text(
+                      presente ? 'PRESENTE' : 'AUSENTE',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: badgeFg,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Ações do aluno',
+                    color: context.uai.surface,
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: nameColor.withOpacity(0.70),
+                    ),
+                    onSelected: (value) {
+                      if (value == 'perfil') _abrirPerfilAluno(alunoId);
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'perfil',
                         child: Row(
                           children: [
-                            Icon(Icons.note_rounded, size: 12, color: context.uai.warning),
-                            SizedBox(width: 4),
-                            Expanded(child: Text(observacao, style: TextStyle(fontSize: 11, color: context.uai.warning, fontStyle: FontStyle.italic), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                            Icon(
+                              Icons.person_search_rounded,
+                              size: 18,
+                              color: context.uai.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Ver perfil',
+                              style: TextStyle(color: context.uai.textPrimary),
+                            ),
                           ],
                         ),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: presente ? context.uai.success.withOpacity(0.10) : context.uai.error.withOpacity(0.10), borderRadius: BorderRadius.circular(20)),
-                child: Text(presente ? 'PRESENTE' : 'AUSENTE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: presente ? context.uai.success : context.uai.primaryDark)),
-              ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAlunoAvatarDetalhes({
+    required String nome,
+    required String? fotoUrl,
+    required bool presente,
+    required Color background,
+  }) {
+    final fg = _readableOn(background);
+    final statusAccent = _ensureVisible(
+      presente ? context.uai.success : context.uai.error,
+      background,
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: background,
+            shape: BoxShape.circle,
+            border: Border.all(color: statusAccent.withOpacity(0.20)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: fotoUrl != null && fotoUrl.isNotEmpty
+              ? CachedNetworkImage(
+                  imageUrl: fotoUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Center(
+                    child: Text(
+                      _iniciaisAluno(nome),
+                      style: TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Center(
+                    child: Text(
+                      _iniciaisAluno(nome),
+                      style: TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    _iniciaisAluno(nome),
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+        ),
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: statusAccent,
+              shape: BoxShape.circle,
+              border: Border.all(color: context.uai.card, width: 2),
+            ),
+            child: Icon(
+              presente ? Icons.check_rounded : Icons.close_rounded,
+              color: _readableOn(statusAccent),
+              size: 10,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

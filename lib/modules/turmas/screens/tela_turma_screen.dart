@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -71,7 +71,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
   }
 
   void _monitorarConexao() {
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+      result,
+    ) {
       final online = _isOnlineFromConnectivity(result);
       final voltou = !_temInternet && online;
 
@@ -115,7 +117,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     if (valor == true) return true;
     if (valor is String) {
       final normalizado = valor.toLowerCase().trim();
-      return normalizado == 'true' || normalizado == '1' || normalizado == 'sim';
+      return normalizado == 'true' ||
+          normalizado == '1' ||
+          normalizado == 'sim';
     }
     if (valor is num) return valor == 1;
 
@@ -171,18 +175,18 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         .snapshots(includeMetadataChanges: true)
         .listen(
           (snapshot) {
-        if (!snapshot.exists || !mounted) return;
+            if (!snapshot.exists || !mounted) return;
 
-        setState(() {
-          _permissoes = snapshot.data() ?? {};
-          _isLoadingPermissoes = false;
-        });
-      },
-      onError: (error) {
-        debugPrint('Erro no stream de permissões: $error');
-        if (mounted) setState(() => _isLoadingPermissoes = false);
-      },
-    );
+            setState(() {
+              _permissoes = snapshot.data() ?? {};
+              _isLoadingPermissoes = false;
+            });
+          },
+          onError: (error) {
+            debugPrint('Erro no stream de permissões: $error');
+            if (mounted) setState(() => _isLoadingPermissoes = false);
+          },
+        );
   }
 
   Future<void> _recarregarPermissoes() async {
@@ -293,7 +297,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     // Cabeçalhos com primaryGradient precisam ficar legíveis nos 4 temas oficiais.
     // No Verde Neon, o primary pode ser claro, mas o tema inteiro é dark;
     // se usar _readableOn(primary), o texto fica escuro e perde leitura no card.
-    final temaEscuro = t.background.computeLuminance() < 0.45 ||
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 ||
         t.surface.computeLuminance() < 0.45;
 
     if (temaEscuro) return Colors.white;
@@ -403,10 +408,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
   }
 
   void _mostrarMensagem(
-      String mensagem,
-      Color cor, {
-        IconData icon = Icons.info_outline_rounded,
-      }) {
+    String mensagem,
+    Color cor, {
+    IconData icon = Icons.info_outline_rounded,
+  }) {
     final onColor = _readableOn(cor);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -440,7 +445,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     final t = context.uai;
 
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
-    final appBarFg = Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+    final appBarFg =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
 
     return AppBar(
       backgroundColor: appBarBg,
@@ -566,11 +572,16 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
           builder: (context, constraints) {
             final narrow = constraints.maxWidth < 500;
 
-            final logo = _buildLogoTurma(logoUrl: logoUrl, t: t, size: narrow ? 70 : 78);
+            final logo = _buildLogoTurma(
+              logoUrl: logoUrl,
+              t: t,
+              size: narrow ? 70 : 78,
+            );
 
             final content = Column(
-              crossAxisAlignment:
-              narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+              crossAxisAlignment: narrow
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   _turmaNome().toUpperCase(),
@@ -597,7 +608,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                 ),
                 const SizedBox(height: 13),
                 Wrap(
-                  alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                  alignment: narrow
+                      ? WrapAlignment.center
+                      : WrapAlignment.start,
                   spacing: 8,
                   runSpacing: 8,
                   children: [
@@ -616,23 +629,14 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                         label: horario,
                       ),
                     if (nivel.isNotEmpty)
-                      _whiteChip(
-                        icon: Icons.star_rounded,
-                        label: nivel,
-                      ),
+                      _whiteChip(icon: Icons.star_rounded, label: nivel),
                   ],
                 ),
               ],
             );
 
             if (narrow) {
-              return Column(
-                children: [
-                  logo,
-                  SizedBox(height: 14),
-                  content,
-                ],
-              );
+              return Column(children: [logo, SizedBox(height: 14), content]);
             }
 
             return Row(
@@ -648,10 +652,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _onPrimaryText(t);
 
@@ -739,7 +740,6 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       ),
     );
   }
-
 
   bool _isStatusAlunoAtivo(dynamic value) {
     final status = value?.toString().trim().toUpperCase() ?? '';
@@ -983,7 +983,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         .replaceAll('{turma}', _turmaNome())
         .replaceAll('{indicador}', alerta.indicador)
         .replaceAll('{dias}', diasTexto)
-        .replaceAll('{ultima_presenca}', _formatarDataSimples(alerta.ultimaPresenca));
+        .replaceAll(
+          '{ultima_presenca}',
+          _formatarDataSimples(alerta.ultimaPresenca),
+        );
   }
 
   Future<void> _carregarResumoAlertasTurma() async {
@@ -1020,9 +1023,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       final faixasRaw = config['faixas'];
       final faixas = faixasRaw is List
           ? faixasRaw
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList()
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
           : _faixasIndicadoresPadraoTurma();
 
       QuerySnapshot<Map<String, dynamic>> alunosSnapshot;
@@ -1067,13 +1070,15 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
             cor: cor,
             dias: dias,
             ultimaPresenca: _ultimaPresencaAlerta(data),
-            fotoUrl: data['foto_perfil_aluno']?.toString() ??
+            fotoUrl:
+                data['foto_perfil_aluno']?.toString() ??
                 data['foto']?.toString() ??
                 data['foto_url']?.toString() ??
                 '',
             contatoAluno: data['contato_aluno']?.toString() ?? '',
             contatoResponsavel: data['contato_responsavel']?.toString() ?? '',
-            nomeResponsavel: data['nome_responsavel']?.toString() ??
+            nomeResponsavel:
+                data['nome_responsavel']?.toString() ??
                 data['responsavel']?.toString() ??
                 data['responsavel_nome']?.toString() ??
                 'Responsável',
@@ -1116,10 +1121,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         height: 28,
         child: Padding(
           padding: const EdgeInsets.all(5),
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: t.warning,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2, color: t.warning),
         ),
       );
     }
@@ -1152,7 +1154,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                 top: -6,
                 right: -6,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: t.error,
                     borderRadius: BorderRadius.circular(99),
@@ -1240,7 +1245,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                           color: t.warning.withOpacity(0.16),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                         ),
-                        child: Icon(Icons.warning_amber_rounded, color: t.warning),
+                        child: Icon(
+                          Icons.warning_amber_rounded,
+                          color: t.warning,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1285,7 +1293,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: Color.alphaBlend(cor.withOpacity(0.07), t.card),
+                          color: Color.alphaBlend(
+                            cor.withOpacity(0.07),
+                            t.card,
+                          ),
                           borderRadius: BorderRadius.circular(t.cardRadius),
                           border: Border.all(color: cor.withOpacity(0.20)),
                         ),
@@ -1351,7 +1362,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                     fontSize: 11.5,
                                   ),
                                 ),
-                                trailing: Icon(Icons.contact_phone_rounded, color: cor),
+                                trailing: Icon(
+                                  Icons.contact_phone_rounded,
+                                  color: cor,
+                                ),
                               );
                             }),
                           ],
@@ -1438,10 +1452,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                 const SizedBox(height: 18),
                 Row(
                   children: [
-                    _buildAlunoAlertaAvatar(
-                      alerta,
-                      radius: 26,
-                    ),
+                    _buildAlunoAlertaAvatar(alerta, radius: 26),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1539,7 +1550,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: t.primary,
                                   foregroundColor: _readableOn(t.primary),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -1563,7 +1576,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: t.success,
                                   foregroundColor: _readableOn(t.success),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -1584,11 +1599,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     );
   }
 
-
   Widget _buildAlunoAlertaAvatar(
-      _AlunoAlertaTurma alerta, {
-        double radius = 18,
-      }) {
+    _AlunoAlertaTurma alerta, {
+    double radius = 18,
+  }) {
     final fotoUrl = alerta.fotoUrl.trim();
     final size = radius * 2;
     final inicial = alerta.nome.trim().isNotEmpty
@@ -1615,10 +1629,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: alerta.cor.withOpacity(0.55),
-          width: 2,
-        ),
+        border: Border.all(color: alerta.cor.withOpacity(0.55), width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.10),
@@ -1628,14 +1639,16 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         ],
       ),
       child: ClipOval(
-        child: fotoUrl.isNotEmpty &&
-            (fotoUrl.startsWith('http://') || fotoUrl.startsWith('https://'))
+        child:
+            fotoUrl.isNotEmpty &&
+                (fotoUrl.startsWith('http://') ||
+                    fotoUrl.startsWith('https://'))
             ? CachedNetworkImage(
-          imageUrl: fotoUrl,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => fallback(),
-          errorWidget: (_, __, ___) => fallback(),
-        )
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => fallback(),
+                errorWidget: (_, __, ___) => fallback(),
+              )
             : fallback(),
       ),
     );
@@ -1717,7 +1730,11 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                         const SizedBox(height: 5),
                         Row(
                           children: [
-                            Icon(Icons.wifi_off_rounded, size: 12, color: t.warning),
+                            Icon(
+                              Icons.wifi_off_rounded,
+                              size: 12,
+                              color: t.warning,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'offline',
@@ -1940,15 +1957,16 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                     if (width >= 900) {
                       return SliverGrid(
                         delegate: SliverChildBuilderDelegate(
-                              (context, index) => actions[index],
+                          (context, index) => actions[index],
                           childCount: actions.length,
                         ),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 430,
-                          mainAxisExtent: 100,
-                          mainAxisSpacing: 4,
-                          crossAxisSpacing: 10,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 430,
+                              mainAxisExtent: 100,
+                              mainAxisSpacing: 4,
+                              crossAxisSpacing: 10,
+                            ),
                       );
                     }
 
@@ -1965,7 +1983,6 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
     );
   }
 }
-
 
 class _AlunoAlertaTurma {
   final String alunoId;

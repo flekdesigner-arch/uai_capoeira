@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
@@ -45,9 +45,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     _rastreioService.iniciarTela(
       'graduacoes',
       origem: 'site',
-      metadata: {
-        'descricao': 'Tela pública de graduações',
-      },
+      metadata: {'descricao': 'Tela pública de graduações'},
     );
     _rastreioService.marcarTempo('graduacoes_tempo');
     _scrollController.addListener(_registrarRolagem);
@@ -79,8 +77,8 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -120,10 +118,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         tipo: 'rolagem',
         nome: 'graduacoes_$marco%',
         origem: 'graduacoes',
-        metadata: {
-          'percentual': marco,
-          'total_graduacoes': _graduacoes.length,
-        },
+        metadata: {'percentual': marco, 'total_graduacoes': _graduacoes.length},
       );
     }
   }
@@ -203,8 +198,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         final lastUpdate = data['last_update'] as Timestamp?;
 
         if (lastUpdate != null) {
-          final diasDesdeAtualizacao =
-              DateTime.now().difference(lastUpdate.toDate()).inDays;
+          final diasDesdeAtualizacao = DateTime.now()
+              .difference(lastUpdate.toDate())
+              .inDays;
 
           if (diasDesdeAtualizacao < CACHE_DURATION_DAYS) {
             debugPrint(
@@ -265,8 +261,10 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         }
       }
 
-      final totalGraduados =
-      contagemTemp.values.fold<int>(0, (sum, count) => sum + count);
+      final totalGraduados = contagemTemp.values.fold<int>(
+        0,
+        (sum, count) => sum + count,
+      );
 
       final statsData = {
         'total_alunos': totalTemp,
@@ -306,8 +304,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   Future<void> _loadSvgFromAssets() async {
     try {
       debugPrint('🖼️ Carregando SVG...');
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (mounted) {
         setState(() {
@@ -350,8 +349,8 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
               .whereType<xml.XmlElement>()
               .firstWhere(
                 (e) => e.getAttribute('id') == id,
-            orElse: () => xml.XmlElement(xml.XmlName('')),
-          );
+                orElse: () => xml.XmlElement(xml.XmlName('')),
+              );
 
           if (element.name.local.isNotEmpty) {
             final style = element.getAttribute('style') ?? '';
@@ -405,47 +404,47 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             : _erroMensagem != null
             ? _buildErrorState()
             : RefreshIndicator(
-          onRefresh: () async {
-            _rastreioService.registrarClique(
-              nome: 'atualizar_graduacoes',
-              origem: 'graduacoes',
-            );
-            await _atualizarDados();
-          },
-          color: t.primary,
-          backgroundColor: t.surface,
-          child: ListView(
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? 14 : 24,
-              isMobile ? 14 : 22,
-              isMobile ? 14 : 24,
-              30,
-            ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1040),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeroGraduacoes(isMobile),
-                      const SizedBox(height: 14),
-                      _buildDashboardCardsModernos(isMobile),
-                      const SizedBox(height: 20),
-                      _buildTimelineHeader(isMobile),
-                      const SizedBox(height: 14),
-                      if (_graduacoes.isEmpty)
-                        _buildEmptyState()
-                      else
-                        _buildGraduacoesTimeline(isMobile),
-                    ],
+                onRefresh: () async {
+                  _rastreioService.registrarClique(
+                    nome: 'atualizar_graduacoes',
+                    origem: 'graduacoes',
+                  );
+                  await _atualizarDados();
+                },
+                color: t.primary,
+                backgroundColor: t.surface,
+                child: ListView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.fromLTRB(
+                    isMobile ? 14 : 24,
+                    isMobile ? 14 : 22,
+                    isMobile ? 14 : 24,
+                    30,
                   ),
+                  children: [
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1040),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildHeroGraduacoes(isMobile),
+                            const SizedBox(height: 14),
+                            _buildDashboardCardsModernos(isMobile),
+                            const SizedBox(height: 20),
+                            _buildTimelineHeader(isMobile),
+                            const SizedBox(height: 14),
+                            if (_graduacoes.isEmpty)
+                              _buildEmptyState()
+                            else
+                              _buildGraduacoesTimeline(isMobile),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -456,9 +455,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     _rastreioService.registrarClique(
       nome: 'atualizar_dados_graduacoes',
       origem: 'graduacoes',
-      metadata: {
-        'usando_cache': _usandoCache,
-      },
+      metadata: {'usando_cache': _usandoCache},
     );
 
     setState(() {
@@ -527,21 +524,21 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
       ),
       child: isMobile
           ? Column(
-        children: [
-          _buildHeroIcon(),
-          const SizedBox(height: 14),
-          _buildHeroTexts(isMobile, centered: true),
-        ],
-      )
+              children: [
+                _buildHeroIcon(),
+                const SizedBox(height: 14),
+                _buildHeroTexts(isMobile, centered: true),
+              ],
+            )
           : Row(
-        children: [
-          _buildHeroIcon(),
-          const SizedBox(width: 16),
-          Expanded(child: _buildHeroTexts(isMobile, centered: false)),
-          const SizedBox(width: 12),
-          _buildRefreshHeroButton(onPrimary),
-        ],
-      ),
+              children: [
+                _buildHeroIcon(),
+                const SizedBox(width: 16),
+                Expanded(child: _buildHeroTexts(isMobile, centered: false)),
+                const SizedBox(width: 12),
+                _buildRefreshHeroButton(onPrimary),
+              ],
+            ),
     );
   }
 
@@ -563,10 +560,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
               borderRadius: BorderRadius.circular(t.buttonRadius),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.refresh_rounded,
-              color: onPrimary,
-            ),
+            child: Icon(Icons.refresh_rounded, color: onPrimary),
           ),
         ),
       ),
@@ -585,11 +579,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: onPrimary.withOpacity(0.16)),
       ),
-      child: Icon(
-        Icons.workspace_premium_rounded,
-        color: onPrimary,
-        size: 38,
-      ),
+      child: Icon(Icons.workspace_premium_rounded, color: onPrimary, size: 38),
     );
   }
 
@@ -598,8 +588,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     final onPrimary = _readableOn(t.primary);
 
     return Column(
-      crossAxisAlignment:
-      centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Text(
           'Sistema de Graduações',
@@ -638,8 +629,10 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                   onTap: _carregando ? null : _atualizarDados,
                   borderRadius: BorderRadius.circular(99),
                   child: Container(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: onPrimary.withOpacity(0.16)),
@@ -647,11 +640,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.refresh_rounded,
-                          color: onPrimary,
-                          size: 15,
-                        ),
+                        Icon(Icons.refresh_rounded, color: onPrimary, size: 15),
                         const SizedBox(width: 5),
                         Text(
                           'Atualizar',
@@ -820,11 +809,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
               borderRadius: BorderRadius.circular(15),
               border: Border.all(color: primary.withOpacity(0.14)),
             ),
-            child: Icon(
-              Icons.timeline_rounded,
-              color: primary,
-              size: 23,
-            ),
+            child: Icon(Icons.timeline_rounded, color: primary, size: 23),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -993,56 +978,58 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                 child: Container(
                   padding: EdgeInsets.all(isMobile ? 14 : 18),
                   decoration: _cardDecoration(
-                    borderColor: _ensureVisible(color1, t.card)
-                        .withOpacity(0.16),
+                    borderColor: _ensureVisible(
+                      color1,
+                      t.card,
+                    ).withOpacity(0.16),
                   ),
                   child: isMobile
                       ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _buildTimelineCordaPreview(
-                        modifiedSvg: modifiedSvg,
-                        color1: color1,
-                        color2: color2,
-                        isMobile: true,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTimelineTextContent(
-                        nome: nome,
-                        titulo: titulo,
-                        corda: corda,
-                        tipoPublico: tipoPublico,
-                        descricao: descricao,
-                        quantidadeAlunos: quantidadeAlunos,
-                        centered: true,
-                      ),
-                    ],
-                  )
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _buildTimelineCordaPreview(
+                              modifiedSvg: modifiedSvg,
+                              color1: color1,
+                              color2: color2,
+                              isMobile: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTimelineTextContent(
+                              nome: nome,
+                              titulo: titulo,
+                              corda: corda,
+                              tipoPublico: tipoPublico,
+                              descricao: descricao,
+                              quantidadeAlunos: quantidadeAlunos,
+                              centered: true,
+                            ),
+                          ],
+                        )
                       : Row(
-                    children: [
-                      SizedBox(
-                        width: 210,
-                        child: _buildTimelineCordaPreview(
-                          modifiedSvg: modifiedSvg,
-                          color1: color1,
-                          color2: color2,
-                          isMobile: false,
+                          children: [
+                            SizedBox(
+                              width: 210,
+                              child: _buildTimelineCordaPreview(
+                                modifiedSvg: modifiedSvg,
+                                color1: color1,
+                                color2: color2,
+                                isMobile: false,
+                              ),
+                            ),
+                            const SizedBox(width: 18),
+                            Expanded(
+                              child: _buildTimelineTextContent(
+                                nome: nome,
+                                titulo: titulo,
+                                corda: corda,
+                                tipoPublico: tipoPublico,
+                                descricao: descricao,
+                                quantidadeAlunos: quantidadeAlunos,
+                                centered: false,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(
-                        child: _buildTimelineTextContent(
-                          nome: nome,
-                          titulo: titulo,
-                          corda: corda,
-                          tipoPublico: tipoPublico,
-                          descricao: descricao,
-                          quantidadeAlunos: quantidadeAlunos,
-                          centered: false,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -1062,9 +1049,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(
-        maxWidth: isMobile ? 260 : 210,
-      ),
+      constraints: BoxConstraints(maxWidth: isMobile ? 260 : 210),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.cardAlt,
@@ -1085,10 +1070,10 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             child: modifiedSvg != null && modifiedSvg.isNotEmpty
                 ? SvgPicture.string(modifiedSvg, fit: BoxFit.contain)
                 : Icon(
-              Icons.image_not_supported_rounded,
-              color: t.textMuted,
-              size: 48,
-            ),
+                    Icons.image_not_supported_rounded,
+                    color: t.textMuted,
+                    size: 48,
+                  ),
           ),
           const SizedBox(height: 10),
           Container(
@@ -1124,8 +1109,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     ].join(' • ');
 
     return Column(
-      crossAxisAlignment:
-      centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Text(
           nome,
@@ -1182,7 +1168,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             _buildInfoChip(
               icon: Icons.groups_rounded,
               label:
-              '$quantidadeAlunos ${quantidadeAlunos == 1 ? 'aluno' : 'alunos'}',
+                  '$quantidadeAlunos ${quantidadeAlunos == 1 ? 'aluno' : 'alunos'}',
               color: t.primary,
             ),
           ],
@@ -1279,11 +1265,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 72,
-                color: danger,
-              ),
+              Icon(Icons.error_outline_rounded, size: 72, color: danger),
               const SizedBox(height: 14),
               Text(
                 'Erro ao carregar os dados',
@@ -1336,11 +1318,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.workspace_premium_outlined,
-            size: 70,
-            color: t.textMuted,
-          ),
+          Icon(Icons.workspace_premium_outlined, size: 70, color: t.textMuted),
           const SizedBox(height: 14),
           Text(
             'Nenhuma graduação encontrada',

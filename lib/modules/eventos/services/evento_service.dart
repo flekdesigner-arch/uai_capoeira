@@ -14,8 +14,9 @@ class EventoService {
       if (user == null) throw Exception('Usuário não logado');
 
       if (evento.id == null) {
-        final docRef =
-        await _firestore.collection(_collection).add(evento.toMap());
+        final docRef = await _firestore
+            .collection(_collection)
+            .add(evento.toMap());
         return docRef.id;
       } else {
         await _firestore
@@ -80,8 +81,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Stream<List<EventoModel>> listarEventosPorStatus(String status) {
@@ -91,8 +94,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Stream<List<EventoModel>> listarEventosPorTipo(String tipo) {
@@ -102,8 +107,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Future<void> deletarEvento(String eventoId) async {
@@ -153,8 +160,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Stream<List<EventoModel>> listarEventosPorCidade(String cidade) {
@@ -164,8 +173,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Stream<List<EventoModel>> listarEventosComCamisa() {
@@ -175,8 +186,10 @@ class EventoService {
         .orderBy('data', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => EventoModel.fromFirestore(doc)).toList();
-    });
+          return snapshot.docs
+              .map((doc) => EventoModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   Future<Map<String, int>> getEstatisticas() async {

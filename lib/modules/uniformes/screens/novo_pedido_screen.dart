@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -21,8 +21,10 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
   final FornecedorService _fornecedorService = FornecedorService();
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   String? _alunoSelecionadoId;
   String? _alunoSelecionadoNome;
@@ -48,8 +50,8 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -99,9 +101,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   Future<void> _selecionarAluno() async {
     final selecionado = await showDialog<Map<String, String>>(
       context: context,
-      builder: (context) => SelecionarAlunoDialog(
-        corTema: context.uai.primary,
-      ),
+      builder: (context) => SelecionarAlunoDialog(corTema: context.uai.primary),
     );
 
     if (selecionado != null && mounted) {
@@ -132,8 +132,10 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 
     if (data != null) {
       setState(() {
-        _dataPrevisaoController.text =
-            DateFormat('dd/MM/yyyy', 'pt_BR').format(data);
+        _dataPrevisaoController.text = DateFormat(
+          'dd/MM/yyyy',
+          'pt_BR',
+        ).format(data);
       });
     }
   }
@@ -151,8 +153,10 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
 
         final dataPrevista = result['data_prevista'];
         if (dataPrevista is Timestamp) {
-          _dataPrevisaoController.text =
-              DateFormat('dd/MM/yyyy', 'pt_BR').format(dataPrevista.toDate());
+          _dataPrevisaoController.text = DateFormat(
+            'dd/MM/yyyy',
+            'pt_BR',
+          ).format(dataPrevista.toDate());
         } else if (dataPrevista is String && dataPrevista.isNotEmpty) {
           _dataPrevisaoController.text = dataPrevista;
         }
@@ -270,8 +274,10 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: const Text('NOVO PEDIDO',
-            style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text(
+          'NOVO PEDIDO',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -281,11 +287,13 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
             onPressed: _isLoading ? null : _salvarPedido,
             icon: _isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  color: onPrimary, strokeWidth: 2),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: onPrimary,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(Icons.save, color: onPrimary),
             label: Text(
               _isLoading ? 'SALVANDO...' : 'SALVAR',
@@ -297,488 +305,550 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primary))
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // REMESSA (obrigatória)
-            Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _remessaId == null
-                    ? error.withOpacity(0.05)
-                    : cardBg,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(
-                    color: _remessaId == null
-                        ? error.withOpacity(0.3)
-                        : border),
-                boxShadow: context.uai.softShadow,
-              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.local_shipping,
-                          size: 18, color: primary),
-                      const SizedBox(width: 8),
-                      Text('REMESSA (obrigatória)',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: _selecionarRemessa,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: border),
-                        borderRadius: BorderRadius.circular(8),
+                  // REMESSA (obrigatória)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _remessaId == null
+                          ? error.withOpacity(0.05)
+                          : cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
                       ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.local_shipping,
-                              color: primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _remessaNome ?? 'Selecionar remessa',
-                              style: TextStyle(
-                                color: _remessaNome == null
-                                    ? error
-                                    : textPrimary,
-                                fontWeight:
-                                _remessaNome == null
-                                    ? FontWeight.normal
-                                    : FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          if (_remessaId != null)
-                            IconButton(
-                              icon: Icon(Icons.close,
-                                  color: error),
-                              onPressed: _removerRemessa,
-                              tooltip: 'Remover vínculo',
-                            )
-                          else
-                            Icon(Icons.arrow_drop_down,
-                                color: textMuted),
-                        ],
+                      border: Border.all(
+                        color: _remessaId == null
+                            ? error.withOpacity(0.3)
+                            : border,
                       ),
+                      boxShadow: context.uai.softShadow,
                     ),
-                  ),
-                  if (_remessaNome != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'O pedido será vinculado à remessa $_remessaNome.',
-                      style: TextStyle(
-                          fontSize: 11, color: textSecondary),
-                    ),
-                    if (_fornecedorRemessa != null) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.business,
-                              size: 14, color: textMuted),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Fornecedor: $_fornecedorRemessa',
-                            style: TextStyle(
-                                fontSize: 11, color: textMuted),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // ALUNO (opcional)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('ALUNO',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
-                      if (!semAluno)
-                        TextButton.icon(
-                          onPressed: _limparAluno,
-                          icon: Icon(Icons.clear, size: 16, color: error),
-                          label: Text('Remover',
-                              style: TextStyle(
-                                  fontSize: 12, color: error)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: _selecionarAluno,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: border),
-                        borderRadius: BorderRadius.circular(8),
-                        color: semAluno
-                            ? warning.withOpacity(0.1)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          if (semAluno)
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: warning.withOpacity(0.2),
-                                borderRadius:
-                                BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.inventory_2,
-                                  color: warning, size: 20),
-                            )
-                          else if (_fotoAlunoUrl != null &&
-                              _fotoAlunoUrl!.isNotEmpty)
-                            CachedNetworkImage(
-                              imageUrl: _fotoAlunoUrl!,
-                              imageBuilder: (ctx, imageProvider) =>
-                                  CircleAvatar(
-                                    backgroundImage: imageProvider,
-                                    radius: 16,
-                                  ),
-                              placeholder: (_, __) => CircleAvatar(
-                                radius: 16,
-                                backgroundColor: cardAlt,
-                                child: Icon(Icons.person,
-                                    size: 18, color: textMuted),
-                              ),
-                              errorWidget: (_, __, ___) =>
-                                  CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: cardAlt,
-                                    child: Icon(Icons.person,
-                                        color: textMuted),
-                                  ),
-                            )
-                          else
-                            Icon(Icons.person, color: textMuted),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              semAluno
-                                  ? 'Item para Estoque (sem aluno)'
-                                  : (_alunoSelecionadoNome ??
-                                  'Selecionar aluno'),
-                              style: TextStyle(
-                                color: semAluno
-                                    ? warning
-                                    : _alunoSelecionadoNome == null
-                                    ? textMuted
-                                    : textPrimary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          Icon(Icons.arrow_drop_down,
-                              color: textMuted),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (semAluno)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '⚠️ Pedido será marcado como item para estoque. Na finalização da remessa, será adicionado automaticamente.',
-                        style: TextStyle(
-                            fontSize: 11, color: warning),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // ITENS
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('ITENS DO PEDIDO',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
-                      TextButton.icon(
-                        onPressed: _adicionarItem,
-                        icon: Icon(Icons.add, color: primary),
-                        label: Text('Adicionar Item',
-                            style: TextStyle(color: primary)),
-                      ),
-                    ],
-                  ),
-                  Divider(color: border),
-                  if (_itensPedido.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(Icons.shopping_cart_outlined,
-                                size: 48, color: textMuted),
-                            const SizedBox(height: 8),
-                            Text('Nenhum item adicionado',
-                                style: TextStyle(color: textMuted)),
+                            Icon(
+                              Icons.local_shipping,
+                              size: 18,
+                              color: primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'REMESSA (obrigatória)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
                           ],
                         ),
-                      ),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _itensPedido.length,
-                      separatorBuilder: (_, __) => Divider(color: border),
-                      itemBuilder: (context, index) {
-                        final item = _itensPedido[index];
-                        final tamanho = item['tamanho'] as String?;
-                        final cor = item['cor'] as String?;
-                        final String nomeExibicao = [
-                          item['nome'] ?? 'Item',
-                          if (tamanho != null && tamanho.isNotEmpty)
-                            'Tam. $tamanho',
-                          if (cor != null && cor.isNotEmpty)
-                            'Cor: $cor',
-                        ].join(' - ');
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Container(
-                            width: 40,
-                            height: 40,
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _selecionarRemessa,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: primary.withOpacity(0.1),
+                              border: Border.all(color: border),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(Icons.shopping_bag,
-                                color: primary),
-                          ),
-                          title: Text(nomeExibicao,
-                              style: TextStyle(color: textPrimary)),
-                          subtitle: Text(
-                            '${item['quantidade']} x ${_realFormat.format(item['preco_unitario'])}',
-                            style: TextStyle(color: textSecondary),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _realFormat.format(item['quantidade'] *
-                                    item['preco_unitario']),
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: textPrimary),
-                              ),
-                              IconButton(
-                                icon: Icon(Icons.close,
-                                    size: 16, color: error),
-                                onPressed: () => _removerItem(index),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  Divider(color: border),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('TOTAL',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary)),
-                      Text(
-                        _realFormat.format(_valorTotal),
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // INFORMAÇÕES ADICIONAIS
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('INFORMAÇÕES ADICIONAIS',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: textPrimary)),
-                  Divider(color: border),
-                  InkWell(
-                    onTap: _selecionarDataPrevisao,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: border),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_today,
-                              size: 20, color: textSecondary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _dataPrevisaoController,
-                              enabled: false,
-                              style: TextStyle(color: textPrimary),
-                              decoration: InputDecoration(
-                                labelText: 'Data de previsão',
-                                labelStyle: TextStyle(
-                                    color: textSecondary),
-                                border: InputBorder.none,
-                                hintText: 'Selecionar data',
-                                hintStyle:
-                                TextStyle(color: textMuted),
-                                disabledBorder: InputBorder.none,
-                              ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.local_shipping, color: primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _remessaNome ?? 'Selecionar remessa',
+                                    style: TextStyle(
+                                      color: _remessaNome == null
+                                          ? error
+                                          : textPrimary,
+                                      fontWeight: _remessaNome == null
+                                          ? FontWeight.normal
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (_remessaId != null)
+                                  IconButton(
+                                    icon: Icon(Icons.close, color: error),
+                                    onPressed: _removerRemessa,
+                                    tooltip: 'Remover vínculo',
+                                  )
+                                else
+                                  Icon(Icons.arrow_drop_down, color: textMuted),
+                              ],
                             ),
                           ),
-                          Icon(Icons.arrow_drop_down,
-                              color: textMuted),
+                        ),
+                        if (_remessaNome != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'O pedido será vinculado à remessa $_remessaNome.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: textSecondary,
+                            ),
+                          ),
+                          if (_fornecedorRemessa != null) ...[
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.business,
+                                  size: 14,
+                                  color: textMuted,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Fornecedor: $_fornecedorRemessa',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _observacoesController,
-                    maxLines: 3,
-                    style: TextStyle(color: textPrimary),
-                    decoration: InputDecoration(
-                      labelText: 'Observações',
-                      hintText:
-                      'Observações sobre o pedido (tamanhos, cores, detalhes, etc)',
-                      labelStyle: TextStyle(color: textSecondary),
-                      hintStyle: TextStyle(color: textMuted),
-                      filled: true,
-                      fillColor: cardAlt,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                            context.uai.inputRadius),
-                        borderSide: BorderSide(color: border),
+
+                  // ALUNO (opcional)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                            context.uai.inputRadius),
-                        borderSide: BorderSide(color: border),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                            context.uai.inputRadius),
-                        borderSide: BorderSide(
-                            color: primary, width: 1.4),
-                      ),
-                      alignLabelWithHint: true,
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'ALUNO',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            if (!semAluno)
+                              TextButton.icon(
+                                onPressed: _limparAluno,
+                                icon: Icon(Icons.clear, size: 16, color: error),
+                                label: Text(
+                                  'Remover',
+                                  style: TextStyle(fontSize: 12, color: error),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _selecionarAluno,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: border),
+                              borderRadius: BorderRadius.circular(8),
+                              color: semAluno ? warning.withOpacity(0.1) : null,
+                            ),
+                            child: Row(
+                              children: [
+                                if (semAluno)
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: warning.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.inventory_2,
+                                      color: warning,
+                                      size: 20,
+                                    ),
+                                  )
+                                else if (_fotoAlunoUrl != null &&
+                                    _fotoAlunoUrl!.isNotEmpty)
+                                  CachedNetworkImage(
+                                    imageUrl: _fotoAlunoUrl!,
+                                    imageBuilder: (ctx, imageProvider) =>
+                                        CircleAvatar(
+                                          backgroundImage: imageProvider,
+                                          radius: 16,
+                                        ),
+                                    placeholder: (_, __) => CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: cardAlt,
+                                      child: Icon(
+                                        Icons.person,
+                                        size: 18,
+                                        color: textMuted,
+                                      ),
+                                    ),
+                                    errorWidget: (_, __, ___) => CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: cardAlt,
+                                      child: Icon(
+                                        Icons.person,
+                                        color: textMuted,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Icon(Icons.person, color: textMuted),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    semAluno
+                                        ? 'Item para Estoque (sem aluno)'
+                                        : (_alunoSelecionadoNome ??
+                                              'Selecionar aluno'),
+                                    style: TextStyle(
+                                      color: semAluno
+                                          ? warning
+                                          : _alunoSelecionadoNome == null
+                                          ? textMuted
+                                          : textPrimary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                Icon(Icons.arrow_drop_down, color: textMuted),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (semAluno)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              '⚠️ Pedido será marcado como item para estoque. Na finalização da remessa, será adicionado automaticamente.',
+                              style: TextStyle(fontSize: 11, color: warning),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
+
+                  // ITENS
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline,
-                            color: primary, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'O status do pedido será "PENDENTE". Você poderá alterar para "EM CONFECÇÃO" e "FINALIZADO" depois.',
-                            style: TextStyle(
-                                fontSize: 12, color: primary),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'ITENS DO PEDIDO',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _adicionarItem,
+                              icon: Icon(Icons.add, color: primary),
+                              label: Text(
+                                'Adicionar Item',
+                                style: TextStyle(color: primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Divider(color: border),
+                        if (_itensPedido.isEmpty)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.shopping_cart_outlined,
+                                    size: 48,
+                                    color: textMuted,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Nenhum item adicionado',
+                                    style: TextStyle(color: textMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _itensPedido.length,
+                            separatorBuilder: (_, __) => Divider(color: border),
+                            itemBuilder: (context, index) {
+                              final item = _itensPedido[index];
+                              final tamanho = item['tamanho'] as String?;
+                              final cor = item['cor'] as String?;
+                              final String nomeExibicao = [
+                                item['nome'] ?? 'Item',
+                                if (tamanho != null && tamanho.isNotEmpty)
+                                  'Tam. $tamanho',
+                                if (cor != null && cor.isNotEmpty) 'Cor: $cor',
+                              ].join(' - ');
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.shopping_bag,
+                                    color: primary,
+                                  ),
+                                ),
+                                title: Text(
+                                  nomeExibicao,
+                                  style: TextStyle(color: textPrimary),
+                                ),
+                                subtitle: Text(
+                                  '${item['quantidade']} x ${_realFormat.format(item['preco_unitario'])}',
+                                  style: TextStyle(color: textSecondary),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _realFormat.format(
+                                        item['quantidade'] *
+                                            item['preco_unitario'],
+                                      ),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: textPrimary,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: error,
+                                      ),
+                                      onPressed: () => _removerItem(index),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        Divider(color: border),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'TOTAL',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            Text(
+                              _realFormat.format(_valorTotal),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // INFORMAÇÕES ADICIONAIS
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'INFORMAÇÕES ADICIONAIS',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        Divider(color: border),
+                        InkWell(
+                          onTap: _selecionarDataPrevisao,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: border),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 20,
+                                  color: textSecondary,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _dataPrevisaoController,
+                                    enabled: false,
+                                    style: TextStyle(color: textPrimary),
+                                    decoration: InputDecoration(
+                                      labelText: 'Data de previsão',
+                                      labelStyle: TextStyle(
+                                        color: textSecondary,
+                                      ),
+                                      border: InputBorder.none,
+                                      hintText: 'Selecionar data',
+                                      hintStyle: TextStyle(color: textMuted),
+                                      disabledBorder: InputBorder.none,
+                                    ),
+                                  ),
+                                ),
+                                Icon(Icons.arrow_drop_down, color: textMuted),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _observacoesController,
+                          maxLines: 3,
+                          style: TextStyle(color: textPrimary),
+                          decoration: InputDecoration(
+                            labelText: 'Observações',
+                            hintText:
+                                'Observações sobre o pedido (tamanhos, cores, detalhes, etc)',
+                            labelStyle: TextStyle(color: textSecondary),
+                            hintStyle: TextStyle(color: textMuted),
+                            filled: true,
+                            fillColor: cardAlt,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.inputRadius,
+                              ),
+                              borderSide: BorderSide(color: border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.inputRadius,
+                              ),
+                              borderSide: BorderSide(color: border),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.inputRadius,
+                              ),
+                              borderSide: BorderSide(
+                                color: primary,
+                                width: 1.4,
+                              ),
+                            ),
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'O status do pedido será "PENDENTE". Você poderá alterar para "EM CONFECÇÃO" e "FINALIZADO" depois.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: primary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: ElevatedButton(
+                      onPressed: _salvarPedido,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: onPrimary,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            context.uai.buttonRadius,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        _alunoSelecionadoId == null
+                            ? 'CRIAR ITEM PARA ESTOQUE'
+                            : 'CRIAR PEDIDO',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: ElevatedButton(
-                onPressed: _salvarPedido,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  foregroundColor: onPrimary,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                        context.uai.buttonRadius),
-                  ),
-                ),
-                child: Text(
-                  _alunoSelecionadoId == null
-                      ? 'CRIAR ITEM PARA ESTOQUE'
-                      : 'CRIAR PEDIDO',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -841,20 +911,16 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                 filled: true,
                 fillColor: cardAlt,
                 border: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
                   borderSide: BorderSide(color: border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
                   borderSide: BorderSide(color: border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(context.uai.inputRadius),
-                  borderSide:
-                  BorderSide(color: primary, width: 1.4),
+                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
+                  borderSide: BorderSide(color: primary, width: 1.4),
                 ),
               ),
               onChanged: (v) => setState(() => _search = v.toLowerCase()),
@@ -869,8 +935,8 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
                     return Center(
-                        child: CircularProgressIndicator(
-                            color: primary));
+                      child: CircularProgressIndicator(color: primary),
+                    );
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -881,8 +947,10 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                   }
                   if (docs.isEmpty) {
                     return Center(
-                      child: Text('Nenhuma remessa encontrada',
-                          style: TextStyle(color: textMuted)),
+                      child: Text(
+                        'Nenhuma remessa encontrada',
+                        style: TextStyle(color: textMuted),
+                      ),
                     );
                   }
                   return ListView.builder(
@@ -894,10 +962,11 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                         builder: (context, snap) {
                           final String? fornecedorNome = snap.data;
                           return ListTile(
-                            leading: Icon(Icons.local_shipping,
-                                color: primary),
-                            title: Text(data['nome'] ?? 'Sem nome',
-                                style: TextStyle(color: textPrimary)),
+                            leading: Icon(Icons.local_shipping, color: primary),
+                            title: Text(
+                              data['nome'] ?? 'Sem nome',
+                              style: TextStyle(color: textPrimary),
+                            ),
                             subtitle: Text(
                               'Status: ${data['status']}${fornecedorNome != null ? ' • Fornecedor: $fornecedorNome' : ''}',
                               style: TextStyle(color: textSecondary),
@@ -940,8 +1009,10 @@ class _SelecionarItemPedidoDialogState
     extends State<SelecionarItemPedidoDialog> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat _realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
 
   @override
   void dispose() {
@@ -956,11 +1027,11 @@ class _SelecionarItemPedidoDialogState
   }
 
   void _showQuantidadeDialog(
-      BuildContext context,
-      String itemId,
-      Map<String, dynamic> data, {
-        String? tamanho,
-      }) {
+    BuildContext context,
+    String itemId,
+    Map<String, dynamic> data, {
+    String? tamanho,
+  }) {
     final quantidadeController = TextEditingController();
     final primary = context.uai.primary;
     final textPrimary = context.uai.textPrimary;
@@ -970,8 +1041,10 @@ class _SelecionarItemPedidoDialogState
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(data['nome'] ?? 'Item',
-              style: TextStyle(color: textPrimary)),
+          title: Text(
+            data['nome'] ?? 'Item',
+            style: TextStyle(color: textPrimary),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -980,12 +1053,12 @@ class _SelecionarItemPedidoDialogState
                 style: TextStyle(color: textPrimary),
               ),
               if (tamanho != null)
-                Text('Tamanho: $tamanho',
-                    style: TextStyle(color: textPrimary)),
-              if (data['cor'] != null &&
-                  data['cor'].toString().isNotEmpty)
-                Text('Cor: ${data['cor']}',
-                    style: TextStyle(color: textPrimary)),
+                Text('Tamanho: $tamanho', style: TextStyle(color: textPrimary)),
+              if (data['cor'] != null && data['cor'].toString().isNotEmpty)
+                Text(
+                  'Cor: ${data['cor']}',
+                  style: TextStyle(color: textPrimary),
+                ),
               const SizedBox(height: 16),
               TextField(
                 controller: quantidadeController,
@@ -993,25 +1066,26 @@ class _SelecionarItemPedidoDialogState
                 style: TextStyle(color: textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Quantidade',
-                  labelStyle:
-                  TextStyle(color: context.uai.textSecondary),
+                  labelStyle: TextStyle(color: context.uai.textSecondary),
                   filled: true,
                   fillColor: context.uai.cardAlt,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
-                    borderSide: BorderSide(
-                        color: primary, width: 1.4),
+                      context.uai.inputRadius,
+                    ),
+                    borderSide: BorderSide(color: primary, width: 1.4),
                   ),
                 ),
               ),
@@ -1020,13 +1094,11 @@ class _SelecionarItemPedidoDialogState
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancelar',
-                  style: TextStyle(color: primary)),
+              child: Text('Cancelar', style: TextStyle(color: primary)),
             ),
             ElevatedButton(
               onPressed: () {
-                int quantidade =
-                    int.tryParse(quantidadeController.text) ?? 1;
+                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
                 if (quantidade <= 0) quantidade = 1;
 
                 Navigator.pop(ctx);
@@ -1052,94 +1124,100 @@ class _SelecionarItemPedidoDialogState
   }
 
   void _mostrarDialogoVariacoes(
-      BuildContext context,
-      String baseId,
-      Map<String, dynamic> baseData,
-      ) {
+    BuildContext context,
+    String baseId,
+    Map<String, dynamic> baseData,
+  ) {
     FirebaseFirestore.instance
         .collection('uniformes_estoque')
         .where('item_base_id', isEqualTo: baseId)
         .get()
         .then((snapshot) {
-      if (!mounted) return;
+          if (!mounted) return;
 
-      if (snapshot.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-                'Nenhuma variação encontrada para este item'),
-            backgroundColor: context.uai.warning,
-          ),
-        );
-        return;
-      }
+          if (snapshot.docs.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Nenhuma variação encontrada para este item',
+                ),
+                backgroundColor: context.uai.warning,
+              ),
+            );
+            return;
+          }
 
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Tamanhos disponíveis - ${baseData['nome']}',
-              style: TextStyle(color: context.uai.textPrimary)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: snapshot.docs.length,
-              itemBuilder: (_, i) {
-                final variacao = snapshot.docs[i].data();
-                final tamanho = variacao['tamanho'] ?? '?';
-                final quantidadeEstoque = variacao['quantidade'] ?? 0;
-                final cor = variacao['cor']?.toString() ?? '';
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                    context.uai.primary.withOpacity(0.1),
-                    child: Text(
-                      tamanho.toString().toUpperCase(),
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: context.uai.primary),
-                    ),
-                  ),
-                  title: Text('Tamanho $tamanho',
-                      style:
-                      TextStyle(color: context.uai.textPrimary)),
-                  subtitle: Text(
-                    'Estoque: $quantidadeEstoque un${cor.isNotEmpty ? ' - Cor: $cor' : ''}',
-                    style: TextStyle(
-                        color: context.uai.textSecondary),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showQuantidadeDialog(
-                      context,
-                      snapshot.docs[i].id,
-                      variacao,
-                      tamanho: tamanho.toString(),
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: Text(
+                'Tamanhos disponíveis - ${baseData['nome']}',
+                style: TextStyle(color: context.uai.textPrimary),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: snapshot.docs.length,
+                  itemBuilder: (_, i) {
+                    final variacao = snapshot.docs[i].data();
+                    final tamanho = variacao['tamanho'] ?? '?';
+                    final quantidadeEstoque = variacao['quantidade'] ?? 0;
+                    final cor = variacao['cor']?.toString() ?? '';
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: context.uai.primary.withOpacity(0.1),
+                        child: Text(
+                          tamanho.toString().toUpperCase(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: context.uai.primary,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        'Tamanho $tamanho',
+                        style: TextStyle(color: context.uai.textPrimary),
+                      ),
+                      subtitle: Text(
+                        'Estoque: $quantidadeEstoque un${cor.isNotEmpty ? ' - Cor: $cor' : ''}',
+                        style: TextStyle(color: context.uai.textSecondary),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showQuantidadeDialog(
+                          context,
+                          snapshot.docs[i].id,
+                          variacao,
+                          tamanho: tamanho.toString(),
+                        );
+                      },
                     );
                   },
-                );
-              },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(color: context.uai.primary),
+                  ),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancelar',
-                  style: TextStyle(color: context.uai.primary)),
-            ),
-          ],
-        ),
-      );
-    }).catchError((e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao carregar variações: $e'),
-            backgroundColor: context.uai.error,
-          ),
-        );
-      }
-    });
+          );
+        })
+        .catchError((e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erro ao carregar variações: $e'),
+                backgroundColor: context.uai.error,
+              ),
+            );
+          }
+        });
   }
 
   @override
@@ -1165,8 +1243,7 @@ class _SelecionarItemPedidoDialogState
           children: [
             // AppBar interna do diálogo
             Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: primary,
                 borderRadius: BorderRadius.vertical(
@@ -1208,32 +1285,33 @@ class _SelecionarItemPedidoDialogState
                   fillColor: cardAlt,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
+                      context.uai.inputRadius,
+                    ),
                     borderSide: BorderSide(color: border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
-                        context.uai.inputRadius),
-                    borderSide:
-                    BorderSide(color: primary, width: 1.4),
+                      context.uai.inputRadius,
+                    ),
+                    borderSide: BorderSide(color: primary, width: 1.4),
                   ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear, color: textMuted),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
+                          icon: Icon(Icons.clear, color: textMuted),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
                       : null,
                 ),
-                onChanged: (value) =>
-                    setState(() => _searchQuery = value),
+                onChanged: (value) => setState(() => _searchQuery = value),
               ),
             ),
             Expanded(
@@ -1245,8 +1323,8 @@ class _SelecionarItemPedidoDialogState
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
                     return Center(
-                        child: CircularProgressIndicator(
-                            color: primary));
+                      child: CircularProgressIndicator(color: primary),
+                    );
 
                   var docs = snapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
@@ -1257,10 +1335,8 @@ class _SelecionarItemPedidoDialogState
                   if (_searchQuery.isNotEmpty) {
                     docs = docs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final nome =
-                          data['nome']?.toString().toLowerCase() ?? '';
-                      return nome
-                          .contains(_searchQuery.toLowerCase());
+                      final nome = data['nome']?.toString().toLowerCase() ?? '';
+                      return nome.contains(_searchQuery.toLowerCase());
                     }).toList();
                   }
 
@@ -1269,8 +1345,11 @@ class _SelecionarItemPedidoDialogState
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.inventory_2_outlined,
-                              size: 50, color: textMuted),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 50,
+                            color: textMuted,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             _searchQuery.isEmpty
@@ -1311,38 +1390,42 @@ class _SelecionarItemPedidoDialogState
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
                               ? ClipRRect(
-                            borderRadius:
-                            BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: fotoUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) =>
-                                  Icon(Icons.shopping_bag,
-                                      color: primary),
-                              errorWidget: (_, __, ___) =>
-                                  Icon(Icons.shopping_bag,
-                                      color: primary),
-                            ),
-                          )
-                              : Icon(Icons.shopping_bag,
-                              color: primary),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: fotoUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Icon(
+                                      Icons.shopping_bag,
+                                      color: primary,
+                                    ),
+                                    errorWidget: (_, __, ___) => Icon(
+                                      Icons.shopping_bag,
+                                      color: primary,
+                                    ),
+                                  ),
+                                )
+                              : Icon(Icons.shopping_bag, color: primary),
                         ),
-                        title: Text(data['nome'] ?? 'Sem nome',
-                            style: TextStyle(color: textPrimary)),
+                        title: Text(
+                          data['nome'] ?? 'Sem nome',
+                          style: TextStyle(color: textPrimary),
+                        ),
                         subtitle: Text(
-                            'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                            style: TextStyle(color: textSecondary)),
+                          'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
+                          style: TextStyle(color: textSecondary),
+                        ),
                         trailing: possuiVariacoes
-                            ? Icon(Icons.arrow_forward_ios,
-                            size: 14, color: textMuted)
+                            ? Icon(
+                                Icons.arrow_forward_ios,
+                                size: 14,
+                                color: textMuted,
+                              )
                             : null,
                         onTap: () {
                           if (possuiVariacoes) {
-                            _mostrarDialogoVariacoes(
-                                context, doc.id, data);
+                            _mostrarDialogoVariacoes(context, doc.id, data);
                           } else {
-                            _showQuantidadeDialog(
-                                context, doc.id, data);
+                            _showQuantidadeDialog(context, doc.id, data);
                           }
                         },
                       );

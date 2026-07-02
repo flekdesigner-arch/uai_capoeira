@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
@@ -34,7 +34,8 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -50,9 +51,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context).loadString(
-        'assets/images/corda.svg',
-      );
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (!mounted) return;
 
@@ -76,10 +77,13 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
       final document = xml.XmlDocument.parse(_svgContent!);
 
       Color colorFromHex(String? hexColor) {
-        if (hexColor == null || hexColor.length < 7) return context.uai.textMuted;
+        if (hexColor == null || hexColor.length < 7)
+          return context.uai.textMuted;
 
         try {
-          return Color(int.parse('FF${hexColor.replaceAll('#', '')}', radix: 16));
+          return Color(
+            int.parse('FF${hexColor.replaceAll('#', '')}', radix: 16),
+          );
         } catch (_) {
           return context.uai.textMuted;
         }
@@ -91,13 +95,14 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
               .whereType<xml.XmlElement>()
               .firstWhere(
                 (e) => e.getAttribute('id') == id,
-            orElse: () => xml.XmlElement(xml.XmlName('')),
-          );
+                orElse: () => xml.XmlElement(xml.XmlName('')),
+              );
 
           if (element.name.local.isEmpty) return;
 
           final style = element.getAttribute('style') ?? '';
-          final hex = '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+          final hex =
+              '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
           final newStyle = style.contains('fill:')
               ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
               : 'fill:$hex;$style';
@@ -121,9 +126,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _getAlunosPorGraduacao(
-      String graduacaoId,
-      String nomeGraduacao,
-      ) async {
+    String graduacaoId,
+    String nomeGraduacao,
+  ) async {
     try {
       final snapshot = await _firestore
           .collection('alunos')
@@ -149,10 +154,10 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
   }
 
   void _mostrarAlunosDialog(
-      BuildContext context,
-      String nomeGraduacao,
-      List<Map<String, dynamic>> alunos,
-      ) {
+    BuildContext context,
+    String nomeGraduacao,
+    List<Map<String, dynamic>> alunos,
+  ) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -189,7 +194,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                           decoration: BoxDecoration(
                             color: onPrimary.withOpacity(0.14),
                             borderRadius: BorderRadius.circular(t.buttonRadius),
-                            border: Border.all(color: onPrimary.withOpacity(0.16)),
+                            border: Border.all(
+                              color: onPrimary.withOpacity(0.16),
+                            ),
                           ),
                           child: Icon(Icons.people_rounded, color: onPrimary),
                         ),
@@ -231,68 +238,79 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                     child: alunos.isEmpty
                         ? _buildDialogEmptyState(t)
                         : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: alunos.length,
-                      itemBuilder: (context, index) {
-                        final aluno = alunos[index];
-                        final nome = aluno['nome']?.toString() ?? 'Aluno';
-                        final foto = aluno['foto']?.toString() ?? '';
-                        final dataGraduacao = aluno['data_graduacao'];
+                            padding: const EdgeInsets.all(12),
+                            itemCount: alunos.length,
+                            itemBuilder: (context, index) {
+                              final aluno = alunos[index];
+                              final nome = aluno['nome']?.toString() ?? 'Aluno';
+                              final foto = aluno['foto']?.toString() ?? '';
+                              final dataGraduacao = aluno['data_graduacao'];
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            color: t.card,
-                            borderRadius: BorderRadius.circular(t.cardRadius - 6),
-                            border: Border.all(color: t.border),
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            leading: CircleAvatar(
-                              radius: 21,
-                              backgroundColor: t.primary.withOpacity(0.12),
-                              backgroundImage: foto.isNotEmpty ? NetworkImage(foto) : null,
-                              child: foto.isEmpty
-                                  ? Text(
-                                nome.isNotEmpty ? nome[0].toUpperCase() : '?',
-                                style: TextStyle(
-                                  color: _ensureVisible(t.primary, t.card),
-                                  fontWeight: FontWeight.w900,
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: t.card,
+                                  borderRadius: BorderRadius.circular(
+                                    t.cardRadius - 6,
+                                  ),
+                                  border: Border.all(color: t.border),
                                 ),
-                              )
-                                  : null,
-                            ),
-                            title: Text(
-                              nome,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: t.textPrimary,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            subtitle: dataGraduacao != null
-                                ? Text(
-                              'Graduado em: ${DateFormat('dd/MM/yyyy').format(dataGraduacao)}',
-                              style: TextStyle(
-                                color: t.textSecondary,
-                                fontSize: 12,
-                              ),
-                            )
-                                : Text(
-                              'Data de graduação não informada',
-                              style: TextStyle(
-                                color: t.textMuted,
-                                fontSize: 12,
-                              ),
-                            ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  leading: CircleAvatar(
+                                    radius: 21,
+                                    backgroundColor: t.primary.withOpacity(
+                                      0.12,
+                                    ),
+                                    backgroundImage: foto.isNotEmpty
+                                        ? NetworkImage(foto)
+                                        : null,
+                                    child: foto.isEmpty
+                                        ? Text(
+                                            nome.isNotEmpty
+                                                ? nome[0].toUpperCase()
+                                                : '?',
+                                            style: TextStyle(
+                                              color: _ensureVisible(
+                                                t.primary,
+                                                t.card,
+                                              ),
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  title: Text(
+                                    nome,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: t.textPrimary,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  subtitle: dataGraduacao != null
+                                      ? Text(
+                                          'Graduado em: ${DateFormat('dd/MM/yyyy').format(dataGraduacao)}',
+                                          style: TextStyle(
+                                            color: t.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                        )
+                                      : Text(
+                                          'Data de graduação não informada',
+                                          style: TextStyle(
+                                            color: t.textMuted,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),
@@ -345,9 +363,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
 
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(
-        title: const Text('Catálogo de Graduações'),
-      ),
+      appBar: AppBar(title: const Text('Catálogo de Graduações')),
       body: RefreshIndicator(
         color: t.primary,
         backgroundColor: t.surface,
@@ -417,17 +433,20 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                                   : width >= 720
                                   ? 3
                                   : 2;
-                              final childAspectRatio = width < 420 ? 0.74 : 0.82;
+                              final childAspectRatio = width < 420
+                                  ? 0.74
+                                  : 0.82;
 
                               return GridView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  childAspectRatio: childAspectRatio,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                ),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: crossAxisCount,
+                                      childAspectRatio: childAspectRatio,
+                                      crossAxisSpacing: 12,
+                                      mainAxisSpacing: 12,
+                                    ),
                                 itemCount: graduacoes.length,
                                 itemBuilder: (context, index) {
                                   final doc = graduacoes[index];
@@ -481,8 +500,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Sistema de Cordas',
@@ -519,13 +539,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                logo,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [logo, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -577,7 +591,10 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
     final nome = data['nome_graduacao']?.toString() ?? 'Sem nome';
     final tipo = data['tipo_publico']?.toString() ?? 'Geral';
     final nivel = data['nivel_graduacao']?.toString() ?? '—';
-    final cor1 = _parseHexColor(data['hex_cor1']?.toString(), fallback: t.primary);
+    final cor1 = _parseHexColor(
+      data['hex_cor1']?.toString(),
+      fallback: t.primary,
+    );
     final accent = _ensureVisible(cor1, t.card);
 
     return Material(
@@ -608,15 +625,15 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Color.alphaBlend(accent.withOpacity(0.06), t.cardAlt),
+                    color: Color.alphaBlend(
+                      accent.withOpacity(0.06),
+                      t.cardAlt,
+                    ),
                     border: Border(
                       bottom: BorderSide(color: accent.withOpacity(0.10)),
                     ),
                   ),
-                  child: SvgPicture.string(
-                    modifiedSvg,
-                    fit: BoxFit.contain,
-                  ),
+                  child: SvgPicture.string(modifiedSvg, fit: BoxFit.contain),
                 ),
               ),
               Expanded(
@@ -766,7 +783,11 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.workspace_premium_outlined, size: 64, color: t.textMuted),
+              Icon(
+                Icons.workspace_premium_outlined,
+                size: 64,
+                color: t.textMuted,
+              ),
               const SizedBox(height: 12),
               Text(
                 'Nenhuma graduação encontrada',

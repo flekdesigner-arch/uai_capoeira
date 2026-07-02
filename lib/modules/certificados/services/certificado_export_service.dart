@@ -12,9 +12,9 @@ class CertificadoExportService {
   const CertificadoExportService();
 
   Future<Uint8List> capturarPreviewComoPng(
-      GlobalKey repaintKey, {
-        double pixelRatio = 4.0,
-      }) async {
+    GlobalKey repaintKey, {
+    double pixelRatio = 4.0,
+  }) async {
     // Dá tempo do SvgPicture/FutureBuilder estabilizar antes da captura.
     await Future<void>.delayed(const Duration(milliseconds: 120));
 
@@ -104,9 +104,6 @@ class CertificadoExportService {
     required Uint8List bytes,
     required String nomeBase,
   }) async {
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: '$nomeBase.pdf',
-    );
+    await Printing.sharePdf(bytes: bytes, filename: '$nomeBase.pdf');
   }
 }

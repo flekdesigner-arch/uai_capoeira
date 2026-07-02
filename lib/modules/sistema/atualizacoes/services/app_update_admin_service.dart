@@ -39,9 +39,9 @@ class AppUpdateAdminService {
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     FirebaseAuth? auth,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _storage = storage ?? FirebaseStorage.instance,
+       _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
@@ -102,16 +102,14 @@ class AppUpdateAdminService {
   // 📡 STREAMS E CONSULTAS
   // =====================================================
 
-  Stream<List<AppVersionModel>> watchVersoes({
-    int limit = 50,
-  }) {
+  Stream<List<AppVersionModel>> watchVersoes({int limit = 50}) {
     return _versoesRef
         .orderBy('criadoEm', descending: true)
         .limit(limit)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map(AppVersionModel.fromFirestore).toList();
-    });
+          return snapshot.docs.map(AppVersionModel.fromFirestore).toList();
+        });
   }
 
   Stream<DocumentSnapshot<Map<String, dynamic>>> watchConfigApp() {
@@ -119,7 +117,9 @@ class AppUpdateAdminService {
   }
 
   Future<Map<String, dynamic>> getConfigApp() async {
-    final doc = await _configAppRef.get(const GetOptions(source: Source.server));
+    final doc = await _configAppRef.get(
+      const GetOptions(source: Source.server),
+    );
 
     return doc.data() ?? {};
   }
@@ -290,7 +290,7 @@ class AppUpdateAdminService {
     late final StreamSubscription<TaskSnapshot> sub;
 
     sub = uploadTask.snapshotEvents.listen(
-          (snapshot) {
+      (snapshot) {
         final total = snapshot.totalBytes;
 
         if (total > 0) {
@@ -397,23 +397,16 @@ class AppUpdateAdminService {
       throw Exception('Tamanho do APK inválido.');
     }
 
-    final publicada = model.copyWith(
-      obrigatoria: obrigatoria,
-      publicada: true,
-    );
+    final publicada = model.copyWith(obrigatoria: obrigatoria, publicada: true);
 
     final batch = _firestore.batch();
 
-    batch.set(
-      docRef,
-      {
-        'obrigatoria': obrigatoria,
-        'publicada': true,
-        'publicadoEm': FieldValue.serverTimestamp(),
-        'atualizadoEm': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(docRef, {
+      'obrigatoria': obrigatoria,
+      'publicada': true,
+      'publicadoEm': FieldValue.serverTimestamp(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     batch.set(
       _configAppRef,
@@ -432,13 +425,10 @@ class AppUpdateAdminService {
   }
 
   Future<void> despublicarVersao(String versionId) async {
-    await _versoesRef.doc(versionId).set(
-      {
-        'publicada': false,
-        'atualizadoEm': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await _versoesRef.doc(versionId).set({
+      'publicada': false,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> excluirVersao({

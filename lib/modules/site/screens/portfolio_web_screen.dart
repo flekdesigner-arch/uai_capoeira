@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -37,9 +37,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     _rastreioService.iniciarTela(
       'portfolio',
       origem: 'site',
-      metadata: {
-        'aba_inicial': 'linha_do_tempo',
-      },
+      metadata: {'aba_inicial': 'linha_do_tempo'},
     );
     _rastreioService.marcarTempo('portfolio_tempo');
     _eventosScrollController.addListener(_registrarRolagemEventos);
@@ -52,10 +50,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
         _rastreioService.registrarClique(
           nome: 'trocar_aba_portfolio',
           origem: 'portfolio',
-          metadata: {
-            'aba': aba,
-            'index': _tabController.index,
-          },
+          metadata: {'aba': aba, 'index': _tabController.index},
         );
 
         setState(() {});
@@ -96,8 +91,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -222,10 +217,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     _rastreioService.registrarClique(
       nome: 'abrir_filtros_portfolio',
       origem: 'portfolio_eventos',
-      metadata: {
-        'filtro_cidade': _filtroCidade,
-        'filtro_tipo': _filtroTipo,
-      },
+      metadata: {'filtro_cidade': _filtroCidade, 'filtro_tipo': _filtroTipo},
     );
 
     String cidadeTemp = _filtroCidade;
@@ -259,7 +251,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                       _sectionHeader(
                         icon: Icons.tune_rounded,
                         title: 'Filtrar eventos',
-                        subtitle: 'Escolha cidade e tipo para encontrar eventos.',
+                        subtitle:
+                            'Escolha cidade e tipo para encontrar eventos.',
                         color: t.primary,
                       ),
                       const SizedBox(height: 18),
@@ -304,8 +297,9 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                                 fontWeight: FontWeight.w900,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius:
-                                BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                           );
@@ -340,8 +334,9 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                                 fontWeight: FontWeight.w900,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius:
-                                BorderRadius.circular(t.buttonRadius),
+                                borderRadius: BorderRadius.circular(
+                                  t.buttonRadius,
+                                ),
                               ),
                             ),
                           );
@@ -400,7 +395,10 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
         prefixIcon: Icon(icon, color: primary),
         filled: true,
         fillColor: t.cardAlt,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.inputRadius),
         ),
@@ -445,10 +443,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: [
-                _buildTimelineTab(),
-                _buildEventosGrid(),
-              ],
+              children: [_buildTimelineTab(), _buildEventosGrid()],
             ),
           ),
         ],
@@ -506,14 +501,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                       fontSize: isMobile ? 11.5 : 12.5,
                     ),
                     tabs: const [
-                      Tab(
-                        height: 32,
-                        text: 'Linha do tempo',
-                      ),
-                      Tab(
-                        height: 32,
-                        text: 'Eventos',
-                      ),
+                      Tab(height: 32, text: 'Linha do tempo'),
+                      Tab(height: 32, text: 'Eventos'),
                     ],
                   ),
                 ),
@@ -799,8 +788,9 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Eventos e memórias',
@@ -883,10 +873,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     );
   }
 
-  Widget _buildWhiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildWhiteChip({required IconData icon, required String label}) {
     final t = context.uai;
     final onPrimary = _readableOn(t.primary);
 
@@ -1043,10 +1030,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           spacing: spacing,
           runSpacing: spacing,
           children: eventos.map((evento) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildEventoCard(evento),
-            );
+            return SizedBox(width: itemWidth, child: _buildEventoCard(evento));
           }).toList(),
         );
       },
@@ -1055,7 +1039,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
 
   Widget _buildEventoCard(EventoModel evento) {
     final t = context.uai;
-    final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
+    final hasBanner =
+        evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
 
     return Material(
       color: t.card,
@@ -1227,10 +1212,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
         children: [
           Icon(icon, color: accent, size: 13),
           const SizedBox(width: 4),
-          const Text(
-            '',
-            style: TextStyle(fontSize: 0),
-          ),
+          const Text('', style: TextStyle(fontSize: 0)),
           Text(
             label,
             style: const TextStyle(
@@ -1287,10 +1269,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     return Container(
       color: t.cardAlt,
       child: Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: t.primary,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2, color: t.primary),
       ),
     );
   }
@@ -1306,11 +1285,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           end: Alignment.bottomRight,
         ),
       ),
-      child: Icon(
-        evento.iconeDoTipo,
-        size: 54,
-        color: t.textMuted,
-      ),
+      child: Icon(evento.iconeDoTipo, size: 54, color: t.textMuted),
     );
   }
 
@@ -1329,7 +1304,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     final t = context.uai;
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 700;
-    final hasBanner = evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
+    final hasBanner =
+        evento.linkBanner != null && evento.linkBanner!.isNotEmpty;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1358,7 +1334,11 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                         controller: scrollController,
                         padding: EdgeInsets.zero,
                         children: [
-                          _buildDetalheHeaderEvento(evento, hasBanner, isMobile),
+                          _buildDetalheHeaderEvento(
+                            evento,
+                            hasBanner,
+                            isMobile,
+                          ),
                           Padding(
                             padding: EdgeInsets.fromLTRB(
                               isMobile ? 14 : 18,
@@ -1370,7 +1350,8 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 _buildLinksTopoEvento(evento, isMobile),
-                                if (_hasAnyLink(evento)) const SizedBox(height: 14),
+                                if (_hasAnyLink(evento))
+                                  const SizedBox(height: 14),
                                 _buildResumoEventoCard(evento),
                                 const SizedBox(height: 14),
                                 _buildInfoGridEvento(evento, isMobile),
@@ -1412,8 +1393,9 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
                               fontWeight: FontWeight.w900,
                             ),
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(t.buttonRadius),
+                              borderRadius: BorderRadius.circular(
+                                t.buttonRadius,
+                              ),
                             ),
                           ),
                         ),
@@ -1431,16 +1413,16 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
 
   bool _hasAnyLink(EventoModel evento) {
     return (evento.linkFotosVideos != null &&
-        evento.linkFotosVideos!.trim().isNotEmpty) ||
+            evento.linkFotosVideos!.trim().isNotEmpty) ||
         (evento.previaVideo != null && evento.previaVideo!.trim().isNotEmpty) ||
         (evento.linkPlaylist != null && evento.linkPlaylist!.trim().isNotEmpty);
   }
 
   Widget _buildDetalheHeaderEvento(
-      EventoModel evento,
-      bool hasBanner,
-      bool isMobile,
-      ) {
+    EventoModel evento,
+    bool hasBanner,
+    bool isMobile,
+  ) {
     final t = context.uai;
 
     return Stack(
@@ -1454,12 +1436,12 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
             width: double.infinity,
             child: hasBanner
                 ? CachedNetworkImage(
-              imageUrl: evento.linkBanner!,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => _buildImagePlaceholder(),
-              errorWidget: (context, url, error) =>
-                  _buildImageError(evento),
-            )
+                    imageUrl: evento.linkBanner!,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => _buildImagePlaceholder(),
+                    errorWidget: (context, url, error) =>
+                        _buildImageError(evento),
+                  )
                 : _buildImageError(evento),
           ),
         ),
@@ -1601,10 +1583,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     );
   }
 
-  Widget _buildHeaderMeta({
-    required IconData icon,
-    required String text,
-  }) {
+  Widget _buildHeaderMeta({required IconData icon, required String text}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -1651,8 +1630,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           url: evento.previaVideo!,
           color: t.error,
         ),
-      if (evento.linkPlaylist != null &&
-          evento.linkPlaylist!.trim().isNotEmpty)
+      if (evento.linkPlaylist != null && evento.linkPlaylist!.trim().isNotEmpty)
         _buildLinkTopoButton(
           icon: Icons.playlist_play_rounded,
           title: 'Playlist',
@@ -1787,11 +1765,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
               color: success.withOpacity(0.09),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              Icons.verified_rounded,
-              color: success,
-              size: 25,
-            ),
+            child: Icon(Icons.verified_rounded, color: success, size: 25),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -1816,10 +1790,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
     _rastreioService.registrarClique(
       nome: 'abrir_link_portfolio',
       origem: 'portfolio_evento',
-      metadata: {
-        'url': url,
-        'host': uri?.host,
-      },
+      metadata: {'url': url, 'host': uri?.host},
     );
 
     if (uri == null) return;
@@ -1949,9 +1920,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
   Widget _buildLoadingState() {
     final t = context.uai;
 
-    return Center(
-      child: CircularProgressIndicator(color: t.primary),
-    );
+    return Center(child: CircularProgressIndicator(color: t.primary));
   }
 
   Widget _buildErrorState(Object? error) {
@@ -1968,11 +1937,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 72,
-                color: danger,
-              ),
+              Icon(Icons.error_outline_rounded, size: 72, color: danger),
               const SizedBox(height: 12),
               Text(
                 'Erro ao carregar eventos',
@@ -2009,11 +1974,7 @@ class _PortfolioWebScreenState extends State<PortfolioWebScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.event_busy_rounded,
-                size: 74,
-                color: t.textMuted,
-              ),
+              Icon(Icons.event_busy_rounded, size: 74, color: t.textMuted),
               const SizedBox(height: 14),
               Text(
                 mensagem,

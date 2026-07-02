@@ -20,7 +20,9 @@ class NotificationBadgeService {
         if (partes.length >= 2) {
           final dia = int.tryParse(partes[0]);
           final mes = int.tryParse(partes[1]);
-          final ano = partes.length >= 3 ? int.tryParse(partes[2]) ?? 2000 : 2000;
+          final ano = partes.length >= 3
+              ? int.tryParse(partes[2]) ?? 2000
+              : 2000;
 
           if (dia != null && mes != null) {
             return DateTime(ano, mes, dia);
@@ -43,22 +45,22 @@ class NotificationBadgeService {
         .where('status_atividade', isEqualTo: 'ATIVO(A)')
         .snapshots()
         .map((snapshot) {
-      int count = 0;
+          int count = 0;
 
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
 
-        final birthDate = _parseDataNascimento(data['data_nascimento']);
+            final birthDate = _parseDataNascimento(data['data_nascimento']);
 
-        if (birthDate == null) continue;
+            if (birthDate == null) continue;
 
-        if (birthDate.day == hoje.day && birthDate.month == hoje.month) {
-          count++;
-        }
-      }
+            if (birthDate.day == hoje.day && birthDate.month == hoje.month) {
+              count++;
+            }
+          }
 
-      return count;
-    });
+          return count;
+        });
   }
 
   // 🔔 Stream de notificações não lidas (para o sininho)

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/site/services/site_config_service.dart';
 
@@ -61,7 +61,8 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -103,13 +104,13 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
             onPressed: _salvando ? null : _salvarTextos,
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
           ),
         ],
@@ -117,30 +118,30 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
       body: _salvando && widget.secoes.isEmpty
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : LayoutBuilder(
-        builder: (context, constraints) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 104),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 980),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHero(),
-                      const SizedBox(height: 14),
-                      if (widget.secoes.isEmpty)
-                        _buildEmptyState()
-                      else
-                        ...widget.secoes.map(_buildSecaoEditor),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+              builder: (context, constraints) {
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 104),
+                  children: [
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 980),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildHero(),
+                            const SizedBox(height: 14),
+                            if (widget.secoes.isEmpty)
+                              _buildEmptyState()
+                            else
+                              ...widget.secoes.map(_buildSecaoEditor),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
@@ -153,13 +154,13 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
             onPressed: _salvando ? null : _salvarTextos,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR TEXTOS'),
             style: ElevatedButton.styleFrom(
@@ -201,16 +202,13 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.edit_note_rounded,
-              color: onPrimary,
-              size: 34,
-            ),
+            child: Icon(Icons.edit_note_rounded, color: onPrimary, size: 34),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Textos do Site',
@@ -253,13 +251,7 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -274,10 +266,7 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final onPrimary = _onPrimary();
 
     return Container(
@@ -311,7 +300,9 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
     final titleController = _tituloControllers[id];
     final descriptionController = _descricaoControllers[id];
 
-    if (id.isEmpty || titleController == null || descriptionController == null) {
+    if (id.isEmpty ||
+        titleController == null ||
+        descriptionController == null) {
       return const SizedBox.shrink();
     }
 

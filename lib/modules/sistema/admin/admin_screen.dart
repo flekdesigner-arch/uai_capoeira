@@ -105,8 +105,7 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   bool _podeAbrirMigracoes(_AdminPermissionState access) {
-    return access.adminMaster ||
-        _temPermissao(access, const ['pode_executar_migracoes']);
+    return access.adminMaster;
   }
 
   void _mostrarAcessoNegado(BuildContext context, [_AdminCardData? item]) {
@@ -133,7 +132,12 @@ class _AdminScreenState extends State<AdminScreen> {
 
   void _abrirMigracoes(BuildContext context, _AdminPermissionState access) {
     if (!_podeAbrirMigracoes(access)) {
-      _mostrarAcessoNegado(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Você não tem permissão para executar migrações.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 

@@ -1,4 +1,4 @@
-﻿// widgets/botao_atualizar_melhorado.dart
+// widgets/botao_atualizar_melhorado.dart
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/services/atualizacao_direta_service.dart';
 import 'package:uai_capoeira/core/services/versao_service.dart';
@@ -7,13 +7,15 @@ class BotaoAtualizarMelhorado extends StatefulWidget {
   const BotaoAtualizarMelhorado({super.key});
 
   @override
-  State<BotaoAtualizarMelhorado> createState() => _BotaoAtualizarMelhoradoState();
+  State<BotaoAtualizarMelhorado> createState() =>
+      _BotaoAtualizarMelhoradoState();
 }
 
 class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
     with SingleTickerProviderStateMixin {
   final VersaoService _versaoService = VersaoService();
-  final AtualizacaoDiretaService _atualizacaoService = AtualizacaoDiretaService();
+  final AtualizacaoDiretaService _atualizacaoService =
+      AtualizacaoDiretaService();
 
   bool _verificando = false;
   Map<String, dynamic>? _infoAtualizacao;
@@ -51,10 +53,11 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
       final versaoLocal = await _versaoService.getVersaoLocal();
       final info = await _atualizacaoService.verificarAtualizacao(versaoLocal);
 
-      if (mounted) setState(() {
-        _infoAtualizacao = info;
-        _verificando = false;
-      });
+      if (mounted)
+        setState(() {
+          _infoAtualizacao = info;
+          _verificando = false;
+        });
     } catch (e) {
       if (mounted) setState(() => _verificando = false);
     }
@@ -73,11 +76,16 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(podeAtualizar ? Icons.system_update : Icons.check_circle,
-                color: podeAtualizar ? Colors.orange : Colors.green, size: 22),
+            Icon(
+              podeAtualizar ? Icons.system_update : Icons.check_circle,
+              color: podeAtualizar ? Colors.orange : Colors.green,
+              size: 22,
+            ),
             const SizedBox(width: 8),
-            Text(podeAtualizar ? 'Atualização' : 'Atualizado',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              podeAtualizar ? 'Atualização' : 'Atualizado',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         content: Column(
@@ -86,7 +94,8 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
           children: [
             _buildInfoLinha('Atual', versaoAtual),
             const SizedBox(height: 8),
-            if (podeAtualizar) _buildInfoLinha('Nova', ultimaVersao, destaque: true),
+            if (podeAtualizar)
+              _buildInfoLinha('Nova', ultimaVersao, destaque: true),
           ],
         ),
         actions: [
@@ -98,12 +107,18 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                _atualizacaoService.baixarEInstalarComFeedback(context, ultimaVersao);
+                _atualizacaoService.baixarEInstalarComFeedback(
+                  context,
+                  ultimaVersao,
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade900,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 minimumSize: const Size(80, 32),
               ),
               child: const Text('ATUALIZAR', style: TextStyle(fontSize: 12)),
@@ -131,11 +146,14 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
         ),
         const SizedBox(width: 8),
         Text('$rotulo: ', style: const TextStyle(fontSize: 12)),
-        Text(valor,
-            style: TextStyle(fontSize: 12,
-              fontWeight: destaque ? FontWeight.bold : FontWeight.normal,
-              color: destaque ? Colors.orange.shade800 : null,
-            )),
+        Text(
+          valor,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: destaque ? FontWeight.bold : FontWeight.normal,
+            color: destaque ? Colors.orange.shade800 : null,
+          ),
+        ),
       ],
     );
   }
@@ -153,7 +171,11 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            ),
             SizedBox(width: 6),
             Text('Verificando...', style: TextStyle(fontSize: 10)),
           ],
@@ -177,7 +199,9 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: podeAtualizar ? () => _mostrarDialogAtualizacao(context) : null,
+          onTap: podeAtualizar
+              ? () => _mostrarDialogAtualizacao(context)
+              : null,
           borderRadius: BorderRadius.circular(30),
           child: AnimatedBuilder(
             animation: _pulseController,
@@ -185,13 +209,18 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
               return Transform.scale(
                 scale: podeAtualizar ? _pulseAnimation.value : 1.0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   constraints: const BoxConstraints(minHeight: 32),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        podeAtualizar ? Icons.system_update : Icons.check_circle,
+                        podeAtualizar
+                            ? Icons.system_update
+                            : Icons.check_circle,
                         color: Colors.white,
                         size: 14,
                       ),
@@ -210,7 +239,10 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
                       if (podeAtualizar) ...[
                         const SizedBox(width: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(30),

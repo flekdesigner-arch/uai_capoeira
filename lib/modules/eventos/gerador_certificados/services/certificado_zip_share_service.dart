@@ -81,29 +81,20 @@ class CertificadoZipShareService {
   Future<void> _revelarArquivoNoDesktop(File file) async {
     try {
       if (defaultTargetPlatform == TargetPlatform.windows) {
-        await Process.start(
-          'explorer.exe',
-          ['/select,', file.path],
-          runInShell: false,
-        );
+        await Process.start('explorer.exe', [
+          '/select,',
+          file.path,
+        ], runInShell: false);
         return;
       }
 
       if (defaultTargetPlatform == TargetPlatform.macOS) {
-        await Process.start(
-          'open',
-          ['-R', file.path],
-          runInShell: false,
-        );
+        await Process.start('open', ['-R', file.path], runInShell: false);
         return;
       }
 
       if (defaultTargetPlatform == TargetPlatform.linux) {
-        await Process.start(
-          'xdg-open',
-          [file.parent.path],
-          runInShell: false,
-        );
+        await Process.start('xdg-open', [file.parent.path], runInShell: false);
       }
     } catch (_) {
       // Se o sistema não conseguir abrir o explorador, o arquivo já foi salvo.
@@ -136,18 +127,11 @@ class CertificadoZipShareService {
     }
 
     if (_isDesktop) {
-      await _salvarComDialogDesktop(
-        bytes: bytes,
-        nomeArquivo: nome,
-      );
+      await _salvarComDialogDesktop(bytes: bytes, nomeArquivo: nome);
       return;
     }
 
-    await compartilharZip(
-      bytes: bytes,
-      nomeArquivo: nome,
-      texto: texto,
-    );
+    await compartilharZip(bytes: bytes, nomeArquivo: nome, texto: texto);
   }
 
   Future<void> compartilharZip({
@@ -164,10 +148,7 @@ class CertificadoZipShareService {
     // No desktop, share_plus pode não abrir nada dependendo do Windows.
     // Para não deixar o usuário sem retorno visual, abrimos o mesmo fluxo de salvar.
     if (_isDesktop) {
-      await _salvarComDialogDesktop(
-        bytes: bytes,
-        nomeArquivo: nome,
-      );
+      await _salvarComDialogDesktop(bytes: bytes, nomeArquivo: nome);
       return;
     }
 
@@ -181,19 +162,10 @@ class CertificadoZipShareService {
       return;
     }
 
-    final file = await _gravarTemporario(
-      bytes: bytes,
-      nomeArquivo: nome,
-    );
+    final file = await _gravarTemporario(bytes: bytes, nomeArquivo: nome);
 
     await Share.shareXFiles(
-      [
-        XFile(
-          file.path,
-          name: nome,
-          mimeType: 'application/zip',
-        ),
-      ],
+      [XFile(file.path, name: nome, mimeType: 'application/zip')],
       text: texto ?? 'Pacote de certificados para gráfica.',
       subject: nome,
     );
@@ -224,10 +196,7 @@ class CertificadoZipShareService {
     }
 
     if (_isDesktop) {
-      await _salvarComDialogDesktop(
-        bytes: bytes,
-        nomeArquivo: nome,
-      );
+      await _salvarComDialogDesktop(bytes: bytes, nomeArquivo: nome);
       return;
     }
 
@@ -239,11 +208,7 @@ class CertificadoZipShareService {
         mimeType: MimeType.zip,
       );
     } catch (_) {
-      await compartilharZip(
-        bytes: bytes,
-        nomeArquivo: nome,
-        texto: texto,
-      );
+      await compartilharZip(bytes: bytes, nomeArquivo: nome, texto: texto);
     }
   }
 }

@@ -46,7 +46,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -107,8 +108,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   String? _certificadoUrl() {
-    return _certificadoServidor ??
-        _extrairCertificadoUrl(widget.participacao);
+    return _certificadoServidor ?? _extrairCertificadoUrl(widget.participacao);
   }
 
   String _tipoLinkCertificado(String link) {
@@ -125,6 +125,42 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
 
     return 'Link externo';
+  }
+
+  bool _isPdfDireto(String link) {
+    final lower = Uri.decodeFull(link).toLowerCase();
+    return lower.contains('.pdf') ||
+        lower.contains('application%2fpdf') ||
+        lower.contains('application/pdf');
+  }
+
+  String _acaoAbrirCertificadoLabel(String link) {
+    final origem = _tipoLinkCertificado(link);
+    if (origem == 'Google Drive') return 'ABRIR NO DRIVE';
+    if (_isPdfDireto(link) || origem == 'Firebase Storage') {
+      return 'ABRIR / BAIXAR';
+    }
+    return 'ABRIR CERTIFICADO';
+  }
+
+  String _previewTituloCertificado(String link) {
+    final origem = _tipoLinkCertificado(link);
+    if (origem == 'Google Drive') return 'Prévia disponível no Google Drive';
+    if (_isPdfDireto(link) || origem == 'Firebase Storage') {
+      return 'Certificado PDF';
+    }
+    return 'Certificado por link externo';
+  }
+
+  String _previewSubtituloCertificado(String link) {
+    final origem = _tipoLinkCertificado(link);
+    if (origem == 'Google Drive') {
+      return 'Toque em abrir para visualizar ou baixar no Drive.';
+    }
+    if (_isPdfDireto(link) || origem == 'Firebase Storage') {
+      return 'Toque em abrir para visualizar ou baixar o arquivo.';
+    }
+    return 'Toque em abrir para visualizar o certificado.';
   }
 
   String _normalizarLinkVisualizacao(String link) {
@@ -186,7 +222,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           final link = _extrairCertificadoUrl(subDoc.data());
           if (link != null) {
             _certificadoServidor = link;
-            debugPrint('📄 Certificado encontrado em eventos/$eventoId/participacoes: $link');
+            debugPrint(
+              '📄 Certificado encontrado em eventos/$eventoId/participacoes: $link',
+            );
             return;
           }
         }
@@ -268,10 +306,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   String _tipoEvento() {
     return _pickFirstString(widget.participacao, const [
-      'tipo_evento',
-      'tipoEvento',
-      'tipo',
-    ]) ??
+          'tipo_evento',
+          'tipoEvento',
+          'tipo',
+        ]) ??
         _pickFirstString(_eventoDetalhes, const [
           'tipo',
           'tipo_evento',
@@ -309,8 +347,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   Future<void> _carregarSvg() async {
     try {
-      final content =
-      await DefaultAssetBundle.of(context).loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
       if (mounted) {
         setState(() => _svgContent = content);
       }
@@ -326,11 +365,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       final nomeEvento = _getEventoNome();
       final nomeGraduacao =
           _stringLimpa(widget.participacao['graduacao']) ??
-              _stringLimpa(widget.participacao['graduacao_nova']) ??
-              _stringLimpa(widget.participacao['graduacao_atual']);
+          _stringLimpa(widget.participacao['graduacao_nova']) ??
+          _stringLimpa(widget.participacao['graduacao_atual']);
 
       if (eventoId != null) {
-        final eventoDoc = await _firestore.collection('eventos').doc(eventoId).get();
+        final eventoDoc = await _firestore
+            .collection('eventos')
+            .doc(eventoId)
+            .get();
 
         if (eventoDoc.exists) {
           _eventoDocId = eventoDoc.id;
@@ -354,7 +396,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
 
       if (alunoId != null) {
-        final alunoDoc = await _firestore.collection('alunos').doc(alunoId).get();
+        final alunoDoc = await _firestore
+            .collection('alunos')
+            .doc(alunoId)
+            .get();
         if (alunoDoc.exists) {
           _alunoDetalhes = alunoDoc.data();
         }
@@ -408,7 +453,8 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         }
       }
 
-      _coresGraduacao = coresEncontradas ?? _getCoresPadraoPorNome(nomeGraduacao);
+      _coresGraduacao =
+          coresEncontradas ?? _getCoresPadraoPorNome(nomeGraduacao);
       _cacheCoresPorNome[nomeGraduacao] = _coresGraduacao!;
       await _colorirSvg();
     } catch (e) {
@@ -559,14 +605,15 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
 
       void changeColor(String id, Color color) {
-        final hex = '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toLowerCase()}';
+        final hex =
+            '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toLowerCase()}';
 
         final element = document.rootElement.descendants
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
 
         if (element.name.local.isEmpty) return;
 
@@ -637,7 +684,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       );
     } catch (e) {
       debugPrint('Erro ao compartilhar certificado: $e');
-      _showSnack('Não foi possível compartilhar o certificado', context.uai.error);
+      _showSnack(
+        'Não foi possível compartilhar o certificado',
+        context.uai.error,
+      );
     }
   }
 
@@ -680,10 +730,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   String _statusParticipacao() {
     return _pickFirstString(widget.participacao, const [
-      'status',
-      'status_participacao',
-      'statusParticipacao',
-    ]) ??
+          'status',
+          'status_participacao',
+          'statusParticipacao',
+        ]) ??
         'Registrada';
   }
 
@@ -707,10 +757,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
   String _alunoNome() {
     return _pickFirstString(_alunoDetalhes, const [
-      'nome',
-      'nome_completo',
-      'name',
-    ]) ??
+          'nome',
+          'nome_completo',
+          'name',
+        ]) ??
         _pickFirstString(widget.participacao, const [
           'aluno_nome',
           'nome_aluno',
@@ -732,10 +782,13 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         backgroundColor:
-        Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
-        foregroundColor: Theme.of(context).appBarTheme.foregroundColor ??
+            Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+            Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
-              Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary,
+              Theme.of(context).appBarTheme.backgroundColor ??
+                  context.uai.primary,
             ),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -743,37 +796,37 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       body: _isLoading
           ? _buildLoading()
           : RefreshIndicator(
-        color: context.uai.primary,
-        onRefresh: () async {
-          setState(() => _isLoading = true);
-          await _carregarDados();
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 26),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildHeroEvento(bannerUrl),
-                  const SizedBox(height: 14),
-                  _buildParticipacaoCard(),
-                  const SizedBox(height: 14),
-                  _buildAlunoCard(),
-                  if (certificado != null) ...[
-                    const SizedBox(height: 14),
-                    _buildCertificadoCard(certificado),
-                  ],
-                  const SizedBox(height: 18),
-                  _buildActions(certificado),
-                ],
+              color: context.uai.primary,
+              onRefresh: () async {
+                setState(() => _isLoading = true);
+                await _carregarDados();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 26),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeroEvento(bannerUrl),
+                        const SizedBox(height: 14),
+                        _buildParticipacaoCard(),
+                        const SizedBox(height: 14),
+                        _buildAlunoCard(),
+                        if (certificado != null) ...[
+                          const SizedBox(height: 14),
+                          _buildCertificadoCard(certificado),
+                        ],
+                        const SizedBox(height: 18),
+                        _buildActions(),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -959,10 +1012,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            context.uai.cardAlt,
-            context.uai.card,
-          ],
+          colors: [context.uai.cardAlt, context.uai.card],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1075,15 +1125,15 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             ),
             child: _svgColorido != null
                 ? SvgPicture.string(
-              _svgColorido!,
-              fit: BoxFit.contain,
-              placeholderBuilder: (context) => const SizedBox(),
-            )
+                    _svgColorido!,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (context) => const SizedBox(),
+                  )
                 : Icon(
-              Icons.emoji_events_rounded,
-              color: context.uai.textMuted,
-              size: 34,
-            ),
+                    Icons.emoji_events_rounded,
+                    color: context.uai.textMuted,
+                    size: 34,
+                  ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1149,30 +1199,31 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             clipBehavior: Clip.antiAlias,
             child: fotoUrl != null
                 ? CachedNetworkImage(
-              imageUrl: fotoUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: context.uai.cardAlt),
-              errorWidget: (context, url, error) => Center(
-                child: Text(
-                  inicial,
-                  style: TextStyle(
-                    color: context.uai.info,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            )
+                    imageUrl: fotoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        Container(color: context.uai.cardAlt),
+                    errorWidget: (context, url, error) => Center(
+                      child: Text(
+                        inicial,
+                        style: TextStyle(
+                          color: context.uai.info,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  )
                 : Center(
-              child: Text(
-                inicial,
-                style: TextStyle(
-                  color: context.uai.info,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
+                    child: Text(
+                      inicial,
+                      style: TextStyle(
+                        color: context.uai.info,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1196,10 +1247,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _pickFirstString(_alunoDetalhes, const [
-                      'turma',
-                      'turma_nome',
-                      'graduacao_atual',
-                    ]) ??
+                          'turma',
+                          'turma_nome',
+                          'graduacao_atual',
+                        ]) ??
                         'Cadastro localizado',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1221,14 +1272,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   Widget _buildCertificadoCard(String certificado) {
     final origem = _tipoLinkCertificado(certificado);
     final accent = _ensureVisible(context.uai.success, context.uai.card);
+    final abrirLabel = _acaoAbrirCertificadoLabel(certificado);
+    final previewTitle = _previewTituloCertificado(certificado);
+    final previewSubtitle = _previewSubtituloCertificado(certificado);
 
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          accent.withOpacity(0.08),
-          context.uai.card,
-        ),
+        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.card),
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
         border: Border.all(color: accent.withOpacity(0.22)),
         boxShadow: context.uai.softShadow,
@@ -1238,7 +1289,12 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         children: [
           Row(
             children: [
-              _iconBox(Icons.picture_as_pdf_rounded, accent),
+              _iconBox(
+                origem == 'Google Drive'
+                    ? Icons.add_to_drive_rounded
+                    : Icons.picture_as_pdf_rounded,
+                accent,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1279,6 +1335,97 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             ],
           ),
           const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(
+                accent.withOpacity(0.09),
+                context.uai.cardAlt,
+              ),
+              borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+              border: Border.all(color: accent.withOpacity(0.18)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 62,
+                  height: 78,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.red.withOpacity(0.18)),
+                  ),
+                  child: Icon(
+                    origem == 'Google Drive'
+                        ? Icons.add_to_drive_rounded
+                        : Icons.picture_as_pdf_rounded,
+                    color: origem == 'Google Drive' ? accent : Colors.red,
+                    size: 38,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        previewTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _onCard(),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_alunoNome()} • ${_nomeEvento()}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _onCardMuted(),
+                          fontSize: 12,
+                          height: 1.2,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _softChip(
+                            Icons.verified_rounded,
+                            'PDF disponível',
+                            accent,
+                          ),
+                          _softChip(
+                            Icons.source_rounded,
+                            origem,
+                            context.uai.info,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        previewSubtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _onCardMuted(),
+                          fontSize: 11,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
               final isNarrow = constraints.maxWidth < 430;
@@ -1286,14 +1433,16 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
               final abrir = ElevatedButton.icon(
                 onPressed: () => _abrirPDF(certificado),
                 icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('ABRIR / BAIXAR'),
+                label: Text(abrirLabel),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: accent,
                   foregroundColor: _readableOn(accent),
                   minimumSize: const Size(double.infinity, 46),
                   textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.buttonRadius,
+                    ),
                   ),
                 ),
               );
@@ -1308,18 +1457,16 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   minimumSize: const Size(double.infinity, 46),
                   textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
+                    borderRadius: BorderRadius.circular(
+                      context.uai.buttonRadius,
+                    ),
                   ),
                 ),
               );
 
               if (isNarrow) {
                 return Column(
-                  children: [
-                    abrir,
-                    const SizedBox(height: 10),
-                    compartilhar,
-                  ],
+                  children: [abrir, const SizedBox(height: 10), compartilhar],
                 );
               }
 
@@ -1337,88 +1484,20 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     );
   }
 
-  Widget _buildActions(String? certificado) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (certificado != null) ...[
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 430;
-
-              final abrir = ElevatedButton.icon(
-                onPressed: () => _abrirPDF(certificado),
-                icon: const Icon(Icons.picture_as_pdf_rounded),
-                label: const Text('ABRIR / BAIXAR'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                  Theme.of(context).appBarTheme.backgroundColor ??
-                      context.uai.primary,
-                  foregroundColor:
-                  Theme.of(context).appBarTheme.foregroundColor ??
-                      _readableOn(
-                        Theme.of(context).appBarTheme.backgroundColor ??
-                            context.uai.primary,
-                      ),
-                  minimumSize: const Size(double.infinity, 50),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-                  ),
-                ),
-              );
-
-              final compartilhar = OutlinedButton.icon(
-                onPressed: () => _compartilharCertificado(certificado),
-                icon: const Icon(Icons.share_rounded),
-                label: const Text('COMPARTILHAR'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  side: BorderSide(color: context.uai.border),
-                  foregroundColor: context.uai.textPrimary,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-                  ),
-                ),
-              );
-
-              if (isNarrow) {
-                return Column(
-                  children: [
-                    abrir,
-                    const SizedBox(height: 10),
-                    compartilhar,
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(child: abrir),
-                  const SizedBox(width: 12),
-                  Expanded(child: compartilhar),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-        ],
-        OutlinedButton.icon(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: const Text('VOLTAR'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50),
-            side: BorderSide(color: context.uai.border),
-            foregroundColor: context.uai.textPrimary,
-            textStyle: const TextStyle(fontWeight: FontWeight.w900),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-            ),
-          ),
+  Widget _buildActions() {
+    return OutlinedButton.icon(
+      onPressed: () => Navigator.pop(context),
+      icon: const Icon(Icons.arrow_back_rounded),
+      label: const Text('VOLTAR'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 50),
+        side: BorderSide(color: context.uai.border),
+        foregroundColor: context.uai.textPrimary,
+        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.buttonRadius),
         ),
-      ],
+      ),
     );
   }
 

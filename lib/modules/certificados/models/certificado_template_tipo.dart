@@ -4,11 +4,7 @@ import 'package:flutter/material.dart';
 ///
 /// A escolha principal vem do campo `certificado_ou_diploma` da coleção
 /// `graduacoes`.
-enum CertificadoTemplateTipo {
-  certificadoSemCpf,
-  certificadoComCpf,
-  diploma,
-}
+enum CertificadoTemplateTipo { certificadoSemCpf, certificadoComCpf, diploma }
 
 extension CertificadoTemplateTipoX on CertificadoTemplateTipo {
   String get codigo {

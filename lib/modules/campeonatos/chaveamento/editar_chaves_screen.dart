@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_model.dart'; // 👈 IMPORT CORRETO!
@@ -112,13 +112,13 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
           IconButton(
             icon: _isSaving
                 ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.save),
             onPressed: _isSaving ? null : _salvarChaves,
             tooltip: 'Salvar',
@@ -128,210 +128,223 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
       body: _isSaving
           ? const Center(child: CircularProgressIndicator())
           : Column(
-        children: [
-          // Instruções
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.amber.shade50,
-            child: Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.amber.shade900),
-                const SizedBox(width: 12),
+                // Instruções
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.amber.shade50,
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber.shade900),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '🖐️ Arraste um card e solte sobre outro para trocar confrontos inteiros\n'
+                          '🔄 Use o botão swap para trocar a ordem dos competidores no mesmo confronto',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Lista com Drag & Drop
                 Expanded(
-                  child: Text(
-                    '🖐️ Arraste um card e solte sobre outro para trocar confrontos inteiros\n'
-                        '🔄 Use o botão swap para trocar a ordem dos competidores no mesmo confronto',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.amber.shade900,
-                    ),
+                  child: ReorderableListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _chaves.length,
+                    onReorder: (oldIndex, newIndex) {
+                      _trocarCompetidores(oldIndex, newIndex);
+                    },
+                    itemBuilder: (context, index) {
+                      final chave = _chaves[index];
+                      final comp1Id = chave['competidor1'];
+                      final comp2Id = chave['competidor2'];
+
+                      final nome1 = _getNomeCompetidor(comp1Id);
+                      final nome2 = comp2Id != null
+                          ? _getNomeCompetidor(comp2Id)
+                          : null;
+                      final apelido1 = _getApelidoCompetidor(comp1Id);
+                      final apelido2 = comp2Id != null
+                          ? _getApelidoCompetidor(comp2Id)
+                          : null;
+
+                      final isBye = comp2Id == null;
+
+                      return Card(
+                        key: ValueKey('chave_$index'),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isBye
+                                  ? Colors.blue.shade200
+                                  : Colors.amber.shade200,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              // Cabeçalho do confronto
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isBye
+                                      ? Colors.blue.shade50
+                                      : Colors.amber.shade50,
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(12),
+                                    topRight: Radius.circular(12),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Confronto ${index + 1}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: isBye
+                                            ? Colors.blue.shade900
+                                            : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    if (!isBye)
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.swap_horiz,
+                                          size: 16,
+                                          color: Colors.amber,
+                                        ),
+                                        onPressed: () =>
+                                            _trocarOrdemInterna(index),
+                                        tooltip:
+                                            'Trocar ordem dos competidores',
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                  ],
+                                ),
+                              ),
+
+                              // Conteúdo do confronto com DRAG HANDLE
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  children: [
+                                    // Competidor 1 (AMARELO) - ARRASTÁVEL
+                                    _buildDraggableCompetidor(
+                                      index: index,
+                                      posicao: 'comp1',
+                                      numero: '1',
+                                      nome: nome1,
+                                      apelido: apelido1,
+                                      cor: Colors.amber,
+                                      chave: chave,
+                                    ),
+
+                                    if (!isBye) ...[
+                                      const SizedBox(height: 8),
+
+                                      // VS
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Container(
+                                              height: 1,
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                          Container(
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                            ),
+                                            child: const Text(
+                                              'VS',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.amber,
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Container(
+                                              height: 1,
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 8),
+
+                                      // Competidor 2 (AZUL) - ARRASTÁVEL
+                                      _buildDraggableCompetidor(
+                                        index: index,
+                                        posicao: 'comp2',
+                                        numero: '2',
+                                        nome: nome2!,
+                                        apelido: apelido2!,
+                                        cor: Colors.blue,
+                                        chave: chave,
+                                      ),
+                                    ] else ...[
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          children: [
+                                            Icon(
+                                              Icons.arrow_forward,
+                                              size: 14,
+                                              color: Colors.blue,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'BYE - Avança automaticamente',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
             ),
-          ),
-
-          // Lista com Drag & Drop
-          Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _chaves.length,
-              onReorder: (oldIndex, newIndex) {
-                _trocarCompetidores(oldIndex, newIndex);
-              },
-              itemBuilder: (context, index) {
-                final chave = _chaves[index];
-                final comp1Id = chave['competidor1'];
-                final comp2Id = chave['competidor2'];
-
-                final nome1 = _getNomeCompetidor(comp1Id);
-                final nome2 = comp2Id != null ? _getNomeCompetidor(comp2Id) : null;
-                final apelido1 = _getApelidoCompetidor(comp1Id);
-                final apelido2 = comp2Id != null ? _getApelidoCompetidor(comp2Id) : null;
-
-                final isBye = comp2Id == null;
-
-                return Card(
-                  key: ValueKey('chave_$index'),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isBye ? Colors.blue.shade200 : Colors.amber.shade200,
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Cabeçalho do confronto
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isBye
-                                ? Colors.blue.shade50
-                                : Colors.amber.shade50,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(12),
-                              topRight: Radius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Confronto ${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: isBye
-                                      ? Colors.blue.shade900
-                                      : Colors.amber.shade900,
-                                ),
-                              ),
-                              if (!isBye)
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.swap_horiz,
-                                    size: 16,
-                                    color: Colors.amber,
-                                  ),
-                                  onPressed: () => _trocarOrdemInterna(index),
-                                  tooltip: 'Trocar ordem dos competidores',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                            ],
-                          ),
-                        ),
-
-                        // Conteúdo do confronto com DRAG HANDLE
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              // Competidor 1 (AMARELO) - ARRASTÁVEL
-                              _buildDraggableCompetidor(
-                                index: index,
-                                posicao: 'comp1',
-                                numero: '1',
-                                nome: nome1,
-                                apelido: apelido1,
-                                cor: Colors.amber,
-                                chave: chave,
-                              ),
-
-                              if (!isBye) ...[
-                                const SizedBox(height: 8),
-
-                                // VS
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Container(
-                                        height: 1,
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
-                                    Container(
-                                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                                      child: const Text(
-                                        'VS',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.amber,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Container(
-                                        height: 1,
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                // Competidor 2 (AZUL) - ARRASTÁVEL
-                                _buildDraggableCompetidor(
-                                  index: index,
-                                  posicao: 'comp2',
-                                  numero: '2',
-                                  nome: nome2!,
-                                  apelido: apelido2!,
-                                  cor: Colors.blue,
-                                  chave: chave,
-                                ),
-                              ] else ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Row(
-                                    children: [
-                                      Icon(
-                                        Icons.arrow_forward,
-                                        size: 14,
-                                        color: Colors.blue,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'BYE - Avança automaticamente',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.blue,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -345,7 +358,8 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
     required Color cor,
     required Map<String, dynamic> chave,
   }) {
-    final competidorId = chave[posicao == 'comp1' ? 'competidor1' : 'competidor2'];
+    final competidorId =
+        chave[posicao == 'comp1' ? 'competidor1' : 'competidor2'];
     final comp = _getCompetidor(competidorId);
 
     return Draggable<Map<String, dynamic>>(
@@ -386,39 +400,39 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
                 ),
                 child: comp?.fotoUrl != null
                     ? ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: CachedNetworkImage(
-                    imageUrl: comp!.fotoUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Center(
-                      child: SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Center(
-                      child: Text(
-                        numero,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: cor,
+                        borderRadius: BorderRadius.circular(15),
+                        child: CachedNetworkImage(
+                          imageUrl: comp!.fotoUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Center(
+                            child: SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Center(
+                            child: Text(
+                              numero,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: cor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          numero,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: cor,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                )
-                    : Center(
-                  child: Text(
-                    numero,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: cor,
-                    ),
-                  ),
-                ),
               ),
               const SizedBox(width: 8),
               Column(
@@ -435,10 +449,7 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
                   if (apelido.isNotEmpty)
                     Text(
                       apelido,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                 ],
               ),
@@ -474,11 +485,23 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
             final sourceChave = _chaves[sourceIndex];
             final targetChave = _chaves[targetIndex];
 
-            final sourceId = sourceChave[sourcePosicao == 'comp1' ? 'competidor1' : 'competidor2'];
-            final targetId = targetChave[targetPosicao == 'comp1' ? 'competidor1' : 'competidor2'];
+            final sourceId =
+                sourceChave[sourcePosicao == 'comp1'
+                    ? 'competidor1'
+                    : 'competidor2'];
+            final targetId =
+                targetChave[targetPosicao == 'comp1'
+                    ? 'competidor1'
+                    : 'competidor2'];
 
-            sourceChave[sourcePosicao == 'comp1' ? 'competidor1' : 'competidor2'] = targetId;
-            targetChave[targetPosicao == 'comp1' ? 'competidor1' : 'competidor2'] = sourceId;
+            sourceChave[sourcePosicao == 'comp1'
+                    ? 'competidor1'
+                    : 'competidor2'] =
+                targetId;
+            targetChave[targetPosicao == 'comp1'
+                    ? 'competidor1'
+                    : 'competidor2'] =
+                sourceId;
           });
         },
         builder: (context, candidateData, rejectedData) {
@@ -515,39 +538,39 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
           ),
           child: fotoUrl != null
               ? ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: CachedNetworkImage(
-              imageUrl: fotoUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Center(
-                child: SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1),
-                ),
-              ),
-              errorWidget: (context, url, error) => Center(
-                child: Text(
-                  numero,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: cor,
+                  borderRadius: BorderRadius.circular(15),
+                  child: CachedNetworkImage(
+                    imageUrl: fotoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Center(
+                      child: SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Center(
+                      child: Text(
+                        numero,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: cor,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    numero,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: cor,
+                    ),
                   ),
                 ),
-              ),
-            ),
-          )
-              : Center(
-            child: Text(
-              numero,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: cor,
-              ),
-            ),
-          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -564,19 +587,12 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
               if (apelido.isNotEmpty)
                 Text(
                   apelido,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
             ],
           ),
         ),
-        Icon(
-          Icons.drag_indicator,
-          color: Colors.grey.shade400,
-          size: 20,
-        ),
+        Icon(Icons.drag_indicator, color: Colors.grey.shade400, size: 20),
       ],
     );
   }

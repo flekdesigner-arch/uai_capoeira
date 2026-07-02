@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/site/services/logo_service.dart';
@@ -96,7 +96,8 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -174,17 +175,20 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
 
   Future<void> _carregarBiografia() async {
     try {
-      final doc = await _firestore.collection('site_conteudo').doc('biografia').get();
+      final doc = await _firestore
+          .collection('site_conteudo')
+          .doc('biografia')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
         if (data.containsKey('secoes') && data['secoes'] is List) {
           _secoes = (data['secoes'] as List)
               .map((item) {
-            if (item is Map<String, dynamic>) return item;
-            if (item is Map) return Map<String, dynamic>.from(item);
-            return <String, dynamic>{};
-          })
+                if (item is Map<String, dynamic>) return item;
+                if (item is Map) return Map<String, dynamic>.from(item);
+                return <String, dynamic>{};
+              })
               .where((item) => item.isNotEmpty)
               .toList();
         } else {
@@ -442,13 +446,13 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           IconButton(
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             onPressed: _salvando ? null : _salvar,
             tooltip: 'Salvar',
@@ -523,13 +527,13 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
             onPressed: _salvando ? null : _salvar,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _readableOn(t.primary),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _readableOn(t.primary),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR BIOGRAFIA'),
             style: ElevatedButton.styleFrom(
@@ -573,8 +577,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'UAI CAPOEIRA',
@@ -630,13 +635,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                logo,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [logo, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -651,10 +650,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
     );
   }
 
-  Widget _whiteChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _whiteChip({required IconData icon, required String label}) {
     final onPrimary = _readableOn(context.uai.primary);
 
     return Container(
@@ -704,7 +700,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
-      decoration: _cardDecoration(borderColor: accent.withOpacity(expanded ? 0.28 : 0.16)),
+      decoration: _cardDecoration(
+        borderColor: accent.withOpacity(expanded ? 0.28 : 0.16),
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
         child: Column(
@@ -715,18 +713,26 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
               child: InkWell(
                 onTap: () => _alternarSecao(secao, index),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 11,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Color.alphaBlend(accent.withOpacity(expanded ? 0.14 : 0.09), t.card),
+                        Color.alphaBlend(
+                          accent.withOpacity(expanded ? 0.14 : 0.09),
+                          t.card,
+                        ),
                         t.card,
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     border: expanded
-                        ? Border(bottom: BorderSide(color: accent.withOpacity(0.14)))
+                        ? Border(
+                            bottom: BorderSide(color: accent.withOpacity(0.14)),
+                          )
                         : null,
                   ),
                   child: Row(
@@ -774,7 +780,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                             Text(
                               expanded
                                   ? 'Editando conteúdo da seção'
-                                  : (preview.isEmpty ? 'Toque para abrir e editar' : preview),
+                                  : (preview.isEmpty
+                                        ? 'Toque para abrir e editar'
+                                        : preview),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -789,7 +797,10 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: accent.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(99),
@@ -799,7 +810,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                              expanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
                               color: accent,
                               size: 16,
                             ),
@@ -972,7 +985,7 @@ class _DialogSecaoState extends State<_DialogSecao> {
     final iconName = widget.secao?['icone']?.toString();
 
     _iconeSelecionado = widget.iconesDisponiveis.indexWhere(
-          (icone) => icone['iconName'] == iconName,
+      (icone) => icone['iconName'] == iconName,
     );
 
     if (_iconeSelecionado == -1) _iconeSelecionado = 0;
@@ -984,7 +997,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
     } else if (corRaw is Color) {
       _corSelecionada = corRaw;
     } else {
-      _corSelecionada = widget.iconesDisponiveis[_iconeSelecionado]['cor'] as Color;
+      _corSelecionada =
+          widget.iconesDisponiveis[_iconeSelecionado]['cor'] as Color;
     }
   }
 
@@ -1001,7 +1015,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -1130,9 +1145,7 @@ class _DialogSecaoState extends State<_DialogSecao> {
                       width: 54,
                       height: 54,
                       decoration: BoxDecoration(
-                        color: selected
-                            ? visible.withOpacity(0.14)
-                            : t.cardAlt,
+                        color: selected ? visible.withOpacity(0.14) : t.cardAlt,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: selected ? visible : t.border,
@@ -1165,7 +1178,8 @@ class _DialogSecaoState extends State<_DialogSecao> {
 
                         if (titulo.isEmpty) return;
 
-                        final icone = widget.iconesDisponiveis[_iconeSelecionado];
+                        final icone =
+                            widget.iconesDisponiveis[_iconeSelecionado];
 
                         widget.onSalvar(
                           titulo,

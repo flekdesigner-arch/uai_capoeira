@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 
 class GastosEventoScreen extends StatefulWidget {
@@ -26,7 +27,8 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -76,7 +78,6 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
       ),
     );
   }
-
 
   final TextEditingController _descricaoController = TextEditingController();
   final TextEditingController _valorController = TextEditingController();
@@ -128,7 +129,9 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
     return double.tryParse(normalizado) ?? 0;
   }
 
-  void _mostrarSemPermissao([String mensagem = 'Você não tem permissão para gerenciar gastos.']) {
+  void _mostrarSemPermissao([
+    String mensagem = 'Você não tem permissão para gerenciar gastos.',
+  ]) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensagem),
@@ -139,7 +142,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
   }
 
   Future<void> _adicionarGasto() async {
-    if (!_podeGerenciarGastos) {
+    if (!await _permissaoService.temPermissao('pode_gerenciar_gastos_evento')) {
       _mostrarSemPermissao();
       return;
     }
@@ -202,7 +205,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
   }
 
   Future<void> _excluirGasto(String gastoId, String descricao) async {
-    if (!_podeGerenciarGastos) {
+    if (!await _permissaoService.temPermissao('pode_gerenciar_gastos_evento')) {
       _mostrarSemPermissao('Você não tem permissão para excluir gastos.');
       return;
     }
@@ -279,6 +282,21 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_carregandoPermissoes) {
+      return PermissionAccessGuard.loadingScaffold(
+        context,
+        title: 'Gastos do evento',
+      );
+    }
+
+    if (!_podeGerenciarGastos) {
+      return PermissionAccessGuard.deniedScaffold(
+        context,
+        title: 'Gastos do evento',
+        message: 'Você não tem permissão para gerenciar gastos do evento.',
+      );
+    }
+
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -311,7 +329,9 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
 
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(
-                    child: CircularProgressIndicator(color: context.uai.primary),
+                    child: CircularProgressIndicator(
+                      color: context.uai.primary,
+                    ),
                   );
                 }
 
@@ -330,23 +350,32 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
                       child: docs.isEmpty
                           ? _buildEmptyState()
                           : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          final gasto = doc.data();
-                          final valor = (gasto['valor'] as num?)?.toDouble() ?? 0;
-                          final descricao = gasto['descricao']?.toString() ?? '';
-                          final categoria = gasto['categoria']?.toString() ?? 'Sem categoria';
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                10,
+                                14,
+                                24,
+                              ),
+                              itemCount: docs.length,
+                              itemBuilder: (context, index) {
+                                final doc = docs[index];
+                                final gasto = doc.data();
+                                final valor =
+                                    (gasto['valor'] as num?)?.toDouble() ?? 0;
+                                final descricao =
+                                    gasto['descricao']?.toString() ?? '';
+                                final categoria =
+                                    gasto['categoria']?.toString() ??
+                                    'Sem categoria';
 
-                          return _buildGastoCard(
-                            gastoId: doc.id,
-                            descricao: descricao,
-                            categoria: categoria,
-                            valor: valor,
-                          );
-                        },
-                      ),
+                                return _buildGastoCard(
+                                  gastoId: doc.id,
+                                  descricao: descricao,
+                                  categoria: categoria,
+                                  valor: valor,
+                                );
+                              },
+                            ),
                     ),
                   ],
                 );
@@ -392,7 +421,9 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
       );
     }
 
-    final color = _podeGerenciarGastos ? context.uai.success : context.uai.warning;
+    final color = _podeGerenciarGastos
+        ? context.uai.success
+        : context.uai.warning;
 
     return Container(
       width: double.infinity,
@@ -498,7 +529,9 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
                   filled: true,
                   fillColor: context.uai.cardAlt,
                 ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
               );
 
               final categoriaField = TextField(
@@ -539,17 +572,18 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
             width: double.infinity,
             height: 46,
             child: ElevatedButton.icon(
-              onPressed:
-              _podeGerenciarGastos && !_salvando ? _adicionarGasto : null,
+              onPressed: _podeGerenciarGastos && !_salvando
+                  ? _adicionarGasto
+                  : null,
               icon: _salvando
                   ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: context.uai.card,
-                ),
-              )
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: context.uai.card,
+                      ),
+                    )
                   : Icon(Icons.add_rounded),
               label: Text(_salvando ? 'SALVANDO...' : 'ADICIONAR GASTO'),
               style: ElevatedButton.styleFrom(
@@ -673,7 +707,10 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
             ),
             if (_podeGerenciarGastos)
               IconButton(
-                icon: Icon(Icons.delete_outline_rounded, color: context.uai.error),
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: context.uai.error,
+                ),
                 tooltip: 'Excluir gasto',
                 onPressed: () => _excluirGasto(gastoId, descricao),
               ),
@@ -703,8 +740,11 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long_outlined,
-                size: 64, color: context.uai.border),
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 64,
+              color: context.uai.border,
+            ),
             SizedBox(height: 14),
             Text(
               'Nenhum gasto registrado',
@@ -736,4 +776,3 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
     super.dispose();
   }
 }
-

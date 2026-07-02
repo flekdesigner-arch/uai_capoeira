@@ -59,10 +59,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(
-            platformInfo: platformInfo,
-            state: state,
-          ),
+          _Header(platformInfo: platformInfo, state: state),
           const SizedBox(height: 13),
           if (!available) ...[
             _BlockedInfo(platformInfo: platformInfo),
@@ -87,10 +84,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
               _ErrorBox(message: state.errorMessage!),
             ],
             const SizedBox(height: 13),
-            _LogBox(
-              logText: logText,
-              onClearLog: onClearLog,
-            ),
+            _LogBox(logText: logText, onClearLog: onClearLog),
           ],
         ],
       ),
@@ -102,10 +96,7 @@ class _Header extends StatelessWidget {
   final LocalPublishPlatformInfo platformInfo;
   final LocalPublishAutomationState state;
 
-  const _Header({
-    required this.platformInfo,
-    required this.state,
-  });
+  const _Header({required this.platformInfo, required this.state});
 
   @override
   Widget build(BuildContext context) {
@@ -123,11 +114,7 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(t.buttonRadius),
             border: Border.all(color: color.withOpacity(0.16)),
           ),
-          child: Icon(
-            platformInfo.icon,
-            color: color,
-            size: 29,
-          ),
+          child: Icon(platformInfo.icon, color: color, size: 29),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -224,13 +211,13 @@ class _ActionBox extends StatelessWidget {
             onPressed: disabled ? null : onRunFullAutomation,
             icon: state.running
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.rocket_launch_rounded),
             label: Text(
               state.running
@@ -240,27 +227,18 @@ class _ActionBox extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: t.primary,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 13,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.w900,
-              ),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
           );
 
           if (narrow) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                info,
-                const SizedBox(height: 12),
-                button,
-              ],
+              children: [info, const SizedBox(height: 12), button],
             );
           }
 
@@ -434,10 +412,7 @@ class _StepIcon extends StatelessWidget {
   final LocalPublishStepStatus status;
   final Color color;
 
-  const _StepIcon({
-    required this.status,
-    required this.color,
-  });
+  const _StepIcon({required this.status, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -453,18 +428,11 @@ class _StepIcon extends StatelessWidget {
       child: Center(
         child: status == LocalPublishStepStatus.running
             ? SizedBox(
-          width: 17,
-          height: 17,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: color,
-          ),
-        )
-            : Icon(
-          _iconForStatus(status),
-          color: color,
-          size: 20,
-        ),
+                width: 17,
+                height: 17,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            : Icon(_iconForStatus(status), color: color, size: 20),
       ),
     );
   }
@@ -488,9 +456,7 @@ class _StepIcon extends StatelessWidget {
 class _BlockedInfo extends StatelessWidget {
   final LocalPublishPlatformInfo platformInfo;
 
-  const _BlockedInfo({
-    required this.platformInfo,
-  });
+  const _BlockedInfo({required this.platformInfo});
 
   @override
   Widget build(BuildContext context) {
@@ -602,10 +568,7 @@ class _LogBox extends StatelessWidget {
   final String logText;
   final VoidCallback? onClearLog;
 
-  const _LogBox({
-    required this.logText,
-    required this.onClearLog,
-  });
+  const _LogBox({required this.logText, required this.onClearLog});
 
   @override
   Widget build(BuildContext context) {
@@ -645,10 +608,7 @@ class _LogBox extends StatelessWidget {
           ),
           Container(
             width: double.infinity,
-            constraints: const BoxConstraints(
-              minHeight: 90,
-              maxHeight: 220,
-            ),
+            constraints: const BoxConstraints(minHeight: 90, maxHeight: 220),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.87),
@@ -679,10 +639,7 @@ class _StatusChip extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _StatusChip({
-    required this.label,
-    required this.color,
-  });
+  const _StatusChip({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {

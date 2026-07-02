@@ -24,8 +24,8 @@ class AcademiaCacheService {
     if (_boxAberto) return;
 
     try {
-      final appDocumentDir =
-      await path_provider.getApplicationDocumentsDirectory();
+      final appDocumentDir = await path_provider
+          .getApplicationDocumentsDirectory();
 
       // Evita erro caso outro serviço já tenha inicializado o Hive.
       if (!Hive.isBoxOpen(_boxName)) {
@@ -72,9 +72,11 @@ class AcademiaCacheService {
     if (temInternetAgora) {
       final cacheValido =
           DateTime.now().difference(_ultimoCacheAcademias!) <=
-              _cacheValidadeOnline;
+          _cacheValidadeOnline;
 
-      debugPrint('📱 Com internet - cache ${cacheValido ? 'válido' : 'expirado'}');
+      debugPrint(
+        '📱 Com internet - cache ${cacheValido ? 'válido' : 'expirado'}',
+      );
       return cacheValido;
     } else {
       debugPrint('📴 Sem internet - usando cache mesmo antigo');
@@ -131,7 +133,9 @@ class AcademiaCacheService {
         }
       }
 
-      debugPrint('📀 Dados carregados do disco (${_academiasCache.length} academias)');
+      debugPrint(
+        '📀 Dados carregados do disco (${_academiasCache.length} academias)',
+      );
       return _academiasCache;
     } catch (e) {
       debugPrint('❌ Erro ao carregar do disco: $e');
@@ -225,7 +229,9 @@ class AcademiaCacheService {
         total += _toInt(data['alunos_ativos']);
       }
 
-      debugPrint('👥 Academia $academiaId: total alunos ativos pelas turmas = $total');
+      debugPrint(
+        '👥 Academia $academiaId: total alunos ativos pelas turmas = $total',
+      );
       return total;
     } catch (e) {
       debugPrint('⚠️ Erro ao contar alunos pelo servidor, tentando cache: $e');
@@ -244,7 +250,9 @@ class AcademiaCacheService {
           total += _toInt(data['alunos_ativos']);
         }
 
-        debugPrint('👥 Academia $academiaId: total alunos ativos pelo cache = $total');
+        debugPrint(
+          '👥 Academia $academiaId: total alunos ativos pelo cache = $total',
+        );
         return total;
       } catch (e2) {
         debugPrint('❌ Erro ao contar alunos da academia $academiaId: $e2');
@@ -257,8 +265,8 @@ class AcademiaCacheService {
   // PROCESSAR ACADEMIAS
   // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> _processarAcademias(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
     final List<Map<String, dynamic>> academias = [];
 
     for (final doc in docs) {
@@ -306,9 +314,9 @@ class AcademiaCacheService {
   // CARREGAR ACADEMIAS DO USUÁRIO
   // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> carregarAcademiasComAlunos(
-      String? userId, {
-        bool forcarAtualizacao = false,
-      }) async {
+    String? userId, {
+    bool forcarAtualizacao = false,
+  }) async {
     if (userId == null || userId.isEmpty) {
       debugPrint('❌ userId é nulo ou vazio');
       return [];
@@ -323,7 +331,9 @@ class AcademiaCacheService {
         final podeUsarCache = await _podeUsarCache();
 
         if (podeUsarCache) {
-          debugPrint('📦 Usando cache em memória (${_academiasCache.length} itens)');
+          debugPrint(
+            '📦 Usando cache em memória (${_academiasCache.length} itens)',
+          );
           return _academiasCache;
         }
       }
@@ -407,10 +417,7 @@ class AcademiaCacheService {
   // ═══════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> recarregarAcademias(String? userId) async {
     await limparCache();
-    return carregarAcademiasComAlunos(
-      userId,
-      forcarAtualizacao: true,
-    );
+    return carregarAcademiasComAlunos(userId, forcarAtualizacao: true);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -463,7 +470,7 @@ class AcademiaCacheService {
   Future<Map<String, dynamic>?> buscarAcademia(String academiaId) async {
     try {
       final academiaCache = _academiasCache.firstWhere(
-            (a) => a['id'] == academiaId,
+        (a) => a['id'] == academiaId,
         orElse: () => <String, dynamic>{},
       );
 

@@ -48,18 +48,22 @@ class CertificadoSvgService {
   }
 
   String colorirSvg(
-      String svg, {
-        required Color cor1,
-        required Color cor2,
-        required Color corContorno,
-      }) {
+    String svg, {
+    required Color cor1,
+    required Color cor2,
+    required Color corContorno,
+  }) {
     if (svg.trim().isEmpty) return svg;
 
     var result = svg;
 
     result = _replaceFillById(result, 'cor1', _colorToHex(cor1));
     result = _replaceFillById(result, 'cor2', _colorToHex(cor2));
-    result = _replaceFillById(result, 'contornocorda', _colorToHex(corContorno));
+    result = _replaceFillById(
+      result,
+      'contornocorda',
+      _colorToHex(corContorno),
+    );
 
     return result;
   }
@@ -109,7 +113,11 @@ class CertificadoSvgService {
     return '$tagStart $attr="$value"';
   }
 
-  String _upsertStylePaintIfExists(String tagStart, String property, String value) {
+  String _upsertStylePaintIfExists(
+    String tagStart,
+    String property,
+    String value,
+  ) {
     final styleRegex = RegExp(r'style="([^"]*)"');
 
     return tagStart.replaceFirstMapped(styleRegex, (match) {
@@ -120,8 +128,8 @@ class CertificadoSvgService {
   }
 
   Future<Map<String, CertificadoSlotModel>> carregarSlotsDoGuia(
-      CertificadoTemplateTipo tipo,
-      ) async {
+    CertificadoTemplateTipo tipo,
+  ) async {
     final guiaSvg = await carregarGuia(tipo);
     return extrairSlotsDoGuia(guiaSvg);
   }
@@ -190,9 +198,9 @@ class CertificadoSvgService {
   }
 
   CertificadoSlotModel? _slotFromElementWithForcedId(
-      xml.XmlElement element,
-      String forcedId,
-      ) {
+    xml.XmlElement element,
+    String forcedId,
+  ) {
     final local = element.name.local.toLowerCase();
 
     if (local == 'rect') {
@@ -350,10 +358,7 @@ class CertificadoSvgService {
     return '#${value.substring(2).toUpperCase()}';
   }
 
-  Color colorFromHex(
-      String? hex, {
-        Color fallback = const Color(0xFF9E9E9E),
-      }) {
+  Color colorFromHex(String? hex, {Color fallback = const Color(0xFF9E9E9E)}) {
     final raw = hex?.trim();
     if (raw == null || raw.isEmpty) return fallback;
 

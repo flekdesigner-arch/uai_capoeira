@@ -20,13 +20,10 @@ import 'package:flutter/foundation.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/local_publish_automation_models.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_platform_service.dart';
 
-typedef LocalPublishStateCallback = void Function(
-    LocalPublishAutomationState state,
-    );
+typedef LocalPublishStateCallback =
+    void Function(LocalPublishAutomationState state);
 
-typedef LocalPublishLogCallback = void Function(
-    String line,
-    );
+typedef LocalPublishLogCallback = void Function(String line);
 
 @immutable
 class LocalPublishRunnerConfig {
@@ -155,14 +152,15 @@ class LocalPublishRunnerUnavailable extends LocalPublishRunner {
         ? platformInfo.blockedReason
         : 'Automação local indisponível nesta plataforma.';
 
-    final state = LocalPublishAutomationState.initial(
-      available: false,
-      platformLabel: platformInfo.platformLabel,
-    ).copyWith(
-      running: false,
-      errorMessage: message,
-      finishedAt: DateTime.now(),
-    );
+    final state =
+        LocalPublishAutomationState.initial(
+          available: false,
+          platformLabel: platformInfo.platformLabel,
+        ).copyWith(
+          running: false,
+          errorMessage: message,
+          finishedAt: DateTime.now(),
+        );
 
     onLog?.call(message);
     onState?.call(state);

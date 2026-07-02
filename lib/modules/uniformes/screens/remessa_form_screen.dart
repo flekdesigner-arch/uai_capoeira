@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -39,7 +39,8 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -62,9 +63,12 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         _dataEnvio = (widget.remessaData!['data_envio'] as Timestamp).toDate();
       }
       if (widget.remessaData!['data_prevista'] != null) {
-        _dataPrevista = (widget.remessaData!['data_prevista'] as Timestamp).toDate();
+        _dataPrevista = (widget.remessaData!['data_prevista'] as Timestamp)
+            .toDate();
       }
-      _pedidosSelecionados = List<String>.from(widget.remessaData!['pedidos_ids'] ?? []);
+      _pedidosSelecionados = List<String>.from(
+        widget.remessaData!['pedidos_ids'] ?? [],
+      );
       _fornecedorId = widget.remessaData!['fornecedor_id'];
       if (_fornecedorId != null) {
         _carregarFornecedor(_fornecedorId!);
@@ -96,8 +100,12 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
     try {
       final dados = {
         'nome': _nomeController.text.trim(),
-        'data_envio': _dataEnvio != null ? Timestamp.fromDate(_dataEnvio!) : null,
-        'data_prevista': _dataPrevista != null ? Timestamp.fromDate(_dataPrevista!) : null,
+        'data_envio': _dataEnvio != null
+            ? Timestamp.fromDate(_dataEnvio!)
+            : null,
+        'data_prevista': _dataPrevista != null
+            ? Timestamp.fromDate(_dataPrevista!)
+            : null,
         'status': _status,
         'observacoes': _observacoesController.text.trim(),
         'pedidos_ids': _pedidosSelecionados,
@@ -131,20 +139,27 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-            widget.remessaId == null ? 'Remessa criada!' : 'Remessa atualizada!',
-            style: TextStyle(color: _readableOn(context.uai.success)),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.remessaId == null
+                  ? 'Remessa criada!'
+                  : 'Remessa atualizada!',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
+            backgroundColor: context.uai.success,
           ),
-          backgroundColor: context.uai.success,
-        ));
+        );
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e', style: TextStyle(color: _readableOn(context.uai.error))),
+            content: Text(
+              'Erro: $e',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -156,16 +171,18 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
 
   Future<void> _atualizarPedidosParaConfeccao(List<String> pedidosIds) async {
     for (var id in pedidosIds) {
-      await FirebaseFirestore.instance.collection('pedidos_uniformes').doc(id).update({
-        'status': 'em_confeccao',
-      });
+      await FirebaseFirestore.instance
+          .collection('pedidos_uniformes')
+          .doc(id)
+          .update({'status': 'em_confeccao'});
     }
   }
 
   Future<void> _selecionarPedidos() async {
     final selecionados = await showDialog<List<String>>(
       context: context,
-      builder: (_) => _SelecionarPedidosDialog(selectedIds: _pedidosSelecionados),
+      builder: (_) =>
+          _SelecionarPedidosDialog(selectedIds: _pedidosSelecionados),
     );
     if (selecionados != null) {
       setState(() => _pedidosSelecionados = selecionados);
@@ -217,200 +234,247 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
             onPressed: _isLoading ? null : _salvar,
             icon: _isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(color: onPrimary, strokeWidth: 2),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: onPrimary,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : Icon(Icons.save, color: onPrimary),
-            label: Text(
-              'SALVAR',
-              style: TextStyle(color: onPrimary),
-            ),
+            label: Text('SALVAR', style: TextStyle(color: onPrimary)),
           ),
         ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primary))
           : Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _buildTextField(
-              controller: _nomeController,
-              label: 'Nome da remessa *',
-              icon: Icons.label,
-              validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDateField(
-                    'Data de envio',
-                    _dataEnvio,
-                        (d) => setState(() => _dataEnvio = d),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildDateField(
-                    'Data prevista',
-                    _dataPrevista,
-                        (d) => setState(() => _dataPrevista = d),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // FORNECEDOR
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: border),
-                boxShadow: context.uai.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
+                  _buildTextField(
+                    controller: _nomeController,
+                    label: 'Nome da remessa *',
+                    icon: Icons.label,
+                    validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+                  ),
+                  const SizedBox(height: 16),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Fornecedor',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, color: textPrimary)),
-                      TextButton.icon(
-                        onPressed: _selecionarFornecedor,
-                        icon: Icon(Icons.add, size: 18, color: primary),
-                        label: Text(
-                          _fornecedorId == null ? 'Selecionar' : 'Trocar',
-                          style: TextStyle(color: primary),
+                      Expanded(
+                        child: _buildDateField(
+                          'Data de envio',
+                          _dataEnvio,
+                          (d) => setState(() => _dataEnvio = d),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildDateField(
+                          'Data prevista',
+                          _dataPrevista,
+                          (d) => setState(() => _dataPrevista = d),
                         ),
                       ),
                     ],
                   ),
-                  if (_fornecedorNome != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
+                  const SizedBox(height: 16),
+                  // FORNECEDOR
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.business, size: 16, color: textMuted),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(_fornecedorNome!,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Fornecedor',
                               style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: textPrimary)),
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _selecionarFornecedor,
+                              icon: Icon(Icons.add, size: 18, color: primary),
+                              label: Text(
+                                _fornecedorId == null ? 'Selecionar' : 'Trocar',
+                                style: TextStyle(color: primary),
+                              ),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          icon: Icon(Icons.clear,
-                              color: context.uai.error, size: 18),
-                          onPressed: _removerFornecedor,
-                        ),
+                        if (_fornecedorNome != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.business, size: 16, color: textMuted),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _fornecedorNome!,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: textPrimary,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.clear,
+                                  color: context.uai.error,
+                                  size: 18,
+                                ),
+                                onPressed: _removerFornecedor,
+                              ),
+                            ],
+                          ),
+                          if (_fornecedorDetalhes != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Contato: ${_fornecedorDetalhes!['contato'] ?? 'N/I'} • ${_fornecedorDetalhes!['telefone'] ?? ''}',
+                              style: TextStyle(fontSize: 12, color: textMuted),
+                            ),
+                          ],
+                        ] else
+                          Text(
+                            'Nenhum fornecedor selecionado',
+                            style: TextStyle(color: textMuted),
+                          ),
                       ],
                     ),
-                    if (_fornecedorDetalhes != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Contato: ${_fornecedorDetalhes!['contato'] ?? 'N/I'} • ${_fornecedorDetalhes!['telefone'] ?? ''}',
-                        style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _status,
+                    style: TextStyle(color: textPrimary),
+                    decoration: InputDecoration(
+                      labelText: 'Status',
+                      labelStyle: TextStyle(color: textSecondary),
+                      filled: true,
+                      fillColor: cardAlt,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
+                        borderSide: BorderSide(color: border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
+                        borderSide: BorderSide(color: border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          context.uai.inputRadius,
+                        ),
+                        borderSide: BorderSide(color: primary, width: 1.4),
+                      ),
+                    ),
+                    dropdownColor: cardBg,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'pendente',
+                        child: Text('Pendente'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'em_producao',
+                        child: Text('Em produção'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'finalizada',
+                        child: Text('Finalizada'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cancelada',
+                        child: Text('Cancelada'),
                       ),
                     ],
-                  ] else
-                    Text('Nenhum fornecedor selecionado',
-                        style: TextStyle(color: textMuted)),
+                    onChanged: (v) => setState(() => _status = v!),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _observacoesController,
+                    label: 'Observações',
+                    icon: Icons.notes,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _selecionarPedidos,
+                    icon: Icon(Icons.list_alt, color: onPrimary),
+                    label: Text(
+                      'Pedidos vinculados: ${_pedidosSelecionados.length}',
+                      style: TextStyle(color: onPrimary),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primary,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          context.uai.buttonRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_pedidosSelecionados.isNotEmpty) ...[
+                    Text(
+                      'Pedidos incluídos:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: textPrimary,
+                      ),
+                    ),
+                    ..._pedidosSelecionados.map(
+                      (id) => FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('pedidos_uniformes')
+                            .doc(id)
+                            .get(),
+                        builder: (_, snap) {
+                          if (!snap.hasData) return const SizedBox.shrink();
+                          final pedido =
+                              snap.data!.data() as Map<String, dynamic>?;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              pedido?['aluno_nome'] ?? id,
+                              style: TextStyle(color: textPrimary),
+                            ),
+                            subtitle: Text(
+                              'Pedido ${pedido?['id_pedido'] ?? ''}',
+                              style: TextStyle(color: textSecondary),
+                            ),
+                            trailing: IconButton(
+                              icon: Icon(
+                                Icons.remove_circle_outline,
+                                color: context.uai.error,
+                              ),
+                              onPressed: () {
+                                setState(() => _pedidosSelecionados.remove(id));
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _status,
-              style: TextStyle(color: textPrimary),
-              decoration: InputDecoration(
-                labelText: 'Status',
-                labelStyle: TextStyle(color: textSecondary),
-                filled: true,
-                fillColor: cardAlt,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                  borderSide: BorderSide(color: border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                  borderSide: BorderSide(color: border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(context.uai.inputRadius),
-                  borderSide: BorderSide(color: primary, width: 1.4),
-                ),
-              ),
-              dropdownColor: cardBg,
-              items: const [
-                DropdownMenuItem(value: 'pendente', child: Text('Pendente')),
-                DropdownMenuItem(value: 'em_producao', child: Text('Em produção')),
-                DropdownMenuItem(value: 'finalizada', child: Text('Finalizada')),
-                DropdownMenuItem(value: 'cancelada', child: Text('Cancelada')),
-              ],
-              onChanged: (v) => setState(() => _status = v!),
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _observacoesController,
-              label: 'Observações',
-              icon: Icons.notes,
-              maxLines: 3,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _selecionarPedidos,
-              icon: Icon(Icons.list_alt, color: onPrimary),
-              label: Text(
-                'Pedidos vinculados: ${_pedidosSelecionados.length}',
-                style: TextStyle(color: onPrimary),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_pedidosSelecionados.isNotEmpty) ...[
-              Text('Pedidos incluídos:',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, color: textPrimary)),
-              ..._pedidosSelecionados.map((id) => FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('pedidos_uniformes')
-                    .doc(id)
-                    .get(),
-                builder: (_, snap) {
-                  if (!snap.hasData) return const SizedBox.shrink();
-                  final pedido = snap.data!.data() as Map<String, dynamic>?;
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(pedido?['aluno_nome'] ?? id,
-                        style: TextStyle(color: textPrimary)),
-                    subtitle: Text('Pedido ${pedido?['id_pedido'] ?? ''}',
-                        style: TextStyle(color: textSecondary)),
-                    trailing: IconButton(
-                      icon: Icon(Icons.remove_circle_outline,
-                          color: context.uai.error),
-                      onPressed: () {
-                        setState(() => _pedidosSelecionados.remove(id));
-                      },
-                    ),
-                  );
-                },
-              )),
-            ],
-          ],
-        ),
-      ),
     );
   }
 
@@ -449,7 +513,11 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
     );
   }
 
-  Widget _buildDateField(String label, DateTime? date, ValueChanged<DateTime?> onChanged) {
+  Widget _buildDateField(
+    String label,
+    DateTime? date,
+    ValueChanged<DateTime?> onChanged,
+  ) {
     return InkWell(
       onTap: () async {
         final d = await showDatePicker(
@@ -480,7 +548,9 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
           fillColor: context.uai.cardAlt,
         ),
         child: Text(
-          date != null ? DateFormat('dd/MM/yyyy').format(date!) : 'Selecionar data',
+          date != null
+              ? DateFormat('dd/MM/yyyy').format(date!)
+              : 'Selecionar data',
           style: TextStyle(color: context.uai.textPrimary),
         ),
       ),
@@ -493,7 +563,8 @@ class _SelecionarPedidosDialog extends StatefulWidget {
   final List<String> selectedIds;
   const _SelecionarPedidosDialog({required this.selectedIds});
   @override
-  State<_SelecionarPedidosDialog> createState() => _SelecionarPedidosDialogState();
+  State<_SelecionarPedidosDialog> createState() =>
+      _SelecionarPedidosDialogState();
 }
 
 class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
@@ -558,13 +629,19 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(child: CircularProgressIndicator(color: primary));
+                    return Center(
+                      child: CircularProgressIndicator(color: primary),
+                    );
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return (data['id_pedido'] ?? '').toLowerCase().contains(_search) ||
-                          (data['aluno_nome'] ?? '').toLowerCase().contains(_search);
+                      return (data['id_pedido'] ?? '').toLowerCase().contains(
+                            _search,
+                          ) ||
+                          (data['aluno_nome'] ?? '').toLowerCase().contains(
+                            _search,
+                          );
                     }).toList();
                   }
                   return ListView.builder(
@@ -576,10 +653,14 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
                       return CheckboxListTile(
                         value: isSelected,
                         activeColor: primary,
-                        title: Text('${data['id_pedido']} - ${data['aluno_nome']}',
-                            style: TextStyle(color: textPrimary)),
-                        subtitle: Text('Status: ${data['status']}',
-                            style: TextStyle(color: textSecondary)),
+                        title: Text(
+                          '${data['id_pedido']} - ${data['aluno_nome']}',
+                          style: TextStyle(color: textPrimary),
+                        ),
+                        subtitle: Text(
+                          'Status: ${data['status']}',
+                          style: TextStyle(color: textSecondary),
+                        ),
                         onChanged: (val) {
                           setState(() {
                             if (val == true) {
@@ -620,10 +701,12 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
 // ─── Diálogo de seleção de fornecedor (refatorado) ─────────────────
 class _SelecionarFornecedorDialog extends StatefulWidget {
   @override
-  State<_SelecionarFornecedorDialog> createState() => _SelecionarFornecedorDialogState();
+  State<_SelecionarFornecedorDialog> createState() =>
+      _SelecionarFornecedorDialogState();
 }
 
-class _SelecionarFornecedorDialogState extends State<_SelecionarFornecedorDialog> {
+class _SelecionarFornecedorDialogState
+    extends State<_SelecionarFornecedorDialog> {
   final TextEditingController _searchController = TextEditingController();
   String _search = '';
 
@@ -686,28 +769,38 @@ class _SelecionarFornecedorDialogState extends State<_SelecionarFornecedorDialog
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(child: CircularProgressIndicator(color: primary));
+                    return Center(
+                      child: CircularProgressIndicator(color: primary),
+                    );
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
-                      final nome = (d.data() as Map<String, dynamic>)['nome'] ?? '';
+                      final nome =
+                          (d.data() as Map<String, dynamic>)['nome'] ?? '';
                       return nome.toLowerCase().contains(_search);
                     }).toList();
                   }
                   if (docs.isEmpty)
                     return Center(
-                        child: Text('Nenhum fornecedor encontrado',
-                            style: TextStyle(color: textMuted)));
+                      child: Text(
+                        'Nenhum fornecedor encontrado',
+                        style: TextStyle(color: textMuted),
+                      ),
+                    );
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
                       final data = docs[i].data() as Map<String, dynamic>;
                       return ListTile(
                         leading: Icon(Icons.business, color: primary),
-                        title: Text(data['nome'] ?? '',
-                            style: TextStyle(color: textPrimary)),
-                        subtitle: Text(data['contato'] ?? '',
-                            style: TextStyle(color: textSecondary)),
+                        title: Text(
+                          data['nome'] ?? '',
+                          style: TextStyle(color: textPrimary),
+                        ),
+                        subtitle: Text(
+                          data['contato'] ?? '',
+                          style: TextStyle(color: textSecondary),
+                        ),
                         onTap: () => Navigator.pop(context, <String, String>{
                           'id': docs[i].id,
                           'nome': (data['nome'] ?? '').toString(),

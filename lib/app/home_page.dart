@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 // Services
 import 'package:uai_capoeira/modules/turmas/services/academia_cache_service.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_acesso_service.dart';
 
 // Telas
 import 'package:uai_capoeira/modules/turmas/screens/turmas_academia_screen.dart';
@@ -28,11 +29,13 @@ class _HomePageState extends State<HomePage> {
   late Future<List<Map<String, dynamic>>> _academiasFuture;
 
   bool _jaMostrouAvisoOffline = false;
+  bool _registrouUltimoAcesso = false;
 
   @override
   void initState() {
     super.initState();
     _inicializarStreams();
+    _registrarUltimoAcessoUsuario();
   }
 
   void _inicializarStreams() {
@@ -49,6 +52,23 @@ class _HomePageState extends State<HomePage> {
     // Antes isso começava como Future.value([]), então a Home podia mostrar
     // "Você não está vinculado..." antes da busca real terminar.
     _academiasFuture = _carregarAcademias();
+  }
+
+  Future<void> _registrarUltimoAcessoUsuario() async {
+    if (_registrouUltimoAcesso) return;
+    if (currentUser == null) return;
+
+    _registrouUltimoAcesso = true;
+
+    final acessoRegistrado = await UsuarioAcessoService(
+      firestore: _firestore,
+    ).registrarUltimoAcessoGestao(uid: currentUser!.uid);
+
+    debugPrint(
+      acessoRegistrado
+          ? '✅ Último acesso confirmado para ${currentUser!.uid}'
+          : '⚠️ Último acesso não foi confirmado para ${currentUser!.uid}',
+    );
   }
 
   Future<List<Map<String, dynamic>>> _carregarAcademias() async {
@@ -128,11 +148,12 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
+
   Widget _buildPerfilStream(ThemeData theme) {
     if (currentUser == null) {
       return _buildPerfilOffline();
@@ -141,7 +162,8 @@ class _HomePageState extends State<HomePage> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDataStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return _buildSkeletonPerfil(theme);
         }
 
@@ -185,10 +207,7 @@ class _HomePageState extends State<HomePage> {
             SizedBox(height: 5),
             Text(
               'SEJA BEM VINDO(A) AO APP!',
-              style: TextStyle(
-                color: context.uai.textSecondary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: context.uai.textSecondary, fontSize: 14),
               textAlign: TextAlign.center,
             ),
           ],
@@ -233,7 +252,11 @@ class _HomePageState extends State<HomePage> {
         SizedBox(height: 15),
         Text(
           displayName.toUpperCase(),
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.uai.textPrimary),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: context.uai.textPrimary,
+          ),
           textAlign: TextAlign.center,
         ),
         SizedBox(height: 5),
@@ -324,11 +347,7 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.sports_martial_arts,
-                    size: 58,
-                    color: t.primary,
-                  ),
+                  Icon(Icons.sports_martial_arts, size: 58, color: t.primary),
                   const SizedBox(height: 10),
                   Text(
                     'Logo SVG não encontrada',
@@ -345,9 +364,7 @@ class _HomePageState extends State<HomePage> {
 
           return SizedBox(
             height: 150,
-            child: Center(
-              child: CircularProgressIndicator(color: t.primary),
-            ),
+            child: Center(child: CircularProgressIndicator(color: t.primary)),
           );
         },
       ),
@@ -364,8 +381,9 @@ class _HomePageState extends State<HomePage> {
     // e o texto "CAPOEIRA" fica branco, igual ajustamos no site público.
     // Nos outros temas, a logo continua reagindo normalmente ao tema atual.
     final faixaColor = isTemaClassico ? '#111111' : _colorToHex(t.cardAlt);
-    final textoColor =
-    isTemaClassico ? '#FFFFFF' : _colorToHex(_readableOn(t.cardAlt));
+    final textoColor = isTemaClassico
+        ? '#FFFFFF'
+        : _colorToHex(_readableOn(t.cardAlt));
     final strokeColor = isTemaClassico ? '#111111' : _colorToHex(t.border);
 
     var result = svg;
@@ -391,7 +409,7 @@ class _HomePageState extends State<HomePage> {
     // Depois do replace geral, garantimos a borda pelo id="faixa".
     result = result.replaceFirstMapped(
       RegExp(r'(<polygon[^>]*id="faixa"[^>]*)(/?>)', caseSensitive: false),
-          (match) {
+      (match) {
         var tag = match.group(1) ?? '';
         final close = match.group(2) ?? '>';
 
@@ -465,17 +483,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         SizedBox(height: 15),
-        Container(
-          width: 200,
-          height: 24,
-          color: context.uai.border,
-        ),
+        Container(width: 200, height: 24, color: context.uai.border),
         SizedBox(height: 5),
-        Container(
-          width: 150,
-          height: 16,
-          color: context.uai.border,
-        ),
+        Container(width: 150, height: 16, color: context.uai.border),
       ],
     );
   }
@@ -487,7 +497,9 @@ class _HomePageState extends State<HomePage> {
         elevation: 1,
         color: context.uai.card,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        ),
         child: Padding(
           padding: EdgeInsets.all(25),
           child: Column(
@@ -496,7 +508,10 @@ class _HomePageState extends State<HomePage> {
               SizedBox(height: 16),
               Text(
                 'Carregando suas academias...',
-                style: TextStyle(fontSize: 15, color: context.uai.textSecondary),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: context.uai.textSecondary,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -547,7 +562,9 @@ class _HomePageState extends State<HomePage> {
         elevation: 2,
         color: context.uai.card,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        ),
         child: Padding(
           padding: EdgeInsets.all(25),
           child: Column(
@@ -556,7 +573,10 @@ class _HomePageState extends State<HomePage> {
               SizedBox(height: 15),
               Text(
                 'Você não está vinculado a nenhuma academia',
-                style: TextStyle(fontSize: 16, color: context.uai.textSecondary),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: context.uai.textSecondary,
+                ),
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: 10),
@@ -668,19 +688,22 @@ class _HomePageState extends State<HomePage> {
                   color: t.primary.withOpacity(0.10),
                   border: Border.all(color: t.primary.withOpacity(0.25)),
                 ),
-                child: academia['logo_url'] != null &&
-                    academia['logo_url'].toString().isNotEmpty
+                child:
+                    academia['logo_url'] != null &&
+                        academia['logo_url'].toString().isNotEmpty
                     ? ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: academia['logo_url'],
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        CircularProgressIndicator(color: context.uai.primary),
-                    errorWidget: (context, url, error) =>
-                        Icon(Icons.error),
-                  ),
-                )
+                        borderRadius: BorderRadius.circular(10),
+                        child: CachedNetworkImage(
+                          imageUrl: academia['logo_url'],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) =>
+                              CircularProgressIndicator(
+                                color: context.uai.primary,
+                              ),
+                          errorWidget: (context, url, error) =>
+                              Icon(Icons.error),
+                        ),
+                      )
                     : Icon(Icons.location_on, color: t.primary, size: 24),
               ),
               SizedBox(width: 16),
@@ -778,10 +801,10 @@ class _HomePageState extends State<HomePage> {
       fit: BoxFit.cover,
       width: 120,
       height: 120,
-      placeholder: (context, url) => CircularProgressIndicator(color: context.uai.primary),
+      placeholder: (context, url) =>
+          CircularProgressIndicator(color: context.uai.primary),
       errorWidget: (context, url, error) =>
           Icon(Icons.person, size: 60, color: context.uai.primary),
     );
   }
 }
-

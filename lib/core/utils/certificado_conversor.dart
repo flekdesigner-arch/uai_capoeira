@@ -31,11 +31,11 @@ class CertificadoConversor {
   /// - Se o valor for > 100, assume que já está em mm (dado antigo)
   /// - Se o valor for <= 100, assume que está em % e converte para mm
   static double getValueInMm(
-      Map<String, dynamic> config,
-      String campoId,
-      String tipo,
-      double defaultValue,
-      ) {
+    Map<String, dynamic> config,
+    String campoId,
+    String tipo,
+    double defaultValue,
+  ) {
     // Constrói a chave no Firestore (ex: 'pos_x_nome_do_aluno')
     final key = _getKey(campoId, tipo);
     final value = config[key];
@@ -80,7 +80,9 @@ class CertificadoConversor {
     } else {
       // Converte % para mm
       final mmValue = percentToMm(rawValue, maxSize);
-      debugPrint('📏 $key está em %: $rawValue% → ${mmValue.toStringAsFixed(2)}mm');
+      debugPrint(
+        '📏 $key está em %: $rawValue% → ${mmValue.toStringAsFixed(2)}mm',
+      );
       return mmValue;
     }
   }
@@ -92,9 +94,9 @@ class CertificadoConversor {
   ///
   /// Retorna um novo mapa com TODOS os valores convertidos para %
   static Map<String, dynamic> gerarConfigParaSalvar(
-      Map<String, dynamic> configEmMm,
-      List<String> campos,
-      ) {
+    Map<String, dynamic> configEmMm,
+    List<String> campos,
+  ) {
     final configParaSalvar = <String, dynamic>{};
 
     // PASSO 1: Copia todos os campos que NÃO são de posição
@@ -114,28 +116,44 @@ class CertificadoConversor {
       if (configEmMm['pos_x_$campo'] != null) {
         final xMm = double.tryParse(configEmMm['pos_x_$campo'].toString()) ?? 0;
         configParaSalvar['pos_x_$campo'] = mmToPercent(xMm, A4_WIDTH_MM);
-        debugPrint('💾 Convertendo pos_x_$campo: ${xMm}mm → ${configParaSalvar['pos_x_$campo']}%');
+        debugPrint(
+          '💾 Convertendo pos_x_$campo: ${xMm}mm → ${configParaSalvar['pos_x_$campo']}%',
+        );
       }
 
       // Posição Y
       if (configEmMm['pos_y_$campo'] != null) {
         final yMm = double.tryParse(configEmMm['pos_y_$campo'].toString()) ?? 0;
         configParaSalvar['pos_y_$campo'] = mmToPercent(yMm, A4_HEIGHT_MM);
-        debugPrint('💾 Convertendo pos_y_$campo: ${yMm}mm → ${configParaSalvar['pos_y_$campo']}%');
+        debugPrint(
+          '💾 Convertendo pos_y_$campo: ${yMm}mm → ${configParaSalvar['pos_y_$campo']}%',
+        );
       }
 
       // Tamanho da fonte
       if (configEmMm['font_size_$campo'] != null) {
-        final fontSizeMm = double.tryParse(configEmMm['font_size_$campo'].toString()) ?? 4;
-        configParaSalvar['font_size_$campo'] = mmToPercent(fontSizeMm, MAX_FONT_SIZE_MM);
-        debugPrint('💾 Convertendo font_size_$campo: ${fontSizeMm}mm → ${configParaSalvar['font_size_$campo']}%');
+        final fontSizeMm =
+            double.tryParse(configEmMm['font_size_$campo'].toString()) ?? 4;
+        configParaSalvar['font_size_$campo'] = mmToPercent(
+          fontSizeMm,
+          MAX_FONT_SIZE_MM,
+        );
+        debugPrint(
+          '💾 Convertendo font_size_$campo: ${fontSizeMm}mm → ${configParaSalvar['font_size_$campo']}%',
+        );
       }
 
       // Largura máxima
       if (configEmMm['max_width_$campo'] != null) {
-        final maxWidthMm = double.tryParse(configEmMm['max_width_$campo'].toString()) ?? 100;
-        configParaSalvar['max_width_$campo'] = mmToPercent(maxWidthMm, A4_WIDTH_MM);
-        debugPrint('💾 Convertendo max_width_$campo: ${maxWidthMm}mm → ${configParaSalvar['max_width_$campo']}%');
+        final maxWidthMm =
+            double.tryParse(configEmMm['max_width_$campo'].toString()) ?? 100;
+        configParaSalvar['max_width_$campo'] = mmToPercent(
+          maxWidthMm,
+          A4_WIDTH_MM,
+        );
+        debugPrint(
+          '💾 Convertendo max_width_$campo: ${maxWidthMm}mm → ${configParaSalvar['max_width_$campo']}%',
+        );
       }
     }
 
@@ -150,9 +168,9 @@ class CertificadoConversor {
   ///
   /// Retorna um novo mapa com TODOS os valores em mm para exibição
   static Map<String, dynamic> carregarConfigParaExibicao(
-      Map<String, dynamic> config,
-      List<String> campos,
-      ) {
+    Map<String, dynamic> config,
+    List<String> campos,
+  ) {
     final configParaExibicao = <String, dynamic>{};
 
     // PASSO 1: Copia todos os campos que NÃO são de posição
@@ -169,26 +187,39 @@ class CertificadoConversor {
     for (var campo in campos) {
       // Posição X
       if (config['pos_x_$campo'] != null) {
-        final xPercent = double.tryParse(config['pos_x_$campo'].toString()) ?? 0;
+        final xPercent =
+            double.tryParse(config['pos_x_$campo'].toString()) ?? 0;
         configParaExibicao['pos_x_$campo'] = percentToMm(xPercent, A4_WIDTH_MM);
       }
 
       // Posição Y
       if (config['pos_y_$campo'] != null) {
-        final yPercent = double.tryParse(config['pos_y_$campo'].toString()) ?? 0;
-        configParaExibicao['pos_y_$campo'] = percentToMm(yPercent, A4_HEIGHT_MM);
+        final yPercent =
+            double.tryParse(config['pos_y_$campo'].toString()) ?? 0;
+        configParaExibicao['pos_y_$campo'] = percentToMm(
+          yPercent,
+          A4_HEIGHT_MM,
+        );
       }
 
       // Tamanho da fonte
       if (config['font_size_$campo'] != null) {
-        final fontSizePercent = double.tryParse(config['font_size_$campo'].toString()) ?? 4;
-        configParaExibicao['font_size_$campo'] = percentToMm(fontSizePercent, MAX_FONT_SIZE_MM);
+        final fontSizePercent =
+            double.tryParse(config['font_size_$campo'].toString()) ?? 4;
+        configParaExibicao['font_size_$campo'] = percentToMm(
+          fontSizePercent,
+          MAX_FONT_SIZE_MM,
+        );
       }
 
       // Largura máxima
       if (config['max_width_$campo'] != null) {
-        final maxWidthPercent = double.tryParse(config['max_width_$campo'].toString()) ?? 100;
-        configParaExibicao['max_width_$campo'] = percentToMm(maxWidthPercent, A4_WIDTH_MM);
+        final maxWidthPercent =
+            double.tryParse(config['max_width_$campo'].toString()) ?? 100;
+        configParaExibicao['max_width_$campo'] = percentToMm(
+          maxWidthPercent,
+          A4_WIDTH_MM,
+        );
       }
     }
 
@@ -214,11 +245,16 @@ class CertificadoConversor {
   /// Constrói a chave do Firestore baseada no campo e tipo
   static String _getKey(String campoId, String tipo) {
     switch (tipo) {
-      case 'x': return 'pos_x_$campoId';
-      case 'y': return 'pos_y_$campoId';
-      case 'fontSize': return 'font_size_$campoId';
-      case 'maxWidth': return 'max_width_$campoId';
-      default: return '';
+      case 'x':
+        return 'pos_x_$campoId';
+      case 'y':
+        return 'pos_y_$campoId';
+      case 'fontSize':
+        return 'font_size_$campoId';
+      case 'maxWidth':
+        return 'max_width_$campoId';
+      default:
+        return '';
     }
   }
 

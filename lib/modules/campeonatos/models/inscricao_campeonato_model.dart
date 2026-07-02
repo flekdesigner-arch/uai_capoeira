@@ -244,12 +244,12 @@ class InscricaoCampeonatoModel {
   // Getters úteis
   String get cpfFormatado {
     if (cpf.length != 11) return cpf;
-    return '${cpf.substring(0,3)}.${cpf.substring(3,6)}.${cpf.substring(6,9)}-${cpf.substring(9)}';
+    return '${cpf.substring(0, 3)}.${cpf.substring(3, 6)}.${cpf.substring(6, 9)}-${cpf.substring(9)}';
   }
 
   String get telefoneFormatado {
     if (contatoAluno.length != 11) return contatoAluno;
-    return '(${contatoAluno.substring(0,2)}) ${contatoAluno.substring(2,7)}-${contatoAluno.substring(7)}';
+    return '(${contatoAluno.substring(0, 2)}) ${contatoAluno.substring(2, 7)}-${contatoAluno.substring(7)}';
   }
 
   bool get precisaPagar => !taxaPaga && status != 'cancelado';

@@ -60,7 +60,8 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.25) return color;
 
@@ -130,10 +131,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildAbaNotificacoes(),
-          _buildAbaAtualizacoes(),
-        ],
+        children: [_buildAbaNotificacoes(), _buildAbaAtualizacoes()],
       ),
     );
   }
@@ -215,7 +213,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                 icon: Icons.notifications_none_rounded,
                 title: 'Nenhuma notificação ainda',
                 subtitle:
-                'Quando chegarem avisos de aniversário, atualizações e comunicados, eles aparecerão aqui.',
+                    'Quando chegarem avisos de aniversário, atualizações e comunicados, eles aparecerão aqui.',
               ),
             ],
           );
@@ -271,7 +269,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                 icon: Icons.error_outline_rounded,
                 title: 'Erro ao carregar histórico',
                 text:
-                'Talvez precise criar índice no Firestore para publicada + publicadoEm.\n\n${snapshot.error}',
+                    'Talvez precise criar índice no Firestore para publicada + publicadoEm.\n\n${snapshot.error}',
                 color: t.error,
               ),
             ],
@@ -289,7 +287,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                 icon: Icons.system_update_alt_rounded,
                 title: 'Nenhuma atualização publicada',
                 subtitle:
-                'Quando você publicar uma versão pelo laboratório, o histórico aparecerá aqui.',
+                    'Quando você publicar uma versão pelo laboratório, o histórico aparecerá aqui.',
               ),
             ],
           );
@@ -555,7 +553,6 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
     );
   }
 
-
   Widget _chamadaMiniResumo(Map<String, dynamic> data) {
     final t = context.uai;
 
@@ -586,7 +583,13 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
     }
 
     if (presentes.isNotEmpty) {
-      chips.add(_miniChip(Icons.check_circle_rounded, '$presentes presentes', t.success));
+      chips.add(
+        _miniChip(
+          Icons.check_circle_rounded,
+          '$presentes presentes',
+          t.success,
+        ),
+      );
     }
 
     if (ausentes.isNotEmpty) {
@@ -599,11 +602,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
 
     if (chips.isEmpty) return const SizedBox.shrink();
 
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: chips,
-    );
+    return Wrap(spacing: 6, runSpacing: 6, children: chips);
   }
 
   Widget _miniChip(IconData icon, String text, Color color) {
@@ -721,10 +720,18 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
 
   Widget _changelogPreview(AppVersionModel version) {
     final items = <_ChangeGroup>[
-      _ChangeGroup('Implementações', Icons.add_circle_outline_rounded, version.implementacoes),
+      _ChangeGroup(
+        'Implementações',
+        Icons.add_circle_outline_rounded,
+        version.implementacoes,
+      ),
       _ChangeGroup('Melhorias', Icons.trending_up_rounded, version.melhorias),
       _ChangeGroup('Correções', Icons.bug_report_rounded, version.correcoes),
-      _ChangeGroup('Removidos', Icons.remove_circle_outline_rounded, version.removidos),
+      _ChangeGroup(
+        'Removidos',
+        Icons.remove_circle_outline_rounded,
+        version.removidos,
+      ),
     ].where((g) => g.items.isNotEmpty).toList();
 
     if (items.isEmpty) {
@@ -904,8 +911,8 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
   }
 
   Future<void> _marcarComoLida(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
     final data = doc.data();
     if (data['lida'] == true) return;
 
@@ -920,9 +927,9 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
   }
 
   Future<void> _marcarTodasComoLidas(
-      String uid,
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) async {
+    String uid,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
     try {
       final batch = _firestore.batch();
 

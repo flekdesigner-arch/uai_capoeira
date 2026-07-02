@@ -53,8 +53,8 @@ class _ConfigurarInscricoesScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -70,8 +70,10 @@ class _ConfigurarInscricoesScreenState
 
   Future<void> _carregarConfiguracao() async {
     try {
-      final doc =
-      await _firestore.collection('configuracoes').doc('inscricoes').get();
+      final doc = await _firestore
+          .collection('configuracoes')
+          .doc('inscricoes')
+          .get();
 
       if (doc.exists) {
         final data = doc.data()!;
@@ -211,13 +213,13 @@ class _ConfigurarInscricoesScreenState
             onPressed: _salvando ? null : _salvarConfiguracao,
             icon: _salvando
                 ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
           ),
         ],
@@ -273,13 +275,13 @@ class _ConfigurarInscricoesScreenState
             onPressed: _salvando ? null : _salvarConfiguracao,
             icon: _salvando
                 ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                color: _onPrimary(),
-                strokeWidth: 2,
-              ),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _onPrimary(),
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR CONFIGURAÇÕES'),
             style: ElevatedButton.styleFrom(
@@ -330,8 +332,9 @@ class _ConfigurarInscricoesScreenState
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 'Inscrições da Aula Experimental',
@@ -358,13 +361,7 @@ class _ConfigurarInscricoesScreenState
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -419,8 +416,9 @@ class _ConfigurarInscricoesScreenState
         return Wrap(
           spacing: spacing,
           runSpacing: spacing,
-          children:
-          cards.map((card) => SizedBox(width: width, child: card)).toList(),
+          children: cards
+              .map((card) => SizedBox(width: width, child: card))
+              .toList(),
         );
       },
     );
@@ -593,11 +591,7 @@ class _ConfigurarInscricoesScreenState
               ],
             ),
           ),
-          Switch(
-            value: value,
-            activeColor: accent,
-            onChanged: onChanged,
-          ),
+          Switch(value: value, activeColor: accent, onChanged: onChanged),
         ],
       ),
     );
@@ -645,11 +639,7 @@ class _ConfigurarInscricoesScreenState
 
               if (narrow) {
                 return Column(
-                  children: [
-                    fields[0],
-                    const SizedBox(height: 10),
-                    fields[1],
-                  ],
+                  children: [fields[0], const SizedBox(height: 10), fields[1]],
                 );
               }
 
@@ -737,11 +727,7 @@ class _ConfigurarInscricoesScreenState
 
               if (narrow) {
                 return Column(
-                  children: [
-                    input,
-                    const SizedBox(height: 10),
-                    counter,
-                  ],
+                  children: [input, const SizedBox(height: 10), counter],
                 );
               }
 
@@ -783,7 +769,7 @@ class _ConfigurarInscricoesScreenState
               icon: Icons.warning_rounded,
               color: _ensureVisible(t.error, t.card),
               text:
-              '${_totalInscricoes - _vagasDisponiveis} inscrições excedem as vagas configuradas.',
+                  '${_totalInscricoes - _vagasDisponiveis} inscrições excedem as vagas configuradas.',
             ),
           ],
         ],

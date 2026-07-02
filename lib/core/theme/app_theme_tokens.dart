@@ -141,11 +141,14 @@ class UaiThemeTokens extends ThemeExtension<UaiThemeTokens> {
   }) {
     final isDark = isDarkBackground(background);
     final safeAccent = accent ?? lighten(primary, 0.18);
-    final safeCardAlt = cardAlt ?? (isDark ? lighten(card, 0.06) : darken(card, 0.04));
+    final safeCardAlt =
+        cardAlt ?? (isDark ? lighten(card, 0.06) : darken(card, 0.04));
     final safeTextSecondary =
-        textSecondary ?? (isDark ? const Color(0xFFD5DAEA) : const Color(0xFF4B5563));
+        textSecondary ??
+        (isDark ? const Color(0xFFD5DAEA) : const Color(0xFF4B5563));
     final safeTextMuted =
-        textMuted ?? (isDark ? const Color(0xFFAEB6CA) : const Color(0xFF9CA3AF));
+        textMuted ??
+        (isDark ? const Color(0xFFAEB6CA) : const Color(0xFF9CA3AF));
     final safeBorder =
         border ?? (isDark ? lighten(card, 0.11) : const Color(0xFFE5E7EB));
 
@@ -281,7 +284,11 @@ class UaiThemeTokens extends ThemeExtension<UaiThemeTokens> {
     buttonRadius: 14,
     inputRadius: 14,
     cardShadow: [
-      BoxShadow(color: Color(0x88000000), blurRadius: 24, offset: Offset(0, 12)),
+      BoxShadow(
+        color: Color(0x88000000),
+        blurRadius: 24,
+        offset: Offset(0, 12),
+      ),
     ],
     softShadow: [
       BoxShadow(color: Color(0x55000000), blurRadius: 14, offset: Offset(0, 6)),
@@ -324,7 +331,11 @@ class UaiThemeTokens extends ThemeExtension<UaiThemeTokens> {
     buttonRadius: 15,
     inputRadius: 15,
     cardShadow: [
-      BoxShadow(color: Color(0x90000000), blurRadius: 24, offset: Offset(0, 12)),
+      BoxShadow(
+        color: Color(0x90000000),
+        blurRadius: 24,
+        offset: Offset(0, 12),
+      ),
     ],
     softShadow: [
       BoxShadow(color: Color(0x60000000), blurRadius: 14, offset: Offset(0, 6)),
@@ -367,7 +378,11 @@ class UaiThemeTokens extends ThemeExtension<UaiThemeTokens> {
     buttonRadius: 12,
     inputRadius: 12,
     cardShadow: [
-      BoxShadow(color: Color(0xAA000000), blurRadius: 24, offset: Offset(0, 12)),
+      BoxShadow(
+        color: Color(0xAA000000),
+        blurRadius: 24,
+        offset: Offset(0, 12),
+      ),
       BoxShadow(color: Color(0x4039FF14), blurRadius: 18, offset: Offset(0, 0)),
     ],
     softShadow: [

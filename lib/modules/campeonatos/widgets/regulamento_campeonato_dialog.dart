@@ -11,9 +11,7 @@ class RegulamentoCampeonatoDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         width: double.maxFinite,
         constraints: BoxConstraints(
@@ -44,15 +42,29 @@ class RegulamentoCampeonatoDialog extends StatelessWidget {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.emoji_events, color: Colors.white, size: 28),
+                    child: const Icon(
+                      Icons.emoji_events,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('REGULAMENTO', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                        Text('Campeonato UAI Capoeira', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                        Text(
+                          'REGULAMENTO',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Campeonato UAI Capoeira',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
                       ],
                     ),
                   ),
@@ -102,11 +114,18 @@ class RegulamentoCampeonatoDialog extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'Regulamento oficial do campeonato',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                     ],
                   ),

@@ -77,9 +77,15 @@ class CertificadoPreviewData {
         .replaceAll('{corda}', corda)
         .replaceAll('{titulo_graduacao}', titulo)
         .replaceAll('{titulo}', titulo)
-        .replaceAll('{portador_cpf}', sexoFeminino ? 'PORTADORA DO CPF' : 'PORTADOR DO CPF')
+        .replaceAll(
+          '{portador_cpf}',
+          sexoFeminino ? 'PORTADORA DO CPF' : 'PORTADOR DO CPF',
+        )
         .replaceAll('{portador}', sexoFeminino ? 'PORTADORA' : 'PORTADOR')
-        .replaceAll('{reconhecido}', sexoFeminino ? 'RECONHECIDA' : 'RECONHECIDO')
+        .replaceAll(
+          '{reconhecido}',
+          sexoFeminino ? 'RECONHECIDA' : 'RECONHECIDO',
+        )
         .replaceAll('{apto}', sexoFeminino ? 'APTA' : 'APTO')
         .replaceAll('{aprovado}', sexoFeminino ? 'APROVADA' : 'APROVADO')
         .replaceAll('{aluno}', sexoFeminino ? 'ALUNA' : 'ALUNO')
@@ -146,7 +152,8 @@ class CertificadoPreviewData {
 
     final frases = <String, String>{
       'RECONHECIDO COMO APTO E APROVADO': 'RECONHECIDA COMO APTA E APROVADA',
-      'RECONHECIDO(A) COMO APTO(A) E APROVADO(A)': 'RECONHECIDA COMO APTA E APROVADA',
+      'RECONHECIDO(A) COMO APTO(A) E APROVADO(A)':
+          'RECONHECIDA COMO APTA E APROVADA',
       'PORTADOR DO CPF': 'PORTADORA DO CPF',
       'PORTADOR(A) DO CPF': 'PORTADORA DO CPF',
       'O(A) ALUNO(A)': 'A ALUNA',
@@ -175,7 +182,10 @@ class CertificadoPreviewData {
     };
 
     palavras.forEach((from, to) {
-      out = out.replaceAll(RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(from) + '(?![A-ZÀ-Ú])'), to);
+      out = out.replaceAll(
+        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(from) + '(?![A-ZÀ-Ú])'),
+        to,
+      );
     });
 
     return out;
@@ -189,14 +199,29 @@ class CertificadoPreviewData {
           sexo: 'MASCULINO',
           graduacaoNova: '2° ADULTO - CINZA',
           frase:
-          'CERTIFICAMOS QUE O(A) ALUNO(A) ACIMA ESTÁ APTO(A) E APROVADO(A) PARA RECEBER A GRADUAÇÃO EM CAPOEIRA, POR DEMONSTRAR INTERESSE NA ARTE E CULTURA BRASILEIRA, SENDO RECONHECIDO(A) PELOS MESTRES, CONTRAMESTRES, PROFESSORES E FORMADOS DO GRUPO.',
+              'CERTIFICAMOS QUE O(A) ALUNO(A) ACIMA ESTÁ APTO(A) E APROVADO(A) PARA RECEBER A GRADUAÇÃO EM CAPOEIRA, POR DEMONSTRAR INTERESSE NA ARTE E CULTURA BRASILEIRA, SENDO RECONHECIDO(A) PELOS MESTRES, CONTRAMESTRES, PROFESSORES E FORMADOS DO GRUPO.',
           localData: 'BOCAIUVA - MG, 20 DE JUNHO DE 2026',
           assinaturas: [
-            CertificadoAssinaturaData(nome: 'JOÃO LUCAS SILVA RABELO', apelido: 'TICO-TICO'),
-            CertificadoAssinaturaData(nome: 'MESTRE NAVARRO', apelido: 'MESTRE'),
-            CertificadoAssinaturaData(nome: 'ASSOCIAÇÃO UAI CAPOEIRA', apelido: 'ORGANIZAÇÃO'),
-            CertificadoAssinaturaData(nome: 'CONVIDADO ESPECIAL', apelido: 'FORMADO'),
-            CertificadoAssinaturaData(nome: 'COORDENAÇÃO DO EVENTO', apelido: 'UAI CAPOEIRA'),
+            CertificadoAssinaturaData(
+              nome: 'JOÃO LUCAS SILVA RABELO',
+              apelido: 'TICO-TICO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'MESTRE NAVARRO',
+              apelido: 'MESTRE',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'ASSOCIAÇÃO UAI CAPOEIRA',
+              apelido: 'ORGANIZAÇÃO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'CONVIDADO ESPECIAL',
+              apelido: 'FORMADO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'COORDENAÇÃO DO EVENTO',
+              apelido: 'UAI CAPOEIRA',
+            ),
           ],
         );
 
@@ -207,14 +232,29 @@ class CertificadoPreviewData {
           sexo: 'FEMININO',
           graduacaoNova: 'INSTRUTORA - ROXA',
           frase:
-          'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA, DEMONSTRANDO PLENO DOMÍNIO E HABILIDADE NESSA ARTE. COMO RESULTADO DE SEU DESEMPENHO EXCEPCIONAL, É {reconhecido} COMO {apto} E {aprovado} PARA EXERCER A FUNÇÃO DE PROFISSIONAL NESSA ÁREA, OSTENTANDO O TÍTULO DE {titulo_graduacao}, SENDO ATRIBUÍDA A CORDA {corda} EM SUA GRADUAÇÃO.',
+              'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA, DEMONSTRANDO PLENO DOMÍNIO E HABILIDADE NESSA ARTE. COMO RESULTADO DE SEU DESEMPENHO EXCEPCIONAL, É {reconhecido} COMO {apto} E {aprovado} PARA EXERCER A FUNÇÃO DE PROFISSIONAL NESSA ÁREA, OSTENTANDO O TÍTULO DE {titulo_graduacao}, SENDO ATRIBUÍDA A CORDA {corda} EM SUA GRADUAÇÃO.',
           localData: 'BOCAIUVA - MG, 20 DE JUNHO DE 2026',
           assinaturas: [
-            CertificadoAssinaturaData(nome: 'JOÃO LUCAS SILVA RABELO', apelido: 'TICO-TICO'),
-            CertificadoAssinaturaData(nome: 'MESTRE NAVARRO', apelido: 'MESTRE'),
-            CertificadoAssinaturaData(nome: 'ASSOCIAÇÃO UAI CAPOEIRA', apelido: 'ORGANIZAÇÃO'),
-            CertificadoAssinaturaData(nome: 'CONVIDADO ESPECIAL', apelido: 'FORMADO'),
-            CertificadoAssinaturaData(nome: 'COORDENAÇÃO DO EVENTO', apelido: 'UAI CAPOEIRA'),
+            CertificadoAssinaturaData(
+              nome: 'JOÃO LUCAS SILVA RABELO',
+              apelido: 'TICO-TICO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'MESTRE NAVARRO',
+              apelido: 'MESTRE',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'ASSOCIAÇÃO UAI CAPOEIRA',
+              apelido: 'ORGANIZAÇÃO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'CONVIDADO ESPECIAL',
+              apelido: 'FORMADO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'COORDENAÇÃO DO EVENTO',
+              apelido: 'UAI CAPOEIRA',
+            ),
           ],
         );
 
@@ -225,14 +265,29 @@ class CertificadoPreviewData {
           sexo: 'MASCULINO',
           graduacaoNova: 'PROFESSOR - MARROM',
           frase:
-          'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA, DEMONSTRANDO PLENO DOMÍNIO E HABILIDADE NESSA ARTE. COMO RESULTADO DE SEU DESEMPENHO EXCEPCIONAL, É {reconhecido} COMO {apto} E {aprovado} PARA EXERCER A FUNÇÃO DE PROFISSIONAL NESSA ÁREA, OSTENTANDO O TÍTULO DE {titulo_graduacao}, SENDO ATRIBUÍDA A CORDA {corda} EM SUA GRADUAÇÃO.',
+              'CERTIFICAMOS QUE, {nome}, {portador_cpf}, {cpf}, CONCLUIU COM ÊXITO O CURSO DE CAPOEIRA, DEMONSTRANDO PLENO DOMÍNIO E HABILIDADE NESSA ARTE. COMO RESULTADO DE SEU DESEMPENHO EXCEPCIONAL, É {reconhecido} COMO {apto} E {aprovado} PARA EXERCER A FUNÇÃO DE PROFISSIONAL NESSA ÁREA, OSTENTANDO O TÍTULO DE {titulo_graduacao}, SENDO ATRIBUÍDA A CORDA {corda} EM SUA GRADUAÇÃO.',
           localData: 'BOCAIUVA - MG, 20 DE JUNHO DE 2026',
           assinaturas: [
-            CertificadoAssinaturaData(nome: 'JOÃO LUCAS SILVA RABELO', apelido: 'TICO-TICO'),
-            CertificadoAssinaturaData(nome: 'MESTRE NAVARRO', apelido: 'MESTRE'),
-            CertificadoAssinaturaData(nome: 'ASSOCIAÇÃO UAI CAPOEIRA', apelido: 'ORGANIZAÇÃO'),
-            CertificadoAssinaturaData(nome: 'CONVIDADO ESPECIAL', apelido: 'FORMADO'),
-            CertificadoAssinaturaData(nome: 'COORDENAÇÃO DO EVENTO', apelido: 'UAI CAPOEIRA'),
+            CertificadoAssinaturaData(
+              nome: 'JOÃO LUCAS SILVA RABELO',
+              apelido: 'TICO-TICO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'MESTRE NAVARRO',
+              apelido: 'MESTRE',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'ASSOCIAÇÃO UAI CAPOEIRA',
+              apelido: 'ORGANIZAÇÃO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'CONVIDADO ESPECIAL',
+              apelido: 'FORMADO',
+            ),
+            CertificadoAssinaturaData(
+              nome: 'COORDENAÇÃO DO EVENTO',
+              apelido: 'UAI CAPOEIRA',
+            ),
           ],
         );
     }
@@ -244,8 +299,5 @@ class CertificadoAssinaturaData {
   final String nome;
   final String apelido;
 
-  const CertificadoAssinaturaData({
-    required this.nome,
-    required this.apelido,
-  });
+  const CertificadoAssinaturaData({required this.nome, required this.apelido});
 }

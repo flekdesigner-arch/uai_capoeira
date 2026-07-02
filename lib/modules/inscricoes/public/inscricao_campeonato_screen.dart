@@ -1,4 +1,3 @@
-﻿
 import 'dart:io' show File;
 import 'dart:typed_data';
 
@@ -125,17 +124,14 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
   bool _processandoEnvio = false;
   String? _inscricaoId;
 
-  final Map<int, bool> _etapaValida = {
-    0: false,
-    1: false,
-    2: false,
-    3: false,
-  };
+  final Map<int, bool> _etapaValida = {0: false, 1: false, 2: false, 3: false};
 
-  final TextInputFormatter _phoneFormatter =
-  FilteringTextInputFormatter.allow(RegExp(r'[0-9()\-\s]'));
-  final TextInputFormatter _cpfFormatter =
-  FilteringTextInputFormatter.allow(RegExp(r'[0-9\.\-]'));
+  final TextInputFormatter _phoneFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r'[0-9()\-\s]'),
+  );
+  final TextInputFormatter _cpfFormatter = FilteringTextInputFormatter.allow(
+    RegExp(r'[0-9\.\-]'),
+  );
 
   @override
   void initState() {
@@ -182,8 +178,8 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -230,8 +226,9 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
   Future<void> _loadSvg() async {
     try {
-      final content = await DefaultAssetBundle.of(context)
-          .loadString('assets/images/corda.svg');
+      final content = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/images/corda.svg');
 
       if (_isMounted) {
         setState(() => _svgContent = content);
@@ -306,13 +303,13 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
       _recebendoInscricoes = config['recebendo_inscricoes'] ?? true;
 
       if (config['data_inicio_inscricoes'] != null) {
-        _dataInicioInscricoes =
-            (config['data_inicio_inscricoes'] as Timestamp).toDate();
+        _dataInicioInscricoes = (config['data_inicio_inscricoes'] as Timestamp)
+            .toDate();
       }
 
       if (config['data_fim_inscricoes'] != null) {
-        _dataFimInscricoes =
-            (config['data_fim_inscricoes'] as Timestamp).toDate();
+        _dataFimInscricoes = (config['data_fim_inscricoes'] as Timestamp)
+            .toDate();
       }
 
       _periodoValido = true;
@@ -324,11 +321,11 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
         if (hoje.isBefore(_dataInicioInscricoes!)) {
           _periodoValido = false;
           _mensagemPeriodo =
-          '⏳ As inscrições começam em ${DateFormat('dd/MM/yyyy').format(_dataInicioInscricoes!)}';
+              '⏳ As inscrições começam em ${DateFormat('dd/MM/yyyy').format(_dataInicioInscricoes!)}';
         } else if (hoje.isAfter(_dataFimInscricoes!)) {
           _periodoValido = false;
           _mensagemPeriodo =
-          '⌛ O período de inscrições encerrou em ${DateFormat('dd/MM/yyyy').format(_dataFimInscricoes!)}';
+              '⌛ O período de inscrições encerrou em ${DateFormat('dd/MM/yyyy').format(_dataFimInscricoes!)}';
         }
       }
 
@@ -349,14 +346,13 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
           _recolherAssinatura = config['recolher_assinatura'] ?? true;
           _exigirComprovantePagamento =
               config['exigir_comprovante_pagamento'] ?? false;
-          _exigirFotoCompetidor =
-              config['exigir_foto_competidor'] ?? false;
+          _exigirFotoCompetidor = config['exigir_foto_competidor'] ?? false;
 
           _chavePix = config['chave_pix'] ?? '';
           _informacoesBancarias = config['informacoes_bancarias'] ?? '';
           _instrucoesPagamento =
               config['instrucoes_pagamento'] ??
-                  'Pague via PIX e envie o comprovante.';
+              'Pague via PIX e envie o comprovante.';
 
           if (config.containsKey('categorias')) {
             _categorias = _service.processarCategorias(config['categorias']);
@@ -365,7 +361,8 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
           _config = config;
           _configuracoesCarregadas = true;
 
-          _etapaValida[0] = _inscricoesAbertas &&
+          _etapaValida[0] =
+              _inscricoesAbertas &&
               _recebendoInscricoes &&
               _periodoValido &&
               _temVagas;
@@ -471,8 +468,9 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
     if (aluno['data_nascimento'] != null) {
       final data = (aluno['data_nascimento'] as Timestamp).toDate();
-      _controllers['data_nascimento']!.text =
-          DateFormat('dd/MM/yyyy').format(data);
+      _controllers['data_nascimento']!.text = DateFormat(
+        'dd/MM/yyyy',
+      ).format(data);
       _atualizarIdade(_controllers['data_nascimento']!.text);
     }
 
@@ -608,10 +606,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
                     Text(
                       'O campeonato é exclusivo para ALUNOS de capoeira até o 14º nível.\n\nFormados não podem competir, mas podem participar como jurados ou apoiadores.\n\nTodos os campos foram limpos para nova tentativa.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        height: 1.35,
-                      ),
+                      style: TextStyle(color: t.textSecondary, height: 1.35),
                     ),
                     const SizedBox(height: 18),
                     SizedBox(
@@ -626,8 +621,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
                           foregroundColor: _readableOn(t.primary),
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           shape: RoundedRectangleBorder(
-                            borderRadius:
-                            BorderRadius.circular(t.buttonRadius),
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                         ),
                         child: const Text(
@@ -695,19 +689,23 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
     final isMaior = _isMaiorIdade();
 
-    final nomeValido = _controllers['nome']!.text.isNotEmpty &&
+    final nomeValido =
+        _controllers['nome']!.text.isNotEmpty &&
         _validarNome(_controllers['nome']!.text);
-    final apelidoValido = _controllers['apelido']!.text.isNotEmpty &&
+    final apelidoValido =
+        _controllers['apelido']!.text.isNotEmpty &&
         _validarNome(_controllers['apelido']!.text);
     final dataValida =
         _controllers['data_nascimento']!.text.isNotEmpty && _idade > 0;
     final sexoValido = _sexo != null;
     final contatoValido = _controllers['contato_aluno']!.text.length >= 14;
 
-    final ruaValida = _controllers['rua']!.text.isNotEmpty &&
+    final ruaValida =
+        _controllers['rua']!.text.isNotEmpty &&
         _validarNome(_controllers['rua']!.text);
     final numeroValido = _controllers['numero']!.text.isNotEmpty;
-    final bairroValido = _controllers['bairro']!.text.isNotEmpty &&
+    final bairroValido =
+        _controllers['bairro']!.text.isNotEmpty &&
         _validarNome(_controllers['bairro']!.text);
     final cidadeValida = _controllers['cidade']!.text.isNotEmpty;
 
@@ -718,9 +716,9 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
     if (!isMaior) {
       responsavelValido =
           _controllers['nome_responsavel']!.text.isNotEmpty &&
-              _validarNome(_controllers['nome_responsavel']!.text) &&
-              _controllers['contato_responsavel']!.text.length >= 14 &&
-              _controllers['cpf_responsavel']!.text.length >= 14;
+          _validarNome(_controllers['nome_responsavel']!.text) &&
+          _controllers['contato_responsavel']!.text.length >= 14 &&
+          _controllers['cpf_responsavel']!.text.length >= 14;
     }
 
     var fotoValida = true;
@@ -730,7 +728,8 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
     if (_isMounted) {
       setState(() {
-        _etapaValida[1] = nomeValido &&
+        _etapaValida[1] =
+            nomeValido &&
             apelidoValido &&
             dataValida &&
             cpfValido &&
@@ -749,13 +748,13 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
   void _validarEtapa2() {
     if (!_isMounted) return;
 
-    final grupoValido = _controllers['grupo']!.text.isNotEmpty &&
+    final grupoValido =
+        _controllers['grupo']!.text.isNotEmpty &&
         _validarNome(_controllers['grupo']!.text);
     final professorValido =
         _controllers['professor_nome']!.text.isNotEmpty &&
-            _validarNome(_controllers['professor_nome']!.text);
-    final contatoValido =
-        _controllers['professor_contato']!.text.length >= 14;
+        _validarNome(_controllers['professor_nome']!.text);
+    final contatoValido = _controllers['professor_contato']!.text.length >= 14;
 
     bool graduacaoValida;
     if (_isGrupoSelecionadoUai) {
@@ -781,13 +780,13 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
     var comprovanteValido = true;
     if (_exigirComprovantePagamento && !_alunoEncontrado) {
-      comprovanteValido =
-          _comprovanteUrl != null || _comprovanteBytes != null;
+      comprovanteValido = _comprovanteUrl != null || _comprovanteBytes != null;
     }
 
     if (_isMounted) {
       setState(() {
-        _etapaValida[3] = _autorizacao &&
+        _etapaValida[3] =
+            _autorizacao &&
             (_recolherAssinatura
                 ? (_assinaturaUrl != null || _assinaturaBytes != null)
                 : true) &&
@@ -842,7 +841,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
 
     for (final cat in _categorias) {
       categoriasLista +=
-      '   • ${cat.nome}: ${cat.idadeMin} a ${cat.idadeMax} anos • ${cat.sexo} • R\$ ${cat.taxa.toStringAsFixed(2)} • ${cat.vagas} vagas\n';
+          '   • ${cat.nome}: ${cat.idadeMin} a ${cat.idadeMax} anos • ${cat.sexo} • R\$ ${cat.taxa.toStringAsFixed(2)} • ${cat.vagas} vagas\n';
     }
 
     texto = texto.replaceAll('[CATEGORIAS_LISTA]', categoriasLista);
@@ -879,10 +878,12 @@ ASSOCIAÇÃO UAI CAPOEIRA
   String _gerarTermoTexto() {
     final isMaior = _isMaiorIdade();
     final nomeAluno = _controllers['nome']!.text;
-    final nomeResp =
-    isMaior ? nomeAluno : _controllers['nome_responsavel']!.text;
-    final cpf =
-    isMaior ? _controllers['cpf']!.text : _controllers['cpf_responsavel']!.text;
+    final nomeResp = isMaior
+        ? nomeAluno
+        : _controllers['nome_responsavel']!.text;
+    final cpf = isMaior
+        ? _controllers['cpf']!.text
+        : _controllers['cpf_responsavel']!.text;
     final dataHora = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     var termoBase = isMaior
@@ -1186,7 +1187,7 @@ Data e hora: [DATA_HORA]
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const LandingPage()),
-                (route) => false,
+            (route) => false,
           );
         }
       }
@@ -1282,7 +1283,8 @@ Data e hora: [DATA_HORA]
                             icon: Icons.category_rounded,
                             label: 'Categoria',
                             value:
-                            _categoriaInfo?.nome ?? 'Categoria não informada',
+                                _categoriaInfo?.nome ??
+                                'Categoria não informada',
                           ),
                           _infoResumo(
                             icon: Icons.payments_rounded,
@@ -1316,8 +1318,7 @@ Data e hora: [DATA_HORA]
                           foregroundColor: _readableOn(t.primary),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius:
-                            BorderRadius.circular(t.buttonRadius),
+                            borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                         ),
                         child: const Text(
@@ -1417,9 +1418,8 @@ Data e hora: [DATA_HORA]
   void _mostrarRegulamento() {
     showDialog<void>(
       context: context,
-      builder: (context) => RegulamentoCampeonatoDialog(
-        regulamento: _gerarRegulamentoCompleto(),
-      ),
+      builder: (context) =>
+          RegulamentoCampeonatoDialog(regulamento: _gerarRegulamentoCompleto()),
     );
   }
 
@@ -1451,23 +1451,23 @@ Data e hora: [DATA_HORA]
               return _enviando
                   ? _buildEnviando()
                   : Column(
-                children: [
-                  _buildTopProgress(),
-                  Expanded(
-                    child: PageView(
-                      controller: _pageController,
-                      physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        _buildStepWelcome(constraints),
-                        _buildStepDadosCompletos(constraints),
-                        _buildStepGrupoEGraduacao(constraints),
-                        _buildStepRevisao(constraints),
+                        _buildTopProgress(),
+                        Expanded(
+                          child: PageView(
+                            controller: _pageController,
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              _buildStepWelcome(constraints),
+                              _buildStepDadosCompletos(constraints),
+                              _buildStepGrupoEGraduacao(constraints),
+                              _buildStepRevisao(constraints),
+                            ],
+                          ),
+                        ),
+                        _buildNavigationButtons(),
                       ],
-                    ),
-                  ),
-                  _buildNavigationButtons(),
-                ],
-              );
+                    );
             },
           ),
         ),
@@ -1618,7 +1618,7 @@ Data e hora: [DATA_HORA]
                       icon: Icons.info_rounded,
                       color: t.info,
                       text:
-                      'A inscrição confirma que você está ciente das regras, categorias e critérios do campeonato.',
+                          'A inscrição confirma que você está ciente das regras, categorias e critérios do campeonato.',
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
@@ -1660,16 +1660,13 @@ Data e hora: [DATA_HORA]
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: onPrimary.withOpacity(0.16)),
             ),
-            child: Icon(
-              Icons.emoji_events_rounded,
-              color: onPrimary,
-              size: 38,
-            ),
+            child: Icon(Icons.emoji_events_rounded, color: onPrimary, size: 38),
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 _nomeCampeonato,
@@ -1702,23 +1699,14 @@ Data e hora: [DATA_HORA]
                     Icons.payments_rounded,
                     'R\$ ${_taxaInscricao.toStringAsFixed(2)}',
                   ),
-                  _whiteChip(
-                    Icons.groups_rounded,
-                    '$_vagasRestantes vagas',
-                  ),
+                  _whiteChip(Icons.groups_rounded, '$_vagasRestantes vagas'),
                 ],
               ),
             ],
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 14),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 14), text]);
           }
 
           return Row(
@@ -1844,7 +1832,8 @@ Data e hora: [DATA_HORA]
   Widget _buildDisponibilidadeCard() {
     final t = context.uai;
 
-    final liberado = _inscricoesAbertas &&
+    final liberado =
+        _inscricoesAbertas &&
         _recebendoInscricoes &&
         _periodoValido &&
         _temVagas;
@@ -1866,8 +1855,8 @@ Data e hora: [DATA_HORA]
             text: liberado
                 ? 'Inscrições abertas. Restam $_vagasRestantes vagas disponíveis.'
                 : (_mensagemPeriodo.isNotEmpty
-                ? _mensagemPeriodo
-                : 'Inscrições indisponíveis no momento.'),
+                      ? _mensagemPeriodo
+                      : 'Inscrições indisponíveis no momento.'),
           ),
           if (_chavePix.isNotEmpty ||
               _informacoesBancarias.isNotEmpty ||
@@ -1924,7 +1913,7 @@ Data e hora: [DATA_HORA]
                         icon: Icons.verified_rounded,
                         color: t.success,
                         text:
-                        'Aluno encontrado no sistema. Alguns dados foram preenchidos automaticamente.',
+                            'Aluno encontrado no sistema. Alguns dados foram preenchidos automaticamente.',
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -2188,7 +2177,7 @@ Data e hora: [DATA_HORA]
                       icon: Icons.info_outline_rounded,
                       color: t.info,
                       text:
-                      'Caso seu grupo não esteja na lista, entre em contato com a organização.',
+                          'Caso seu grupo não esteja na lista, entre em contato com a organização.',
                     ),
                     const SizedBox(height: 14),
                     _buildGrupoDropdown(),
@@ -2214,16 +2203,16 @@ Data e hora: [DATA_HORA]
                 _isGrupoSelecionadoUai
                     ? _buildGraduacoesUaiCard()
                     : _sectionCard(
-                  icon: Icons.workspace_premium_rounded,
-                  title: 'Graduação do competidor',
-                  subtitle: 'Informe a graduação usada no seu grupo.',
-                  color: t.success,
-                  child: _textField(
-                    keyName: 'outra_graduacao',
-                    label: 'Outra graduação',
-                    icon: Icons.edit_rounded,
-                  ),
-                ),
+                        icon: Icons.workspace_premium_rounded,
+                        title: 'Graduação do competidor',
+                        subtitle: 'Informe a graduação usada no seu grupo.',
+                        color: t.success,
+                        child: _textField(
+                          keyName: 'outra_graduacao',
+                          label: 'Outra graduação',
+                          icon: Icons.edit_rounded,
+                        ),
+                      ),
               ],
             ],
           ),
@@ -2262,10 +2251,7 @@ Data e hora: [DATA_HORA]
     return DropdownButtonFormField<String>(
       value: _grupoSelecionado,
       isExpanded: true,
-      hint: Text(
-        'Selecione o grupo',
-        style: TextStyle(color: t.textMuted),
-      ),
+      hint: Text('Selecione o grupo', style: TextStyle(color: t.textMuted)),
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary),
       decoration: InputDecoration(
@@ -2289,26 +2275,22 @@ Data e hora: [DATA_HORA]
       items: _gruposConvidados.map<DropdownMenuItem<String>>((grupo) {
         return DropdownMenuItem<String>(
           value: grupo.nome,
-          child: Text(
-            grupo.nome,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(grupo.nome, maxLines: 1, overflow: TextOverflow.ellipsis),
         );
       }).toList(),
       onChanged: _alunoEncontrado
           ? null
           : (value) {
-        setState(() {
-          _grupoSelecionado = value;
-          _controllers['grupo']!.text = value ?? '';
-          _isGrupoSelecionadoUai = value == 'GRUPO UAI CAPOEIRA';
-          _graduacaoSelecionada = null;
-          _graduacaoInfo = null;
-          _controllers['outra_graduacao']!.clear();
-        });
-        _validarEtapa2();
-      },
+              setState(() {
+                _grupoSelecionado = value;
+                _controllers['grupo']!.text = value ?? '';
+                _isGrupoSelecionadoUai = value == 'GRUPO UAI CAPOEIRA';
+                _graduacaoSelecionada = null;
+                _graduacaoInfo = null;
+                _controllers['outra_graduacao']!.clear();
+              });
+              _validarEtapa2();
+            },
     );
   }
 
@@ -2323,97 +2305,98 @@ Data e hora: [DATA_HORA]
       child: _graduacoesUai.isEmpty
           ? Center(child: CircularProgressIndicator(color: t.primary))
           : LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth < 420
-              ? 2
-              : constraints.maxWidth < 760
-              ? 3
-              : 4;
-          const spacing = 10.0;
-          final width =
-              (constraints.maxWidth - spacing * (columns - 1)) / columns;
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 420
+                    ? 2
+                    : constraints.maxWidth < 760
+                    ? 3
+                    : 4;
+                const spacing = 10.0;
+                final width =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
-          return Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
-            children: _graduacoesUai.map((g) {
-              final id = g['id']?.toString();
-              final selected = _graduacaoSelecionada == id;
-              final cor = _hexToColor(g['hex_cor2'], fallback: t.primary);
-              final accent = _ensureVisible(cor, t.cardAlt);
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: _graduacoesUai.map((g) {
+                    final id = g['id']?.toString();
+                    final selected = _graduacaoSelecionada == id;
+                    final cor = _hexToColor(g['hex_cor2'], fallback: t.primary);
+                    final accent = _ensureVisible(cor, t.cardAlt);
 
-              return SizedBox(
-                width: width,
-                child: Material(
-                  color: selected
-                      ? Color.alphaBlend(
-                    accent.withOpacity(0.14),
-                    t.cardAlt,
-                  )
-                      : t.cardAlt,
-                  borderRadius: BorderRadius.circular(t.inputRadius),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: _alunoEncontrado
-                        ? null
-                        : () {
-                      setState(() {
-                        _graduacaoSelecionada = id;
-                        _graduacaoInfo = g;
-                      });
-                      _validarEtapa2();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        borderRadius:
-                        BorderRadius.circular(t.inputRadius),
-                        border: Border.all(
-                          color: selected
-                              ? accent.withOpacity(0.42)
-                              : t.border,
-                          width: selected ? 1.4 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          if (_svgContent != null)
-                            SizedBox(
-                              height: 50,
-                              child: SvgPicture.string(
-                                _getModifiedSvg(g),
-                                fit: BoxFit.contain,
+                    return SizedBox(
+                      width: width,
+                      child: Material(
+                        color: selected
+                            ? Color.alphaBlend(
+                                accent.withOpacity(0.14),
+                                t.cardAlt,
+                              )
+                            : t.cardAlt,
+                        borderRadius: BorderRadius.circular(t.inputRadius),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: _alunoEncontrado
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _graduacaoSelecionada = id;
+                                    _graduacaoInfo = g;
+                                  });
+                                  _validarEtapa2();
+                                },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                t.inputRadius,
                               ),
-                            )
-                          else
-                            Icon(
-                              Icons.workspace_premium_rounded,
-                              color: accent,
+                              border: Border.all(
+                                color: selected
+                                    ? accent.withOpacity(0.42)
+                                    : t.border,
+                                width: selected ? 1.4 : 1,
+                              ),
                             ),
-                          const SizedBox(height: 7),
-                          Text(
-                            g['nome_graduacao']?.toString() ??
-                                'Graduação',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: selected ? accent : t.textPrimary,
-                              fontSize: 11,
-                              height: 1.1,
-                              fontWeight: FontWeight.w900,
+                            child: Column(
+                              children: [
+                                if (_svgContent != null)
+                                  SizedBox(
+                                    height: 50,
+                                    child: SvgPicture.string(
+                                      _getModifiedSvg(g),
+                                      fit: BoxFit.contain,
+                                    ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.workspace_premium_rounded,
+                                    color: accent,
+                                  ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  g['nome_graduacao']?.toString() ??
+                                      'Graduação',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: selected ? accent : t.textPrimary,
+                                    fontSize: 11,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          );
-        },
-      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
     );
   }
 
@@ -2441,8 +2424,8 @@ Data e hora: [DATA_HORA]
               .whereType<xml.XmlElement>()
               .firstWhere(
                 (e) => e.getAttribute('id') == id,
-            orElse: () => xml.XmlElement(xml.XmlName('')),
-          );
+                orElse: () => xml.XmlElement(xml.XmlName('')),
+              );
 
           if (element.name.local.isNotEmpty) {
             final style = element.getAttribute('style') ?? '';
@@ -2450,10 +2433,7 @@ Data e hora: [DATA_HORA]
                 '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
 
             final newStyle = style.contains('fill:')
-                ? style.replaceAll(
-              RegExp(r'fill:#[0-9a-fA-F]{6}'),
-              'fill:$hex',
-            )
+                ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
                 : 'fill:$hex;$style';
 
             element.setAttribute('style', newStyle);
@@ -2530,20 +2510,20 @@ Data e hora: [DATA_HORA]
                       text: _alunoEncontrado
                           ? 'Taxa já identificada como paga pelo sistema.'
                           : [
-                        if (_chavePix.isNotEmpty) 'PIX: $_chavePix',
-                        if (_informacoesBancarias.isNotEmpty)
-                          _informacoesBancarias,
-                        if (_instrucoesPagamento.isNotEmpty)
-                          _instrucoesPagamento,
-                        'Valor: R\$ ${_taxaInscricao.toStringAsFixed(2)}',
-                      ].join('\n'),
+                              if (_chavePix.isNotEmpty) 'PIX: $_chavePix',
+                              if (_informacoesBancarias.isNotEmpty)
+                                _informacoesBancarias,
+                              if (_instrucoesPagamento.isNotEmpty)
+                                _instrucoesPagamento,
+                              'Valor: R\$ ${_taxaInscricao.toStringAsFixed(2)}',
+                            ].join('\n'),
                     ),
                     if (_exigirComprovantePagamento && !_alunoEncontrado) ...[
                       const SizedBox(height: 12),
                       _uploadButton(
                         icon: Icons.upload_file_rounded,
-                        label: _comprovanteBytes == null &&
-                            _comprovanteUrl == null
+                        label:
+                            _comprovanteBytes == null && _comprovanteUrl == null
                             ? 'Enviar comprovante'
                             : 'Comprovante selecionado',
                         color: t.success,
@@ -2588,8 +2568,8 @@ Data e hora: [DATA_HORA]
                       const SizedBox(height: 8),
                       _uploadButton(
                         icon: Icons.draw_rounded,
-                        label: _assinaturaBytes == null &&
-                            _assinaturaUrl == null
+                        label:
+                            _assinaturaBytes == null && _assinaturaUrl == null
                             ? 'Assinar termo'
                             : 'Assinatura registrada',
                         color: t.primary,
@@ -2617,7 +2597,7 @@ Data e hora: [DATA_HORA]
                       'Graduação',
                       _isGrupoSelecionadoUai
                           ? (_graduacaoInfo?['nome_graduacao']?.toString() ??
-                          '')
+                                '')
                           : _controllers['outra_graduacao']!.text,
                     ),
                     _reviewRow(
@@ -2663,21 +2643,19 @@ Data e hora: [DATA_HORA]
             child: InkWell(
               onTap: compativel
                   ? () {
-                setState(() {
-                  _categoriaSelecionada = cat.id;
-                  _categoriaInfo = cat;
-                });
-                _validarEtapaFinal();
-              }
+                      setState(() {
+                        _categoriaSelecionada = cat.id;
+                        _categoriaInfo = cat;
+                      });
+                      _validarEtapaFinal();
+                    }
                   : null,
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(t.inputRadius),
                   border: Border.all(
-                    color: selected
-                        ? accent.withOpacity(0.38)
-                        : t.border,
+                    color: selected ? accent.withOpacity(0.38) : t.border,
                   ),
                 ),
                 child: Row(
@@ -2696,9 +2674,7 @@ Data e hora: [DATA_HORA]
                           Text(
                             cat.nome,
                             style: TextStyle(
-                              color: compativel
-                                  ? t.textPrimary
-                                  : t.textMuted,
+                              color: compativel ? t.textPrimary : t.textMuted,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -2706,9 +2682,7 @@ Data e hora: [DATA_HORA]
                           Text(
                             '${cat.idadeMin} a ${cat.idadeMax} anos • ${cat.sexo} • R\$ ${cat.taxa.toStringAsFixed(2)}',
                             style: TextStyle(
-                              color: compativel
-                                  ? t.textSecondary
-                                  : t.textMuted,
+                              color: compativel ? t.textSecondary : t.textMuted,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -2784,16 +2758,16 @@ Data e hora: [DATA_HORA]
             ),
             child: _fotoBytes != null
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(t.inputRadius),
-              child: Image.memory(_fotoBytes!, fit: BoxFit.cover),
-            )
+                    borderRadius: BorderRadius.circular(t.inputRadius),
+                    child: Image.memory(_fotoBytes!, fit: BoxFit.cover),
+                  )
                 : Center(
-              child: Icon(
-                Icons.check_circle_rounded,
-                color: t.success,
-                size: 44,
-              ),
-            ),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: t.success,
+                      size: 44,
+                    ),
+                  ),
           ),
           const SizedBox(height: 10),
         ],
@@ -2833,22 +2807,19 @@ Data e hora: [DATA_HORA]
             children: [
               loading
                   ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: accent,
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: accent,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : Icon(icon, color: accent),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    color: accent,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: TextStyle(color: accent, fontWeight: FontWeight.w900),
                 ),
               ),
               Icon(Icons.chevron_right_rounded, color: accent),
@@ -2931,9 +2902,7 @@ Data e hora: [DATA_HORA]
                     ? (isLast ? _enviarInscricao : _proximaEtapa)
                     : null,
                 icon: Icon(
-                  isLast
-                      ? Icons.send_rounded
-                      : Icons.arrow_forward_rounded,
+                  isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
                 ),
                 label: Text(isLast ? 'ENVIAR INSCRIÇÃO' : 'CONTINUAR'),
                 style: ElevatedButton.styleFrom(

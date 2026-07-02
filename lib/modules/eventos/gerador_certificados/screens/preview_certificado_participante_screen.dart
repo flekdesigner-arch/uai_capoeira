@@ -32,11 +32,11 @@ class _PreviewCertificadoParticipanteScreenState
   final GlobalKey _exportKey = GlobalKey();
   final CertificadoSvgService _svgService = const CertificadoSvgService();
   final GeradorCertificadoEventoService _geradorService =
-  GeradorCertificadoEventoService();
+      GeradorCertificadoEventoService();
   final CertificadoFileShareService _fileShareService =
-  const CertificadoFileShareService();
+      const CertificadoFileShareService();
   final CertificadoPdfDiretoService _pdfDiretoService =
-  CertificadoPdfDiretoService();
+      CertificadoPdfDiretoService();
 
   bool _processando = false;
   String? _acaoAtual;
@@ -52,8 +52,8 @@ class _PreviewCertificadoParticipanteScreenState
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
 
     if (diff >= 0.26) return color;
 
@@ -129,7 +129,7 @@ class _PreviewCertificadoParticipanteScreenState
 
     throw Exception(
       'A prévia ainda não está pronta para exportação. '
-          'Aguarde a imagem aparecer completamente e tente novamente.',
+      'Aguarde a imagem aparecer completamente e tente novamente.',
     );
   }
 
@@ -140,10 +140,7 @@ class _PreviewCertificadoParticipanteScreenState
     );
   }
 
-  Future<void> _executar(
-      String label,
-      Future<void> Function() action,
-      ) async {
+  Future<void> _executar(String label, Future<void> Function() action) async {
     if (_processando) return;
 
     setState(() {
@@ -193,8 +190,6 @@ class _PreviewCertificadoParticipanteScreenState
     );
   }
 
-
-
   Future<void> _baixarPng() async {
     await _garantirExportPronto();
 
@@ -210,20 +205,16 @@ class _PreviewCertificadoParticipanteScreenState
     );
   }
 
-
-
   Future<void> _imprimirPdf() async {
     final pdfBytes = await _gerarPdfDireto();
 
     await Printing.layoutPdf(
-      onLayout: (_) async =>
-      pdfBytes,
+      onLayout: (_) async => pdfBytes,
       name: '${_nomeArquivoSomenteAluno()}.pdf',
       usePrinterSettings: true,
       dynamicLayout: false,
     );
   }
-
 
   Future<void> _compartilharPdf() async {
     final pdfBytes = await _gerarPdfDireto();
@@ -235,14 +226,14 @@ class _PreviewCertificadoParticipanteScreenState
     );
   }
 
-
-
   Future<void> _salvarVinculo() async {
     _addLogProcessamento('Gerando PDF direto de ${participante.alunoNome}...');
 
     final pdfBytes = await _gerarPdfDireto();
 
-    _addLogProcessamento('PDF gerado. Iniciando upload e substituição inteligente...');
+    _addLogProcessamento(
+      'PDF gerado. Iniciando upload e substituição inteligente...',
+    );
 
     final link = await _geradorService.uploadPdfDiretoERegistrar(
       pdfBytes: pdfBytes,
@@ -260,7 +251,6 @@ class _PreviewCertificadoParticipanteScreenState
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -407,8 +397,9 @@ class _PreviewCertificadoParticipanteScreenState
           );
 
           final text = Column(
-            crossAxisAlignment:
-            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Text(
                 participante.alunoNome,
@@ -439,13 +430,7 @@ class _PreviewCertificadoParticipanteScreenState
           );
 
           if (narrow) {
-            return Column(
-              children: [
-                icon,
-                const SizedBox(height: 12),
-                text,
-              ],
-            );
+            return Column(children: [icon, const SizedBox(height: 12), text]);
           }
 
           return Row(
@@ -472,7 +457,10 @@ class _PreviewCertificadoParticipanteScreenState
         children: [
           _infoLine('Evento', evento.eventoNome),
           _infoLine('Aluno', participante.alunoNome),
-          _infoLine('CPF', participante.temCpf ? participante.cpf : 'Não informado'),
+          _infoLine(
+            'CPF',
+            participante.temCpf ? participante.cpf : 'Não informado',
+          ),
           _infoLine(
             'Sexo',
             participante.sexoNormalizado.isEmpty
@@ -482,8 +470,14 @@ class _PreviewCertificadoParticipanteScreenState
           _infoLine('Graduação', participante.graduacaoNova),
           _infoLine('Modelo', participante.certificadoOuDiploma),
           _infoLine('Cidade/Data', evento.localData),
-          _infoLine('Assinaturas', '${evento.assinaturas.length} configurada(s)'),
-          _infoLine('Textos 2.0', '${evento.configuracoes.textos.length} campo(s) configurado(s)'),
+          _infoLine(
+            'Assinaturas',
+            '${evento.assinaturas.length} configurada(s)',
+          ),
+          _infoLine(
+            'Textos 2.0',
+            '${evento.configuracoes.textos.length} campo(s) configurado(s)',
+          ),
           _infoLine(
             'Status',
             participante.temCertificadoGerado
@@ -569,45 +563,41 @@ class _PreviewCertificadoParticipanteScreenState
       ),
       child: ultimosLogs.isEmpty
           ? Text(
-        'Aguardando logs...',
-        style: TextStyle(
-          color: t.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      )
+              'Aguardando logs...',
+              style: TextStyle(
+                color: t.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            )
           : Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: ultimosLogs.map((log) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.terminal_rounded,
-                  color: primary,
-                  size: 13,
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    log,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 10.2,
-                      height: 1.12,
-                      fontWeight: FontWeight.w700,
-                    ),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: ultimosLogs.map((log) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.terminal_rounded, color: primary, size: 13),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          log,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 10.2,
+                            height: 1.12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -824,10 +814,7 @@ class _PreviewCertificadoParticipanteScreenState
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),
         ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w900,
-          fontSize: 12.2,
-        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.2),
       ),
     );
   }

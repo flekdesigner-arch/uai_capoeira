@@ -18,8 +18,10 @@ class RelatorioFinanceiroScreen extends StatefulWidget {
 }
 
 class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
-  final NumberFormat realFormat =
-  NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat realFormat = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
   final DateFormat mesFormat = DateFormat('MMM/yyyy', 'pt_BR');
   final DateFormat dateFormat = DateFormat('dd/MM/yyyy', 'pt_BR');
 
@@ -51,8 +53,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff =
-    (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.26) return color;
 
     final bgIsDark = background.computeLuminance() < 0.45;
@@ -138,15 +140,20 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       final logo = await _carregarLogo();
       final now = DateTime.now();
 
-      final dataRows = _vendasPorMes.entries.map((e) => [
-        e.key,
-        realFormat.format(e.value),
-        realFormat.format(_recebidoPorMes[e.key] ?? 0),
-        realFormat.format(e.value - (_recebidoPorMes[e.key] ?? 0)),
-      ]).toList();
+      final dataRows = _vendasPorMes.entries
+          .map(
+            (e) => [
+              e.key,
+              realFormat.format(e.value),
+              realFormat.format(_recebidoPorMes[e.key] ?? 0),
+              realFormat.format(e.value - (_recebidoPorMes[e.key] ?? 0)),
+            ],
+          )
+          .toList();
 
-      final topAlunosMap =
-      _topAlunos.map((e) => {'nome': e.key, 'valor': e.value}).toList();
+      final topAlunosMap = _topAlunos
+          .map((e) => {'nome': e.key, 'valor': e.value})
+          .toList();
 
       pdf.addPage(
         pw.MultiPage(
@@ -155,27 +162,34 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 8),
               decoration: pw.BoxDecoration(
-                  border: pw.Border(
-                      bottom: pw.BorderSide(color: verdeEscuro, width: 2))),
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: verdeEscuro, width: 2),
+                ),
+              ),
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   if (logo != null)
                     pw.Container(
-                        margin: const pw.EdgeInsets.only(right: 12),
-                        child: pw.Image(logo, width: 50, height: 25)),
+                      margin: const pw.EdgeInsets.only(right: 12),
+                      child: pw.Image(logo, width: 50, height: 25),
+                    ),
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('RELATÓRIO FINANCEIRO MENSAL',
-                            style: pw.TextStyle(
-                                fontSize: 16,
-                                fontWeight: pw.FontWeight.bold,
-                                color: verdeEscuro)),
                         pw.Text(
-                            'Período: ${dateFormat.format(DateTime(now.year, now.month, 1))} - ${dateFormat.format(now)}',
-                            style: const pw.TextStyle(fontSize: 10)),
+                          'RELATÓRIO FINANCEIRO MENSAL',
+                          style: pw.TextStyle(
+                            fontSize: 16,
+                            fontWeight: pw.FontWeight.bold,
+                            color: verdeEscuro,
+                          ),
+                        ),
+                        pw.Text(
+                          'Período: ${dateFormat.format(DateTime(now.year, now.month, 1))} - ${dateFormat.format(now)}',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
                       ],
                     ),
                   ),
@@ -186,22 +200,27 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
-                  color: verdeClaro,
-                  borderRadius: pw.BorderRadius.circular(8)),
+                color: verdeClaro,
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
               child: pw.Column(
                 children: [
                   _pdfLinha('Total de Vendas', realFormat.format(_totalVendas)),
                   _pdfLinha(
-                      'Total Recebido', realFormat.format(_totalRecebido)),
+                    'Total Recebido',
+                    realFormat.format(_totalRecebido),
+                  ),
                   _pdfLinha(
-                      'Total Pendente', realFormat.format(_totalPendente)),
+                    'Total Pendente',
+                    realFormat.format(_totalPendente),
+                  ),
+                  _pdfLinha('Número de Vendas', _totalVendasCount.toString()),
                   _pdfLinha(
-                      'Número de Vendas', _totalVendasCount.toString()),
-                  _pdfLinha(
-                      'Ticket Médio',
-                      _totalVendasCount > 0
-                          ? realFormat.format(_totalVendas / _totalVendasCount)
-                          : 'R\$ 0,00'),
+                    'Ticket Médio',
+                    _totalVendasCount > 0
+                        ? realFormat.format(_totalVendas / _totalVendasCount)
+                        : 'R\$ 0,00',
+                  ),
                 ],
               ),
             ),
@@ -210,36 +229,48 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               headers: ['Mês', 'Vendas', 'Recebido', 'Pendente'],
               data: dataRows,
               headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                  fontSize: 9),
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                fontSize: 9,
+              ),
               cellStyle: const pw.TextStyle(fontSize: 8),
-              headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.green),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.green),
             ),
             if (topAlunosMap.isNotEmpty) ...[
               pw.SizedBox(height: 14),
-              pw.Text('TOP 5 ALUNOS',
-                  style: pw.TextStyle(
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
-                      color: verdeEscuro)),
+              pw.Text(
+                'TOP 5 ALUNOS',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: verdeEscuro,
+                ),
+              ),
               pw.SizedBox(height: 8),
-              ...topAlunosMap.map((a) => pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(a['nome']?.toString() ?? '',
-                      style: const pw.TextStyle(fontSize: 9)),
-                  pw.Text(realFormat.format(a['valor'] ?? 0),
+              ...topAlunosMap.map(
+                (a) => pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      a['nome']?.toString() ?? '',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(
+                      realFormat.format(a['valor'] ?? 0),
                       style: pw.TextStyle(
-                          fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                ],
-              )),
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
             pw.SizedBox(height: 20),
             pw.Text(
-                'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
-                style: pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
+              style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
+            ),
           ],
         ),
       );
@@ -267,15 +298,20 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       final logo = await _carregarLogo();
       final now = DateTime.now();
 
-      final dataRows = _vendasPorMes.entries.map((e) => [
-        e.key,
-        realFormat.format(e.value),
-        realFormat.format(_recebidoPorMes[e.key] ?? 0),
-        realFormat.format(e.value - (_recebidoPorMes[e.key] ?? 0)),
-      ]).toList();
+      final dataRows = _vendasPorMes.entries
+          .map(
+            (e) => [
+              e.key,
+              realFormat.format(e.value),
+              realFormat.format(_recebidoPorMes[e.key] ?? 0),
+              realFormat.format(e.value - (_recebidoPorMes[e.key] ?? 0)),
+            ],
+          )
+          .toList();
 
-      final topAlunosMap =
-      _topAlunos.map((e) => {'nome': e.key, 'valor': e.value}).toList();
+      final topAlunosMap = _topAlunos
+          .map((e) => {'nome': e.key, 'valor': e.value})
+          .toList();
 
       pdf.addPage(
         pw.MultiPage(
@@ -284,22 +320,27 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 8),
               decoration: pw.BoxDecoration(
-                  border: pw.Border(
-                      bottom: pw.BorderSide(color: verdeEscuro, width: 2))),
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: verdeEscuro, width: 2),
+                ),
+              ),
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   if (logo != null)
                     pw.Container(
-                        margin: const pw.EdgeInsets.only(right: 12),
-                        child: pw.Image(logo, width: 50, height: 25)),
+                      margin: const pw.EdgeInsets.only(right: 12),
+                      child: pw.Image(logo, width: 50, height: 25),
+                    ),
                   pw.Expanded(
                     child: pw.Text(
-                        'RELATÓRIO FINANCEIRO ANUAL ${now.year}',
-                        style: pw.TextStyle(
-                            fontSize: 16,
-                            fontWeight: pw.FontWeight.bold,
-                            color: verdeEscuro)),
+                      'RELATÓRIO FINANCEIRO ANUAL ${now.year}',
+                      style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                        color: verdeEscuro,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -309,42 +350,53 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               headers: ['Mês', 'Vendas', 'Recebido', 'Pendente'],
               data: dataRows,
               headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                  fontSize: 9),
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                fontSize: 9,
+              ),
               cellStyle: const pw.TextStyle(fontSize: 8),
-              headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.green),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.green),
             ),
             pw.SizedBox(height: 8),
             pw.Text(
               'Total geral: ${realFormat.format(_totalVendas)} | Recebido: ${realFormat.format(_totalRecebido)} | Pendente: ${realFormat.format(_totalPendente)}',
-              style: pw.TextStyle(
-                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
             ),
             if (topAlunosMap.isNotEmpty) ...[
               pw.SizedBox(height: 14),
-              pw.Text('TOP 5 ALUNOS',
-                  style: pw.TextStyle(
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
-                      color: verdeEscuro)),
+              pw.Text(
+                'TOP 5 ALUNOS',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: verdeEscuro,
+                ),
+              ),
               pw.SizedBox(height: 8),
-              ...topAlunosMap.map((a) => pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(a['nome']?.toString() ?? '',
-                      style: const pw.TextStyle(fontSize: 9)),
-                  pw.Text(realFormat.format(a['valor'] ?? 0),
+              ...topAlunosMap.map(
+                (a) => pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      a['nome']?.toString() ?? '',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(
+                      realFormat.format(a['valor'] ?? 0),
                       style: pw.TextStyle(
-                          fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                ],
-              )),
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
             pw.SizedBox(height: 20),
             pw.Text(
-                'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
-                style: pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
+              style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
+            ),
           ],
         ),
       );
@@ -372,9 +424,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
-          pw.Text(valor,
-              style: pw.TextStyle(
-                  fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+            valor,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
         ],
       ),
     );
@@ -391,13 +444,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context)),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
-              icon: const Icon(Icons.download),
-              tooltip: 'Exportar PDF',
-              onPressed: _mostrarOpcoesExportacao),
+            icon: const Icon(Icons.download),
+            tooltip: 'Exportar PDF',
+            onPressed: _mostrarOpcoesExportacao,
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -420,11 +475,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline,
-                    size: 50, color: context.uai.error),
+                Icon(Icons.error_outline, size: 50, color: context.uai.error),
                 const SizedBox(height: 16),
-                Text('Erro: ${snapshot.error}',
-                    style: TextStyle(color: context.uai.textPrimary)),
+                Text(
+                  'Erro: ${snapshot.error}',
+                  style: TextStyle(color: context.uai.textPrimary),
+                ),
               ],
             ),
           );
@@ -440,7 +496,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           try {
             final ts = data['data_venda'] as Timestamp;
             final date = ts.toDate();
-            if (_dataInicio != null && date.isBefore(_dataInicio!)) return false;
+            if (_dataInicio != null && date.isBefore(_dataInicio!))
+              return false;
             if (_dataFim != null && date.isAfter(_dataFim!)) return false;
             return true;
           } catch (_) {
@@ -453,15 +510,24 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.attach_money, size: 80, color: context.uai.textMuted),
+                Icon(
+                  Icons.attach_money,
+                  size: 80,
+                  color: context.uai.textMuted,
+                ),
                 const SizedBox(height: 16),
-                Text('Nenhuma venda encontrada',
-                    style: TextStyle(
-                        fontSize: 18, color: context.uai.textSecondary)),
+                Text(
+                  'Nenhuma venda encontrada',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: context.uai.textSecondary,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('Tente alterar o período selecionado',
-                    style: TextStyle(
-                        fontSize: 14, color: context.uai.textMuted)),
+                Text(
+                  'Tente alterar o período selecionado',
+                  style: TextStyle(fontSize: 14, color: context.uai.textMuted),
+                ),
               ],
             ),
           );
@@ -490,8 +556,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             try {
               final ts = data['data_venda'] as Timestamp;
               final mesAno = mesFormat.format(ts.toDate());
-              vendasPorMes[mesAno] =
-                  (vendasPorMes[mesAno] ?? 0) + valorTotal;
+              vendasPorMes[mesAno] = (vendasPorMes[mesAno] ?? 0) + valorTotal;
               recebidoPorMes[mesAno] =
                   (recebidoPorMes[mesAno] ?? 0) + valorPago;
             } catch (_) {}
@@ -506,8 +571,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           }
 
           String aluno = data['aluno_nome'] ?? 'Não identificado';
-          vendasPorAluno[aluno] =
-              (vendasPorAluno[aluno] ?? 0) + valorTotal;
+          vendasPorAluno[aluno] = (vendasPorAluno[aluno] ?? 0) + valorTotal;
           ultimasVendas.add(data);
         }
 
@@ -532,8 +596,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           children: [
             _buildFiltros(),
             const SizedBox(height: 16),
-            _buildKPIs(totalVendas, totalRecebido, totalPendente,
-                totalVendasCount),
+            _buildKPIs(
+              totalVendas,
+              totalRecebido,
+              totalPendente,
+              totalVendasCount,
+            ),
             const SizedBox(height: 16),
             if (vendasPorMes.isNotEmpty)
               _buildGraficoPrincipal(vendasPorMes, recebidoPorMes),
@@ -569,8 +637,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 color: isSelected
                     ? _readableOn(context.uai.primary)
                     : context.uai.textPrimary,
-                fontWeight:
-                isSelected ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
               onSelected: (_) => _aplicarFiltro(filtro),
             ),
@@ -580,61 +647,92 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
   }
 
-  Widget _buildKPIs(double totalVendas, double totalRecebido,
-      double totalPendente, int totalVendasCount) {
-    double ticketMedio =
-    totalVendasCount > 0 ? totalVendas / totalVendasCount : 0;
-    double inadimplencia =
-    totalVendas > 0 ? (totalPendente / totalVendas) * 100 : 0;
+  Widget _buildKPIs(
+    double totalVendas,
+    double totalRecebido,
+    double totalPendente,
+    int totalVendasCount,
+  ) {
+    double ticketMedio = totalVendasCount > 0
+        ? totalVendas / totalVendasCount
+        : 0;
+    double inadimplencia = totalVendas > 0
+        ? (totalPendente / totalVendas) * 100
+        : 0;
 
     return Column(
       children: [
         Row(
           children: [
             Expanded(
-                child: _kpiCard('Faturamento', realFormat.format(totalVendas),
-                    Icons.trending_up, context.uai.info)),
+              child: _kpiCard(
+                'Faturamento',
+                realFormat.format(totalVendas),
+                Icons.trending_up,
+                context.uai.info,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _kpiCard('Recebido', realFormat.format(totalRecebido),
-                    Icons.check_circle, context.uai.success)),
+              child: _kpiCard(
+                'Recebido',
+                realFormat.format(totalRecebido),
+                Icons.check_circle,
+                context.uai.success,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _kpiCard('Pendente', realFormat.format(totalPendente),
-                    Icons.pending, context.uai.error)),
+              child: _kpiCard(
+                'Pendente',
+                realFormat.format(totalPendente),
+                Icons.pending,
+                context.uai.error,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-                child: _kpiCard('Vendas', totalVendasCount.toString(),
-                    Icons.shopping_cart, context.uai.primary)),
+              child: _kpiCard(
+                'Vendas',
+                totalVendasCount.toString(),
+                Icons.shopping_cart,
+                context.uai.primary,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _kpiCard('Ticket Médio', realFormat.format(ticketMedio),
-                    Icons.attach_money, context.uai.warning)),
+              child: _kpiCard(
+                'Ticket Médio',
+                realFormat.format(ticketMedio),
+                Icons.attach_money,
+                context.uai.warning,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _kpiCard(
-                    'Inadimplência',
-                    '${inadimplencia.toStringAsFixed(1)}%',
-                    Icons.warning,
-                    inadimplencia > 30
-                        ? context.uai.error
-                        : context.uai.warning)),
+              child: _kpiCard(
+                'Inadimplência',
+                '${inadimplencia.toStringAsFixed(1)}%',
+                Icons.warning,
+                inadimplencia > 30 ? context.uai.error : context.uai.warning,
+              ),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _kpiCard(
-      String titulo, String valor, IconData icon, Color cor) {
+  Widget _kpiCard(String titulo, String valor, IconData icon, Color cor) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+      ),
       color: context.uai.card,
       shadowColor: Colors.transparent,
       child: Container(
@@ -647,24 +745,30 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           children: [
             Icon(icon, color: cor, size: 24),
             const SizedBox(height: 4),
-            Text(valor,
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: cor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            Text(titulo,
-                style: TextStyle(
-                    fontSize: 10, color: context.uai.textSecondary)),
+            Text(
+              valor,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: cor,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              titulo,
+              style: TextStyle(fontSize: 10, color: context.uai.textSecondary),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildGraficoPrincipal(Map<String, double> vendasPorMes,
-      Map<String, double> recebidoPorMes) {
+  Widget _buildGraficoPrincipal(
+    Map<String, double> vendasPorMes,
+    Map<String, double> recebidoPorMes,
+  ) {
     final entries = vendasPorMes.entries.toList();
     if (entries.isEmpty) return const SizedBox.shrink();
     final maxY =
@@ -672,7 +776,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     return Card(
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+      ),
       color: context.uai.card,
       shadowColor: Colors.transparent,
       child: Container(
@@ -683,11 +788,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text('VENDAS VS RECEBIDO',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: context.uai.textPrimary)),
+            Text(
+              'VENDAS VS RECEBIDO',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: context.uai.textPrimary,
+              ),
+            ),
             const SizedBox(height: 16),
             SizedBox(
               height: 220,
@@ -698,13 +806,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                   barTouchData: BarTouchData(
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        String label =
-                        rodIndex == 0 ? 'Vendas' : 'Recebido';
+                        String label = rodIndex == 0 ? 'Vendas' : 'Recebido';
                         return BarTooltipItem(
-                            '$label\n${realFormat.format(rod.toY)}',
-                            TextStyle(
-                                color: context.uai.textPrimary,
-                                fontSize: 11));
+                          '$label\n${realFormat.format(rod.toY)}',
+                          TextStyle(
+                            color: context.uai.textPrimary,
+                            fontSize: 11,
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -719,13 +828,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
-                                  entries[value.toInt()]
-                                      .key
-                                      .substring(0, 3)
-                                      .toUpperCase(),
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: context.uai.textSecondary)),
+                                entries[value.toInt()].key
+                                    .substring(0, 3)
+                                    .toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: context.uai.textSecondary,
+                                ),
+                              ),
                             );
                           }
                           return const Text('');
@@ -737,27 +847,27 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         showTitles: true,
                         reservedSize: 45,
                         getTitlesWidget: (value, meta) => Text(
-                            realFormat
-                                .format(value)
-                                .replaceAll('R\$ ', ''),
-                            style: TextStyle(
-                                fontSize: 9,
-                                color: context.uai.textSecondary)),
+                          realFormat.format(value).replaceAll('R\$ ', ''),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: context.uai.textSecondary,
+                          ),
+                        ),
                       ),
                     ),
                     rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false)),
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                     topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false)),
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
                   borderData: FlBorderData(show: false),
-                  gridData:
-                  FlGridData(show: true, drawVerticalLine: false),
+                  gridData: FlGridData(show: true, drawVerticalLine: false),
                   barGroups: entries.asMap().entries.map((entry) {
                     int idx = entry.key;
                     double venda = entry.value.value;
-                    double recebido =
-                        recebidoPorMes[entry.value.key] ?? 0;
+                    double recebido = recebidoPorMes[entry.value.key] ?? 0;
                     return BarChartGroupData(
                       x: idx,
                       barRods: [
@@ -766,16 +876,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                           color: Colors.blue,
                           width: 12,
                           borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(4),
-                              topRight: Radius.circular(4)),
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
+                          ),
                         ),
                         BarChartRodData(
                           toY: recebido,
                           color: Colors.green,
                           width: 12,
                           borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(4),
-                              topRight: Radius.circular(4)),
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
+                          ),
                         ),
                       ],
                     );
@@ -789,15 +901,23 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               children: [
                 Container(width: 12, height: 12, color: Colors.blue),
                 const SizedBox(width: 4),
-                Text('Vendas',
-                    style: TextStyle(
-                        fontSize: 11, color: context.uai.textSecondary)),
+                Text(
+                  'Vendas',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.uai.textSecondary,
+                  ),
+                ),
                 const SizedBox(width: 16),
                 Container(width: 12, height: 12, color: Colors.green),
                 const SizedBox(width: 4),
-                Text('Recebido',
-                    style: TextStyle(
-                        fontSize: 11, color: context.uai.textSecondary)),
+                Text(
+                  'Recebido',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.uai.textSecondary,
+                  ),
+                ),
               ],
             ),
           ],
@@ -806,8 +926,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
   }
 
-  Widget _buildGraficoPizza(
-      Map<String, int> vendasPorFormaPagamento) {
+  Widget _buildGraficoPizza(Map<String, int> vendasPorFormaPagamento) {
     final total = vendasPorFormaPagamento.values.fold(0, (a, b) => a + b);
     final cores = [
       Colors.blue,
@@ -815,12 +934,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       Colors.orange,
       Colors.purple,
       Colors.red,
-      Colors.teal
+      Colors.teal,
     ];
 
     return Card(
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+      ),
       color: context.uai.card,
       shadowColor: Colors.transparent,
       child: Container(
@@ -831,11 +951,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text('FORMAS DE PAGAMENTO',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: context.uai.textPrimary)),
+            Text(
+              'FORMAS DE PAGAMENTO',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: context.uai.textPrimary,
+              ),
+            ),
             const SizedBox(height: 16),
             SizedBox(
               height: 200,
@@ -850,22 +973,22 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             .asMap()
                             .entries
                             .map((entry) {
-                          int idx = entry.key;
-                          var e = entry.value;
-                          double percent =
-                              (e.value / total) * 100;
-                          return PieChartSectionData(
-                            value: e.value.toDouble(),
-                            title:
-                            '${percent.toStringAsFixed(0)}%',
-                            color: cores[idx % cores.length],
-                            radius: 60,
-                            titleStyle: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
-                          );
-                        }).toList(),
+                              int idx = entry.key;
+                              var e = entry.value;
+                              double percent = (e.value / total) * 100;
+                              return PieChartSectionData(
+                                value: e.value.toDouble(),
+                                title: '${percent.toStringAsFixed(0)}%',
+                                color: cores[idx % cores.length],
+                                radius: 60,
+                                titleStyle: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            })
+                            .toList(),
                         centerSpaceRadius: 30,
                       ),
                     ),
@@ -880,32 +1003,34 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                           .asMap()
                           .entries
                           .map((entry) {
-                        int idx = entry.key;
-                        var e = entry.value;
-                        return Padding(
-                          padding:
-                          const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            children: [
-                              Container(
-                                  width: 8,
-                                  height: 8,
-                                  color: cores[idx % cores.length]),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                  child: Text(
+                            int idx = entry.key;
+                            var e = entry.value;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    color: cores[idx % cores.length],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
                                       e.key.replaceAll('_', ' '),
                                       style: TextStyle(
-                                          fontSize: 9,
-                                          color: context
-                                              .uai.textSecondary),
+                                        fontSize: 9,
+                                        color: context.uai.textSecondary,
+                                      ),
                                       maxLines: 1,
-                                      overflow:
-                                      TextOverflow.ellipsis)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          })
+                          .toList(),
                     ),
                   ),
                 ],
@@ -918,10 +1043,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   }
 
   Widget _buildTopAlunos(List<MapEntry<String, double>> topAlunos) {
-    final medalhas = [Colors.amber, Colors.grey.shade400, Colors.brown.shade300];
+    final medalhas = [
+      Colors.amber,
+      Colors.grey.shade400,
+      Colors.brown.shade300,
+    ];
     return Card(
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+      ),
       color: context.uai.card,
       shadowColor: Colors.transparent,
       child: Container(
@@ -932,11 +1062,14 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text('TOP 5 ALUNOS',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: context.uai.textPrimary)),
+            Text(
+              'TOP 5 ALUNOS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: context.uai.textPrimary,
+              ),
+            ),
             Divider(color: context.uai.border),
             ...topAlunos.asMap().entries.map((entry) {
               int pos = entry.key;
@@ -949,26 +1082,38 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                          color: cor.withOpacity(0.2),
-                          shape: BoxShape.circle),
+                        color: cor.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
                       child: Center(
-                          child: Text('${pos + 1}',
-                              style: TextStyle(
-                                  color: cor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12))),
+                        child: Text(
+                          '${pos + 1}',
+                          style: TextStyle(
+                            color: cor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                        child: Text(entry.value.key,
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: context.uai.textPrimary))),
-                    Text(realFormat.format(entry.value.value),
+                      child: Text(
+                        entry.value.key,
                         style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: context.uai.textPrimary)),
+                          fontSize: 13,
+                          color: context.uai.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      realFormat.format(entry.value.value),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: context.uai.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -982,7 +1127,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   Widget _buildUltimasVendas(List<Map<String, dynamic>> vendas) {
     return Card(
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.uai.cardRadius)),
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+      ),
       color: context.uai.card,
       shadowColor: Colors.transparent,
       child: Container(
@@ -993,52 +1139,66 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text('ÚLTIMAS VENDAS',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: context.uai.textPrimary)),
+            Text(
+              'ÚLTIMAS VENDAS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: context.uai.textPrimary,
+              ),
+            ),
             Divider(color: context.uai.border),
-            ...vendas.take(10).map((data) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    data['status_pagamento'] == 'pago'
-                        ? Icons.check_circle
-                        : Icons.pending,
-                    size: 16,
-                    color: data['status_pagamento'] == 'pago'
-                        ? context.uai.success
-                        : context.uai.warning,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            ...vendas
+                .take(10)
+                .map(
+                  (data) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
                       children: [
-                        Text(data['aluno_nome'] ?? 'N/I',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: context.uai.textPrimary)),
+                        Icon(
+                          data['status_pagamento'] == 'pago'
+                              ? Icons.check_circle
+                              : Icons.pending,
+                          size: 16,
+                          color: data['status_pagamento'] == 'pago'
+                              ? context.uai.success
+                              : context.uai.warning,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                data['aluno_nome'] ?? 'N/I',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: context.uai.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                _formatarDataResumida(data['data_venda']),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: context.uai.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         Text(
-                            _formatarDataResumida(
-                                data['data_venda']),
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: context.uai.textSecondary)),
+                          realFormat.format(data['valor_total'] ?? 0),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: context.uai.textPrimary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  Text(realFormat.format(data['valor_total'] ?? 0),
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: context.uai.textPrimary)),
-                ],
-              ),
-            )),
+                ),
           ],
         ),
       ),
@@ -1084,8 +1244,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: context.uai.surface,
-          borderRadius:
-          const BorderRadius.vertical(top: Radius.circular(16)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: SafeArea(
           child: Padding(
@@ -1093,46 +1252,55 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Exportar Relatório',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.textPrimary)),
+                Text(
+                  'Exportar Relatório',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: context.uai.textPrimary,
+                  ),
+                ),
                 Divider(color: context.uai.border),
                 ListTile(
-                  leading:
-                  Icon(Icons.calendar_month, color: context.uai.info),
-                  title: Text('PDF Mensal',
-                      style: TextStyle(color: context.uai.textPrimary)),
-                  subtitle: Text('Relatório do mês atual',
-                      style:
-                      TextStyle(color: context.uai.textSecondary)),
+                  leading: Icon(Icons.calendar_month, color: context.uai.info),
+                  title: Text(
+                    'PDF Mensal',
+                    style: TextStyle(color: context.uai.textPrimary),
+                  ),
+                  subtitle: Text(
+                    'Relatório do mês atual',
+                    style: TextStyle(color: context.uai.textSecondary),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _gerarPdfMensal();
                   },
                 ),
                 ListTile(
-                  leading:
-                  Icon(Icons.description, color: context.uai.success),
-                  title: Text('PDF Anual',
-                      style: TextStyle(color: context.uai.textPrimary)),
-                  subtitle: Text('Relatório completo do ano',
-                      style:
-                      TextStyle(color: context.uai.textSecondary)),
+                  leading: Icon(Icons.description, color: context.uai.success),
+                  title: Text(
+                    'PDF Anual',
+                    style: TextStyle(color: context.uai.textPrimary),
+                  ),
+                  subtitle: Text(
+                    'Relatório completo do ano',
+                    style: TextStyle(color: context.uai.textSecondary),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _gerarPdfGeral();
                   },
                 ),
                 ListTile(
-                  leading:
-                  Icon(Icons.date_range, color: context.uai.warning),
-                  title: Text('Personalizado',
-                      style: TextStyle(color: context.uai.textPrimary)),
-                  subtitle: Text('Escolher período',
-                      style:
-                      TextStyle(color: context.uai.textSecondary)),
+                  leading: Icon(Icons.date_range, color: context.uai.warning),
+                  title: Text(
+                    'Personalizado',
+                    style: TextStyle(color: context.uai.textPrimary),
+                  ),
+                  subtitle: Text(
+                    'Escolher período',
+                    style: TextStyle(color: context.uai.textSecondary),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _abrirSeletorPeriodo();
@@ -1150,18 +1318,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: List.generate(
-          6,
-              (i) => Card(
-            color: context.uai.cardAlt,
-            child: Container(
-              height: 120,
-              decoration: BoxDecoration(
-                color: context.uai.cardAlt,
-                borderRadius:
-                BorderRadius.circular(context.uai.cardRadius),
-              ),
+        6,
+        (i) => Card(
+          color: context.uai.cardAlt,
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              color: context.uai.cardAlt,
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
             ),
-          )),
+          ),
+        ),
+      ),
     );
   }
 
