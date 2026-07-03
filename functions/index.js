@@ -1053,7 +1053,7 @@ exports.processarChamada = onCall(async (request) => {
 // ============================================
 exports.excluirChamada = onCall(async (request) => {
     if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'Usu�rio n�o autenticado');
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado');
     }
 
     const uid = request.auth.uid;
@@ -1081,7 +1081,7 @@ exports.excluirChamada = onCall(async (request) => {
             permissoes.podeExcluirChamada === true;
 
         if (!podeEditarChamada || !podeExcluirChamada) {
-            throw new HttpsError('permission-denied', 'Voc� n�o tem permiss�o para excluir chamadas.');
+            throw new HttpsError('permission-denied', 'Você não tem permissão para excluir chamadas.');
         }
     }
 
@@ -1229,10 +1229,10 @@ exports.excluirChamada = onCall(async (request) => {
             excluido_por_email: usuarioData.email || request.auth.token?.email || '',
             excluido_em: admin.firestore.FieldValue.serverTimestamp(),
             origem: 'listas_chamada_screen',
-            resumo: 'Chamada exclu�da/desfeita com rec�lculo de contadores'
+            resumo: 'Chamada excluída/desfeita com recálculo de contadores'
         });
     } catch (logError) {
-        console.warn('Falha ao registrar auditoria de chamada exclu�da:', logError);
+        console.warn('Falha ao registrar auditoria de chamada excluída:', logError);
     }
 
     return {
@@ -3112,7 +3112,7 @@ exports.resolverDestinoInicialUsuario = onCall(
     },
     async (request) => {
         if (!request.auth?.uid) {
-            throw new HttpsError('unauthenticated', 'UsuÃ¡rio nÃ£o autenticado.');
+            throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
         }
 
         const alunosVinculados = await buscarAlunosVinculadosGooglePorUid(request.auth.uid);
@@ -3143,7 +3143,7 @@ exports.registrarEventoGoogleAreaAluno = onCall(
     },
     async (request) => {
         if (!request.auth?.uid) {
-            throw new HttpsError('unauthenticated', 'UsuÃ¡rio nÃ£o autenticado.');
+            throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
         }
 
         const evento = String(request.data?.evento || '').trim();
@@ -4854,11 +4854,11 @@ async function buscarParticipacoesDoEvento(eventoId, eventoData) {
 
 async function reconstruirCacheParticipantesEventoInterno(eventoId) {
     const cleanEventoId = stringLimpa(eventoId);
-    if (!cleanEventoId) throw new HttpsError('invalid-argument', 'eventoId obrigat�rio.');
+    if (!cleanEventoId) throw new HttpsError('invalid-argument', 'eventoId obrigatório.');
 
     const eventoRef = db.collection('eventos').doc(cleanEventoId);
     const eventoDoc = await eventoRef.get();
-    if (!eventoDoc.exists) throw new HttpsError('not-found', 'Evento n�o encontrado.');
+    if (!eventoDoc.exists) throw new HttpsError('not-found', 'Evento não encontrado.');
 
     const eventoData = eventoDoc.data() || {};
     const participacoes = await buscarParticipacoesDoEvento(cleanEventoId, eventoData);
@@ -4895,12 +4895,12 @@ async function reconstruirCacheParticipantesEventoInterno(eventoId) {
 
 exports.reconstruirCacheParticipantesEvento = onCall(async (request) => {
     if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'Usu�rio n�o autenticado.');
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
     }
 
     const permitido = await verificarPermissaoCacheParticipantes(request.auth.uid);
     if (!permitido) {
-        throw new HttpsError('permission-denied', 'Voc� n�o tem permiss�o para atualizar participantes do evento.');
+        throw new HttpsError('permission-denied', 'Você não tem permissão para atualizar participantes do evento.');
     }
 
     const eventoId = request.data && request.data.eventoId;
@@ -4921,7 +4921,7 @@ exports.sincronizarCacheParticipacaoEvento = onDocumentWritten('participacoes_ev
     }
 
     if (!eventoId) {
-        console.log(`Cache participantes: participa��o ${participacaoId} sem evento identific�vel.`);
+        console.log(`Cache participantes: participação ${participacaoId} sem evento identificável.`);
         return;
     }
 
@@ -5080,7 +5080,16 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             const freq_mes = parseInt(contador.mes || 0);
             const freq_por_ano = contador.porAno || {};
             const freq_ano = parseInt(freq_por_ano[currentYear] || 0);
-            const freq_por_dia_semana = contador.porDiaSemana || {};
+            const freq_por_dia_semana = {
+                'seg': 0,
+                'ter': 0,
+                'qua': 0,
+                'qui': 0,
+                'sex': 0,
+                'sab': 0,
+                'dom': 0,
+                ...(contador.porDiaSemana || {})
+            };
 
             Object.keys(freq_por_ano).forEach(year => {
                 if (parseInt(freq_por_ano[year]) > 0) anosDisponiveisSet.add(year);
@@ -5149,8 +5158,22 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
         });
 
         // 9. Distribuições e Top Lists
-        const dist_idade = {};
-        const dist_sexo = { MASCULINO: 0, FEMININO: 0, OUTRO: 0, NAO_INFORMADO: 0 };
+        const dist_idade = {
+            '4-7 anos': 0,
+            '8-12 anos': 0,
+            '13-17 anos': 0,
+            '18-25 anos': 0,
+            '26-35 anos': 0,
+            '36-50 anos': 0,
+            '50+ anos': 0,
+            'NAO_INFORMADA': 0
+        };
+        const dist_sexo = {
+            'MASCULINO': 0,
+            'FEMININO': 0,
+            'OUTRO': 0,
+            'NAO_INFORMADO': 0
+        };
         const dist_graduacao = {};
 
         processedAlunos.forEach(aluno => {
