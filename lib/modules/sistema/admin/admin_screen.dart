@@ -78,6 +78,103 @@ class _AdminScreenState extends State<AdminScreen> {
     return Color.alphaBlend(color.withValues(alpha: opacity), base);
   }
 
+  Color _onGradient() {
+    final t = context.uai;
+    final temaEscuro =
+        t.background.computeLuminance() < 0.45 ||
+            t.surface.computeLuminance() < 0.45;
+
+    if (temaEscuro) return const Color(0xFFFFFFFF);
+
+    return _readableOn(t.primary);
+  }
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1460;
+    if (width >= 1180) return 1320;
+    if (width >= 900) return 1080;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 32);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 28);
+    return const EdgeInsets.fromLTRB(14, 14, 14, 26);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  int _dashboardColumns(
+      double width, {
+        double minItemWidth = 360,
+        int maxColumns = 4,
+      }) {
+    if (width <= 0) return 1;
+    return (width / minItemWidth).floor().clamp(1, maxColumns);
+  }
+
+  Widget _dashboardResponsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 360,
+    int maxColumns = 4,
+    double spacing = 12,
+    double runSpacing = 12,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        if (width < 720) {
+          return Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                SizedBox(width: double.infinity, child: children[i]),
+                if (i != children.length - 1) SizedBox(height: runSpacing),
+              ],
+            ],
+          );
+        }
+
+        final columns = _dashboardColumns(
+          width,
+          minItemWidth: minItemWidth,
+          maxColumns: maxColumns,
+        );
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
+  }
+
   bool _temPermissao(_AdminPermissionState access, List<String> permissions) {
     for (final permission in permissions) {
       if (access.permissions[permission] == true) return true;
@@ -112,17 +209,17 @@ class _AdminScreenState extends State<AdminScreen> {
   void _mostrarAcessoNegado(BuildContext context, [_AdminCardData? item]) {
     final mensagem =
         item?.deniedMessage ??
-        'Você não tem permissão para acessar este módulo.';
+            'Você não tem permissão para acessar este módulo.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
     );
   }
 
   void _abrirTelaProtegida(
-    BuildContext context,
-    _AdminCardData item,
-    _AdminPermissionState access,
-  ) {
+      BuildContext context,
+      _AdminCardData item,
+      _AdminPermissionState access,
+      ) {
     if (!_podeVerCard(item, access)) {
       _mostrarAcessoNegado(context, item);
       return;
@@ -285,19 +382,19 @@ class _AdminScreenState extends State<AdminScreen> {
                   child: visibleMigrations.isEmpty
                       ? _buildEmptyMigrationState(sheetContext)
                       : ListView.builder(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-                          itemCount: visibleMigrations.length,
-                          itemBuilder: (context, index) {
-                            final item = visibleMigrations[index];
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    itemCount: visibleMigrations.length,
+                    itemBuilder: (context, index) {
+                      final item = visibleMigrations[index];
 
-                            return _buildMigrationTile(
-                              context: sheetContext,
-                              item: item,
-                              access: access,
-                            );
-                          },
-                        ),
+                      return _buildMigrationTile(
+                        context: sheetContext,
+                        item: item,
+                        access: access,
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -427,20 +524,8 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildLoadingScaffold(BuildContext context) {
     final t = context.uai;
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        title: const Text(
-          'Painel Administrativo',
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-        ),
-      ),
-      body: Center(child: CircularProgressIndicator(color: t.primary)),
-    );
-  }
+    final accent = _ensureVisible(t.primary, t.card);
 
-  Widget _buildErrorScaffold(BuildContext context) {
-    final t = context.uai;
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
@@ -451,31 +536,116 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline_rounded, color: t.error, size: 48),
-              const SizedBox(height: 12),
-              Text(
-                'Não foi possível carregar suas permissões.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontWeight: FontWeight.w900,
-                ),
+          padding: _dashboardPagePadding,
+          child: _dashboardWidthLimiter(
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: _sectionDecoration(context),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: _softFill(accent, t.cardAlt, 0.14),
+                      borderRadius: BorderRadius.circular(t.cardRadius),
+                      border: Border.all(color: accent.withValues(alpha: 0.16)),
+                    ),
+                    child: Center(
+                      child: CircularProgressIndicator(color: accent),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Carregando painel administrativo...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Buscando permissões e módulos liberados.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _permissionFuture = _carregarPermissoes();
-                  });
-                },
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Tentar novamente'),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorScaffold(BuildContext context) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.error, t.card);
+
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        title: const Text(
+          'Painel Administrativo',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: _dashboardPagePadding,
+          child: _dashboardWidthLimiter(
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: _sectionDecoration(context),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: _softFill(accent, t.cardAlt, 0.14),
+                      borderRadius: BorderRadius.circular(t.cardRadius),
+                      border: Border.all(color: accent.withValues(alpha: 0.16)),
+                    ),
+                    child: Icon(Icons.error_outline_rounded, color: accent, size: 34),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Não foi possível carregar suas permissões.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Verifique a conexão e tente novamente.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _permissionFuture = _carregarPermissoes();
+                      });
+                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Tentar novamente'),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -673,9 +843,9 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildAdminScaffold(
-    BuildContext context,
-    _AdminPermissionState access,
-  ) {
+      BuildContext context,
+      _AdminPermissionState access,
+      ) {
     final t = context.uai;
     final siteCards = _siteCards(t);
     final appCards = _appCards(t);
@@ -702,210 +872,60 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final horizontal = constraints.maxWidth < 600 ? 14.0 : 22.0;
-
-          return ListView(
-            padding: EdgeInsets.fromLTRB(horizontal, 14, horizontal, 32),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 980),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeaderResumo(context, access),
-                      const SizedBox(height: 16),
-                      if (visibleCount == 0) ...[
-                        _buildEmptyAdminState(context),
-                        const SizedBox(height: 14),
-                      ],
-                      _buildSection(
-                        context: context,
-                        icon: Icons.public_rounded,
-                        title: 'Gerenciamento do Site',
-                        subtitle: 'Conteúdo público, logo e páginas do site.',
-                        children: [
-                          _AdminCardData(
-                            icon: Icons.web_rounded,
-                            title: 'Gerenciar Site',
-                            subtitle:
-                                'Regimento, biografia, graduações e inscrição',
-                            color: t.associacao,
-                            tela: const GerenciarSiteScreen(),
-                            permissions: const ['pode_gerenciar_site'],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.image_rounded,
-                            title: 'Logo do Site',
-                            subtitle: 'Troque a logo da página inicial',
-                            color: t.inscricoes,
-                            tela: const GerenciarLogoScreen(),
-                            permissions: const ['pode_gerenciar_logo_site'],
-                          ),
-                        ],
-                        access: access,
-                      ),
-                      const SizedBox(height: 14),
-                      _buildSection(
-                        context: context,
-                        icon: Icons.phone_android_rounded,
-                        title: 'Gerenciamento do App',
-                        subtitle:
-                            'Usuários, eventos, academias e dados internos.',
-                        children: [
-                          _AdminCardData(
-                            icon: Icons.manage_accounts_rounded,
-                            title: 'Gerenciar Usuários',
-                            subtitle:
-                                'Usuários, cargos e permissões do sistema',
-                            color: t.primary,
-                            tela: GerenciarUsuariosScreen(),
-                            permissions: const ['pode_gerenciar_usuarios'],
-                            critical: true,
-                            deniedMessage:
-                                'Você não tem permissão para gerenciar usuários.',
-                          ),
-                          _AdminCardData(
-                            icon: Icons.palette_rounded,
-                            title: 'Central de Temas',
-                            subtitle:
-                                'Defina o tema global e os temas disponíveis para usuários',
-                            color: t.associacao,
-                            tela: const CentralTemasScreen(),
-                            permissions: const ['pode_gerenciar_temas_globais'],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.health_and_safety_rounded,
-                            title: 'Saúde Firebase',
-                            subtitle:
-                                'Banco, storage, funções, uso e integridade',
-                            color: t.info,
-                            tela: const FirebaseSaudeScreen(),
-                            permissions: const ['pode_saude_firebase'],
-                            critical: true,
-                            adminOnly: true,
-                          ),
-                          _AdminCardData(
-                            icon: Icons.system_update_alt_rounded,
-                            title: 'Controle de Atualizações',
-                            subtitle:
-                                'Upload de APK, versões, histórico e obrigatoriedade',
-                            color: t.success,
-                            tela: const ControleAtualizacoesScreen(),
-                            permissions: const ['pode_controle_atualizacoes'],
-                            critical: true,
-                            adminOnly: true,
-                          ),
-                          _AdminCardData(
-                            icon: Icons.rule_rounded,
-                            title: 'Indicadores de Ausência',
-                            subtitle:
-                                'Configure dias e cores do alerta de frequência',
-                            color: t.info,
-                            tela: const IndicadoresAusenciaScreen(),
-                            permissions: const [
-                              'pode_configurar_indicadores_ausencia',
-                            ],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.psychology_alt_rounded,
-                            title: 'Brincadeiras da Chamada',
-                            subtitle:
-                                'Telepatia e chamada inversa com controle seguro',
-                            color: t.warning,
-                            tela: const ModoTrollScreen(),
-                            permissions: const ['pode_configurar_chamada'],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.workspace_premium_rounded,
-                            title: 'Gerenciar Graduações',
-                            subtitle:
-                                'Crie, edite e organize as graduações do app',
-                            color: t.warning,
-                            tela: GerenciarGraduacoesScreen(),
-                            permissions: const ['pode_gerenciar_graduacoes'],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.business_rounded,
-                            title: 'Gerenciar Academias',
-                            subtitle: 'Academias, núcleos, turmas e horários',
-                            color: t.info,
-                            tela: GerenciarAcademiasScreen(),
-                            permissions: const ['pode_gerenciar_academias'],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.event_rounded,
-                            title: 'Gerenciar Eventos',
-                            subtitle: 'Cadastre, edite e acompanhe eventos',
-                            color: t.eventos,
-                            tela: const GerenciarEventosScreen(),
-                            permissions: const [
-                              'pode_ver_eventos',
-                              'pode_acessar_eventos',
-                              'pode_criar_evento',
-                              'pode_editar_evento',
-                              'pode_gerenciar_participantes_evento',
-                            ],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.emoji_events_rounded,
-                            title: 'Gerenciar Participações',
-                            subtitle:
-                                'Participações, pagamentos e certificados',
-                            color: t.warning,
-                            tela: const GerenciarParticipacoesScreen(),
-                            permissions: const [
-                              'pode_gerenciar_participantes_evento',
-                              'pode_adicionar_participante_evento',
-                              'pode_editar_participacao_evento',
-                              'pode_remover_participante_evento',
-                              'pode_concluir_participacao_evento',
-                            ],
-                          ),
-                          _AdminCardData(
-                            icon: Icons.history_edu_rounded,
-                            title: 'Configurar Certificados',
-                            subtitle:
-                                'Templates, prévias e geração automática por SVG',
-                            color: t.inscricoes,
-                            tela: const CertificadoPreviewTesteScreen(),
-                            permissions: const ['pode_configurar_certificados'],
-                          ),
-                        ],
-                        access: access,
-                      ),
-                      const SizedBox(height: 14),
-                      if (_podeVerCard(migrationLauncher, access))
-                        _buildMigrationButton(
-                          context,
-                          migrationLauncher,
-                          access,
-                        ),
-                    ],
-                  ),
+      body: ListView(
+        padding: _dashboardPagePadding,
+        children: [
+          _dashboardWidthLimiter(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeaderResumo(context, access),
+                const SizedBox(height: 16),
+                if (visibleCount == 0) ...[
+                  _buildEmptyAdminState(context),
+                  const SizedBox(height: 14),
+                ],
+                _buildSection(
+                  context: context,
+                  icon: Icons.public_rounded,
+                  title: 'Gerenciamento do Site',
+                  subtitle: 'Conteúdo público, logo e páginas do site.',
+                  children: siteCards,
+                  access: access,
                 ),
-              ),
-            ],
-          );
-        },
+                const SizedBox(height: 14),
+                _buildSection(
+                  context: context,
+                  icon: Icons.phone_android_rounded,
+                  title: 'Gerenciamento do App',
+                  subtitle: 'Usuários, eventos, academias e dados internos.',
+                  children: appCards,
+                  access: access,
+                ),
+                const SizedBox(height: 14),
+                if (_podeVerCard(migrationLauncher, access))
+                  _buildMigrationButton(context, migrationLauncher, access),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildHeaderResumo(
-    BuildContext context,
-    _AdminPermissionState access,
-  ) {
+      BuildContext context,
+      _AdminPermissionState access,
+      ) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onGradient();
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 22 : 18),
       decoration: BoxDecoration(
         gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(t.cardRadius + 2),
+        borderRadius: BorderRadius.circular(t.cardRadius + 6),
+        border: Border.all(color: onPrimary.withValues(alpha: 0.13)),
         boxShadow: t.cardShadow,
       ),
       child: LayoutBuilder(
@@ -1012,7 +1032,7 @@ class _AdminScreenState extends State<AdminScreen> {
     if (visibleChildren.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 18 : 15),
       decoration: _sectionDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1024,40 +1044,18 @@ class _AdminScreenState extends State<AdminScreen> {
             subtitle: subtitle,
           ),
           const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final useTwoColumns = constraints.maxWidth >= 720;
-              const spacing = 10.0;
-
-              if (!useTwoColumns) {
-                return Column(
-                  children: visibleChildren.map((item) {
-                    return _buildAdminCard(
-                      context: context,
-                      item: item,
-                      access: access,
-                    );
-                  }).toList(),
-                );
-              }
-
-              final itemWidth = (constraints.maxWidth - spacing) / 2;
-
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: visibleChildren.map((item) {
-                  return SizedBox(
-                    width: itemWidth,
-                    child: _buildAdminCard(
-                      context: context,
-                      item: item,
-                      access: access,
-                    ),
-                  );
-                }).toList(),
+          _dashboardResponsiveWrap(
+            children: visibleChildren.map((item) {
+              return _buildAdminCard(
+                context: context,
+                item: item,
+                access: access,
               );
-            },
+            }).toList(),
+            minItemWidth: 390,
+            maxColumns: _isDesktopDashboard ? 3 : 2,
+            spacing: 12,
+            runSpacing: 12,
           ),
         ],
       ),
@@ -1126,7 +1124,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final visibleColor = _ensureVisible(item.color, t.card);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.zero,
       child: Material(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius - 6),
@@ -1200,10 +1198,10 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildMigrationButton(
-    BuildContext context,
-    _AdminCardData item,
-    _AdminPermissionState access,
-  ) {
+      BuildContext context,
+      _AdminCardData item,
+      _AdminPermissionState access,
+      ) {
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.card);
 
@@ -1266,7 +1264,7 @@ class _AdminScreenState extends State<AdminScreen> {
     required String label,
   }) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onGradient();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1298,7 +1296,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return BoxDecoration(
       color: t.card,
-      borderRadius: BorderRadius.circular(t.cardRadius),
+      borderRadius: BorderRadius.circular(t.cardRadius + 2),
       border: Border.all(color: t.border),
       boxShadow: t.softShadow,
     );
@@ -1371,3 +1369,9 @@ class _AdminPermissionState {
     required this.permissions,
   });
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 13:29
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

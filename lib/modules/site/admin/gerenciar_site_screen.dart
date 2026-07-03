@@ -168,14 +168,208 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         .toColor();
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  bool _temaEscuroComPrimarioNeon([Color? preferred]) {
+    final t = context.uai;
+    final primary = preferred ?? t.primary;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        t.background.computeLuminance() < 0.36 &&
+        t.surface.computeLuminance() < 0.42 &&
+        hsl.saturation > 0.56;
+  }
+
+  Color _safeHeroBase([Color? preferred]) {
+    final t = context.uai;
+    final base = preferred ?? t.primary;
+
+    if (_temaEscuroComPrimarioNeon(base)) {
+      return Color.alphaBlend(base.withOpacity(0.42), t.surface);
+    }
+
+    return base;
+  }
+
+  Gradient _safeHeroGradient([Color? preferred]) {
+    final base = _safeHeroBase(preferred);
+    final hsl = HSLColor.fromColor(base);
+    final dark = base.computeLuminance() < 0.45;
+    final end = hsl
+        .withLightness(
+      dark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.10).clamp(0.0, 1.0),
+    )
+        .withSaturation((hsl.saturation + 0.05).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
+
+  Color _onHero([Color? preferred]) {
+    if (_temaEscuroComPrimarioNeon(preferred)) {
+      return const Color(0xFFFFFFFF);
+    }
+    return _readableOn(_safeHeroBase(preferred));
+  }
+
+  Color _onPrimary() => _onHero();
+  Color _onCard() => _readableOn(context.uai.card);
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
 
   Color _cardAccent(Color color) {
     return _ensureVisible(_iconColor(color), context.uai.card);
   }
 
+  Color _secaoColor(Map<String, dynamic> secao) {
+    final t = context.uai;
+    switch (secao['id']?.toString()) {
+      case 'regimento':
+        return t.info;
+      case 'biografia':
+        return t.success;
+      case 'graduacoes':
+        return t.warning;
+      case 'inscricao':
+        return t.inscricoes;
+      case 'area_aluno':
+        return t.associacao;
+      case 'campeonato':
+        return t.warning;
+      case 'portfolio':
+        return t.associacao;
+      default:
+        final raw = secao['cor'];
+        return raw is Color ? raw : t.primary;
+    }
+  }
+
+  Color _secaoAccent(Map<String, dynamic> secao, [Color? background]) {
+    return _ensureVisible(_iconColor(_secaoColor(secao)), background ?? context.uai.card);
+  }
+
   Color _softBg(Color color, Color base, [double opacity = 0.10]) {
     return Color.alphaBlend(color.withOpacity(opacity), base);
+  }
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1320;
+    if (width >= 1180) return 1180;
+    if (width >= 900) return 1040;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 32);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 28);
+    return const EdgeInsets.fromLTRB(14, 14, 14, 24);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _dashboardResponsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 320,
+    int maxColumns = 3,
+    double spacing = 12,
+    double runSpacing = 12,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        if (width < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(children.length, (index) {
+              final isLast = index == children.length - 1;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
+                child: SizedBox(width: double.infinity, child: children[index]),
+              );
+            }),
+          );
+        }
+
+        final columns = (width / minItemWidth).floor().clamp(1, maxColumns);
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          alignment: WrapAlignment.center,
+          runAlignment: WrapAlignment.center,
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
+  }
+
+
+  Widget _headerMetricsWrap({required List<Widget> children}) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        if (width < 310) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(children.length, (index) {
+              final isLast = index == children.length - 1;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+                child: children[index],
+              );
+            }),
+          );
+        }
+
+        const spacing = 8.0;
+        final itemWidth = (width - (spacing * 2)) / 3;
+
+        return Wrap(
+          alignment: WrapAlignment.center,
+          runAlignment: WrapAlignment.center,
+          spacing: spacing,
+          runSpacing: spacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
   }
 
   InputDecoration _uaiInputDecoration({
@@ -272,7 +466,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           });
         } else {
           _secoes.sort(
-            (a, b) =>
+                (a, b) =>
                 (a['ordem_padrao'] ?? 999).compareTo(b['ordem_padrao'] ?? 999),
           );
         }
@@ -370,55 +564,109 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildBody() {
     if (_carregando) {
-      return Center(
-        child: CircularProgressIndicator(color: context.uai.primary),
-      );
+      return _buildLoadingState();
     }
 
     if (_erro != null) {
       return _buildErro();
     }
 
+    final t = context.uai;
+    final pad = _dashboardPagePadding;
+
     return RefreshIndicator(
-      color: context.uai.primary,
-      backgroundColor: context.uai.surface,
+      color: t.primary,
+      backgroundColor: t.surface,
       onRefresh: _carregarConfiguracoes,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
+        padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, pad.bottom),
         children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 980),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildHeaderResumo(),
-                  const SizedBox(height: 14),
-                  _buildAtalhosSuperiores(),
-                  const SizedBox(height: 16),
-                  _buildSectionTitle(
-                    icon: Icons.dashboard_customize_rounded,
-                    title: 'Seções do site',
-                    subtitle: 'Toque em uma seção para configurar o conteúdo',
-                  ),
-                  const SizedBox(height: 10),
-                  ..._secoes.map((secao) {
-                    if (secao['id'] == 'area_aluno') {
-                      return _buildAreaAlunoCard(secao);
-                    }
-
-                    if (secao['oculto'] == true) {
-                      return _buildHiddenSectionCard(secao);
-                    }
-
-                    return _buildSecaoCard(secao);
-                  }).toList(),
-                ],
-              ),
+          _dashboardWidthLimiter(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeaderResumo(),
+                const SizedBox(height: 14),
+                _buildAtalhosSuperiores(),
+                const SizedBox(height: 16),
+                _buildSectionTitle(
+                  icon: Icons.dashboard_customize_rounded,
+                  title: 'Seções do site',
+                  subtitle: 'Toque em uma seção para configurar o conteúdo',
+                ),
+                const SizedBox(height: 10),
+                _buildSecoesGrid(),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSecoesGrid() {
+    final children = _secoes.map((secao) {
+      if (secao['id'] == 'area_aluno') {
+        return _buildAreaAlunoCard(secao);
+      }
+
+      if (secao['oculto'] == true) {
+        return _buildHiddenSectionCard(secao);
+      }
+
+      return _buildSecaoCard(secao);
+    }).toList();
+
+    return _dashboardResponsiveWrap(
+      children: children,
+      minItemWidth: 340,
+      maxColumns: _isDesktopDashboard ? 3 : 2,
+      spacing: 12,
+      runSpacing: 12,
+    );
+  }
+
+  Widget _buildLoadingState() {
+    final t = context.uai;
+    final pad = _dashboardPagePadding;
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, pad.bottom),
+      children: [
+        _dashboardWidthLimiter(
+          Container(
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius + 4),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    color: t.primary,
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Carregando configurações do site...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -471,85 +719,96 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildHeaderResumo() {
     final t = context.uai;
-    final onPrimary = _onPrimary();
+    final onHero = _onHero();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 20 : 16),
       decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(t.cardRadius),
+        gradient: _safeHeroGradient(),
+        borderRadius: BorderRadius.circular(t.cardRadius + 6),
+        border: Border.all(color: onHero.withOpacity(0.12)),
         boxShadow: t.cardShadow,
       ),
-      child: Column(
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 620;
+
+          final icon = Container(
+            width: narrow ? 58 : 68,
+            height: narrow ? 58 : 68,
+            decoration: BoxDecoration(
+              color: onHero.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: onHero.withOpacity(0.15)),
+            ),
+            child: Icon(
+              Icons.public_rounded,
+              color: onHero,
+              size: narrow ? 31 : 36,
+            ),
+          );
+
+          final text = Column(
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: onPrimary.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: onPrimary.withOpacity(0.13)),
+              Text(
+                'Central do Site',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onHero,
+                  fontSize: narrow ? 23 : 29,
+                  fontWeight: FontWeight.w900,
+                  height: 1.03,
                 ),
-                child: Icon(Icons.public_rounded, color: onPrimary, size: 31),
               ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Central do Site',
-                      style: TextStyle(
-                        color: onPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Conteúdo público, menu, inscrições, área do aluno e estatísticas.',
-                      style: TextStyle(
-                        color: onPrimary.withOpacity(0.80),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 6),
+              Text(
+                'Conteúdo público, menu, inscrições, área do aluno, assistente e estatísticas.',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onHero.withOpacity(0.82),
+                  fontSize: 13,
+                  height: 1.34,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Row(
+          );
+
+          final titleRow = narrow
+              ? Column(children: [icon, const SizedBox(height: 14), text])
+              : Row(children: [icon, const SizedBox(width: 16), Expanded(child: text)]);
+
+          return Column(
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _buildHeaderMetric(
-                  label: 'Seções',
-                  value: '$_totalSecoes',
-                  icon: Icons.widgets_rounded,
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: _buildHeaderMetric(
-                  label: 'Visíveis',
-                  value: '$_secoesVisiveis',
-                  icon: Icons.visibility_rounded,
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: _buildHeaderMetric(
-                  label: 'Ocultas',
-                  value: '$_secoesOcultas',
-                  icon: Icons.visibility_off_rounded,
-                ),
+              titleRow,
+              const SizedBox(height: 16),
+              _headerMetricsWrap(
+                children: [
+                  _buildHeaderMetric(
+                    label: 'Seções',
+                    value: '$_totalSecoes',
+                    icon: Icons.widgets_rounded,
+                  ),
+                  _buildHeaderMetric(
+                    label: 'Visíveis',
+                    value: '$_secoesVisiveis',
+                    icon: Icons.visibility_rounded,
+                  ),
+                  _buildHeaderMetric(
+                    label: 'Ocultas',
+                    value: '$_secoesOcultas',
+                    icon: Icons.visibility_off_rounded,
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -560,31 +819,43 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     required IconData icon,
   }) {
     final onPrimary = _onPrimary();
+    final compact = MediaQuery.sizeOf(context).width < 620;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7 : 10,
+        vertical: compact ? 9 : 11,
+      ),
       decoration: BoxDecoration(
         color: onPrimary.withOpacity(0.13),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         border: Border.all(color: onPrimary.withOpacity(0.12)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: onPrimary, size: 19),
-          const SizedBox(height: 4),
+          Icon(icon, color: onPrimary, size: compact ? 17 : 19),
+          SizedBox(height: compact ? 3 : 4),
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: onPrimary,
               fontWeight: FontWeight.w900,
-              fontSize: 17,
+              fontSize: compact ? 16 : 17,
+              height: 1,
             ),
           ),
+          SizedBox(height: compact ? 2 : 3),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: onPrimary.withOpacity(0.74),
-              fontSize: 10,
+              fontSize: compact ? 9 : 10,
+              height: 1,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -598,13 +869,14 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 520;
+        final compact = constraints.maxWidth < 720;
         final cards = [
           _buildAtalhoCard(
             icon: Icons.analytics_rounded,
             title: 'Visitas',
-            subtitle: 'Dashboard',
+            subtitle: 'Dashboard de acessos',
             color: t.info,
+            compact: compact,
             onTap: () {
               Navigator.push(
                 context,
@@ -617,8 +889,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           _buildAtalhoCard(
             icon: Icons.smart_toy_rounded,
             title: 'Assistente',
-            subtitle: 'Chat IA',
+            subtitle: 'Chat IA público',
             color: t.inscricoes,
+            compact: compact,
             onTap: () {
               Navigator.push(
                 context,
@@ -630,9 +903,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           ),
           _buildAtalhoCard(
             icon: Icons.school_rounded,
-            title: 'Aluno',
-            subtitle: _areaAlunoVisivel ? 'Ativo' : 'Oculto',
+            title: 'Área do Aluno',
+            subtitle: _areaAlunoVisivel ? 'Ativa no site' : 'Oculta no site',
             color: _areaAlunoVisivel ? t.associacao : t.textMuted,
+            compact: compact,
             onTap: () {
               Navigator.push(
                 context,
@@ -644,30 +918,29 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           ),
         ];
 
-        if (narrow) {
-          return Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(child: cards[0]),
-                  const SizedBox(width: 10),
-                  Expanded(child: cards[1]),
-                ],
-              ),
-              const SizedBox(height: 10),
-              cards[2],
-            ],
+        if (!compact) {
+          return _dashboardResponsiveWrap(
+            children: cards,
+            minItemWidth: 260,
+            maxColumns: 3,
+            spacing: 12,
+            runSpacing: 12,
           );
         }
 
-        return Row(
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 10),
-            Expanded(child: cards[1]),
-            const SizedBox(width: 10),
-            Expanded(child: cards[2]),
-          ],
+        final columns = constraints.maxWidth < 330 ? 1 : 3;
+        final spacing = columns == 1 ? 0.0 : 8.0;
+        final itemWidth = columns == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          alignment: WrapAlignment.center,
+          spacing: spacing,
+          runSpacing: 8,
+          children: cards
+              .map((card) => SizedBox(width: itemWidth, child: card))
+              .toList(),
         );
       },
     );
@@ -679,6 +952,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     required String subtitle,
     required Color color,
     required VoidCallback onTap,
+    bool compact = false,
   }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
@@ -693,7 +967,11 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         splashColor: accent.withOpacity(0.12),
         highlightColor: accent.withOpacity(0.06),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+          constraints: BoxConstraints(minHeight: compact ? 86 : 112),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10,
+            vertical: compact ? 10 : 13,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius - 6),
             border: Border.all(color: accent.withOpacity(0.12)),
@@ -702,33 +980,34 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           child: Column(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: compact ? 36 : 42,
+                height: compact ? 36 : 42,
                 decoration: BoxDecoration(
                   color: accent.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                  borderRadius: BorderRadius.circular(compact ? 13 : t.buttonRadius),
                 ),
-                child: Icon(icon, color: accent, size: 23),
+                child: Icon(icon, color: accent, size: compact ? 20 : 23),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: compact ? 7 : 8),
               Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 12,
+                  fontSize: compact ? 11.2 : 12,
                   color: t.textPrimary,
                 ),
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: compact ? 1 : 2),
               Text(
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: t.textSecondary,
-                  fontSize: 10,
+                  fontSize: compact ? 9.2 : 10,
+                  height: 1.12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -797,6 +1076,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildAreaAlunoCard(Map<String, dynamic> secao) {
     final t = context.uai;
+    final compact = MediaQuery.sizeOf(context).width < 620;
     final bool oculto = secao['oculto'] == true;
     final Color color = oculto ? t.textMuted : t.associacao;
     final accent = _ensureVisible(color, t.card);
@@ -805,7 +1085,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         : _softBg(t.associacao, t.card, 0.08);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 11),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [bg, t.card],
@@ -820,19 +1100,23 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         onTap: () => _abrirSecao(secao),
         borderRadius: BorderRadius.circular(t.cardRadius - 2),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: EdgeInsets.all(compact ? 12 : 14),
           child: Column(
             children: [
               Row(
                 children: [
                   Container(
-                    width: 58,
-                    height: 58,
+                    width: compact ? 50 : 58,
+                    height: compact ? 50 : 58,
                     decoration: BoxDecoration(
                       color: accent.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: Icon(Icons.school_rounded, color: accent, size: 30),
+                    child: Icon(
+                      Icons.school_rounded,
+                      color: accent,
+                      size: compact ? 26 : 30,
+                    ),
                   ),
                   const SizedBox(width: 13),
                   Expanded(
@@ -846,7 +1130,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                                 'ÁREA DO ALUNO',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
-                                  fontSize: 16,
+                                  fontSize: compact ? 14.5 : 16,
                                   color: t.textPrimary,
                                 ),
                               ),
@@ -884,8 +1168,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                       icon: Icons.verified_user_rounded,
                       label: 'Segurança',
                       value:
-                          _configAreaAluno['exigir_telefone_confirmacao'] ==
-                              true
+                      _configAreaAluno['exigir_telefone_confirmacao'] ==
+                          true
                           ? 'Telefone'
                           : 'Simples',
                       color: t.info,
@@ -913,10 +1197,10 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                       children: infos
                           .map(
                             (w) => SizedBox(
-                              width: (constraints.maxWidth - 8) / 2,
-                              child: w,
-                            ),
-                          )
+                          width: (constraints.maxWidth - 8) / 2,
+                          child: w,
+                        ),
+                      )
                           .toList(),
                     );
                   }
@@ -986,11 +1270,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildSecaoCard(Map<String, dynamic> secao) {
     final t = context.uai;
-    final Color color = secao['cor'];
-    final accent = _cardAccent(color);
+    final compact = MediaQuery.sizeOf(context).width < 620;
+    final Color color = _secaoColor(secao);
+    final accent = _secaoAccent(secao);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
@@ -1003,17 +1288,17 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         splashColor: accent.withOpacity(0.12),
         highlightColor: accent.withOpacity(0.06),
         child: Padding(
-          padding: const EdgeInsets.all(13),
+          padding: EdgeInsets.all(compact ? 11 : 13),
           child: Row(
             children: [
               Container(
-                width: 54,
-                height: 54,
+                width: compact ? 46 : 54,
+                height: compact ? 46 : 54,
                 decoration: BoxDecoration(
                   color: accent.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(secao['icone'], color: accent, size: 27),
+                child: Icon(secao['icone'], color: accent, size: compact ? 23 : 27),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -1023,7 +1308,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                     Text(
                       secao['titulo'],
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: compact ? 13.8 : 15,
                         fontWeight: FontWeight.w900,
                         color: t.textPrimary,
                       ),
@@ -1035,7 +1320,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: t.textSecondary,
-                        fontSize: 12,
+                        fontSize: compact ? 11.2 : 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1072,12 +1357,13 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Widget _buildHiddenSectionCard(Map<String, dynamic> secao) {
     final t = context.uai;
-    final Color color = secao['cor'] ?? t.textMuted;
+    final compact = MediaQuery.sizeOf(context).width < 620;
+    final Color color = _secaoColor(secao);
     final muted = _ensureVisible(t.textMuted, t.cardAlt);
     final accent = _ensureVisible(color, t.cardAlt);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: t.cardAlt,
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
@@ -1087,17 +1373,17 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         onTap: () => _mostrarDialogoVisibilidade(secao),
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
         child: Padding(
-          padding: const EdgeInsets.all(13),
+          padding: EdgeInsets.all(compact ? 11 : 13),
           child: Row(
             children: [
               Container(
-                width: 54,
-                height: 54,
+                width: compact ? 46 : 54,
+                height: compact ? 46 : 54,
                 decoration: BoxDecoration(
                   color: muted.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(secao['icone'], color: muted, size: 27),
+                child: Icon(secao['icone'], color: muted, size: compact ? 23 : 27),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -1107,7 +1393,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                     Text(
                       secao['titulo'],
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: compact ? 13.8 : 15,
                         fontWeight: FontWeight.w900,
                         color: t.textPrimary,
                       ),
@@ -1119,7 +1405,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: t.textSecondary,
-                        fontSize: 12,
+                        fontSize: compact ? 11.2 : 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1399,7 +1685,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   void _mostrarDialogoVisibilidade(Map<String, dynamic> secao) {
     final bool isAreaAluno = secao['id'] == 'area_aluno';
     final t = context.uai;
-    final accent = _ensureVisible(secao['cor'] ?? t.primary, t.surface);
+    final accent = _ensureVisible(_secaoColor(secao), t.surface);
 
     showDialog(
       context: context,
@@ -1626,7 +1912,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   void _mostrarEmBreve(Map<String, dynamic> secao) {
     final t = context.uai;
-    final accent = _ensureVisible(secao['cor'] ?? t.primary, t.surface);
+    final accent = _ensureVisible(_secaoColor(secao), t.surface);
 
     showDialog(
       context: context,
@@ -1698,3 +1984,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     return color;
   }
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 11:18
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

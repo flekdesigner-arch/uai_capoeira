@@ -76,6 +76,90 @@ class AppDrawer extends StatelessWidget {
         .toColor();
   }
 
+  Color _onCard(BuildContext context) => _readableOn(context.uai.card);
+
+  Color _onCardMuted(BuildContext context) =>
+      _onCard(context).withOpacity(0.68);
+
+  bool _temaNeonSobreFundoEscuro(BuildContext context) {
+    final t = context.uai;
+    final primary = t.primary;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.48 &&
+        t.background.computeLuminance() < 0.34 &&
+        t.surface.computeLuminance() < 0.40 &&
+        hsl.saturation > 0.55;
+  }
+
+  Color _drawerHeroBase(BuildContext context) {
+    final t = context.uai;
+
+    if (_temaNeonSobreFundoEscuro(context)) {
+      return Color.alphaBlend(t.primary.withOpacity(0.34), t.surface);
+    }
+
+    return t.primary;
+  }
+
+  Gradient _drawerHeroGradient(BuildContext context) {
+    final t = context.uai;
+    final base = _drawerHeroBase(context);
+
+    if (_temaNeonSobreFundoEscuro(context)) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color.alphaBlend(t.primary.withOpacity(0.28), t.surface),
+          Color.alphaBlend(t.primary.withOpacity(0.44), t.card),
+        ],
+      );
+    }
+
+    final hsl = HSLColor.fromColor(base);
+    final end = hsl
+        .withLightness((hsl.lightness - 0.08).clamp(0.0, 1.0))
+        .withSaturation((hsl.saturation + 0.05).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
+
+  Color _onHero(BuildContext context) {
+    if (_temaNeonSobreFundoEscuro(context)) {
+      return const Color(0xFFFFFFFF);
+    }
+    return _readableOn(_drawerHeroBase(context));
+  }
+
+  double _drawerWidth(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+
+    if (width >= 1180) return 372;
+    if (width >= 720) return 358;
+    if (width <= 360) return width * 0.94;
+    return 342;
+  }
+
+  String _iniciais(String nome) {
+    final partes = nome
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+
+    if (partes.isEmpty) return '?';
+    if (partes.length == 1) return partes.first.characters.first.toUpperCase();
+
+    return '${partes.first.characters.first}${partes.last.characters.first}'
+        .toUpperCase();
+  }
+
   Future<_DrawerPermissoes> _carregarPermissoesDrawer() async {
     if (!_contaAtiva) {
       return const _DrawerPermissoes();
@@ -115,15 +199,19 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final String displayName =
         userData['nome_completo']?.toString() ??
-        userData['name']?.toString() ??
-        'Usuário';
+            userData['name']?.toString() ??
+            'Usuário';
     final String? photoUrl =
-        (userData['foto_url'] ?? userData['foto_perfil_aluno'])?.toString();
+    (userData['foto_url'] ?? userData['foto_perfil_aluno'])?.toString();
 
     final t = context.uai;
 
     return Drawer(
+      width: _drawerWidth(context),
       backgroundColor: t.background,
+      shape: Border(
+        right: BorderSide(color: t.border.withOpacity(0.85)),
+      ),
       child: SafeArea(
         top: false,
         child: Material(
@@ -137,7 +225,7 @@ class AppDrawer extends StatelessWidget {
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return ListView(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                        padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
                         children: [_buildLoadingSection(context)],
                       );
                     }
@@ -152,7 +240,7 @@ class AppDrawer extends StatelessWidget {
                         snapshot.data ?? const _DrawerPermissoes();
 
                     return ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
                       children: [
                         if (!_contaAtiva)
                           _buildContaInativaAviso(context)
@@ -179,106 +267,155 @@ class AppDrawer extends StatelessWidget {
 
   // ========== HEADER DO DRAWER ==========
   Widget _buildDrawerHeader(
-    BuildContext context,
-    String displayName,
-    String? photoUrl,
-  ) {
+      BuildContext context,
+      String displayName,
+      String? photoUrl,
+      ) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onHero = _onHero(context);
     final statusColor = _contaAtiva ? t.success : t.error;
+    final visibleStatus = _ensureVisible(statusColor, _drawerHeroBase(context));
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 18,
-        left: 16,
-        right: 16,
-        bottom: 18,
+        top: MediaQuery.of(context).padding.top + 14,
+        left: 14,
+        right: 14,
+        bottom: 12,
       ),
-      decoration: BoxDecoration(color: t.background),
+      decoration: BoxDecoration(
+        color: t.background,
+        border: Border(bottom: BorderSide(color: t.border.withOpacity(0.55))),
+      ),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          gradient: t.primaryGradient,
-          borderRadius: BorderRadius.circular(t.cardRadius + 4),
-          border: Border.all(color: onPrimary.withOpacity(0.13)),
+          gradient: _drawerHeroGradient(context),
+          borderRadius: BorderRadius.circular(t.cardRadius + 6),
+          border: Border.all(color: onHero.withOpacity(0.13)),
           boxShadow: t.cardShadow,
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ProfileScreen(),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(t.cardRadius + 2),
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: onHero.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(t.cardRadius + 1),
+                      border: Border.all(color: onHero.withOpacity(0.18)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(t.cardRadius - 2),
+                      child: _buildAvatarImage(
+                        context: context,
+                        photoUrl: photoUrl,
+                        displayName: displayName,
+                        isDrawer: true,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onHero,
+                          fontSize: 16.8,
+                          height: 1.07,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        currentUser?.email ?? 'Email não encontrado',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onHero.withOpacity(0.78),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _buildHeaderBadge(context, 'UAI CAPOEIRA'),
+                          _buildHeaderBadge(context, 'PESO $_pesoPermissao'),
+                          _buildHeaderBadge(
+                            context,
+                            _contaAtiva ? 'ATIVA' : 'INATIVA',
+                            color: visibleStatus,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             InkWell(
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const ProfileScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
                 );
               },
-              borderRadius: BorderRadius.circular(t.cardRadius),
+              borderRadius: BorderRadius.circular(t.buttonRadius),
               child: Container(
-                width: 68,
-                height: 68,
-                padding: const EdgeInsets.all(3),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
                 decoration: BoxDecoration(
-                  color: onPrimary.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(t.cardRadius - 2),
-                  border: Border.all(color: onPrimary.withOpacity(0.18)),
+                  color: onHero.withOpacity(0.11),
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                  border: Border.all(color: onHero.withOpacity(0.13)),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(t.cardRadius - 5),
-                  child: _buildAvatarImage(
-                    context: context,
-                    photoUrl: photoUrl,
-                    displayName: displayName,
-                    isDrawer: true,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: onPrimary,
-                      fontSize: 17,
-                      height: 1.08,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    currentUser?.email ?? 'Email não encontrado',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: onPrimary.withOpacity(0.78),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _buildHeaderBadge(context, 'UAI CAPOEIRA'),
-                      _buildHeaderBadge(context, 'PESO $_pesoPermissao'),
-                      _buildHeaderBadge(
-                        context,
-                        _contaAtiva ? 'ATIVA' : 'INATIVA',
-                        color: statusColor,
+                child: Row(
+                  children: [
+                    Icon(Icons.account_circle_rounded, color: onHero, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Ver meu perfil e preferências',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onHero.withOpacity(0.90),
+                          fontSize: 11.8,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: onHero, size: 19),
+                  ],
+                ),
               ),
             ),
           ],
@@ -288,26 +425,25 @@ class AppDrawer extends StatelessWidget {
   }
 
   Widget _buildHeaderBadge(BuildContext context, String label, {Color? color}) {
-    final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
-    final badgeColor = color ?? onPrimary;
+    final onHero = _onHero(context);
+    final badgeColor = color ?? onHero;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(color == null ? 0.14 : 0.18),
+        color: badgeColor.withOpacity(color == null ? 0.13 : 0.18),
         borderRadius: BorderRadius.circular(99),
         border: Border.all(
-          color: badgeColor.withOpacity(color == null ? 0.16 : 0.28),
+          color: badgeColor.withOpacity(color == null ? 0.16 : 0.30),
         ),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: color == null ? onPrimary : _ensureVisible(color, t.primary),
-          fontSize: 10,
+          color: color == null ? onHero : badgeColor,
+          fontSize: 9.6,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
+          letterSpacing: 0.65,
         ),
       ),
     );
@@ -315,9 +451,9 @@ class AppDrawer extends StatelessWidget {
 
   // ========== SEÇÃO: ACESSOS ESPECIAIS ==========
   Widget _buildAcessosEspeciaisSection(
-    BuildContext context,
-    _DrawerPermissoes permissoes,
-  ) {
+      BuildContext context,
+      _DrawerPermissoes permissoes,
+      ) {
     if (!permissoes.temAlgumAcesso) return SizedBox.shrink();
 
     return Column(
@@ -382,9 +518,9 @@ class AppDrawer extends StatelessWidget {
 
   // ========== SEÇÃO: ADMINISTRAÇÃO ==========
   Widget _buildAdministracaoSection(
-    BuildContext context,
-    _DrawerPermissoes permissoes,
-  ) {
+      BuildContext context,
+      _DrawerPermissoes permissoes,
+      ) {
     if (!permissoes.temAlgumaAdministracao) return SizedBox.shrink();
 
     return Column(
@@ -458,13 +594,13 @@ class AppDrawer extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         decoration: BoxDecoration(
           color: t.background,
-          border: Border(top: BorderSide(color: t.border)),
+          border: Border(top: BorderSide(color: t.border.withOpacity(0.70))),
         ),
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: t.card,
-            borderRadius: BorderRadius.circular(t.cardRadius),
+            borderRadius: BorderRadius.circular(t.cardRadius + 2),
             border: Border.all(color: t.border),
             boxShadow: t.softShadow,
           ),
@@ -519,7 +655,7 @@ class AppDrawer extends StatelessWidget {
           foregroundColor: fg,
           padding: const EdgeInsets.symmetric(vertical: 13),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(t.buttonRadius),
+            borderRadius: BorderRadius.circular(t.buttonRadius + 1),
           ),
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
           elevation: 0,
@@ -533,21 +669,22 @@ class AppDrawer extends StatelessWidget {
   // ========== WIDGETS AUXILIARES ==========
   Widget _buildSecaoTitulo(BuildContext context, String titulo) {
     final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.background);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 14, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 15, 8, 8),
       child: Row(
         children: [
           Container(
             width: 4,
-            height: 16,
+            height: 18,
             decoration: BoxDecoration(
-              color: t.primary,
+              color: accent,
               borderRadius: BorderRadius.circular(99),
               boxShadow: [
                 BoxShadow(
-                  color: t.primary.withOpacity(0.30),
-                  blurRadius: 8,
+                  color: accent.withOpacity(0.30),
+                  blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -558,10 +695,10 @@ class AppDrawer extends StatelessWidget {
             child: Text(
               titulo,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 11.2,
                 fontWeight: FontWeight.w900,
-                color: t.textSecondary,
-                letterSpacing: 0.8,
+                color: _ensureVisible(t.textSecondary, t.background),
+                letterSpacing: 0.85,
               ),
             ),
           ),
@@ -580,12 +717,14 @@ class AppDrawer extends StatelessWidget {
   }) {
     final t = context.uai;
     final accent = _ensureVisible(cor, t.card);
+    final onCard = _onCard(context);
+    final onMuted = _onCardMuted(context);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4.5),
       child: Material(
-        color: t.card,
-        borderRadius: BorderRadius.circular(t.cardRadius),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(t.cardRadius + 1),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
@@ -595,30 +734,31 @@ class AppDrawer extends StatelessWidget {
               MaterialPageRoute(builder: (context) => tela),
             );
           },
-          borderRadius: BorderRadius.circular(t.cardRadius),
+          borderRadius: BorderRadius.circular(t.cardRadius + 1),
           splashColor: accent.withOpacity(0.12),
           highlightColor: accent.withOpacity(0.06),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(t.cardRadius),
-              border: Border.all(color: t.border),
+              color: Color.alphaBlend(accent.withOpacity(0.035), t.card),
+              borderRadius: BorderRadius.circular(t.cardRadius + 1),
+              border: Border.all(color: accent.withOpacity(0.18)),
               boxShadow: t.softShadow,
             ),
             child: Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
-                      accent.withOpacity(0.13),
+                      accent.withOpacity(0.15),
                       t.cardAlt,
                     ),
-                    borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: accent.withOpacity(0.20)),
+                    borderRadius: BorderRadius.circular(t.buttonRadius + 1),
+                    border: Border.all(color: accent.withOpacity(0.24)),
                   ),
-                  child: Icon(icone, color: accent, size: 22),
+                  child: Icon(icone, color: accent, size: 23),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -630,38 +770,43 @@ class AppDrawer extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 13.5,
-                          color: t.textPrimary,
+                          fontSize: 13.8,
+                          color: onCard,
                           fontWeight: FontWeight.w900,
+                          letterSpacing: 0.15,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         subtitulo,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 11.2,
-                          color: t.textSecondary,
+                          color: onMuted,
+                          height: 1.18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Container(
-                  width: 28,
-                  height: 28,
+                  width: 31,
+                  height: 31,
                   decoration: BoxDecoration(
-                    color: t.cardAlt,
+                    color: Color.alphaBlend(
+                      accent.withOpacity(0.09),
+                      t.cardAlt,
+                    ),
                     shape: BoxShape.circle,
-                    border: Border.all(color: t.border),
+                    border: Border.all(color: accent.withOpacity(0.13)),
                   ),
                   child: Icon(
                     Icons.chevron_right_rounded,
-                    color: t.textMuted,
-                    size: 20,
+                    color: accent,
+                    size: 22,
                   ),
                 ),
               ],
@@ -674,9 +819,10 @@ class AppDrawer extends StatelessWidget {
 
   Widget _buildLoadingSection(BuildContext context) {
     final t = context.uai;
+    final onCard = _onCardMuted(context);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -700,7 +846,7 @@ class AppDrawer extends StatelessWidget {
               child: Text(
                 'Carregando permissões...',
                 style: TextStyle(
-                  color: t.textSecondary,
+                  color: onCard,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -743,7 +889,7 @@ class AppDrawer extends StatelessWidget {
     final accent = _ensureVisible(color, t.card);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -781,7 +927,7 @@ class AppDrawer extends StatelessWidget {
                   Text(
                     message,
                     style: TextStyle(
-                      color: t.textSecondary,
+                      color: _onCardMuted(context),
                       fontSize: 11.5,
                       height: 1.25,
                       fontWeight: FontWeight.w600,
@@ -813,14 +959,20 @@ class AppDrawer extends StatelessWidget {
     required String displayName,
     bool isDrawer = false,
   }) {
+    final t = context.uai;
+    final primary = _ensureVisible(t.primary, t.cardAlt);
+
     if (photoUrl == null || photoUrl.isEmpty) {
       return Container(
-        color: context.uai.cardAlt,
+        color: t.cardAlt,
         alignment: Alignment.center,
-        child: Icon(
-          Icons.person_rounded,
-          size: isDrawer ? 36 : 60,
-          color: context.uai.primary,
+        child: Text(
+          _iniciais(displayName),
+          style: TextStyle(
+            fontSize: isDrawer ? 22 : 30,
+            color: primary,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       );
     }
@@ -828,27 +980,30 @@ class AppDrawer extends StatelessWidget {
     return CachedNetworkImage(
       imageUrl: photoUrl,
       fit: BoxFit.cover,
-      width: isDrawer ? 68 : 120,
-      height: isDrawer ? 68 : 120,
+      width: isDrawer ? 72 : 120,
+      height: isDrawer ? 72 : 120,
       placeholder: (context, url) => Container(
-        color: context.uai.cardAlt,
+        color: t.cardAlt,
         alignment: Alignment.center,
         child: SizedBox(
           width: 18,
           height: 18,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            color: context.uai.primary,
+            color: primary,
           ),
         ),
       ),
       errorWidget: (context, url, error) => Container(
-        color: context.uai.cardAlt,
+        color: t.cardAlt,
         alignment: Alignment.center,
-        child: Icon(
-          Icons.person_rounded,
-          size: isDrawer ? 36 : 60,
-          color: context.uai.primary,
+        child: Text(
+          _iniciais(displayName),
+          style: TextStyle(
+            fontSize: isDrawer ? 22 : 30,
+            color: primary,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
@@ -910,3 +1065,9 @@ class _DrawerPermissoes {
 
   bool get temAlgumaAdministracao => temAlunos || temAdminApp;
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 10:55
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

@@ -102,4 +102,52 @@ Got dependencies!
 98 packages have newer versions incompatible with dependency constraints.
 Try `flutter pub outdated` for more information.
 Launching lib\main.dart on Chrome in debug mode...
-Waiting for connection from debug service on Chrome...          
+Waiting for connection from debug service on Chrome...             46,3s
+
+Flutter run key commands.
+r Hot reload. 
+R Hot restart.
+h List all available interactive commands.
+d Detach (terminate "flutter run" but leave application running).
+c Clear the screen
+q Quit (terminate the application on the device).
+
+This app is linked to the debug service: ws://127.0.0.1:56804/31tOaYJ8lco=/ws
+Debug service listening on ws://127.0.0.1:56804/31tOaYJ8lco=/ws
+A Dart VM Service on Chrome is available at: http://127.0.0.1:56804/31tOaYJ8lco=
+The Flutter DevTools debugger and profiler on Chrome is available at: http://127.0.0.1:56804/31tOaYJ8lco=/devtools/?uri=ws://127.0.0.1:56804/31tOaYJ8lco=/ws
+Starting application from main method in: org-dartlang-app:/web_entrypoint.dart.
+Found an existing <meta name="viewport"> tag. Flutter Web uses its own viewport configuration for better compatibility with Flutter. This tag will be replaced.
+🚀 INICIANDO APP - PASSO 1
+✅ WidgetsFlutterBinding inicializado
+📅 Inicializando date format...
+✅ Date format inicializado
+ Inicializando Firebase...
+✅ Firebase inicializado
+💾 Configurando persistência LOCAL para web...
+✅ Persistência LOCAL configurada
+ℹ️ Nenhuma sessão detectada imediatamente. Splash vai aguardar o Auth.
+📦 Configurando Firestore...
+✅ Firestore configurado com cache persistente
+🎂 Verificando mensagens de aniversário...
+✅ Mensagens já existem no banco!
+✅ Mensagens de aniversário verificadas
+🌍 Configurando locale...
+✅ Locale configurado
+🎨 Inicializando tema do app...
+✅ Tema inicializado
+🏁 Chamando runApp...
+✅ runApp executado
+🏢 UaiCapoeiraApp.build()
+🔐 Auth State: Usuário DESLOGADO
+ℹ️ PWA: nenhuma sessão salva. Abrindo LandingPage.
+👤 Usuário atual no build: Nenhum
+🌐 Registrando localização e dispositivo...
+📡 Chamando Cloud Function registrarLocalizacaoAcesso...
+📡 Resposta da Cloud Function: {success: true, docId: ecyD4IScPgcZZmkIPbfR, ip: 45.161.92.226, cidade: Bocaiúva, estado: Minas Gerais, pais: Brazil, latitude: -17.305, longitude: -43.6763, isp: WF COMERCIO DE SUPRIMENTOS DE INFORMATICA LTDA, timezone: America/Sao_Paulo, localizacaoStatus: sucesso}
+📄 Documento criado com ID: ecyD4IScPgcZZmkIPbfR
+✅ Sessão iniciada para documento: ecyD4IScPgcZZmkIPbfR
+✅ Evento registrado: pagina | home | inicial
+✅ Evento registrado: dispositivo | dados_dispositivo_inicial | site_landing
+✅ Rastreamento iniciado com dispositivo para documento ecyD4IScPgcZZmkIPbfR
+unhandled element <metadata/>; Picture key: Svg loader

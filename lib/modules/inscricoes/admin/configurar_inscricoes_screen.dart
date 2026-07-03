@@ -62,11 +62,147 @@ class _ConfigurarInscricoesScreenState
 
     return hsl
         .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0).toDouble())
         .toColor();
   }
 
+  Color _onCard() => _readableOn(context.uai.card);
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
+
+  bool _temaPrimarioMuitoClaroEmFundoEscuro() {
+    final t = context.uai;
+    final primary = t.primary;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        t.background.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.55;
+  }
+
+  Color _safeHeroBase() {
+    final t = context.uai;
+    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
+      return Color.alphaBlend(t.primary.withOpacity(0.58), t.surface);
+    }
+    return t.primary;
+  }
+
+  LinearGradient _safeHeroGradient() {
+    final base = _safeHeroBase();
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+    final endLightness = bgIsDark
+        ? (hsl.lightness + 0.08).clamp(0.0, 1.0).toDouble()
+        : (hsl.lightness - 0.08).clamp(0.0, 1.0).toDouble();
+    final end = hsl
+        .withLightness(endLightness)
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0).toDouble())
+        .toColor();
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
+
+  Color _onHero() {
+    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
+      return const Color(0xFFFFFFFF);
+    }
+    return _readableOn(_safeHeroBase());
+  }
+
   Color _onPrimary() => _readableOn(context.uai.primary);
+
+  Color _appBarBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+
+  Color _appBarFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1240;
+    if (width >= 1180) return 1120;
+    if (width >= 900) return 1040;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 28);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 24);
+    if (width <= 390) return const EdgeInsets.fromLTRB(14, 12, 14, 18);
+    return const EdgeInsets.fromLTRB(16, 14, 16, 22);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _responsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 360,
+    int maxColumns = 4,
+    double spacing = 12,
+    double runSpacing = 12,
+    bool centerLastRow = true,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        if (width < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(children.length, (index) {
+              final isLast = index == children.length - 1;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
+                child: SizedBox(width: double.infinity, child: children[index]),
+              );
+            }),
+          );
+        }
+
+        final columns = (width / minItemWidth)
+            .floor()
+            .clamp(1, maxColumns)
+            .toInt();
+        final itemWidth = (width - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          alignment: centerLastRow ? WrapAlignment.center : WrapAlignment.start,
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
+  }
 
   Future<void> _carregarConfiguracao() async {
     try {
@@ -199,94 +335,196 @@ class _ConfigurarInscricoesScreenState
     if (_carregando) {
       return Scaffold(
         backgroundColor: t.background,
-        body: Center(child: CircularProgressIndicator(color: t.primary)),
+        appBar: AppBar(
+          title: const Text(
+            'Configurar Inscrições',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
+        body: _buildLoadingState(),
       );
     }
+
+    final showBottomSaveBar = MediaQuery.sizeOf(context).width < 720;
 
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: const Text('Configurar Inscrições'),
+        title: const Text(
+          'Configurar Inscrições',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
         actions: [
           IconButton(
             tooltip: 'Salvar',
             onPressed: _salvando ? null : _salvarConfiguracao,
             icon: _salvando
                 ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: _onPrimary(),
-                      strokeWidth: 2,
-                    ),
-                  )
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: _appBarFg(),
+                strokeWidth: 2,
+              ),
+            )
                 : const Icon(Icons.save_rounded),
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 900;
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [t.cardAlt, t.background],
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final useTwoColumns = constraints.maxWidth >= 940;
+            final pad = _dashboardPagePadding;
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 96),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1120),
-                  child: Column(
-                    children: [
-                      _buildHeroCard(),
-                      const SizedBox(height: 14),
-                      _buildStatusCards(),
-                      const SizedBox(height: 14),
-                      if (isWide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: _buildMainSettingsColumn()),
-                            const SizedBox(width: 14),
-                            Expanded(child: _buildResumoColumn()),
-                          ],
-                        )
-                      else ...[
-                        _buildMainSettingsColumn(),
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                pad.left,
+                pad.top,
+                pad.right,
+                showBottomSaveBar ? 104 : pad.bottom,
+              ),
+              children: [
+                Center(
+                  child: _dashboardWidthLimiter(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeroCard(),
+                        const SizedBox(height: 12),
+                        _buildStatusCards(),
                         const SizedBox(height: 14),
-                        _buildResumoColumn(),
+                        if (useTwoColumns)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 11,
+                                child: _buildMainSettingsColumn(),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(flex: 9, child: _buildResumoColumn()),
+                            ],
+                          )
+                        else ...[
+                          _buildMainSettingsColumn(),
+                          const SizedBox(height: 14),
+                          _buildResumoColumn(),
+                        ],
+                        if (!showBottomSaveBar) ...[
+                          const SizedBox(height: 14),
+                          _buildInlineSaveCard(),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-          decoration: BoxDecoration(
-            color: t.surface,
-            border: Border(top: BorderSide(color: t.border)),
-            boxShadow: t.softShadow,
+      bottomNavigationBar: showBottomSaveBar ? _buildBottomSaveBar() : null,
+    );
+  }
+
+  Widget _buildInlineSaveCard() {
+    final t = context.uai;
+    final bg = _ensureVisible(t.primary, t.card);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _salvando
+                  ? 'Salvando alterações...'
+                  : 'Revise os campos e salve as configurações.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
           ),
-          child: ElevatedButton.icon(
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 260,
+            child: ElevatedButton.icon(
+              onPressed: _salvando ? null : _salvarConfiguracao,
+              icon: _salvando
+                  ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  color: _readableOn(bg),
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Icon(Icons.save_rounded),
+              label: Text(_salvando ? 'SALVANDO...' : 'SALVAR'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: bg,
+                foregroundColor: _readableOn(bg),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomSaveBar() {
+    final t = context.uai;
+    final bg = _ensureVisible(t.primary, t.surface);
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(t.surface.withOpacity(0.94), t.background),
+          border: Border(top: BorderSide(color: t.border)),
+          boxShadow: t.softShadow,
+        ),
+        child: _dashboardWidthLimiter(
+          ElevatedButton.icon(
             onPressed: _salvando ? null : _salvarConfiguracao,
             icon: _salvando
                 ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      color: _onPrimary(),
-                      strokeWidth: 2,
-                    ),
-                  )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                color: _readableOn(bg),
+                strokeWidth: 2,
+              ),
+            )
                 : const Icon(Icons.save_rounded),
             label: Text(_salvando ? 'SALVANDO...' : 'SALVAR CONFIGURAÇÕES'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: t.primary,
-              foregroundColor: _onPrimary(),
+              backgroundColor: bg,
+              foregroundColor: _readableOn(bg),
               minimumSize: const Size.fromHeight(50),
               padding: const EdgeInsets.symmetric(vertical: 14),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
@@ -302,14 +540,15 @@ class _ConfigurarInscricoesScreenState
 
   Widget _buildHeroCard() {
     final t = context.uai;
-    final onPrimary = _onPrimary();
+    final onHero = _onHero();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 20 : 16),
       decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(t.cardRadius + 2),
+        gradient: _safeHeroGradient(),
+        borderRadius: BorderRadius.circular(t.cardRadius + 6),
+        border: Border.all(color: onHero.withOpacity(0.13)),
         boxShadow: t.cardShadow,
       ),
       child: LayoutBuilder(
@@ -317,31 +556,32 @@ class _ConfigurarInscricoesScreenState
           final narrow = constraints.maxWidth < 560;
 
           final icon = Container(
-            width: 62,
-            height: 62,
+            width: narrow ? 58 : 64,
+            height: narrow ? 58 : 64,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onHero.withOpacity(0.14),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onHero.withOpacity(0.16)),
             ),
             child: Icon(
               Icons.app_registration_rounded,
-              color: onPrimary,
-              size: 34,
+              color: onHero,
+              size: narrow ? 31 : 35,
             ),
           );
 
+          final statusChip = _buildHeroStatusChip(narrow: narrow);
+
           final text = Column(
-            crossAxisAlignment: narrow
-                ? CrossAxisAlignment.center
-                : CrossAxisAlignment.start,
+            crossAxisAlignment:
+            narrow ? CrossAxisAlignment.center : CrossAxisAlignment.start,
             children: [
               Text(
                 'Inscrições da Aula Experimental',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary,
-                  fontSize: narrow ? 22 : 27,
+                  color: onHero,
+                  fontSize: narrow ? 21 : 27,
                   fontWeight: FontWeight.w900,
                   height: 1.05,
                 ),
@@ -351,17 +591,23 @@ class _ConfigurarInscricoesScreenState
                 'Controle vagas, idade permitida, assinatura digital e status público do formulário.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
-                  fontSize: 13,
+                  color: onHero.withOpacity(0.82),
+                  fontSize: narrow ? 12.2 : 13,
                   height: 1.35,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+              if (narrow) ...[
+                const SizedBox(height: 12),
+                statusChip,
+              ],
             ],
           );
 
           if (narrow) {
-            return Column(children: [icon, const SizedBox(height: 14), text]);
+            return Column(
+              children: [icon, const SizedBox(height: 13), text],
+            );
           }
 
           return Row(
@@ -369,9 +615,51 @@ class _ConfigurarInscricoesScreenState
               icon,
               const SizedBox(width: 16),
               Expanded(child: text),
+              const SizedBox(width: 12),
+              statusChip,
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildHeroStatusChip({required bool narrow}) {
+    final t = context.uai;
+    final onHero = _onHero();
+    final statusColor = _inscricoesAbertas ? t.success : t.error;
+    final visibleStatus = _ensureVisible(statusColor, _safeHeroBase());
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: narrow ? 12 : 14,
+        vertical: narrow ? 8 : 9,
+      ),
+      decoration: BoxDecoration(
+        color: onHero.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: onHero.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _inscricoesAbertas
+                ? Icons.check_circle_rounded
+                : Icons.cancel_rounded,
+            color: visibleStatus,
+            size: 18,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            _inscricoesAbertas ? 'Formulário aberto' : 'Formulário fechado',
+            style: TextStyle(
+              color: onHero,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -380,7 +668,7 @@ class _ConfigurarInscricoesScreenState
     final t = context.uai;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cols = constraints.maxWidth < 680 ? 2 : 4;
+        final cols = constraints.maxWidth >= 760 ? 4 : 2;
         const spacing = 10.0;
         final width = (constraints.maxWidth - spacing * (cols - 1)) / cols;
 
@@ -432,34 +720,46 @@ class _ConfigurarInscricoesScreenState
   }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
+    final compact = MediaQuery.sizeOf(context).width < 430;
 
     return Container(
-      constraints: const BoxConstraints(minHeight: 104),
-      padding: const EdgeInsets.all(12),
+      constraints: BoxConstraints(minHeight: compact ? 82 : 96),
+      padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: _cardDecoration(color: accent),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: accent, size: 25),
-          const SizedBox(height: 7),
+          Container(
+            width: compact ? 34 : 38,
+            height: compact ? 34 : 38,
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: accent.withOpacity(0.14)),
+            ),
+            child: Icon(icon, color: accent, size: compact ? 19 : 21),
+          ),
+          SizedBox(height: compact ? 6 : 7),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: accent,
-              fontSize: 19,
+              fontSize: compact ? 16 : 18,
               fontWeight: FontWeight.w900,
               height: 1,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: t.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontSize: compact ? 10 : 11,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -482,7 +782,7 @@ class _ConfigurarInscricoesScreenState
           value: _inscricoesAbertas,
           onChanged: (value) => setState(() => _inscricoesAbertas = value),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _buildSwitchCard(
           icon: Icons.draw_rounded,
           title: 'Assinatura digital',
@@ -493,9 +793,9 @@ class _ConfigurarInscricoesScreenState
           value: _recolherAssinatura,
           onChanged: (value) => setState(() => _recolherAssinatura = value),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _buildAgeCard(),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _buildVagasCard(),
       ],
     );
@@ -508,9 +808,9 @@ class _ConfigurarInscricoesScreenState
     return Column(
       children: [
         _buildResumoCard(),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _buildInfoCard(),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -551,48 +851,65 @@ class _ConfigurarInscricoesScreenState
     final accent = _ensureVisible(color, t.card);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(color: accent),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final veryNarrow = constraints.maxWidth < 360;
+
+          final iconBox = Container(
+            width: veryNarrow ? 44 : 48,
+            height: veryNarrow ? 44 : 48,
             decoration: BoxDecoration(
               color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
               borderRadius: BorderRadius.circular(t.buttonRadius),
               border: Border.all(color: accent.withOpacity(0.16)),
             ),
-            child: Icon(icon, color: accent, size: 26),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
+            child: Icon(icon, color: accent, size: veryNarrow ? 23 : 26),
+          );
+
+          final text = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    fontSize: 12,
-                    height: 1.25,
-                    fontWeight: FontWeight.w500,
-                  ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: veryNarrow ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 12,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            ),
-          ),
-          Switch(value: value, activeColor: accent, onChanged: onChanged),
-        ],
+              ),
+            ],
+          );
+
+          return Row(
+            children: [
+              iconBox,
+              const SizedBox(width: 12),
+              Expanded(child: text),
+              const SizedBox(width: 8),
+              Switch(
+                value: value,
+                activeColor: accent,
+                onChanged: onChanged,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -604,7 +921,7 @@ class _ConfigurarInscricoesScreenState
     final accent = _ensureVisible(color, t.card);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(color: accent),
       child: Column(
         children: [
@@ -674,7 +991,7 @@ class _ConfigurarInscricoesScreenState
     final progressColor = estourou ? t.error : t.success;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(color: accent),
       child: Column(
         children: [
@@ -708,7 +1025,11 @@ class _ConfigurarInscricoesScreenState
                     Text(
                       'Pendentes',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 10, color: t.textSecondary),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: t.textSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -759,7 +1080,7 @@ class _ConfigurarInscricoesScreenState
               style: TextStyle(
                 color: _ensureVisible(progressColor, t.card),
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ],
@@ -769,7 +1090,7 @@ class _ConfigurarInscricoesScreenState
               icon: Icons.warning_rounded,
               color: _ensureVisible(t.error, t.card),
               text:
-                  '${_totalInscricoes - _vagasDisponiveis} inscrições excedem as vagas configuradas.',
+              '${_totalInscricoes - _vagasDisponiveis} inscrições excedem as vagas configuradas.',
             ),
           ],
         ],
@@ -782,7 +1103,7 @@ class _ConfigurarInscricoesScreenState
     final success = _ensureVisible(t.success, t.card);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(color: success),
       child: Column(
         children: [
@@ -827,11 +1148,20 @@ class _ConfigurarInscricoesScreenState
     final accent = _ensureVisible(t.warning, t.card);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(color: accent),
       child: Row(
         children: [
-          Icon(Icons.info_rounded, color: accent, size: 28),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: accent.withOpacity(0.14)),
+            ),
+            child: Icon(Icons.info_rounded, color: accent, size: 24),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -872,6 +1202,8 @@ class _ConfigurarInscricoesScreenState
         Expanded(
           child: Text(
             title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: t.textPrimary,
               fontSize: 15,
@@ -890,16 +1222,18 @@ class _ConfigurarInscricoesScreenState
     required ValueChanged<String> onChanged,
   }) {
     final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.cardAlt);
 
     return TextFormField(
       controller: controller,
       keyboardType: TextInputType.number,
       onChanged: onChanged,
-      style: TextStyle(color: t.textPrimary),
+      cursorColor: accent,
+      style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: t.textSecondary),
-        prefixIcon: Icon(icon, color: t.primary),
+        prefixIcon: Icon(icon, color: accent),
         filled: true,
         fillColor: t.cardAlt,
         border: OutlineInputBorder(
@@ -911,7 +1245,7 @@ class _ConfigurarInscricoesScreenState
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.inputRadius),
-          borderSide: BorderSide(color: t.primary, width: 1.4),
+          borderSide: BorderSide(color: accent, width: 1.4),
         ),
       ),
     );
@@ -975,7 +1309,7 @@ class _ConfigurarInscricoesScreenState
             label,
             style: TextStyle(
               color: t.textSecondary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
           ),
@@ -998,6 +1332,52 @@ class _ConfigurarInscricoesScreenState
     );
   }
 
+  Widget _buildLoadingState() {
+    final t = context.uai;
+    final pad = _dashboardPagePadding;
+
+    return Container(
+      color: t.background,
+      padding: pad,
+      child: Center(
+        child: _dashboardWidthLimiter(
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius + 4),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    color: t.primary,
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Carregando configurações de inscrições...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   BoxDecoration _cardDecoration({required Color color}) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
@@ -1010,3 +1390,9 @@ class _ConfigurarInscricoesScreenState
     );
   }
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 11:28
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

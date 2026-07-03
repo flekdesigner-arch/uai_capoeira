@@ -38,41 +38,56 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     final hsl = HSLColor.fromColor(color);
 
     return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withLightness(bgIsDark ? 0.74 : 0.30)
         .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
         .toColor();
   }
 
-  bool _temaPrimarioMuitoClaroEmFundoEscuro() {
-    final primary = context.uai.primary;
+  bool _temaNeonEmFundoEscuro([Color? color]) {
+    final base = color ?? context.uai.primary;
     final surface = context.uai.surface;
-    final hsl = HSLColor.fromColor(primary);
+    final background = context.uai.background;
+    final hsl = HSLColor.fromColor(base);
 
-    return primary.computeLuminance() > 0.50 &&
-        surface.computeLuminance() < 0.36 &&
-        hsl.saturation > 0.58;
+    return base.computeLuminance() > 0.44 &&
+        (surface.computeLuminance() < 0.38 ||
+            background.computeLuminance() < 0.38) &&
+        hsl.saturation > 0.50;
   }
 
-  Color _safeHeaderBg() {
-    final primary = context.uai.primary;
-    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
-      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+  Color _screenAccent() {
+    return _ensureVisible(context.uai.inscricoes, context.uai.card);
+  }
+
+  Color _safeHeaderBg([Color? baseColor]) {
+    final base = baseColor ?? context.uai.primary;
+    if (_temaNeonEmFundoEscuro(base)) {
+      return Color.alphaBlend(base.withOpacity(0.34), context.uai.surface);
     }
-    return primary;
+    return base;
+  }
+
+  Color _onHeader(Color background, [Color? sourceColor]) {
+    if (_temaNeonEmFundoEscuro(sourceColor ?? background)) {
+      return const Color(0xFFFFFFFF);
+    }
+    return _readableOn(background);
   }
 
   Gradient _safeHeaderGradient([Color? baseColor]) {
-    final base = baseColor ?? _safeHeaderBg();
+    final original = baseColor ?? context.uai.primary;
+    final base = _safeHeaderBg(original);
     final hsl = HSLColor.fromColor(base);
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-          bgIsDark
-              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-        )
+      bgIsDark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.09).clamp(0.0, 1.0),
+    )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
+
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -80,7 +95,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  Color _onPrimary() => _readableOn(_safeHeaderBg());
+  Color _onPrimary() => _onHeader(_safeHeaderBg(), context.uai.primary);
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
 
@@ -88,10 +103,99 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _primaryButtonFg() =>
       Theme.of(context).appBarTheme.foregroundColor ??
-      _readableOn(_primaryButtonBg());
+          _readableOn(_primaryButtonBg());
 
   Color _safeAccent(Color color, [Color? background]) {
     return _ensureVisible(color, background ?? context.uai.card);
+  }
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1280;
+    if (width >= 1180) return 1120;
+    if (width >= 900) return 1040;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 30);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 26);
+    return const EdgeInsets.fromLTRB(14, 14, 14, 24);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  int _dashboardColumns(
+      double width, {
+        double minItemWidth = 360,
+        int maxColumns = 3,
+      }) {
+    if (width <= 0) return 1;
+    return (width / minItemWidth).floor().clamp(1, maxColumns).toInt();
+  }
+
+  Widget _dashboardResponsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 380,
+    int maxColumns = 3,
+    double spacing = 12,
+    double runSpacing = 12,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (width < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(children.length, (index) {
+              final isLast = index == children.length - 1;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
+                child: SizedBox(width: double.infinity, child: children[index]),
+              );
+            }),
+          );
+        }
+
+        final columns = _dashboardColumns(
+          width,
+          minItemWidth: minItemWidth,
+          maxColumns: maxColumns,
+        );
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
   }
 
   @override
@@ -263,10 +367,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   // 🔥 MÉTODO COMPLETO DO WHATSAPP
   Future<void> _abrirWhatsApp(
-    String numero, {
-    String? mensagem,
-    bool isApp = true,
-  }) async {
+      String numero, {
+        String? mensagem,
+        bool isApp = true,
+      }) async {
     try {
       String cleanedPhone = numero.replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanedPhone.startsWith('0')) {
@@ -321,13 +425,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   // 🔥 APROVAR - Abre tela de cadastro com dados preenchidos
   void _aprovarInscricao(
-    String inscricaoId,
-    Map<String, dynamic> dados,
-    String turmaId,
-    String turmaNome,
-    String academiaId,
-    String academiaNome,
-  ) {
+      String inscricaoId,
+      Map<String, dynamic> dados,
+      String turmaId,
+      String turmaNome,
+      String academiaId,
+      String academiaNome,
+      ) {
     final dadosComId = Map<String, dynamic>.from(dados);
     dadosComId['id'] = inscricaoId;
 
@@ -476,9 +580,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Future<bool> _deletarArquivoStoragePorUrl(
-    String? url, {
-    required String descricao,
-  }) async {
+      String? url, {
+        required String descricao,
+      }) async {
     if (!_temTexto(url)) return true;
 
     try {
@@ -504,10 +608,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   // 🔥 MOSTRAR TERMO COMPLETO
   void _mostrarTermo(
-    BuildContext context,
-    Map<String, dynamic> dados,
-    String inscricaoId,
-  ) {
+      BuildContext context,
+      Map<String, dynamic> dados,
+      String inscricaoId,
+      ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -519,9 +623,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
 
   // 🔥 DIÁLOGO DE SELEÇÃO DE TURMA
   void _mostrarDialogoSelecionarTurma(
-    String inscricaoId,
-    Map<String, dynamic> dados,
-  ) {
+      String inscricaoId,
+      Map<String, dynamic> dados,
+      ) {
     showDialog<void>(
       context: context,
       builder: (context) {
@@ -553,9 +657,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors:
-                          (_safeHeaderGradient(context.uai.success)
-                                  as LinearGradient)
-                              .colors,
+                      (_safeHeaderGradient(context.uai.success)
+                      as LinearGradient)
+                          .colors,
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -622,212 +726,212 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 Expanded(
                   child: _turmas.isEmpty
                       ? _buildEmptyDialogState(
-                          icon: Icons.class_outlined,
-                          title: 'Nenhuma turma disponível',
-                          subtitle:
-                              'Cadastre uma turma antes de aprovar a inscrição.',
-                        )
+                    icon: Icons.class_outlined,
+                    title: 'Nenhuma turma disponível',
+                    subtitle:
+                    'Cadastre uma turma antes de aprovar a inscrição.',
+                  )
                       : ListView.separated(
-                          padding: const EdgeInsets.all(14),
-                          itemCount: _turmas.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final turma = _turmas[index];
-                            final alunosAtivos = _asInt(turma['alunos_ativos']);
-                            final capacidadeMaxima = _asInt(
-                              turma['capacidade_maxima'],
-                            );
-                            final temLimite = capacidadeMaxima > 0;
-                            final temVaga =
-                                !temLimite || alunosAtivos < capacidadeMaxima;
-                            final porcentagem = temLimite
-                                ? ((alunosAtivos / capacidadeMaxima) * 100)
-                                      .clamp(0, 100)
-                                      .round()
-                                : 0;
-                            final progress = temLimite
-                                ? (alunosAtivos / capacidadeMaxima).clamp(
-                                    0.0,
-                                    1.0,
-                                  )
-                                : 0.0;
+                    padding: const EdgeInsets.all(14),
+                    itemCount: _turmas.length,
+                    separatorBuilder: (_, __) =>
+                    const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final turma = _turmas[index];
+                      final alunosAtivos = _asInt(turma['alunos_ativos']);
+                      final capacidadeMaxima = _asInt(
+                        turma['capacidade_maxima'],
+                      );
+                      final temLimite = capacidadeMaxima > 0;
+                      final temVaga =
+                          !temLimite || alunosAtivos < capacidadeMaxima;
+                      final porcentagem = temLimite
+                          ? ((alunosAtivos / capacidadeMaxima) * 100)
+                          .clamp(0, 100)
+                          .round()
+                          : 0;
+                      final progress = temLimite
+                          ? (alunosAtivos / capacidadeMaxima).clamp(
+                        0.0,
+                        1.0,
+                      )
+                          : 0.0;
 
-                            return InkWell(
-                              onTap: temVaga
-                                  ? () {
-                                      Navigator.pop(context);
-                                      _aprovarInscricao(
-                                        inscricaoId,
-                                        dados,
-                                        turma['id'],
-                                        turma['nome'],
-                                        turma['academia_id'],
-                                        turma['academia_nome'],
-                                      );
-                                    }
-                                  : null,
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                padding: const EdgeInsets.all(14),
+                      return InkWell(
+                        onTap: temVaga
+                            ? () {
+                          Navigator.pop(context);
+                          _aprovarInscricao(
+                            inscricaoId,
+                            dados,
+                            turma['id'],
+                            turma['nome'],
+                            turma['academia_id'],
+                            turma['academia_nome'],
+                          );
+                        }
+                            : null,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: temVaga
+                                ? context.uai.card
+                                : context.uai.cardAlt,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: temVaga
+                                  ? context.uai.success.withOpacity(0.24)
+                                  : context.uai.border,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.035),
+                                blurRadius: 7,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 50,
+                                height: 50,
                                 decoration: BoxDecoration(
                                   color: temVaga
-                                      ? context.uai.card
-                                      : context.uai.cardAlt,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: temVaga
-                                        ? context.uai.success.withOpacity(0.24)
-                                        : context.uai.border,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.035),
-                                      blurRadius: 7,
-                                      offset: const Offset(0, 3),
+                                      ? Color.alphaBlend(
+                                    context.uai.success.withOpacity(
+                                      0.10,
                                     ),
-                                  ],
+                                    context.uai.cardAlt,
+                                  )
+                                      : context.uai.border,
+                                  borderRadius: BorderRadius.circular(18),
                                 ),
-                                child: Row(
+                                child: Icon(
+                                  temVaga
+                                      ? Icons.meeting_room_rounded
+                                      : Icons.block_rounded,
+                                  color: temVaga
+                                      ? context.uai.success
+                                      : context.uai.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                                   children: [
-                                    Container(
-                                      width: 50,
-                                      height: 50,
-                                      decoration: BoxDecoration(
-                                        color: temVaga
-                                            ? Color.alphaBlend(
-                                                context.uai.success.withOpacity(
-                                                  0.10,
-                                                ),
-                                                context.uai.cardAlt,
-                                              )
-                                            : context.uai.border,
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: Icon(
-                                        temVaga
-                                            ? Icons.meeting_room_rounded
-                                            : Icons.block_rounded,
-                                        color: temVaga
-                                            ? context.uai.success
-                                            : context.uai.textMuted,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  turma['nome']?.toString() ??
-                                                      'Sem nome',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    fontWeight: FontWeight.w900,
-                                                    color: temVaga
-                                                        ? context
-                                                              .uai
-                                                              .textPrimary
-                                                        : context.uai.textMuted,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (!temVaga)
-                                                _buildSmallStatusChip(
-                                                  label: 'LOTADA',
-                                                  color: context.uai.error,
-                                                )
-                                              else
-                                                _buildSmallStatusChip(
-                                                  label: 'DISPONÍVEL',
-                                                  color: context.uai.success,
-                                                ),
-                                            ],
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            turma['nome']?.toString() ??
+                                                'Sem nome',
+                                            maxLines: 1,
+                                            overflow:
+                                            TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w900,
+                                              color: temVaga
+                                                  ? context
+                                                  .uai
+                                                  .textPrimary
+                                                  : context.uai.textMuted,
+                                            ),
                                           ),
-                                          if ((turma['academia_nome']
-                                                      ?.toString() ??
-                                                  '')
-                                              .isNotEmpty) ...[
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              turma['academia_nome'].toString(),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color:
-                                                    context.uai.textSecondary,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
+                                        ),
+                                        if (!temVaga)
+                                          _buildSmallStatusChip(
+                                            label: 'LOTADA',
+                                            color: context.uai.error,
+                                          )
+                                        else
+                                          _buildSmallStatusChip(
+                                            label: 'DISPONÍVEL',
+                                            color: context.uai.success,
+                                          ),
+                                      ],
+                                    ),
+                                    if ((turma['academia_nome']
+                                        ?.toString() ??
+                                        '')
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        turma['academia_nome'].toString(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color:
+                                          context.uai.textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ClipRRect(
+                                            borderRadius:
+                                            BorderRadius.circular(99),
+                                            child: LinearProgressIndicator(
+                                              minHeight: 7,
+                                              value: progress,
+                                              backgroundColor:
+                                              context.uai.border,
+                                              valueColor:
+                                              AlwaysStoppedAnimation<
+                                                  Color
+                                              >(
+                                                !temLimite
+                                                    ? context
+                                                    .uai
+                                                    .success
+                                                    : porcentagem >=
+                                                    90
+                                                    ? context
+                                                    .uai
+                                                    .error
+                                                    : porcentagem >=
+                                                    70
+                                                    ? context
+                                                    .uai
+                                                    .warning
+                                                    : context
+                                                    .uai
+                                                    .success,
                                               ),
                                             ),
-                                          ],
-                                          const SizedBox(height: 10),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(99),
-                                                  child: LinearProgressIndicator(
-                                                    minHeight: 7,
-                                                    value: progress,
-                                                    backgroundColor:
-                                                        context.uai.border,
-                                                    valueColor:
-                                                        AlwaysStoppedAnimation<
-                                                          Color
-                                                        >(
-                                                          !temLimite
-                                                              ? context
-                                                                    .uai
-                                                                    .success
-                                                              : porcentagem >=
-                                                                    90
-                                                              ? context
-                                                                    .uai
-                                                                    .error
-                                                              : porcentagem >=
-                                                                    70
-                                                              ? context
-                                                                    .uai
-                                                                    .warning
-                                                              : context
-                                                                    .uai
-                                                                    .success,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                temLimite
-                                                    ? '$alunosAtivos/$capacidadeMaxima'
-                                                    : '$alunosAtivos alunos',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w900,
-                                                  color:
-                                                      context.uai.textSecondary,
-                                                ),
-                                              ),
-                                            ],
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          temLimite
+                                              ? '$alunosAtivos/$capacidadeMaxima'
+                                              : '$alunosAtivos alunos',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w900,
+                                            color:
+                                            context.uai.textSecondary,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
+                      );
+                    },
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
@@ -853,6 +957,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     final nomeAluno = _texto(dados['nome'], fallback: 'Aluno');
     final dataInscricao = _formatarDataHora(dados['data_inscricao']);
     final temAssinatura = _temTexto(dados['assinatura_url']);
+    final headerAccent = _screenAccent();
+    final headerBg = _safeHeaderBg(headerAccent);
+    final onHeader = _onHeader(headerBg, headerAccent);
 
     showModalBottomSheet<void>(
       context: context,
@@ -866,287 +973,231 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
             minChildSize: 0.55,
             maxChildSize: 0.96,
             builder: (context, scrollController) {
-              return Container(
-                margin: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: context.uai.surface,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.18),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+              return Align(
+                alignment: Alignment.bottomCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: _isWideDashboard ? 620 : double.infinity,
+                  ),
+                  child: Container(
+                    margin: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: context.uai.surface,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.18),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 10, 16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [context.uai.error, context.uai.error],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(28),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: _readableOn(
-                                _safeHeaderBg(),
-                              ).withOpacity(0.45),
-                              borderRadius: BorderRadius.circular(99),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(16, 12, 10, 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: (_safeHeaderGradient(headerAccent)
+                              as LinearGradient)
+                                  .colors,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(28),
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          Row(
+                          child: Column(
                             children: [
-                              GestureDetector(
-                                onTap: () =>
-                                    _abrirFotoTelaCheia(fotoUrl, nomeAluno),
-                                child: Hero(
-                                  tag: 'foto_inscricao_$docId',
-                                  child: _buildFotoAvatar(
-                                    fotoUrl: fotoUrl,
-                                    nome: nomeAluno,
-                                    radius: 32,
-                                    borderColor: _readableOn(context.uai.error),
+                              Container(
+                                width: 44,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: onHeader.withOpacity(0.45),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () =>
+                                        _abrirFotoTelaCheia(fotoUrl, nomeAluno),
+                                    child: Hero(
+                                      tag: 'foto_inscricao_$docId',
+                                      child: _buildFotoAvatar(
+                                        fotoUrl: fotoUrl,
+                                        nome: nomeAluno,
+                                        radius: 32,
+                                        borderColor: onHeader,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      nomeAluno,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: _readableOn(context.uai.error),
-                                        fontSize: 18,
-                                        height: 1.05,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          nomeAluno,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: onHeader,
+                                            fontSize: 18,
+                                            height: 1.05,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          dataInscricao == null
+                                              ? 'Inscrição pendente'
+                                              : 'Inscrito em $dataInscricao',
+                                          style: TextStyle(
+                                            color: onHeader.withOpacity(0.78),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      dataInscricao == null
-                                          ? 'Inscrição pendente'
-                                          : 'Inscrito em $dataInscricao',
-                                      style: TextStyle(
-                                        color: _readableOn(
-                                          _safeHeaderBg(),
-                                        ).withOpacity(0.78),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      color: onHeader,
                                     ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  Icons.close_rounded,
-                                  color: _readableOn(context.uai.error),
-                                ),
-                                onPressed: () => Navigator.pop(context),
+                                    onPressed: () => Navigator.pop(context),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(14),
-                        children: [
-                          _buildTermoCard(
-                            temAssinatura: temAssinatura,
-                            onTap: () {
-                              Navigator.pop(context);
-                              _mostrarTermo(context, dados, docId);
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSectionCard(
-                            icon: Icons.person_rounded,
-                            title: 'Dados do aluno',
+                        ),
+                        Expanded(
+                          child: ListView(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(14),
                             children: [
-                              _buildInfoTile(
-                                icon: Icons.person_rounded,
-                                label: 'Nome',
-                                value: dados['nome'],
+                              _buildTermoCard(
+                                temAssinatura: temAssinatura,
                                 onTap: () {
                                   Navigator.pop(context);
                                   _mostrarTermo(context, dados, docId);
                                 },
                               ),
-                              _buildInfoTile(
-                                icon: Icons.badge_rounded,
-                                label: 'Apelido',
-                                value: dados['apelido'],
+                              const SizedBox(height: 12),
+                              _buildSectionCard(
+                                icon: Icons.person_rounded,
+                                title: 'Dados do aluno',
+                                children: [
+                                  _buildInfoTile(
+                                    icon: Icons.person_rounded,
+                                    label: 'Nome',
+                                    value: dados['nome'],
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      _mostrarTermo(context, dados, docId);
+                                    },
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.badge_rounded,
+                                    label: 'Apelido',
+                                    value: dados['apelido'],
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.credit_card_rounded,
+                                    label: 'CPF',
+                                    value: dados['cpf'],
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.wc_rounded,
+                                    label: 'Sexo',
+                                    value: dados['sexo'],
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.cake_rounded,
+                                    label: 'Nascimento',
+                                    value: dados['data_nascimento'],
+                                  ),
+                                ],
                               ),
-                              _buildInfoTile(
-                                icon: Icons.credit_card_rounded,
-                                label: 'CPF',
-                                value: dados['cpf'],
+                              const SizedBox(height: 12),
+                              _buildSectionCard(
+                                icon: Icons.phone_android_rounded,
+                                title: 'Contato',
+                                children: [
+                                  _buildInfoTile(
+                                    icon: Icons.phone_rounded,
+                                    label: 'Contato do aluno',
+                                    value: dados['contato_aluno'],
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.family_restroom_rounded,
+                                    label: 'Responsável',
+                                    value: dados['nome_responsavel'],
+                                  ),
+                                  _buildInfoTile(
+                                    icon: Icons.phone_in_talk_rounded,
+                                    label: 'Contato do responsável',
+                                    value: dados['contato_responsavel'],
+                                  ),
+                                ],
                               ),
-                              _buildInfoTile(
-                                icon: Icons.wc_rounded,
-                                label: 'Sexo',
-                                value: dados['sexo'],
+                              const SizedBox(height: 12),
+                              _buildSectionCard(
+                                icon: Icons.location_on_rounded,
+                                title: 'Endereço',
+                                children: [
+                                  _buildInfoTile(
+                                    icon: Icons.home_rounded,
+                                    label: 'Endereço',
+                                    value: dados['endereco'],
+                                  ),
+                                  if (dataInscricao != null)
+                                    _buildInfoTile(
+                                      icon: Icons.event_rounded,
+                                      label: 'Data da inscrição',
+                                      value: dataInscricao,
+                                    ),
+                                ],
                               ),
-                              _buildInfoTile(
-                                icon: Icons.cake_rounded,
-                                label: 'Nascimento',
-                                value: dados['data_nascimento'],
-                              ),
+                              const SizedBox(height: 16),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          _buildSectionCard(
-                            icon: Icons.phone_android_rounded,
-                            title: 'Contato',
-                            children: [
-                              _buildInfoTile(
-                                icon: Icons.phone_rounded,
-                                label: 'Contato do aluno',
-                                value: dados['contato_aluno'],
-                              ),
-                              _buildInfoTile(
-                                icon: Icons.family_restroom_rounded,
-                                label: 'Responsável',
-                                value: dados['nome_responsavel'],
-                              ),
-                              _buildInfoTile(
-                                icon: Icons.phone_in_talk_rounded,
-                                label: 'Contato do responsável',
-                                value: dados['contato_responsavel'],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSectionCard(
-                            icon: Icons.location_on_rounded,
-                            title: 'Endereço',
-                            children: [
-                              _buildInfoTile(
-                                icon: Icons.home_rounded,
-                                label: 'Endereço',
-                                value: dados['endereco'],
-                              ),
-                              if (dataInscricao != null)
-                                _buildInfoTile(
-                                  icon: Icons.event_rounded,
-                                  label: 'Data da inscrição',
-                                  value: dataInscricao,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                      decoration: BoxDecoration(
-                        color: context.uai.cardAlt,
-                        borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(28),
                         ),
-                        border: Border(
-                          top: BorderSide(color: context.uai.border),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _mostrarDialogoSelecionarTurma(docId, dados);
-                              },
-                              icon: const Icon(Icons.check_circle_rounded),
-                              label: const Text('APROVAR INSCRIÇÃO'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: context.uai.success,
-                                foregroundColor: _readableOn(
-                                  context.uai.success,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                textStyle: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                          decoration: BoxDecoration(
+                            color: context.uai.cardAlt,
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(28),
+                            ),
+                            border: Border(
+                              top: BorderSide(color: context.uai.border),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          Row(
+                          child: Column(
                             children: [
-                              Expanded(
-                                child: _buildContactButton(
-                                  label: 'Aluno',
-                                  numero: dados['contato_aluno']?.toString(),
-                                  nome: dados['nome']?.toString(),
-                                  cor: context.uai.success,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildContactButton(
-                                  label: 'Responsável',
-                                  numero: dados['contato_responsavel']
-                                      ?.toString(),
-                                  nome: dados['nome_responsavel']?.toString(),
-                                  cor: context.uai.info,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    Future.delayed(
-                                      const Duration(milliseconds: 100),
-                                      () {
-                                        if (mounted)
-                                          _mostrarTermo(context, dados, docId);
-                                      },
-                                    );
+                                    _mostrarDialogoSelecionarTurma(docId, dados);
                                   },
-                                  icon: const Icon(
-                                    Icons.description_rounded,
-                                    size: 19,
-                                  ),
-                                  label: const Text('TERMO'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: context.uai.info,
-                                    side: BorderSide(
-                                      color: context.uai.info.withOpacity(0.30),
+                                  icon: const Icon(Icons.check_circle_rounded),
+                                  label: const Text('APROVAR INSCRIÇÃO'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: context.uai.success,
+                                    foregroundColor: _readableOn(
+                                      context.uai.success,
                                     ),
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 13,
+                                      vertical: 14,
                                     ),
                                     textStyle: const TextStyle(
                                       fontWeight: FontWeight.w900,
@@ -1157,46 +1208,108 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _recusarInscricao(docId);
-                                  },
-                                  icon: const Icon(
-                                    Icons.delete_rounded,
-                                    size: 19,
-                                  ),
-                                  label: const Text('RECUSAR'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: _safeAccent(
-                                      context.uai.error,
-                                      context.uai.cardAlt,
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildContactButton(
+                                      label: 'Aluno',
+                                      numero: dados['contato_aluno']?.toString(),
+                                      nome: dados['nome']?.toString(),
+                                      cor: context.uai.success,
                                     ),
-                                    side: BorderSide(
-                                      color: context.uai.error.withOpacity(
-                                        0.30,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildContactButton(
+                                      label: 'Responsável',
+                                      numero: dados['contato_responsavel']
+                                          ?.toString(),
+                                      nome: dados['nome_responsavel']?.toString(),
+                                      cor: context.uai.info,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        Future.delayed(
+                                          const Duration(milliseconds: 100),
+                                              () {
+                                            if (mounted)
+                                              _mostrarTermo(context, dados, docId);
+                                          },
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.description_rounded,
+                                        size: 19,
+                                      ),
+                                      label: const Text('TERMO'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: context.uai.info,
+                                        side: BorderSide(
+                                          color: context.uai.info.withOpacity(0.30),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 13,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
                                       ),
                                     ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 13,
-                                    ),
-                                    textStyle: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        _recusarInscricao(docId);
+                                      },
+                                      icon: const Icon(
+                                        Icons.delete_rounded,
+                                        size: 19,
+                                      ),
+                                      label: const Text('RECUSAR'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: _safeAccent(
+                                          context.uai.error,
+                                          context.uai.cardAlt,
+                                        ),
+                                        side: BorderSide(
+                                          color: context.uai.error.withOpacity(
+                                            0.30,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 13,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               );
             },
@@ -1217,18 +1330,18 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     return InkWell(
       onTap: temContato
           ? () {
-              Navigator.pop(context);
-              Future.delayed(const Duration(milliseconds: 100), () {
-                if (mounted) {
-                  _abrirWhatsApp(
-                    numero,
-                    mensagem:
-                        'Olá ${nome ?? ''}! Sua inscrição na UAI Capoeira foi recebida e está sendo analisada.',
-                    isApp: true,
-                  );
-                }
-              });
-            }
+        Navigator.pop(context);
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _abrirWhatsApp(
+              numero,
+              mensagem:
+              'Olá ${nome ?? ''}! Sua inscrição na UAI Capoeira foi recebida e está sendo analisada.',
+              isApp: true,
+            );
+          }
+        });
+      }
           : null,
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -1352,10 +1465,16 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: context.uai.error.withOpacity(0.08),
+                  color: Color.alphaBlend(
+                    _screenAccent().withOpacity(0.10),
+                    context.uai.cardAlt,
+                  ),
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _screenAccent().withOpacity(0.14),
+                  ),
                 ),
-                child: Icon(icon, color: context.uai.primary, size: 21),
+                child: Icon(icon, color: _screenAccent(), size: 21),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1398,7 +1517,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: context.uai.error, size: 20),
+            Icon(icon, color: _screenAccent(), size: 20),
             const SizedBox(width: 9),
             Expanded(
               child: Column(
@@ -1446,10 +1565,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Widget _buildInfoRowClickable(
-    String label,
-    String? value,
-    VoidCallback onTap,
-  ) {
+      String label,
+      String? value,
+      VoidCallback onTap,
+      ) {
     return _buildInfoTile(
       icon: Icons.touch_app_rounded,
       label: label,
@@ -1570,19 +1689,19 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       child: ClipOval(
         child: temFoto
             ? CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: context.uai.cardAlt,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: context.uai.primary,
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => _avatarFallback(nome),
-              )
+          imageUrl: fotoUrl,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            color: context.uai.cardAlt,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: context.uai.primary,
+                strokeWidth: 2,
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => _avatarFallback(nome),
+        )
             : _avatarFallback(nome),
       ),
     );
@@ -1889,22 +2008,25 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     required String text,
     required Color color,
   }) {
+    final accent = _safeAccent(color, context.uai.card);
+    final bg = Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: bg,
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.12)),
+        border: Border.all(color: accent.withOpacity(0.14)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 13),
+          Icon(icon, color: accent, size: 13),
           const SizedBox(width: 4),
           Text(
             text,
             style: TextStyle(
-              color: color,
+              color: accent,
               fontSize: 10.5,
               fontWeight: FontWeight.w800,
             ),
@@ -1927,10 +2049,14 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
             children: [
               Icon(Icons.inbox_rounded, size: 74, color: context.uai.border),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Nenhuma inscrição pendente',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 7),
               Text(
@@ -1973,10 +2099,14 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 color: context.uai.error,
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Erro ao carregar inscrições',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -1992,7 +2122,43 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   }
 
   Widget _buildLoadingScreen() {
-    return Center(child: CircularProgressIndicator(color: context.uai.primary));
+    final t = context.uai;
+
+    return Container(
+      color: t.background,
+      padding: _dashboardPagePadding,
+      child: Center(
+        child: _dashboardWidthLimiter(
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: _cardDecoration(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    color: _safeAccent(t.primary, t.card),
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Carregando inscrições...',
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -2038,61 +2204,40 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
             return _buildEmptyScreen();
           }
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 900;
-
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-                children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1120),
-                      child: Column(
-                        children: [
-                          _buildHeroResumo(inscricoes.length),
-                          const SizedBox(height: 14),
-                          if (isWide)
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: inscricoes.map((doc) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                return SizedBox(
-                                  width:
-                                      (constraints.maxWidth.clamp(0, 1120) -
-                                          12) /
-                                      2,
-                                  child: _buildInscricaoCard(
-                                    docId: doc.id,
-                                    data: data,
-                                  ),
-                                );
-                              }).toList(),
-                            )
-                          else
-                            Column(
-                              children: inscricoes.map((doc) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _buildInscricaoCard(
-                                    docId: doc.id,
-                                    data: data,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                        ],
-                      ),
+          return ListView(
+            padding: _dashboardPagePadding,
+            children: [
+              _dashboardWidthLimiter(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeroResumo(inscricoes.length),
+                    const SizedBox(height: 14),
+                    _dashboardResponsiveWrap(
+                      children: inscricoes.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return _buildInscricaoCard(
+                          docId: doc.id,
+                          data: data,
+                        );
+                      }).toList(),
+                      minItemWidth: 410,
+                      maxColumns: _isDesktopDashboard ? 2 : 2,
+                      spacing: 12,
+                      runSpacing: 12,
                     ),
-                  ),
-                ],
-              );
-            },
+                  ],
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 }
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 10:47
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

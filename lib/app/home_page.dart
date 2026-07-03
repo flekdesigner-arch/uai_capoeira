@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 // Services
 import 'package:uai_capoeira/modules/turmas/services/academia_cache_service.dart';
@@ -12,6 +10,7 @@ import 'package:uai_capoeira/modules/usuarios/services/usuario_acesso_service.da
 // Telas
 import 'package:uai_capoeira/modules/turmas/screens/turmas_academia_screen.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/shared/widgets/uai_dynamic_logo.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -312,140 +311,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildLogo() {
-    final t = context.uai;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: FutureBuilder<String>(
-        future: rootBundle.loadString('assets/images/logo_uai_tema.svg'),
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            final svg = _aplicarTemaNoLogoUai(snapshot.data!, t);
-
-            return SvgPicture.string(
-              svg,
-              height: 150,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => SizedBox(
-                height: 150,
-                child: Center(
-                  child: CircularProgressIndicator(color: t.primary),
-                ),
-              ),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Container(
-              height: 150,
-              width: 230,
-              decoration: BoxDecoration(
-                color: t.cardAlt,
-                borderRadius: BorderRadius.circular(t.cardRadius),
-                border: Border.all(color: t.border),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.sports_martial_arts, size: 58, color: t.primary),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Logo SVG não encontrada',
-                    style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return SizedBox(
-            height: 150,
-            child: Center(child: CircularProgressIndicator(color: t.primary)),
-          );
-        },
-      ),
-    );
-  }
-
-  String _aplicarTemaNoLogoUai(String svg, dynamic t) {
-    final isTemaClassico = _isTemaClassicoUai(t);
-
-    final uaiColor = _colorToHex(t.primary);
-
-    // Pedido especial:
-    // Somente no tema UAI Clássico, a faixa da logo fica preta
-    // e o texto "CAPOEIRA" fica branco, igual ajustamos no site público.
-    // Nos outros temas, a logo continua reagindo normalmente ao tema atual.
-    final faixaColor = isTemaClassico ? '#111111' : _colorToHex(t.cardAlt);
-    final textoColor = isTemaClassico
-        ? '#FFFFFF'
-        : _colorToHex(_readableOn(t.cardAlt));
-    final strokeColor = isTemaClassico ? '#111111' : _colorToHex(t.border);
-
-    var result = svg;
-
-    // Solução segura:
-    // O asset precisa ter cores reais válidas como fallback.
-    // Depois a Home troca essas cores reais pelas cores do tema.
-    // Assim, se o replace falhar, a logo ainda aparece normal.
-    final replacements = <String, String>{
-      '#FF0000': uaiColor,
-      '#ff0000': uaiColor,
-      'red': uaiColor,
-      '#373435': faixaColor,
-      '#FEFEFE': textoColor,
-      '#fefefe': textoColor,
-    };
-
-    replacements.forEach((from, to) {
-      result = result.replaceAll(from, to);
-    });
-
-    // A faixa e o stroke usam a mesma cor original #373435.
-    // Depois do replace geral, garantimos a borda pelo id="faixa".
-    result = result.replaceFirstMapped(
-      RegExp(r'(<polygon[^>]*id="faixa"[^>]*)(/?>)', caseSensitive: false),
-      (match) {
-        var tag = match.group(1) ?? '';
-        final close = match.group(2) ?? '>';
-
-        if (RegExp(r'\sstroke="[^"]*"').hasMatch(tag)) {
-          tag = tag.replaceFirst(
-            RegExp(r'\sstroke="[^"]*"'),
-            ' stroke="$strokeColor"',
-          );
-        } else {
-          tag = '$tag stroke="$strokeColor"';
-        }
-
-        return '$tag$close';
-      },
-    );
-
-    return result;
-  }
-
-  bool _isTemaClassicoUai(dynamic t) {
-    // Mantém o ajuste independente do AppThemeController.
-    // O UAI Clássico usa o vermelho #B71C1C e fundo claro.
-    final primaryHex = _colorToHex(t.primary).toUpperCase();
-    final backgroundIsLight = t.background.computeLuminance() > 0.55;
-
-    return backgroundIsLight && primaryHex == '#B71C1C';
-  }
-
-  String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
-  }
-
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : Colors.white;
+    return const UaiDynamicLogo(height: 150);
   }
 
   Widget _buildAcademiasFuture() {
@@ -650,7 +516,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildCardAcademia(Map<String, dynamic> academia) {
-    final theme = Theme.of(context);
     final t = context.uai;
 
     return Card(
@@ -689,21 +554,21 @@ class _HomePageState extends State<HomePage> {
                   border: Border.all(color: t.primary.withOpacity(0.25)),
                 ),
                 child:
-                    academia['logo_url'] != null &&
-                        academia['logo_url'].toString().isNotEmpty
+                academia['logo_url'] != null &&
+                    academia['logo_url'].toString().isNotEmpty
                     ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: CachedNetworkImage(
-                          imageUrl: academia['logo_url'],
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              CircularProgressIndicator(
-                                color: context.uai.primary,
-                              ),
-                          errorWidget: (context, url, error) =>
-                              Icon(Icons.error),
+                  borderRadius: BorderRadius.circular(10),
+                  child: CachedNetworkImage(
+                    imageUrl: academia['logo_url'],
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        CircularProgressIndicator(
+                          color: context.uai.primary,
                         ),
-                      )
+                    errorWidget: (context, url, error) =>
+                        Icon(Icons.error),
+                  ),
+                )
                     : Icon(Icons.location_on, color: t.primary, size: 24),
               ),
               SizedBox(width: 16),
@@ -790,8 +655,6 @@ class _HomePageState extends State<HomePage> {
     required String? photoUrl,
     required String displayName,
   }) {
-    final theme = Theme.of(context);
-
     if (photoUrl == null || photoUrl.isEmpty) {
       return Icon(Icons.person, size: 60, color: context.uai.primary);
     }

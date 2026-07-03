@@ -39,7 +39,22 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         : const Color(0xFFFFFFFF);
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  Color _onPrimary() {
+    final t = context.uai;
+    final themeIsDark =
+        t.background.computeLuminance() < 0.45 ||
+            t.surface.computeLuminance() < 0.45 ||
+            t.card.computeLuminance() < 0.45;
+
+    // Em temas escuros com primary muito claro/neon, o contraste matemático
+    // tende a escolher texto preto, mas visualmente o header fica pesado.
+    // Para cards hero/gradiente nesses temas, branco mantém melhor leitura.
+    if (themeIsDark && t.primary.computeLuminance() > 0.45) {
+      return const Color(0xFFFFFFFF);
+    }
+
+    return _readableOn(t.primary);
+  }
 
   Color _ensureVisible(Color color, Color background) {
     final diff = (color.computeLuminance() - background.computeLuminance())
@@ -1018,7 +1033,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required int mes,
   }) {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onPrimary();
     final pad = _dashboardPagePadding;
 
     return SliverToBoxAdapter(
@@ -1156,7 +1171,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required String label,
     Color? color,
   }) {
-    final onPrimary = _readableOn(context.uai.primary);
+    final onPrimary = _onPrimary();
     final iconColor = color ?? onPrimary;
 
     return Container(
@@ -1860,7 +1875,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
       ) {
     final nomeMes = _getMonthName(month);
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onPrimary();
     final pad = _dashboardPagePadding;
 
     return Column(
@@ -2370,7 +2385,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
   Widget _buildEmptyState() {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
+    final onPrimary = _onPrimary();
 
     return Column(
       children: [
@@ -2446,7 +2461,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 }
 
 // ============================================================
-// Tela refatorada visualmente em 03/07/2026 às 03:07
+// Tela refatorada visualmente em 03/07/2026 às 13:44
 // Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
 // Lógica original preservada.
 // ============================================================
