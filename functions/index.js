@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 const { Storage } = require('@google-cloud/storage');
 const { DateTime } = require('luxon');
@@ -989,7 +990,7 @@ exports.processarChamada = onCall(async (request) => {
 // ============================================
 exports.excluirChamada = onCall(async (request) => {
     if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'Usu�rio n�o autenticado');
+        throw new HttpsError('unauthenticated', 'Usu�rio n�o autenticado');
     }
 
     const uid = request.auth.uid;
@@ -1017,7 +1018,7 @@ exports.excluirChamada = onCall(async (request) => {
             permissoes.podeExcluirChamada === true;
 
         if (!podeEditarChamada || !podeExcluirChamada) {
-            throw new HttpsError('permission-denied', 'Voc� n�o tem permiss�o para excluir chamadas.');
+            throw new HttpsError('permission-denied', 'Voc� n�o tem permiss�o para excluir chamadas.');
         }
     }
 
@@ -1165,10 +1166,10 @@ exports.excluirChamada = onCall(async (request) => {
             excluido_por_email: usuarioData.email || request.auth.token?.email || '',
             excluido_em: admin.firestore.FieldValue.serverTimestamp(),
             origem: 'listas_chamada_screen',
-            resumo: 'Chamada exclu�da/desfeita com rec�lculo de contadores'
+            resumo: 'Chamada exclu�da/desfeita com rec�lculo de contadores'
         });
     } catch (logError) {
-        console.warn('Falha ao registrar auditoria de chamada exclu�da:', logError);
+        console.warn('Falha ao registrar auditoria de chamada exclu�da:', logError);
     }
 
     return {
@@ -4574,3 +4575,421 @@ exports.listarFunctionsFirebaseSaude = onCall(
 );
 
 
+
+// ============================================
+// CACHE DE PARTICIPANTES DE EVENTO FINALIZADO
+// ============================================
+function normalizarTexto(valor) {
+    return String(valor || '')
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+}
+
+function stringLimpa(valor) {
+    if (valor === undefined || valor === null) return null;
+    const texto = String(valor).trim();
+    if (!texto || texto.toLowerCase() === 'null') return null;
+    return texto;
+}
+
+function pickFirstString(data, keys) {
+    const source = data || {};
+    for (const key of keys) {
+        const clean = stringLimpa(source[key]);
+        if (clean) return clean;
+    }
+    return null;
+}
+
+function extrairEventoIdParticipacao(data) {
+    return pickFirstString(data, [
+        'evento_id', 'eventoId', 'id_evento', 'evento_doc_id',
+        'eventoDocId', 'idEvento',
+    ]);
+}
+
+function extrairAlunoIdParticipacao(data) {
+    return pickFirstString(data, [
+        'aluno_id', 'alunoId', 'id_aluno', 'alunoDocId', 'aluno_doc_id',
+    ]);
+}
+
+function extrairGraduacaoParticipacao(data) {
+    return pickFirstString(data, [
+        'graduacao', 'graduacao_nova', 'graduacaoNova', 'graduacao_atual',
+        'graduacaoAtual', 'nova_graduacao', 'novaGraduacao', 'corda',
+        'corda_recebida', 'cordaRecebida',
+    ]);
+}
+
+function extrairCertificadoParticipacao(data) {
+    return pickFirstString(data, [
+        'link_certificado', 'linkCertificado', 'certificado_url', 'certificadoUrl',
+        'url_certificado', 'urlCertificado', 'certificado', 'certificado_link',
+        'certificadoLink', 'pdf_certificado', 'pdfCertificado',
+        'arquivo_certificado', 'arquivoCertificado',
+    ]);
+}
+
+async function verificarPermissaoCacheParticipantes(uid) {
+    const usuarioDoc = await db.collection('usuarios').doc(uid).get();
+    const usuarioData = usuarioDoc.exists ? usuarioDoc.data() || {} : {};
+    const pesoPermissao = Number(usuarioData.peso_permissao || 0);
+    const tipoUsuario = String(usuarioData.tipo || '').trim().toLowerCase();
+    const adminUsuario = pesoPermissao >= 80 || ['admin', 'administrador', 'super_admin', 'superadmin'].includes(tipoUsuario);
+
+    if (adminUsuario) return true;
+
+    const permissoesDoc = await db
+        .collection('usuarios')
+        .doc(uid)
+        .collection('permissoes_usuario')
+        .doc('configuracoes')
+        .get();
+    const permissoes = permissoesDoc.exists ? permissoesDoc.data() || {} : {};
+
+    return [
+        'pode_gerenciar_participantes_evento',
+        'pode_ver_participantes_evento',
+        'pode_editar_evento',
+        'pode_finalizar_evento',
+    ].some((key) => permissoes[key] === true);
+}
+
+async function buscarEventoIdPorNome(nomeEvento) {
+    const nome = stringLimpa(nomeEvento);
+    if (!nome) return null;
+    const snap = await db.collection('eventos').where('nome', '==', nome).limit(1).get();
+    return snap.empty ? null : snap.docs[0].id;
+}
+
+async function buscarAlunoSnapshot(alunoId) {
+    const id = stringLimpa(alunoId);
+    if (!id) return {};
+    const doc = await db.collection('alunos').doc(id).get();
+    return doc.exists ? doc.data() || {} : {};
+}
+
+async function buscarGraduacaoSnapshot({ graduacaoId, nomeGraduacao }) {
+    const id = stringLimpa(graduacaoId);
+    if (id) {
+        const doc = await db.collection('graduacoes').doc(id).get();
+        if (doc.exists) return { id: doc.id, ...(doc.data() || {}) };
+    }
+
+    const nome = stringLimpa(nomeGraduacao);
+    if (!nome) return null;
+
+    for (const field of ['nome_graduacao', 'nome']) {
+        const snap = await db.collection('graduacoes').where(field, '==', nome).limit(1).get();
+        if (!snap.empty) {
+            const doc = snap.docs[0];
+            return { id: doc.id, ...(doc.data() || {}) };
+        }
+    }
+
+    const all = await db.collection('graduacoes').limit(500).get();
+    const normalized = normalizarTexto(nome);
+    for (const doc of all.docs) {
+        const data = doc.data() || {};
+        const candidate = pickFirstString(data, ['nome_graduacao', 'nome']);
+        if (normalizarTexto(candidate) === normalized) {
+            return { id: doc.id, ...data };
+        }
+    }
+
+    return null;
+}
+
+async function montarParticipanteCacheData({ participacaoId, participacaoData, eventoId, eventoData }) {
+    const evento = eventoData || {};
+    const alunoId = extrairAlunoIdParticipacao(participacaoData);
+    const aluno = await buscarAlunoSnapshot(alunoId);
+    const graduacaoId = pickFirstString(participacaoData, ['graduacao_id', 'graduacaoId']);
+    const graduacaoTexto = extrairGraduacaoParticipacao(participacaoData) || pickFirstString(aluno, [
+        'graduacao', 'graduacao_nome', 'nome_graduacao', 'corda',
+    ]);
+    const graduacao = await buscarGraduacaoSnapshot({ graduacaoId, nomeGraduacao: graduacaoTexto });
+
+    return {
+        participacao_id: participacaoId,
+        aluno_id: alunoId,
+        aluno_nome: pickFirstString(participacaoData, [
+            'aluno_nome', 'alunoNome', 'nome_aluno', 'nomeAluno', 'nome',
+        ]) || pickFirstString(aluno, [
+            'aluno_nome', 'alunoNome', 'nome_aluno', 'nomeAluno', 'nome', 'nome_completo',
+        ]) || 'Participante sem nome',
+        aluno_foto_url: pickFirstString(participacaoData, [
+            'aluno_foto_url', 'foto_perfil_aluno', 'foto_url', 'fotoUrl', 'photoURL',
+            'avatar', 'avatar_url', 'imagem_url', 'foto',
+        ]) || pickFirstString(aluno, [
+            'aluno_foto_url', 'foto_perfil_aluno', 'foto_url', 'fotoUrl', 'photoURL',
+            'avatar', 'avatar_url', 'imagem_url', 'foto',
+        ]),
+        evento_id: eventoId,
+        evento_nome: pickFirstString(evento, ['nome']) || pickFirstString(participacaoData, [
+            'evento_nome', 'eventoNome', 'nome_evento', 'nomeEvento',
+        ]),
+        tipo_evento: pickFirstString(evento, ['tipo']) || pickFirstString(participacaoData, [
+            'tipo_evento', 'tipoEvento', 'tipo',
+        ]),
+        data_evento: evento.data || participacaoData.data_evento || participacaoData.dataEvento || participacaoData.data || null,
+        status: pickFirstString(participacaoData, ['status', 'status_participacao', 'statusParticipacao']) || 'finalizado',
+        graduacao: graduacaoTexto,
+        graduacao_id: graduacaoId || (graduacao ? graduacao.id : null),
+        graduacao_nome: pickFirstString(graduacao, ['nome_graduacao', 'nome']) || graduacaoTexto,
+        graduacao_hex_cor1: pickFirstString(graduacao, ['hex_cor1', 'cor1', 'cor_1', 'hexCor1']),
+        graduacao_hex_cor2: pickFirstString(graduacao, ['hex_cor2', 'cor2', 'cor_2', 'hexCor2']),
+        graduacao_hex_ponta1: pickFirstString(graduacao, ['hex_ponta1', 'ponta1', 'cor_ponta1', 'hexPonta1']),
+        graduacao_hex_ponta2: pickFirstString(graduacao, ['hex_ponta2', 'ponta2', 'cor_ponta2', 'hexPonta2']),
+        link_certificado: extrairCertificadoParticipacao(participacaoData),
+        origem_cache: 'cloud_function',
+        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+        criado_em: admin.firestore.FieldValue.serverTimestamp(),
+    };
+}
+
+async function commitOperacoesEmLotes(operacoes) {
+    const limite = 450;
+    for (let i = 0; i < operacoes.length; i += limite) {
+        const batch = db.batch();
+        for (const operacao of operacoes.slice(i, i + limite)) {
+            operacao(batch);
+        }
+        await batch.commit();
+    }
+}
+
+async function buscarParticipacoesDoEvento(eventoId, eventoData) {
+    const collection = db.collection('participacoes_eventos');
+    const result = new Map();
+
+    async function addQuery(field, value) {
+        const clean = stringLimpa(value);
+        if (!clean) return;
+        const snap = await collection.where(field, '==', clean).get();
+        snap.forEach((doc) => result.set(doc.id, doc));
+    }
+
+    await addQuery('evento_id', eventoId);
+    if (result.size === 0) await addQuery('eventoId', eventoId);
+    if (result.size === 0) await addQuery('id_evento', eventoId);
+    if (result.size === 0) await addQuery('evento_doc_id', eventoId);
+    if (result.size === 0) await addQuery('eventoDocId', eventoId);
+    if (result.size === 0) await addQuery('idEvento', eventoId);
+
+    const eventoNome = pickFirstString(eventoData, ['nome']);
+    if (result.size === 0) await addQuery('evento_nome', eventoNome);
+    if (result.size === 0) await addQuery('eventoNome', eventoNome);
+    if (result.size === 0) await addQuery('nome_evento', eventoNome);
+    if (result.size === 0) await addQuery('nomeEvento', eventoNome);
+
+    return result;
+}
+
+async function reconstruirCacheParticipantesEventoInterno(eventoId) {
+    const cleanEventoId = stringLimpa(eventoId);
+    if (!cleanEventoId) throw new HttpsError('invalid-argument', 'eventoId obrigat�rio.');
+
+    const eventoRef = db.collection('eventos').doc(cleanEventoId);
+    const eventoDoc = await eventoRef.get();
+    if (!eventoDoc.exists) throw new HttpsError('not-found', 'Evento n�o encontrado.');
+
+    const eventoData = eventoDoc.data() || {};
+    const participacoes = await buscarParticipacoesDoEvento(cleanEventoId, eventoData);
+    const cacheRef = eventoRef.collection('participantes_cache');
+    const cacheAtual = await cacheRef.get();
+    const idsParticipacoes = new Set(participacoes.keys());
+    const operacoes = [];
+
+    for (const [participacaoId, doc] of participacoes.entries()) {
+        const cacheData = await montarParticipanteCacheData({
+            participacaoId,
+            participacaoData: doc.data() || {},
+            eventoId: cleanEventoId,
+            eventoData,
+        });
+        operacoes.push((batch) => batch.set(cacheRef.doc(participacaoId), cacheData, { merge: true }));
+    }
+
+    cacheAtual.forEach((doc) => {
+        if (!idsParticipacoes.has(doc.id)) {
+            operacoes.push((batch) => batch.delete(doc.ref));
+        }
+    });
+
+    await commitOperacoesEmLotes(operacoes);
+
+    return {
+        success: true,
+        eventoId: cleanEventoId,
+        totalParticipantes: participacoes.size,
+        cacheAtualizado: true,
+    };
+}
+
+exports.reconstruirCacheParticipantesEvento = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Usu�rio n�o autenticado.');
+    }
+
+    const permitido = await verificarPermissaoCacheParticipantes(request.auth.uid);
+    if (!permitido) {
+        throw new HttpsError('permission-denied', 'Voc� n�o tem permiss�o para atualizar participantes do evento.');
+    }
+
+    const eventoId = request.data && request.data.eventoId;
+    return reconstruirCacheParticipantesEventoInterno(eventoId);
+});
+
+exports.sincronizarCacheParticipacaoEvento = onDocumentWritten('participacoes_eventos/{participacaoId}', async (event) => {
+    const participacaoId = event.params.participacaoId;
+    const beforeData = event.data && event.data.before.exists ? event.data.before.data() || {} : null;
+    const afterData = event.data && event.data.after.exists ? event.data.after.data() || {} : null;
+    const source = afterData || beforeData || {};
+
+    let eventoId = extrairEventoIdParticipacao(source);
+    if (!eventoId) {
+        eventoId = await buscarEventoIdPorNome(pickFirstString(source, [
+            'evento_nome', 'eventoNome', 'nome_evento', 'nomeEvento',
+        ]));
+    }
+
+    if (!eventoId) {
+        console.log(`Cache participantes: participa��o ${participacaoId} sem evento identific�vel.`);
+        return;
+    }
+
+    if (!afterData) {
+        await db.collection('eventos').doc(eventoId).collection('participantes_cache').doc(participacaoId).delete();
+        return;
+    }
+
+    const eventoDoc = await db.collection('eventos').doc(eventoId).get();
+    const eventoData = eventoDoc.exists ? eventoDoc.data() || {} : {};
+    const cacheData = await montarParticipanteCacheData({
+        participacaoId,
+        participacaoData: afterData,
+        eventoId,
+        eventoData,
+    });
+
+    await db.collection('eventos').doc(eventoId).collection('participantes_cache').doc(participacaoId).set(cacheData, { merge: true });
+});
+
+exports.reconstruirCacheAoAlterarEvento = onDocumentWritten('eventos/{eventoId}', async (event) => {
+    const before = event.data && event.data.before.exists ? event.data.before.data() || {} : null;
+    const after = event.data && event.data.after.exists ? event.data.after.data() || {} : null;
+    if (!after) return;
+
+    const beforeStatus = before ? stringLimpa(before.status) : null;
+    const afterStatus = stringLimpa(after.status);
+    const finalizou = beforeStatus !== 'finalizado' && afterStatus === 'finalizado';
+    const metadataMudou = before && afterStatus === 'finalizado' && [
+        'nome', 'tipo', 'data', 'local', 'cidade',
+    ].some((field) => JSON.stringify(before[field] || null) !== JSON.stringify(after[field] || null));
+
+    if (!finalizou && !metadataMudou) return;
+
+    await reconstruirCacheParticipantesEventoInterno(event.params.eventoId);
+});
+
+/**
+ * Reconstrói o documento de metadados do Cache V2 do Dashboard de uma Turma.
+ *
+ * @param {Object} request - Objeto da requisição.
+ * @param {string} request.data.turmaId - ID da turma.
+ * @param {boolean} request.data.force - Se deve forçar o recálculo (reservado para v2 completa).
+ * @returns {Promise<Object>} - Resultado da operação.
+ */
+exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
+    // 1. Validar autenticação
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+    }
+
+    const uid = request.auth.uid;
+    const { turmaId, force } = request.data || {};
+
+    // 2. Validar input
+    if (!turmaId) {
+        throw new HttpsError('invalid-argument', 'O campo "turmaId" é obrigatório.');
+    }
+
+    try {
+        // TODO: Validação avançada de permissão (ex: pode_gerenciar_turmas)
+        // Por enquanto, validamos apenas se o usuário está logado seguindo o padrão mínimo.
+
+        // 3. Buscar dados da turma
+        const turmaDoc = await db.collection('turmas').doc(turmaId).get();
+        if (!turmaDoc.exists) {
+            throw new HttpsError('not-found', `Turma ${turmaId} não encontrada.`);
+        }
+        const turmaData = turmaDoc.data() || {};
+        const turmaNome = turmaData.nome || turmaData.nome_turma || 'Turma sem nome';
+
+        // 4. Buscar total de alunos da turma
+        const alunosSnapshot = await db.collection('alunos')
+            .where('turma_id', '==', turmaId)
+            .get();
+
+        const totalAlunos = alunosSnapshot.size;
+
+        // 5. Preparar documento meta
+        const metaRef = db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('meta');
+
+        const metaData = {
+            turma_id: turmaId,
+            turma_nome: turmaNome,
+            total_alunos: totalAlunos,
+            anos_disponiveis: [],
+            cache_versao: 200,
+            cache_modelo: "dashboard_cache_v2_meta_inicial",
+            status_processamento: "pronto",
+            necessita_reconstrucao: false,
+            erro_processamento: null,
+            origem_cache: "cloud_function",
+            ultima_reconstrucao: admin.firestore.FieldValue.serverTimestamp(),
+            ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // 6. Gravar meta (minimalista nesta etapa)
+        await metaRef.set(metaData, { merge: true });
+
+        console.log(`✅ Cache V2 Meta reconstruído para turma ${turmaId} (${turmaNome}) - Total alunos: ${totalAlunos}`);
+
+        return {
+            success: true,
+            turmaId: turmaId,
+            totalAlunos: totalAlunos,
+            cacheVersao: 200,
+            message: "Meta do Dashboard Cache V2 reconstruída com sucesso."
+        };
+
+    } catch (error) {
+        console.error(`❌ Erro ao reconstruir dashboard para turma ${turmaId}:`, error);
+
+        // Gravar status de erro no documento meta para feedback na UI
+        try {
+            const metaRef = db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('meta');
+            await metaRef.set({
+                status_processamento: "erro",
+                erro_processamento: error.message || String(error),
+                necessita_reconstrucao: true,
+                ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        } catch (dbError) {
+            console.error('❌ Erro crítico ao gravar status de erro no Firestore:', dbError);
+        }
+
+        // Se for HttpsError do Firebase, lança como está
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+
+        // Erro genérico
+        throw new HttpsError('internal', error.message || 'Erro interno ao reconstruir cache.');
+    }
+});
