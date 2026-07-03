@@ -257,6 +257,271 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   late Animation<double> _pulseAnimation;
   late Animation<double> _rotateAnimation;
 
+  DateTime? _dateTimeFromCache(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  int _intFromCache(dynamic value) => _parseInt(value);
+
+  double _doubleFromCache(dynamic value) => _parseDouble(value);
+
+  Map<String, int> _mapStringIntFromCache(dynamic value) {
+    if (value is Map) {
+      return Map<String, int>.from(
+        value.map((k, v) => MapEntry(k.toString(), _parseInt(v))),
+      );
+    }
+    return {};
+  }
+
+  List<String> _extrairAnosDisponiveisCacheV2(
+    Map<String, dynamic>? meta,
+    List<Map<String, dynamic>> alunosCache,
+  ) {
+    final fromMeta = List<String>.from(meta?['anos_disponiveis'] ?? []);
+    if (fromMeta.isNotEmpty) return fromMeta;
+
+    final Set<String> anosSet = {};
+    for (final a in alunosCache) {
+      final freqPorAno = a['freq_por_ano'];
+      if (freqPorAno is Map) {
+        freqPorAno.forEach((k, v) {
+          if (k.toString().length == 4 && _parseInt(v) > 0) {
+            anosSet.add(k.toString());
+          }
+        });
+      }
+    }
+    if (anosSet.isEmpty) anosSet.add(DateTime.now().year.toString());
+    return anosSet.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  List<Map<String, dynamic>> _converterCacheV2ParaAlunosLegado(
+    List<Map<String, dynamic>> alunosCache,
+  ) {
+    return alunosCache.map((cache) {
+      final freqTotal = _intFromCache(cache['freq_total']);
+      final freqSemana = _intFromCache(cache['freq_semana']);
+      final freqMes = _intFromCache(cache['freq_mes']);
+      final freqPorAno = _mapStringIntFromCache(cache['freq_por_ano']);
+      final freqPorDiaSemana = _mapStringIntFromCache(
+        cache['freq_por_dia_semana'],
+      );
+
+      final temporal = {
+        'total': freqTotal,
+        'semana': freqSemana,
+        'mes': freqMes,
+        ...freqPorAno,
+      };
+
+      final diaSemanaPadrao = {
+        'seg': freqPorDiaSemana['seg'] ?? 0,
+        'ter': freqPorDiaSemana['ter'] ?? 0,
+        'qua': freqPorDiaSemana['qua'] ?? 0,
+        'qui': freqPorDiaSemana['qui'] ?? 0,
+        'sex': freqPorDiaSemana['sex'] ?? 0,
+        'sab': freqPorDiaSemana['sab'] ?? 0,
+        'dom': freqPorDiaSemana['dom'] ?? 0,
+      };
+
+      return {
+        'id': cache['aluno_id'] ?? '',
+        'nome': cache['nome'] ?? 'Sem nome',
+        'sexo': cache['sexo_normalizado'] ?? cache['sexo'] ?? 'NAO_INFORMADO',
+        'foto_perfil_aluno': cache['foto_url'] ?? '',
+        'graduacao_id': cache['graduacao_id'],
+        'graduacao_nome': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
+        'graduacao_atual': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
+        'data_nascimento': cache['data_nascimento'],
+        'total_presencas': freqTotal,
+        'idade_calculada': cache['idade'],
+        'frequencia_temporal': temporal,
+        'porDiaSemana': diaSemanaPadrao,
+        ...diaSemanaPadrao,
+        'avaliacao_nota': cache['avaliacao_nota'],
+        'avaliacao_conceito': cache['avaliacao_conceito'],
+        'destaque_score_total': cache['destaque_score_total'],
+        'destaque_score_semana': cache['destaque_score_semana'],
+        'destaque_score_mes': cache['destaque_score_mes'],
+        'destaque_score_por_ano': cache['destaque_score_por_ano'],
+        'ranking_total': cache['ranking_total'],
+        'ranking_semana': cache['ranking_semana'],
+        'ranking_mes': cache['ranking_mes'],
+        'ranking_por_ano': cache['ranking_por_ano'],
+      };
+    }).toList();
+  }
+
+  Future<bool> _carregarDashboardPeloCacheV2({bool forceServer = true}) async {
+    try {
+      debugPrint('🔎 Tentando carregar Dashboard pelo Cache V2...');
+
+      var meta = await _dashboardCacheService.carregarMeta(
+        widget.turmaId,
+        forceServer: forceServer,
+      );
+
+      final bool metaInvalido =
+          meta == null ||
+          _parseInt(meta['cache_versao']) < 200 ||
+          meta['status_processamento'] != 'pronto' ||
+          meta['necessita_reconstrucao'] == true;
+
+      if (metaInvalido) {
+        debugPrint('⚠️ Meta Cache V2 inválido. Reconstruindo no servidor...');
+        await _dashboardCacheService.reconstruirCache(
+          widget.turmaId,
+          force: false,
+        );
+        meta = await _dashboardCacheService.carregarMeta(
+          widget.turmaId,
+          forceServer: true,
+        );
+      }
+
+      final distribuicoes = await _dashboardCacheService.carregarDistribuicoes(
+        widget.turmaId,
+        forceServer: forceServer,
+      );
+
+      var alunosCache = await _dashboardCacheService.carregarAlunosCache(
+        widget.turmaId,
+        forceServer: forceServer,
+        orderBy: 'nome_busca',
+      );
+
+      if (alunosCache.isEmpty) {
+        debugPrint('⚠️ Cache de alunos vazio. Tentando reconstruir...');
+        await _dashboardCacheService.reconstruirCache(
+          widget.turmaId,
+          force: false,
+        );
+        alunosCache = await _dashboardCacheService.carregarAlunosCache(
+          widget.turmaId,
+          forceServer: true,
+          orderBy: 'nome_busca',
+        );
+      }
+
+      if (meta == null || alunosCache.isEmpty) {
+        debugPrint('❌ Falha crítica: Meta ou Alunos nulos após reconstrução.');
+        return false;
+      }
+
+      final alunosConvertidos = _converterCacheV2ParaAlunosLegado(alunosCache);
+      final anosExtraidos = _extrairAnosDisponiveisCacheV2(meta, alunosCache);
+
+      if (!mounted) return false;
+
+      setState(() {
+        _dashboardCacheMeta = meta;
+        _dashboardCacheDistribuicoes = distribuicoes;
+        _dashboardCacheAlunos = alunosCache;
+        _alunosDaTurma = alunosConvertidos;
+        anosDisponiveis = anosExtraidos;
+
+        if (anoSelecionado == null ||
+            !anosDisponiveis.contains(anoSelecionado)) {
+          anoSelecionado = anosDisponiveis.isNotEmpty
+              ? anosDisponiveis.first
+              : DateTime.now().year.toString();
+        }
+
+        _ultimaAtualizacao = _dateTimeFromCache(meta?['ultima_atualizacao']);
+        _ultimaSyncLogs = _dateTimeFromCache(meta?['ultima_reconstrucao']);
+
+        _usarDashboardCacheV2 = true;
+        _cacheV2Disponivel = true;
+        _isLoading = false;
+      });
+
+      _processarTodosDados();
+      debugPrint(
+        '✅ Dashboard carregada pelo Cache V2: ${alunosCache.length} alunos',
+      );
+      return true;
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar Dashboard pelo Cache V2: $e');
+      return false;
+    }
+  }
+
+  Future<void> _inicializarDashboardInteligente() async {
+    debugPrint('🧠 Inicializando Dashboard com modo inteligente...');
+    setState(() {
+      _isLoading = true;
+      _erro = null;
+    });
+
+    try {
+      await _carregarSvg();
+      await _preloadGraduacoes();
+
+      final usarV2 = await _dashboardCacheService.usarCacheV2();
+
+      if (usarV2) {
+        debugPrint(
+          '✅ Cache V2 ativo por flag. Tentando usar snapshots como fonte.',
+        );
+        final carregouV2 = await _carregarDashboardPeloCacheV2(
+          forceServer: true,
+        );
+        if (carregouV2) return;
+
+        debugPrint('⚠️ Cache V2 falhou. Usando fallback antigo.');
+      }
+
+      debugPrint('🧱 Dashboard carregada pelo modelo antigo.');
+      await _carregarAlunosDaTurma();
+    } catch (e) {
+      debugPrint('❌ Erro inesperado no fluxo inteligente: $e');
+      await _carregarAlunosDaTurma();
+    }
+  }
+
+  Future<void> _atualizarDashboardInteligente({bool force = true}) async {
+    if (_usarDashboardCacheV2 && _cacheV2Disponivel) {
+      if (_isAtualizando) return;
+      setState(() => _isAtualizando = true);
+      _rotateController.repeat();
+      HapticFeedback.mediumImpact();
+
+      try {
+        debugPrint('🚀 Reconstruindo Cache V2 no servidor...');
+        await _dashboardCacheService.reconstruirCache(
+          widget.turmaId,
+          force: force,
+        );
+        await _carregarDashboardPeloCacheV2(forceServer: true);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Dashboard atualizada pelo servidor (V2)'),
+              backgroundColor: context.uai.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('❌ Erro ao atualizar V2: $e');
+      } finally {
+        if (mounted) {
+          _rotateController.stop();
+          _rotateController.reset();
+          setState(() => _isAtualizando = false);
+        }
+      }
+    } else {
+      await _atualizarDadosReais(recalcularTudo: true);
+    }
+  }
+
   Future<void> _testarDashboardCacheV2SemTrocarFonte() async {
     if (!_usarDashboardCacheV2) {
       debugPrint('🧠 Dashboard Cache V2 está desativado por flag.');
@@ -439,8 +704,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
     _pulseController.repeat(reverse: true);
 
-    _verificarUsoDashboardCacheV2();
-    _inicializarDados();
+    _inicializarDashboardInteligente();
     _scrollController.addListener(_onScroll);
     _iniciarTimerCache();
 
@@ -473,6 +737,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Future<void> _verificarEAtualizarCache() async {
     if (!mounted || _isAtualizando) return;
+
+    // Se estiver usando V2, não dispara atualização por TTL antigo (60m).
+    // A atualização V2 é manual via refresh nesta etapa.
+    if (_usarDashboardCacheV2 && _cacheV2Disponivel) return;
+
     if (_ultimaAtualizacao == null) {
       await _atualizarDadosReais();
       return;
@@ -1774,7 +2043,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               if (!_isAtualizando)
                 IconButton(
                   icon: Icon(Icons.refresh_rounded),
-                  onPressed: () => _atualizarDadosReais(recalcularTudo: true),
+                  onPressed: () => _atualizarDashboardInteligente(force: true),
                   tooltip: 'Forçar recálculo pelos logs reais',
                 ),
               if (_isAtualizando)
@@ -1805,6 +2074,32 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildCacheIndicator() {
+    if (_usarDashboardCacheV2 && _cacheV2Disponivel) {
+      return Container(
+        margin: EdgeInsets.only(right: 4),
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: context.uai.info.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_done_rounded, size: 12, color: context.uai.info),
+            SizedBox(width: 4),
+            Text(
+              'Servidor',
+              style: TextStyle(
+                fontSize: 10,
+                color: context.uai.info,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final agora = DateTime.now();
     final diferenca = agora.difference(_ultimaAtualizacao!);
     final minutosRestantes = _CACHE_VALIDADE_MINUTOS - diferenca.inMinutes;
