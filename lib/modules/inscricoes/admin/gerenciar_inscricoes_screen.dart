@@ -43,7 +43,52 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         .toColor();
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  bool _temaPrimarioMuitoClaroEmFundoEscuro() {
+    final primary = context.uai.primary;
+    final surface = context.uai.surface;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        surface.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.58;
+  }
+
+  Color _safeHeaderBg() {
+    final primary = context.uai.primary;
+    if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
+      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+    }
+    return primary;
+  }
+
+  Gradient _safeHeaderGradient([Color? baseColor]) {
+    final base = baseColor ?? _safeHeaderBg();
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+    final end = hsl
+        .withLightness(
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
+        .toColor();
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [base, end],
+    );
+  }
+
+  Color _onPrimary() => _readableOn(_safeHeaderBg());
+  Color _onCard() => _readableOn(context.uai.card);
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
+
+  Color _primaryButtonBg() =>
+      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+  Color _primaryButtonFg() =>
+      Theme.of(context).appBarTheme.foregroundColor ??
+      _readableOn(_primaryButtonBg());
 
   Color _safeAccent(Color color, [Color? background]) {
     return _ensureVisible(color, background ?? context.uai.card);
@@ -320,6 +365,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: context.uai.surface,
         insetPadding: const EdgeInsets.all(18),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Row(
@@ -329,25 +375,28 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               height: 44,
               decoration: BoxDecoration(
                 color: Color.alphaBlend(
-                  context.uai.primary.withOpacity(0.10),
+                  context.uai.error.withOpacity(0.10),
                   context.uai.cardAlt,
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(Icons.warning_rounded, color: Colors.red.shade700),
+              child: Icon(Icons.warning_rounded, color: context.uai.error),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Recusar inscrição?',
-                style: TextStyle(fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],
         ),
-        content: const Text(
-          'Essa ação vai remover a inscrição pendente e também apagar os arquivos enviados, como foto e assinatura, do Firebase Storage.\n\nEssa ação é irreversível.',
-          style: TextStyle(height: 1.35),
+        content: Text(
+          "Essa ação vai remover a inscrição pendente e também apagar os arquivos enviados, como foto e assinatura, do Firebase Storage.\n\nEssa ação é irreversível.",
+          style: TextStyle(color: context.uai.textSecondary, height: 1.35),
         ),
         actions: [
           TextButton(
@@ -359,8 +408,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
             icon: const Icon(Icons.delete_forever_rounded, size: 18),
             label: const Text('RECUSAR'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
+              backgroundColor: context.uai.error,
+              foregroundColor: _readableOn(context.uai.error),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
@@ -416,8 +465,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         SnackBar(
           content: Text(mensagem),
           backgroundColor: arquivosFalharam.isEmpty
-              ? Colors.red
-              : Colors.orange,
+              ? context.uai.error
+              : context.uai.warning,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -485,7 +534,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               maxHeight: MediaQuery.of(context).size.height * 0.82,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.uai.surface,
               borderRadius: BorderRadius.circular(26),
               boxShadow: [
                 BoxShadow(
@@ -503,7 +552,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.green.shade800, Colors.green.shade600],
+                      colors:
+                          (_safeHeaderGradient(context.uai.success)
+                                  as LinearGradient)
+                              .colors,
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -517,35 +569,39 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.16),
+                          color: _readableOn(_safeHeaderBg()).withOpacity(0.16),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.16),
+                            color: _readableOn(
+                              _safeHeaderBg(),
+                            ).withOpacity(0.16),
                           ),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.class_rounded,
-                          color: Colors.white,
+                          color: _readableOn(context.uai.success),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Selecionar turma',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: _readableOn(context.uai.success),
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
                               'Escolha onde o aluno será cadastrado.',
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: _readableOn(
+                                  context.uai.success,
+                                ).withOpacity(0.78),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -555,9 +611,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close_rounded,
-                          color: Colors.white,
+                          color: _readableOn(context.uai.success),
                         ),
                       ),
                     ],
@@ -616,13 +672,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                 padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
                                   color: temVaga
-                                      ? Colors.white
-                                      : Colors.grey.shade50,
+                                      ? context.uai.card
+                                      : context.uai.cardAlt,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color: temVaga
-                                        ? Colors.green.shade100
-                                        : Colors.grey.shade200,
+                                        ? context.uai.success.withOpacity(0.24)
+                                        : context.uai.border,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
@@ -639,8 +695,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                       height: 50,
                                       decoration: BoxDecoration(
                                         color: temVaga
-                                            ? Colors.green.shade50
-                                            : Colors.grey.shade200,
+                                            ? Color.alphaBlend(
+                                                context.uai.success.withOpacity(
+                                                  0.10,
+                                                ),
+                                                context.uai.cardAlt,
+                                              )
+                                            : context.uai.border,
                                         borderRadius: BorderRadius.circular(18),
                                       ),
                                       child: Icon(
@@ -648,8 +709,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                             ? Icons.meeting_room_rounded
                                             : Icons.block_rounded,
                                         color: temVaga
-                                            ? Colors.green.shade700
-                                            : Colors.grey.shade500,
+                                            ? context.uai.success
+                                            : context.uai.textMuted,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -671,20 +732,22 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                                     fontSize: 15,
                                                     fontWeight: FontWeight.w900,
                                                     color: temVaga
-                                                        ? Colors.grey.shade900
-                                                        : Colors.grey.shade500,
+                                                        ? context
+                                                              .uai
+                                                              .textPrimary
+                                                        : context.uai.textMuted,
                                                   ),
                                                 ),
                                               ),
                                               if (!temVaga)
                                                 _buildSmallStatusChip(
                                                   label: 'LOTADA',
-                                                  color: Colors.red,
+                                                  color: context.uai.error,
                                                 )
                                               else
                                                 _buildSmallStatusChip(
                                                   label: 'DISPONÍVEL',
-                                                  color: Colors.green,
+                                                  color: context.uai.success,
                                                 ),
                                             ],
                                           ),
@@ -698,7 +761,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                color: Colors.grey.shade600,
+                                                color:
+                                                    context.uai.textSecondary,
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -715,20 +779,28 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                                     minHeight: 7,
                                                     value: progress,
                                                     backgroundColor:
-                                                        Colors.grey.shade200,
+                                                        context.uai.border,
                                                     valueColor:
                                                         AlwaysStoppedAnimation<
                                                           Color
                                                         >(
                                                           !temLimite
-                                                              ? Colors.green
+                                                              ? context
+                                                                    .uai
+                                                                    .success
                                                               : porcentagem >=
                                                                     90
-                                                              ? Colors.red
+                                                              ? context
+                                                                    .uai
+                                                                    .error
                                                               : porcentagem >=
                                                                     70
-                                                              ? Colors.orange
-                                                              : Colors.green,
+                                                              ? context
+                                                                    .uai
+                                                                    .warning
+                                                              : context
+                                                                    .uai
+                                                                    .success,
                                                         ),
                                                   ),
                                                 ),
@@ -741,7 +813,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                                 style: TextStyle(
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w900,
-                                                  color: Colors.grey.shade700,
+                                                  color:
+                                                      context.uai.textSecondary,
                                                 ),
                                               ),
                                             ],
@@ -796,7 +869,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               return Container(
                 margin: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.uai.surface,
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
@@ -813,7 +886,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 12, 10, 16),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [Colors.red.shade900, Colors.red.shade700],
+                          colors: [context.uai.error, context.uai.error],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -827,7 +900,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                             width: 44,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.45),
+                              color: _readableOn(
+                                _safeHeaderBg(),
+                              ).withOpacity(0.45),
                               borderRadius: BorderRadius.circular(99),
                             ),
                           ),
@@ -843,7 +918,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                     fotoUrl: fotoUrl,
                                     nome: nomeAluno,
                                     radius: 32,
-                                    borderColor: Colors.white,
+                                    borderColor: _readableOn(context.uai.error),
                                   ),
                                 ),
                               ),
@@ -856,8 +931,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                       nomeAluno,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: _readableOn(context.uai.error),
                                         fontSize: 18,
                                         height: 1.05,
                                         fontWeight: FontWeight.w900,
@@ -869,7 +944,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                           ? 'Inscrição pendente'
                                           : 'Inscrito em $dataInscricao',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.78),
+                                        color: _readableOn(
+                                          _safeHeaderBg(),
+                                        ).withOpacity(0.78),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -878,9 +955,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                 ),
                               ),
                               IconButton(
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.close_rounded,
-                                  color: Colors.white,
+                                  color: _readableOn(context.uai.error),
                                 ),
                                 onPressed: () => Navigator.pop(context),
                               ),
@@ -984,12 +1061,12 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
+                        color: context.uai.cardAlt,
                         borderRadius: const BorderRadius.vertical(
                           bottom: Radius.circular(28),
                         ),
                         border: Border(
-                          top: BorderSide(color: Colors.grey.shade200),
+                          top: BorderSide(color: context.uai.border),
                         ),
                       ),
                       child: Column(
@@ -1004,8 +1081,10 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                               icon: const Icon(Icons.check_circle_rounded),
                               label: const Text('APROVAR INSCRIÇÃO'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green.shade700,
-                                foregroundColor: Colors.white,
+                                backgroundColor: context.uai.success,
+                                foregroundColor: _readableOn(
+                                  context.uai.success,
+                                ),
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,
                                 ),
@@ -1026,7 +1105,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                   label: 'Aluno',
                                   numero: dados['contato_aluno']?.toString(),
                                   nome: dados['nome']?.toString(),
-                                  cor: Colors.green,
+                                  cor: context.uai.success,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -1036,7 +1115,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                   numero: dados['contato_responsavel']
                                       ?.toString(),
                                   nome: dados['nome_responsavel']?.toString(),
-                                  cor: Colors.blue,
+                                  cor: context.uai.info,
                                 ),
                               ),
                             ],
@@ -1062,9 +1141,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                   ),
                                   label: const Text('TERMO'),
                                   style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.blue.shade700,
+                                    foregroundColor: context.uai.info,
                                     side: BorderSide(
-                                      color: Colors.blue.shade200,
+                                      color: context.uai.info.withOpacity(0.30),
                                     ),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 13,
@@ -1091,9 +1170,14 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                   ),
                                   label: const Text('RECUSAR'),
                                   style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red.shade700,
+                                    foregroundColor: _safeAccent(
+                                      context.uai.error,
+                                      context.uai.cardAlt,
+                                    ),
                                     side: BorderSide(
-                                      color: Colors.red.shade200,
+                                      color: context.uai.error.withOpacity(
+                                        0.30,
+                                      ),
                                     ),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 13,
@@ -1150,10 +1234,12 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: temContato ? cor.withOpacity(0.08) : Colors.grey.shade100,
+          color: temContato
+              ? Color.alphaBlend(cor.withOpacity(0.10), context.uai.cardAlt)
+              : context.uai.cardAlt,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: temContato ? cor.withOpacity(0.18) : Colors.grey.shade300,
+            color: temContato ? cor.withOpacity(0.18) : context.uai.border,
           ),
         ),
         child: Row(
@@ -1164,7 +1250,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               height: 20,
               width: 20,
               colorFilter: ColorFilter.mode(
-                temContato ? cor : Colors.grey.shade400,
+                temContato
+                    ? _safeAccent(cor, context.uai.cardAlt)
+                    : context.uai.textMuted,
                 BlendMode.srcIn,
               ),
             ),
@@ -1177,7 +1265,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
-                  color: temContato ? cor : Colors.grey.shade500,
+                  color: temContato
+                      ? _safeAccent(cor, context.uai.cardAlt)
+                      : context.uai.textMuted,
                 ),
               ),
             ),
@@ -1191,7 +1281,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     required bool temAssinatura,
     required VoidCallback onTap,
   }) {
-    final color = temAssinatura ? Colors.green : Colors.orange;
+    final color = temAssinatura ? context.uai.success : context.uai.warning;
+    final accent = _safeAccent(color, context.uai.cardAlt);
+    final bg = Color.alphaBlend(color.withOpacity(0.10), context.uai.cardAlt);
 
     return InkWell(
       onTap: onTap,
@@ -1199,15 +1291,15 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: bg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.18)),
+          border: Border.all(color: accent.withOpacity(0.20)),
         ),
         child: Row(
           children: [
             Icon(
               temAssinatura ? Icons.draw_rounded : Icons.description_rounded,
-              color: color.shade700,
+              color: accent,
               size: 28,
             ),
             const SizedBox(width: 11),
@@ -1220,7 +1312,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                         ? 'Termo assinado digitalmente'
                         : 'Termo aceito sem assinatura',
                     style: TextStyle(
-                      color: color.shade800,
+                      color: accent,
                       fontWeight: FontWeight.w900,
                       fontSize: 13,
                     ),
@@ -1229,14 +1321,14 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                   Text(
                     'Toque para visualizar o termo completo.',
                     style: TextStyle(
-                      color: Colors.grey.shade700,
+                      color: context.uai.textSecondary,
                       fontSize: 11.5,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: color.shade700),
+            Icon(Icons.chevron_right_rounded, color: accent),
           ],
         ),
       ),
@@ -1260,7 +1352,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: Colors.red.shade900.withOpacity(0.08),
+                  color: context.uai.error.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: context.uai.primary, size: 21),
@@ -1270,7 +1362,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                 child: Text(
                   title,
                   style: TextStyle(
-                    color: Colors.grey.shade900,
+                    color: context.uai.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1300,13 +1392,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
+          color: context.uai.cardAlt,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: context.uai.border),
         ),
         child: Row(
           children: [
-            Icon(icon, color: Colors.red.shade800, size: 20),
+            Icon(icon, color: context.uai.error, size: 20),
             const SizedBox(width: 9),
             Expanded(
               child: Column(
@@ -1316,7 +1408,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     label,
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: Colors.grey.shade600,
+                      color: context.uai.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1326,8 +1418,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     style: TextStyle(
                       fontSize: 13.2,
                       color: onTap == null
-                          ? Colors.grey.shade900
-                          : Colors.blue.shade800,
+                          ? context.uai.textPrimary
+                          : _safeAccent(context.uai.info, context.uai.cardAlt),
                       fontWeight: FontWeight.w800,
                       decoration: onTap == null
                           ? null
@@ -1338,7 +1430,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               ),
             ),
             if (onTap != null)
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade500),
+              Icon(Icons.chevron_right_rounded, color: context.uai.textMuted),
           ],
         ),
       ),
@@ -1584,7 +1676,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: t.primaryGradient,
+        gradient: _safeHeaderGradient(),
         borderRadius: BorderRadius.circular(t.cardRadius + 2),
         boxShadow: t.cardShadow,
       ),
@@ -1739,7 +1831,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.grey.shade900,
+                      color: context.uai.textPrimary,
                       fontSize: 15.5,
                       height: 1.08,
                       fontWeight: FontWeight.w900,
@@ -1753,13 +1845,13 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                       _buildMiniInfo(
                         icon: Icons.phone_rounded,
                         text: contato,
-                        color: Colors.green,
+                        color: context.uai.success,
                       ),
                       if (responsavel.isNotEmpty)
                         _buildMiniInfo(
                           icon: Icons.family_restroom_rounded,
                           text: responsavel,
-                          color: Colors.blue,
+                          color: context.uai.info,
                         ),
                     ],
                   ),
@@ -1768,7 +1860,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                     Text(
                       dataInscricao,
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: context.uai.textSecondary,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1777,13 +1869,15 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                   const SizedBox(height: 8),
                   _buildSmallStatusChip(
                     label: temAssinatura ? 'TERMO ASSINADO' : 'TERMO ACEITO',
-                    color: temAssinatura ? Colors.green : Colors.orange,
+                    color: temAssinatura
+                        ? context.uai.success
+                        : context.uai.warning,
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade500),
+            Icon(Icons.chevron_right_rounded, color: context.uai.textMuted),
           ],
         ),
       ),
@@ -1831,7 +1925,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.inbox_rounded, size: 74, color: Colors.grey.shade300),
+              Icon(Icons.inbox_rounded, size: 74, color: context.uai.border),
               const SizedBox(height: 14),
               const Text(
                 'Nenhuma inscrição pendente',
@@ -1876,7 +1970,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               Icon(
                 Icons.error_outline_rounded,
                 size: 70,
-                color: Colors.red.shade700,
+                color: context.uai.error,
               ),
               const SizedBox(height: 12),
               const Text(
@@ -1888,7 +1982,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
               Text(
                 error?.toString() ?? 'Tente novamente.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade700),
+                style: TextStyle(color: context.uai.textSecondary),
               ),
             ],
           ),

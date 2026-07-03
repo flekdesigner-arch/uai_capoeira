@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_preset.dart';
 import 'app_theme_tokens.dart';
+import 'tema_global_service.dart';
 
 class UserThemeSettings {
   final Color primary;
@@ -258,8 +259,19 @@ class AppThemeController extends ChangeNotifier {
   UserThemeSettings _userTheme = UserThemeSettings.defaultDark;
   String? _activeSavedThemeId;
   bool _initialized = false;
+  bool _listeningGlobalTheme = false;
 
   UaiThemePreset get currentPreset => _preset;
+  UaiThemePreset get effectivePreset =>
+      TemaGlobalService.instance.resolvePreset(
+        selectedPreset: _preset,
+        hasUserCustomTheme: _activeSavedThemeId != null,
+      );
+  bool get allowsUserThemeChoice =>
+      TemaGlobalService.instance.permitirUsuarioEscolher;
+  bool get isGlobalThemeForced => TemaGlobalService.instance.forcarTemaGlobal;
+  List<UaiThemePreset> get allowedSystemPresets =>
+      TemaGlobalService.instance.resolvedAllowedPresets();
   ThemeMode get themeMode => _themeMode;
   UserThemeSettings get userTheme => _userTheme;
   UaiThemeTokens get userThemeTokens => _userTheme.toTokens();
@@ -297,7 +309,17 @@ class AppThemeController extends ChangeNotifier {
       await tryLoadActiveSavedThemeFromFirebase(notify: false);
     }
 
+    await TemaGlobalService.instance.initialize();
+    if (!_listeningGlobalTheme) {
+      TemaGlobalService.instance.addListener(_handleGlobalThemeChanged);
+      _listeningGlobalTheme = true;
+    }
+
     _initialized = true;
+    notifyListeners();
+  }
+
+  void _handleGlobalThemeChanged() {
     notifyListeners();
   }
 

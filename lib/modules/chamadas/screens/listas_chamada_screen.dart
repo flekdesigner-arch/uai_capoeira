@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/alunos/screens/aluno_detalhe_screen.dart';
+import 'package:uai_capoeira/modules/chamadas/screens/editar_chamada_turma_screen.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -134,6 +135,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   bool _carregandoBuscaCompleta = false;
   String _erroDetalhe = '';
   bool _abrindoPerfilAluno = false;
+  String? _excluindoChamadaId;
 
   // 🔥 CACHE INTELIGENTE DO CALENDÁRIO
   // Evita ficar lendo o Firebase toda vez que abrir/trocar o mês.
@@ -150,6 +152,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   static const int _limitePorPagina = 10;
 
   Map<String, dynamic> _permissoes = {};
+  Map<String, dynamic> _usuarioAtualData = {};
   String _busca = '';
   String _filtroTipo = 'TODOS';
   String _filtroStatus = 'TODOS';
@@ -601,23 +604,60 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     if (user == null) return;
 
     try {
-      final permissoesDoc = await _firestore
-          .collection('usuarios')
-          .doc(user.uid)
-          .collection('permissoes_usuario')
-          .doc('configuracoes')
-          .get();
+      final results = await Future.wait([
+        _firestore.collection('usuarios').doc(user.uid).get(),
+        _firestore
+            .collection('usuarios')
+            .doc(user.uid)
+            .collection('permissoes_usuario')
+            .doc('configuracoes')
+            .get(),
+      ]);
 
       if (!mounted) return;
-      if (permissoesDoc.exists) {
-        setState(() => _permissoes = permissoesDoc.data() ?? {});
-      }
+      final usuarioDoc = results[0];
+      final permissoesDoc = results[1];
+      setState(() {
+        _usuarioAtualData = usuarioDoc.data() ?? {};
+        _permissoes = permissoesDoc.data() ?? {};
+      });
     } catch (e) {
       debugPrint('Erro ao carregar permissões: $e');
     }
   }
 
-  bool _temPermissao(String permissao) => _permissoes[permissao] == true;
+  bool _usuarioAtualEhAdmin() {
+    final pesoRaw = _usuarioAtualData['peso_permissao'];
+    final peso = pesoRaw is num
+        ? pesoRaw.toInt()
+        : int.tryParse(pesoRaw?.toString() ?? '') ?? 0;
+    final tipo = (_usuarioAtualData['tipo'] ?? '').toString().toLowerCase();
+    return peso >= 90 || tipo == 'admin' || tipo == 'administrador';
+  }
+
+  bool _temPermissaoDiretaOuAlias(List<String> chaves) {
+    if (_usuarioAtualEhAdmin()) return true;
+    return chaves.any((chave) => _permissoes[chave] == true);
+  }
+
+  bool _temPermissao(String permissao) {
+    if (_usuarioAtualEhAdmin()) return true;
+    return _permissoes[permissao] == true;
+  }
+
+  bool get _podeEditarChamada => _temPermissaoDiretaOuAlias(const [
+    'pode_editar_chamada',
+    'pode_editar_chamadas',
+    'podeEditarChamada',
+  ]);
+
+  bool get _podeExcluirChamada =>
+      _podeEditarChamada &&
+      _temPermissaoDiretaOuAlias(const [
+        'pode_excluir_chamada',
+        'pode_excluir_chamadas',
+        'podeExcluirChamada',
+      ]);
 
   Query<Map<String, dynamic>> _queryBaseChamadas() {
     return _firestore
@@ -1325,31 +1365,213 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
+  int _intFromDynamic(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String? _formatarDataChamada(dynamic value) {
+    DateTime? data;
+    if (value is Timestamp) data = value.toDate();
+    if (value is DateTime) data = value;
+    if (value is String) data = DateTime.tryParse(value);
+    if (data == null) return null;
+    return DateFormat('dd/MM/yyyy').format(data);
+  }
+
+  Future<void> _confirmarExcluirChamadaLista(
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
+    if (!_podeExcluirChamada || _excluindoChamadaId != null) return;
+
+    final data = chamada.data();
+    final presentes = _intFromDynamic(data['presentes']);
+    final ausentes = _intFromDynamic(data['ausentes']);
+    final totalAlunos = _intFromDynamic(data['total_alunos']);
+    final dataLabel =
+        _formatarDataChamada(data['data_chamada']) ??
+        data['data_formatada']?.toString() ??
+        'Não informada';
+    final turmaLabel = data['turma_nome']?.toString().trim().isNotEmpty == true
+        ? data['turma_nome'].toString()
+        : widget.turmaNome;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var excluindo = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Excluir chamada?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Esta ação funciona como um CTRL + Z da chamada. A chamada será apagada, os logs serão removidos e os contadores dos alunos serão recalculados.',
+                ),
+                const SizedBox(height: 16),
+                _buildResumoExclusaoLista('Turma', turmaLabel),
+                _buildResumoExclusaoLista('Data', dataLabel),
+                _buildResumoExclusaoLista('Presentes', '$presentes'),
+                _buildResumoExclusaoLista('Ausentes', '$ausentes'),
+                _buildResumoExclusaoLista('Total alunos', '$totalAlunos'),
+                if (excluindo) ...[
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(color: context.uai.error),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Desfazendo chamada e recalculando contadores...',
+                    style: TextStyle(
+                      color: context.uai.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: excluindo
+                    ? null
+                    : () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: excluindo
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.uai.error,
+                  foregroundColor: _readableOn(context.uai.error),
+                ),
+                child: excluindo
+                    ? const Text('Excluindo...')
+                    : const Text('Excluir chamada'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (confirmar == true) {
+      await _excluirChamadaLista(chamada);
+    }
+  }
+
+  Widget _buildResumoExclusaoLista(String label, String valor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              valor,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _excluirChamadaLista(
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
+    final data = chamada.data();
+    final turmaId = data['turma_id']?.toString().trim().isNotEmpty == true
+        ? data['turma_id'].toString()
+        : widget.turmaId;
+
+    setState(() => _excluindoChamadaId = chamada.id);
+
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'excluirChamada',
+      );
+      await callable.call({'chamadaId': chamada.id, 'turmaId': turmaId});
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Chamada excluída e contadores recalculados.'),
+          backgroundColor: context.uai.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      await _carregarPrimeirasChamadas();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_mensagemErroExcluirChamadaLista(e)),
+          backgroundColor: context.uai.error,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _excluindoChamadaId = null);
+    }
+  }
+
+  String _mensagemErroExcluirChamadaLista(Object erro) {
+    final texto = erro.toString();
+    final lower = texto.toLowerCase();
+    if (lower.contains('channel') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('cloud functions')) {
+      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+    }
+    if (erro is FirebaseFunctionsException &&
+        erro.message != null &&
+        erro.message!.trim().isNotEmpty) {
+      return erro.message!;
+    }
+    return 'Não foi possível excluir a chamada. Tente novamente.';
+  }
+
   Future<void> _editarChamada(
     QueryDocumentSnapshot<Map<String, dynamic>> chamada,
   ) async {
-    if (!_temPermissao('pode_editar_chamada')) {
+    if (!_podeEditarChamada) {
       _mostrarSnackBarSemPermissao();
       return;
     }
 
-    final data = chamada.data();
-    final alunos = (data['alunos'] as List? ?? [])
-        .map((a) => Map<String, dynamic>.from(a as Map))
-        .toList();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _EditarChamadaDialog(
-        chamadaId: chamada.id,
-        chamadaData: data,
-        alunos: alunos,
-        turmaNome: widget.turmaNome,
-        onChamadaEditada: _carregarPrimeirasChamadas,
+    final alterou = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditarChamadaTurmaScreen(
+          chamadaId: chamada.id,
+          chamadaData: chamada.data(),
+          turmaId: widget.turmaId,
+          turmaNome: widget.turmaNome,
+          academiaId: widget.academiaId,
+          academiaNome: widget.academiaNome,
+        ),
       ),
     );
+
+    if (alterou == true && mounted) {
+      _carregarPrimeirasChamadas();
+    }
   }
 
   void _mostrarSnackBarSemPermissao() {
@@ -1858,11 +2080,25 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         : 0.0;
     final tipoAula = data['tipo_aula']?.toString() ?? 'Não informado';
     final professorNome = data['professor_nome']?.toString() ?? 'Não informado';
-    final podeEditar = _temPermissao('pode_editar_chamada');
+    final podeEditar = _podeEditarChamada;
+    final podeExcluir = _podeExcluirChamada;
+    final excluindoEstaChamada = _excluindoChamadaId == chamada.id;
     final statusColor = _getStatusColor(percentualPresenca);
     final statusAccent = _ensureVisible(statusColor, context.uai.card);
     final cardFg = _readableOn(context.uai.card);
     final tipoColor = _getTipoAulaColor(tipoAula);
+    final chamadaEditada =
+        data['chamada_editada'] == true ||
+        data['editado_em'] != null ||
+        data['edicao_origem'] != null;
+    final editadoPor =
+        (data['editado_por_nome'] ??
+                data['editado_por_email'] ??
+                data['editado_por_uid'] ??
+                '')
+            .toString()
+            .trim();
+    final editadoEm = data['editado_em'] as Timestamp?;
 
     return Container(
       margin: EdgeInsets.fromLTRB(16, index == 0 ? 12 : 7, 16, 7),
@@ -1965,6 +2201,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                           ),
                         ],
                       ),
+                      if (chamadaEditada) ...[
+                        SizedBox(height: 7),
+                        _buildChamadaEditadaBadge(editadoPor, editadoEm),
+                      ],
                     ],
                   ),
                 ),
@@ -1986,6 +2226,39 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                       ),
                       onPressed: () => _editarChamada(chamada),
                       tooltip: 'Editar chamada completa',
+                      padding: EdgeInsets.all(8),
+                      constraints: BoxConstraints(),
+                    ),
+                  ),
+                if (podeExcluir)
+                  Container(
+                    margin: EdgeInsets.only(left: 8),
+                    decoration: BoxDecoration(
+                      color: context.uai.error.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: context.uai.error.withOpacity(0.16),
+                      ),
+                    ),
+                    child: IconButton(
+                      icon: excluindoEstaChamada
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: context.uai.error,
+                              ),
+                            )
+                          : Icon(
+                              Icons.delete_rounded,
+                              size: 19,
+                              color: context.uai.error,
+                            ),
+                      onPressed: _excluindoChamadaId == null
+                          ? () => _confirmarExcluirChamadaLista(chamada)
+                          : null,
+                      tooltip: 'Excluir chamada',
                       padding: EdgeInsets.all(8),
                       constraints: BoxConstraints(),
                     ),
@@ -2120,6 +2393,42 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               color: accent,
             ),
             overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChamadaEditadaBadge(String editadoPor, Timestamp? editadoEm) {
+    final accent = _ensureVisible(context.uai.warning, context.uai.card);
+    final autor = editadoPor.isEmpty ? 'usuário não identificado' : editadoPor;
+    final quando = editadoEm == null
+        ? ''
+        : ' • ${DateFormat('dd/MM HH:mm').format(editadoEm.toDate())}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withOpacity(0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.edit_note_rounded, size: 13, color: accent),
+          SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              'Editada por $autor$quando',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: accent,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -2497,6 +2806,22 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         ],
       ),
     );
+  }
+
+  String _mensagemErroExclusao(Object erro) {
+    final texto = erro.toString();
+    final lower = texto.toLowerCase();
+    if (lower.contains('channel') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('cloud functions')) {
+      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+    }
+    if (erro is FirebaseFunctionsException &&
+        erro.message != null &&
+        erro.message!.trim().isNotEmpty) {
+      return erro.message!;
+    }
+    return 'Não foi possível excluir a chamada. Tente novamente.';
   }
 
   @override
@@ -2886,6 +3211,22 @@ class _DiaSemanaHeader extends StatelessWidget {
 
   const _DiaSemanaHeader(this.label);
 
+  String _mensagemErroExclusao(Object erro) {
+    final texto = erro.toString();
+    final lower = texto.toLowerCase();
+    if (lower.contains('channel') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('cloud functions')) {
+      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+    }
+    if (erro is FirebaseFunctionsException &&
+        erro.message != null &&
+        erro.message!.trim().isNotEmpty) {
+      return erro.message!;
+    }
+    return 'Não foi possível excluir a chamada. Tente novamente.';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Expanded(
@@ -2909,6 +3250,7 @@ class _EditarChamadaDialog extends StatefulWidget {
   final List<Map<String, dynamic>> alunos;
   final String turmaNome;
   final VoidCallback onChamadaEditada;
+  final bool podeExcluirChamada;
 
   const _EditarChamadaDialog({
     required this.chamadaId,
@@ -2916,6 +3258,7 @@ class _EditarChamadaDialog extends StatefulWidget {
     required this.alunos,
     required this.turmaNome,
     required this.onChamadaEditada,
+    this.podeExcluirChamada = false,
   });
 
   @override
@@ -3702,7 +4045,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
-      debugPrint('❌ Erro ao salvar edição completa: $e');
+      debugPrint('Erro ao salvar edição completa: $e');
       if (mounted) {
         setState(() {
           _isSaving = false;
@@ -3848,29 +4191,77 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Future<void> _confirmarExclusao() async {
+    final presentes = widget.alunos.where((a) => a['presente'] == true).length;
+    final totalAlunos = widget.alunos.length;
+    final ausentes = totalAlunos - presentes;
+    final data = DateFormat('dd/MM/yyyy').format(_dataChamadaOriginal);
+
     final confirmar = await showDialog<bool>(
       context: context,
+      barrierDismissible: !_isDeleting,
       builder: (context) => AlertDialog(
-        title: Text('Confirmar exclusão'),
-        content: Text('Tem certeza absoluta que deseja excluir esta chamada?'),
+        title: const Text('Excluir chamada?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Esta ação funciona como um CTRL + Z da chamada. A chamada será apagada, os logs serão removidos e os contadores dos alunos serão recalculados.',
+            ),
+            const SizedBox(height: 16),
+            _buildResumoExclusao('Turma', widget.turmaNome),
+            _buildResumoExclusao('Data', data),
+            _buildResumoExclusao('Presentes', '$presentes'),
+            _buildResumoExclusao('Ausentes', '$ausentes'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar'),
+            child: const Text('Cancelar'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: context.uai.primaryDark,
-              foregroundColor: _readableOn(context.uai.primaryDark),
+              backgroundColor: context.uai.error,
+              foregroundColor: _readableOn(context.uai.error),
             ),
-            child: const Text('Sim, excluir'),
+            child: const Text('Excluir chamada'),
           ),
         ],
       ),
     );
 
     if (confirmar == true) _excluirChamadaComAnimacao();
+  }
+
+  Widget _buildResumoExclusao(String label, String valor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              valor,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _excluirChamadaComAnimacao() async {
@@ -3922,7 +4313,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
-      debugPrint('❌ Erro ao excluir chamada: $e');
+      debugPrint('Erro ao excluir chamada: $e');
       if (mounted) {
         setState(() {
           _isDeleting = false;
@@ -3930,7 +4321,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao excluir: $e'),
+            content: Text(_mensagemErroExclusao(e)),
             backgroundColor: context.uai.error,
             duration: const Duration(seconds: 6),
           ),
@@ -3944,6 +4335,22 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         });
       }
     }
+  }
+
+  String _mensagemErroExclusao(Object erro) {
+    final texto = erro.toString();
+    final lower = texto.toLowerCase();
+    if (lower.contains('channel') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('cloud functions')) {
+      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+    }
+    if (erro is FirebaseFunctionsException &&
+        erro.message != null &&
+        erro.message!.trim().isNotEmpty) {
+      return erro.message!;
+    }
+    return 'Não foi possível excluir a chamada. Tente novamente.';
   }
 
   @override
@@ -4041,7 +4448,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     ),
                     IconButton(
                       icon: Icon(Icons.delete_rounded, color: headerFg),
-                      onPressed: _isSaving || _isDeleting
+                      onPressed:
+                          _isSaving || _isDeleting || !widget.podeExcluirChamada
                           ? null
                           : _mostrarPreviewExclusao,
                       tooltip: 'Excluir chamada',
@@ -4840,6 +5248,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _abrindoPerfilAluno = false;
+  String? _excluindoChamadaId;
   String _busca = '';
   String _filtro = 'TODOS';
 
@@ -5086,6 +5495,22 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     } finally {
       _abrindoPerfilAluno = false;
     }
+  }
+
+  String _mensagemErroExclusao(Object erro) {
+    final texto = erro.toString();
+    final lower = texto.toLowerCase();
+    if (lower.contains('channel') ||
+        lower.contains('unable to establish connection') ||
+        lower.contains('cloud functions')) {
+      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+    }
+    if (erro is FirebaseFunctionsException &&
+        erro.message != null &&
+        erro.message!.trim().isNotEmpty) {
+      return erro.message!;
+    }
+    return 'Não foi possível excluir a chamada. Tente novamente.';
   }
 
   @override

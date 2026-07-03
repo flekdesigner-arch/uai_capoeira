@@ -50,8 +50,8 @@ class UaiThemeSelectorButton extends StatelessWidget {
     final lockChoice =
         controller.isGlobalThemeForced || !controller.allowsUserThemeChoice;
     final globalLockedMessage = controller.isGlobalThemeForced
-        ? 'O tema global está ativo para todos os usuários no momento.'
-        : 'A escolha de tema está controlada pela administração no momento.';
+        ? 'O tema global estÃƒÂ¡ ativo para todos os usuÃƒÂ¡rios no momento.'
+        : 'A escolha de tema estÃƒÂ¡ controlada pela administraÃƒÂ§ÃƒÂ£o no momento.';
 
     return AnimatedBuilder(
       animation: controller,
@@ -151,8 +151,8 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
     final lockChoice =
         controller.isGlobalThemeForced || !controller.allowsUserThemeChoice;
     final globalLockedMessage = controller.isGlobalThemeForced
-        ? 'O tema global está ativo para todos os usuários no momento.'
-        : 'A escolha de tema está controlada pela administração no momento.';
+        ? 'O tema global estÃƒÂ¡ ativo para todos os usuÃƒÂ¡rios no momento.'
+        : 'A escolha de tema estÃƒÂ¡ controlada pela administraÃƒÂ§ÃƒÂ£o no momento.';
 
     return AnimatedBuilder(
       animation: controller,
@@ -309,7 +309,7 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                           if (snapshot.hasError) {
                             return _InfoCard(
                               icon: Icons.cloud_off_rounded,
-                              title: 'Não foi possível carregar temas',
+                              title: 'NÃƒÂ£o foi possÃƒÂ­vel carregar temas',
                               subtitle: snapshot.error.toString(),
                             );
                           }
@@ -321,7 +321,7 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                               icon: Icons.palette_outlined,
                               title: 'Nenhum tema salvo ainda',
                               subtitle:
-                                  'Crie um tema e toque em “Salvar na nuvem”.',
+                                  'Crie um tema e toque em Ã¢â‚¬Å“Salvar na nuvemÃ¢â‚¬Â.',
                             );
                           }
 
@@ -398,7 +398,7 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
           ),
         ),
         content: Text(
-          'O tema “${theme.name}” será removido da sua conta.',
+          'O tema Ã¢â‚¬Å“${theme.name}Ã¢â‚¬Â serÃƒÂ¡ removido da sua conta.',
           style: TextStyle(color: tokens.textSecondary),
         ),
         actions: [
@@ -517,8 +517,8 @@ class _PresetTile extends StatelessWidget {
     final lockChoice =
         controller.isGlobalThemeForced || !controller.allowsUserThemeChoice;
     final globalLockedMessage = controller.isGlobalThemeForced
-        ? 'O tema global está ativo para todos os usuários no momento.'
-        : 'A escolha de tema está controlada pela administração no momento.';
+        ? 'O tema global estÃƒÂ¡ ativo para todos os usuÃƒÂ¡rios no momento.'
+        : 'A escolha de tema estÃƒÂ¡ controlada pela administraÃƒÂ§ÃƒÂ£o no momento.';
 
     return Material(
       color: selected ? tokens.primary.withOpacity(0.12) : tokens.card,
@@ -841,7 +841,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                       Expanded(
                         child: Text(
                           widget.savedTheme == null
-                              ? 'Tema do Usuário'
+                              ? 'Tema do UsuÃƒÂ¡rio'
                               : 'Editar tema salvo',
                           style: const TextStyle(
                             color: Colors.white,
@@ -871,7 +871,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                           controller: _nameController,
                           decoration: const InputDecoration(
                             labelText: 'Nome do tema salvo',
-                            hintText: 'Ex: Verde Duende, Café Premium...',
+                            hintText: 'Ex: Verde Duende, CafÃƒÂ© Premium...',
                             prefixIcon: Icon(
                               Icons.drive_file_rename_outline_rounded,
                             ),
@@ -880,7 +880,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         const SizedBox(height: 12),
                         _colorField('Cor principal', _primaryController),
                         _colorField('Fundo geral', _backgroundController),
-                        _colorField('Surface / painéis', _surfaceController),
+                        _colorField('Surface / painÃƒÂ©is', _surfaceController),
                         _colorField('Cards', _cardController),
                         _colorField('Texto principal', _textController),
                         _colorField(
@@ -896,7 +896,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                           onChanged: (v) => setState(() => _cardRadius = v),
                         ),
                         _radiusSlider(
-                          label: 'Arredondamento dos botões',
+                          label: 'Arredondamento dos botÃƒÂµes',
                           value: _buttonRadius,
                           min: 8,
                           max: 28,
@@ -913,11 +913,11 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                           items: const [
                             DropdownMenuItem(
                               value: 'default',
-                              child: Text('Padrão'),
+                              child: Text('PadrÃƒÂ£o'),
                             ),
                             DropdownMenuItem(
                               value: 'monospace',
-                              child: Text('Robótica / monospace'),
+                              child: Text('RobÃƒÂ³tica / monospace'),
                             ),
                             DropdownMenuItem(
                               value: 'serif',
@@ -970,7 +970,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                                 if (mounted) Navigator.pop(context);
                               },
                         icon: const Icon(Icons.phone_android_rounded),
-                        label: const Text('Só neste aparelho'),
+                        label: const Text('SÃƒÂ³ neste aparelho'),
                       );
 
                       final cloud = ElevatedButton.icon(
@@ -1029,7 +1029,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
     final name = _nameController.text.trim();
 
     if (name.isEmpty) {
-      _showSnack('Dê um nome para salvar esse tema.', tokens.warning);
+      _showSnack('DÃƒÂª um nome para salvar esse tema.', tokens.warning);
       return;
     }
 
@@ -1094,7 +1094,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Prévia do tema',
+                    'PrÃƒÂ©via do tema',
                     style: TextStyle(
                       color: onPrimary,
                       fontWeight: FontWeight.w900,
@@ -1119,7 +1119,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Texto legível em card personalizado',
+                    'Texto legÃƒÂ­vel em card personalizado',
                     style: TextStyle(
                       color: preview.textPrimary,
                       fontWeight: FontWeight.w800,
@@ -1278,8 +1278,8 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
           Expanded(
             child: Text(
               ok
-                  ? 'Contraste bom: os textos devem ficar legíveis.'
-                  : 'Atenção: texto e card estão próximos. O sistema tentará corrigir ao salvar.',
+                  ? 'Contraste bom: os textos devem ficar legÃ­veis.'
+                  : 'AtenÃƒÂ§ÃƒÂ£o: texto e card estÃƒÂ£o prÃƒÂ³ximos. O sistema tentarÃƒÂ¡ corrigir ao salvar.',
               style: TextStyle(
                 color: preview.textPrimary,
                 fontWeight: FontWeight.w700,
@@ -1470,7 +1470,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Cores rápidas',
+                            'Cores rÃƒÂ¡pidas',
                             style: TextStyle(
                               color: tokens.textPrimary,
                               fontWeight: FontWeight.w900,

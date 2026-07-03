@@ -36,6 +36,7 @@ import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/core/theme/tema_global_service.dart';
 import 'package:uai_capoeira/shared/widgets/uai_theme_selector.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -276,6 +277,7 @@ Future<void> main() async {
     print('✅ Locale configurado');
 
     print('🎨 Inicializando tema do app...');
+    await TemaGlobalService.instance.initialize();
     await AppThemeController.instance.initialize();
     print('✅ Tema inicializado');
 
@@ -401,8 +403,8 @@ class _UaiCapoeiraAppState extends State<UaiCapoeiraApp> {
           debugShowCheckedModeBanner: false,
           title: 'UAI CAPOEIRA',
           themeMode: themeController.themeMode,
-          theme: AppTheme.buildLight(themeController.currentPreset),
-          darkTheme: AppTheme.buildDark(themeController.currentPreset),
+          theme: AppTheme.buildLight(themeController.effectivePreset),
+          darkTheme: AppTheme.buildDark(themeController.effectivePreset),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

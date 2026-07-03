@@ -535,8 +535,8 @@ class _AdminScreenState extends State<AdminScreen> {
     return [
       _AdminCardData(
         icon: Icons.manage_accounts_rounded,
-        title: 'Gerenciar Usuários',
-        subtitle: 'Usuários, cargos e permissões do sistema',
+        title: 'Gerenciar Usu?rios',
+        subtitle: 'Usu?rios, cargos e permiss?es do sistema',
         color: t.primary,
         tela: GerenciarUsuariosScreen(),
         permissions: const ['pode_gerenciar_usuarios'],
@@ -545,7 +545,7 @@ class _AdminScreenState extends State<AdminScreen> {
       _AdminCardData(
         icon: Icons.palette_rounded,
         title: 'Central de Temas',
-        subtitle: 'Defina o tema global e os temas disponíveis para usuários',
+        subtitle: 'Defina o tema global e os temas dispon?veis para usu?rios',
         color: t.associacao,
         tela: const CentralTemasScreen(),
         permissions: const ['pode_gerenciar_temas_globais'],
@@ -757,21 +757,21 @@ class _AdminScreenState extends State<AdminScreen> {
                         children: [
                           _AdminCardData(
                             icon: Icons.manage_accounts_rounded,
-                            title: 'Gerenciar Usuários',
+                            title: 'Gerenciar Usu?rios',
                             subtitle:
-                                'Usuários, cargos e permissões do sistema',
+                                'Usu?rios, cargos e permiss?es do sistema',
                             color: t.primary,
                             tela: GerenciarUsuariosScreen(),
                             permissions: const ['pode_gerenciar_usuarios'],
                             critical: true,
                             deniedMessage:
-                                'Você não tem permissão para gerenciar usuários.',
+                                'Voc? n?o tem permiss?o para gerenciar usu?rios.',
                           ),
                           _AdminCardData(
                             icon: Icons.palette_rounded,
                             title: 'Central de Temas',
                             subtitle:
-                                'Defina o tema global e os temas disponíveis para usuários',
+                                'Defina o tema global e os temas dispon?veis para usu?rios',
                             color: t.associacao,
                             tela: const CentralTemasScreen(),
                             permissions: const ['pode_gerenciar_temas_globais'],

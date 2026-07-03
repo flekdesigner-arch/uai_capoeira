@@ -989,7 +989,36 @@ exports.processarChamada = onCall(async (request) => {
 // ============================================
 exports.excluirChamada = onCall(async (request) => {
     if (!request.auth) {
-        throw new Error('UsuÃ¡rio nÃ£o autenticado');
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const uid = request.auth.uid;
+    const usuarioDoc = await db.collection('usuarios').doc(uid).get();
+    const usuarioData = usuarioDoc.exists ? usuarioDoc.data() || {} : {};
+    const pesoPermissao = Number(usuarioData.peso_permissao || 0);
+    const tipoUsuario = String(usuarioData.tipo || '').trim().toLowerCase();
+    const usuarioAdmin = pesoPermissao >= 90 || tipoUsuario === 'admin' || tipoUsuario === 'administrador';
+
+    if (!usuarioAdmin) {
+        const permissoesDoc = await db
+            .collection('usuarios')
+            .doc(uid)
+            .collection('permissoes_usuario')
+            .doc('configuracoes')
+            .get();
+        const permissoes = permissoesDoc.exists ? permissoesDoc.data() || {} : {};
+        const podeEditarChamada =
+            permissoes.pode_editar_chamada === true ||
+            permissoes.pode_editar_chamadas === true ||
+            permissoes.podeEditarChamada === true;
+        const podeExcluirChamada =
+            permissoes.pode_excluir_chamada === true ||
+            permissoes.pode_excluir_chamadas === true ||
+            permissoes.podeExcluirChamada === true;
+
+        if (!podeEditarChamada || !podeExcluirChamada) {
+            throw new HttpsError('permission-denied', 'Você não tem permissão para excluir chamadas.');
+        }
     }
 
     const { chamadaId, turmaId } = request.data;
@@ -1119,6 +1148,28 @@ exports.excluirChamada = onCall(async (request) => {
     }
 
     await batch.commit();
+
+    try {
+        await db.collection('logs_chamadas_excluidas').add({
+            chamada_id: chamadaId,
+            turma_id: turmaId,
+            turma_nome: chamadaData.turma_nome || '',
+            academia_id: chamadaData.academia_id || '',
+            academia_nome: chamadaData.academia_nome || '',
+            data_formatada: dataFormatada || '',
+            presentes: Number(chamadaData.presentes || alunos.filter(aluno => aluno.presente === true).length || 0),
+            ausentes: Number(chamadaData.ausentes || alunos.filter(aluno => aluno.presente !== true).length || 0),
+            total_alunos: Number(chamadaData.total_alunos || alunos.length || 0),
+            excluido_por_uid: uid,
+            excluido_por_nome: usuarioData.nome_completo || usuarioData.nome || request.auth.token?.name || '',
+            excluido_por_email: usuarioData.email || request.auth.token?.email || '',
+            excluido_em: admin.firestore.FieldValue.serverTimestamp(),
+            origem: 'listas_chamada_screen',
+            resumo: 'Chamada excluída/desfeita com recálculo de contadores'
+        });
+    } catch (logError) {
+        console.warn('Falha ao registrar auditoria de chamada excluída:', logError);
+    }
 
     return {
         success: true,
@@ -4521,4 +4572,5 @@ exports.listarFunctionsFirebaseSaude = onCall(
         };
     }
 );
+
 

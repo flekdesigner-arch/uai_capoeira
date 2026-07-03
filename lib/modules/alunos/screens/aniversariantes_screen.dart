@@ -55,11 +55,130 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         .toColor();
   }
 
+  Color _onCard() => _readableOn(context.uai.card);
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1320;
+    if (width >= 1180) return 1180;
+    if (width >= 900) return 1040;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 28);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 24);
+    return const EdgeInsets.fromLTRB(16, 14, 16, 22);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  int _dashboardColumns(
+      double width, {
+        double minItemWidth = 360,
+        int maxColumns = 4,
+      }) {
+    if (width <= 0) return 1;
+    return (width / minItemWidth).floor().clamp(1, maxColumns).toInt();
+  }
+
+  Widget _dashboardResponsiveWrap({
+    required List<Widget> children,
+    double minItemWidth = 360,
+    int maxColumns = 4,
+    double spacing = 12,
+    double runSpacing = 12,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (width < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(children.length, (index) {
+              final isLast = index == children.length - 1;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
+                child: SizedBox(width: double.infinity, child: children[index]),
+              );
+            }),
+          );
+        }
+
+        final columns = _dashboardColumns(
+          width,
+          minItemWidth: minItemWidth,
+          maxColumns: maxColumns,
+        );
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
+  }
+
+
+  Widget _headerStatsResponsiveWrap({
+    required List<Widget> children,
+    double spacing = 8,
+    double runSpacing = 8,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width >= 720 ? 4 : 2;
+        final itemWidth = (width - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(),
+        );
+      },
+    );
+  }
+
   int? _selectedMonth;
   late DateTime _today;
 
   String _searchQuery = '';
   String _filtroRapido = 'Todos';
+
+  final TextEditingController _searchController = TextEditingController();
 
   late ConfettiController _confettiController;
   Timer? _confettiTimer;
@@ -76,6 +195,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
   @override
   void dispose() {
+    _searchController.dispose();
     _confettiController.dispose();
     _confettiTimer?.cancel();
     super.dispose();
@@ -189,27 +309,27 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         .where('status_atividade', whereIn: ['ATIVO(A)', 'ATIVO'])
         .snapshots()
         .map((snapshot) {
-          final docs = snapshot.docs.where((doc) {
-            final data = doc.data();
-            return _parseDataNascimento(data['data_nascimento']) != null;
-          }).toList();
+      final docs = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return _parseDataNascimento(data['data_nascimento']) != null;
+      }).toList();
 
-          docs.sort((a, b) {
-            final aDate = _parseDataNascimento(a.data()['data_nascimento']);
-            final bDate = _parseDataNascimento(b.data()['data_nascimento']);
+      docs.sort((a, b) {
+        final aDate = _parseDataNascimento(a.data()['data_nascimento']);
+        final bDate = _parseDataNascimento(b.data()['data_nascimento']);
 
-            if (aDate == null && bDate == null) return 0;
-            if (aDate == null) return 1;
-            if (bDate == null) return -1;
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
 
-            final da = _calcularDiasAteAniversario(aDate);
-            final db = _calcularDiasAteAniversario(bDate);
+        final da = _calcularDiasAteAniversario(aDate);
+        final db = _calcularDiasAteAniversario(bDate);
 
-            return da.compareTo(db);
-          });
+        return da.compareTo(db);
+      });
 
-          return docs;
-        });
+      return docs;
+    });
   }
 
   // =====================================================
@@ -252,14 +372,14 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _aplicarBusca(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     return alunos.where(_matchesSearch).toList();
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterTodayBirthdays(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
@@ -272,8 +392,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterWeekBirthdays(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
@@ -293,9 +413,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterMonthBirthdays(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-    int month,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      int month,
+      ) {
     return alunos.where((doc) {
       final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
       if (birthDate == null) return false;
@@ -309,14 +429,14 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filterCurrentMonth(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     return _filterMonthBirthdays(alunos, DateTime.now().month);
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _getListaFiltroRapido(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     switch (_filtroRapido) {
       case 'Hoje':
         return _filterTodayBirthdays(alunos);
@@ -331,8 +451,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Map<int, int> _contarPorMes(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+      ) {
     final counts = <int, int>{for (int i = 1; i <= 12; i++) i: 0};
 
     for (final doc in alunos) {
@@ -350,9 +470,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   Future<void> _verificarPermissaoEAbrirPerfil(
-    BuildContext context,
-    String alunoId,
-  ) async {
+      BuildContext context,
+      String alunoId,
+      ) async {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
@@ -467,10 +587,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   void _abrirArteAniversario(
-    BuildContext context,
-    Map<String, dynamic> aluno,
-    String alunoId,
-  ) {
+      BuildContext context,
+      Map<String, dynamic> aluno,
+      String alunoId,
+      ) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -488,9 +608,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   void _mostrarDialogAniversario(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
     final aluno = doc.data();
     final alunoId = doc.id;
     final nome = aluno['nome']?.toString() ?? 'Aniversariante';
@@ -714,6 +834,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required String label,
     required Color color,
   }) {
+    final fg = _readableOn(color);
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -739,12 +861,12 @@ class _AniversariantesPageState extends State<AniversariantesPage>
             padding: EdgeInsets.symmetric(vertical: 14, horizontal: 8),
             child: Column(
               children: [
-                Icon(icon, color: _onPrimary(), size: 25),
+                Icon(icon, color: fg, size: 25),
                 SizedBox(height: 5),
                 Text(
                   label,
                   style: TextStyle(
-                    color: _onPrimary(),
+                    color: fg,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -811,9 +933,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Widget _buildMainView(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosOriginais,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosFiltradosBusca,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosOriginais,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunosFiltradosBusca,
+      ) {
     final todayBirthdays = _filterTodayBirthdays(alunosFiltradosBusca);
     final weeklyBirthdays = _filterWeekBirthdays(alunosFiltradosBusca);
     final monthBirthdays = _filterCurrentMonth(alunosFiltradosBusca);
@@ -837,27 +959,19 @@ class _AniversariantesPageState extends State<AniversariantesPage>
             mes: monthBirthdays.length,
           ),
           SliverToBoxAdapter(child: _buildFiltersOnly()),
-          if (_filtroRapido != 'Todos')
+          if (_filtroRapido != 'Todos') ...[
             SliverToBoxAdapter(
               child: _buildFilteredListHeader(listaFiltro.length),
             ),
-          if (_filtroRapido != 'Todos')
-            SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final doc = listaFiltro[index];
-                final birthDate = _parseDataNascimento(
-                  doc.data()['data_nascimento'],
-                );
-                if (birthDate == null) return SizedBox.shrink();
-
-                return _buildBirthdayCard(
-                  doc,
-                  birthDate,
-                  isHoje: _isAniversarioHoje(birthDate),
-                );
-              }, childCount: listaFiltro.length),
-            )
-          else ...[
+            if (listaFiltro.isEmpty)
+              SliverToBoxAdapter(
+                child: _buildNoResultsState(),
+              )
+            else
+              SliverToBoxAdapter(
+                child: _buildBirthdayCardsResponsive(listaFiltro),
+              ),
+          ] else ...[
             if (todayBirthdays.isNotEmpty)
               SliverToBoxAdapter(
                 child: _buildBirthdaySection(
@@ -869,16 +983,11 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                 ),
               ),
             if (todayBirthdays.isNotEmpty)
-              SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final doc = todayBirthdays[index];
-                  final birthDate = _parseDataNascimento(
-                    doc.data()['data_nascimento'],
-                  );
-                  if (birthDate == null) return SizedBox.shrink();
-
-                  return _buildBirthdayCard(doc, birthDate, isHoje: true);
-                }, childCount: todayBirthdays.length),
+              SliverToBoxAdapter(
+                child: _buildBirthdayCardsResponsive(
+                  todayBirthdays,
+                  isHojeForcado: true,
+                ),
               ),
             if (weeklyBirthdays.isNotEmpty)
               SliverToBoxAdapter(
@@ -891,16 +1000,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                 ),
               ),
             if (weeklyBirthdays.isNotEmpty)
-              SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final doc = weeklyBirthdays[index];
-                  final birthDate = _parseDataNascimento(
-                    doc.data()['data_nascimento'],
-                  );
-                  if (birthDate == null) return SizedBox.shrink();
-
-                  return _buildBirthdayCard(doc, birthDate, isHoje: false);
-                }, childCount: weeklyBirthdays.length),
+              SliverToBoxAdapter(
+                child: _buildBirthdayCardsResponsive(weeklyBirthdays),
               ),
             SliverToBoxAdapter(child: _buildMonthGridSection(monthCounts)),
           ],
@@ -917,101 +1018,132 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required int mes,
   }) {
     final t = context.uai;
-    final onPrimary = _onPrimary();
+    final onPrimary = _readableOn(t.primary);
+    final pad = _dashboardPagePadding;
 
     return SliverToBoxAdapter(
       child: Container(
         color: t.background,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        child: Container(
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            gradient: t.primaryGradient,
-            borderRadius: BorderRadius.circular(t.cardRadius + 4),
-            border: Border.all(color: onPrimary.withOpacity(0.13)),
-            boxShadow: t.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(
-                      color: onPrimary.withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: onPrimary.withOpacity(0.12)),
+        padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 12),
+        child: _dashboardWidthLimiter(
+          Container(
+            padding: EdgeInsets.all(_isDesktopDashboard ? 20 : 15),
+            decoration: BoxDecoration(
+              gradient: t.primaryGradient,
+              borderRadius: BorderRadius.circular(t.cardRadius + 6),
+              border: Border.all(color: onPrimary.withOpacity(0.13)),
+              boxShadow: t.cardShadow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: onPrimary.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: onPrimary.withOpacity(0.12)),
+                      ),
+                      child: Icon(
+                        Icons.cake_rounded,
+                        color: onPrimary,
+                        size: 25,
+                      ),
                     ),
-                    child: Icon(Icons.cake_rounded, color: onPrimary, size: 25),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Central de Aniversários',
-                          style: TextStyle(
-                            color: onPrimary,
-                            fontSize: 18.5,
-                            fontWeight: FontWeight.w900,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Central de Aniversários',
+                            style: TextStyle(
+                              color: onPrimary,
+                              fontSize: _isDesktopDashboard ? 22 : 18.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          DateFormat(
-                            "EEEE, dd 'de' MMMM",
-                            'pt_BR',
-                          ).format(_today),
-                          style: TextStyle(
-                            color: onPrimary.withOpacity(0.82),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                          const SizedBox(height: 3),
+                          Text(
+                            DateFormat(
+                              "EEEE, dd 'de' MMMM",
+                              'pt_BR',
+                            ).format(_today),
+                            style: TextStyle(
+                              color: onPrimary.withOpacity(0.82),
+                              fontSize: _isDesktopDashboard ? 13 : 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildHeaderStat(
+                    if (_isWideDashboard)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: onPrimary.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: onPrimary.withOpacity(0.14)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.auto_awesome_rounded,
+                              color: context.uai.warning,
+                              size: 18,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Aniversários ativos',
+                              style: TextStyle(
+                                color: onPrimary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _headerStatsResponsiveWrap(
+                  children: [
+                    _buildHeaderStat(
                       icon: Icons.celebration_rounded,
                       value: '$hoje',
                       label: 'Hoje',
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildHeaderStat(
+                    _buildHeaderStat(
                       icon: Icons.calendar_month_rounded,
                       value: '$semana',
                       label: '7 dias',
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildHeaderStat(
+                    _buildHeaderStat(
                       icon: Icons.groups_rounded,
                       value: '$mes',
                       label: 'Mês',
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildHeaderStat(
+                    _buildHeaderStat(
                       icon: Icons.people_alt_rounded,
                       value: '$total',
                       label: 'Ativos',
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1024,7 +1156,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required String label,
     Color? color,
   }) {
-    final onPrimary = _onPrimary();
+    final onPrimary = _readableOn(context.uai.primary);
     final iconColor = color ?? onPrimary;
 
     return Container(
@@ -1047,6 +1179,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               height: 1,
               fontWeight: FontWeight.w900,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 3),
           Text(
@@ -1056,6 +1190,8 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -1064,82 +1200,192 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
   Widget _buildFiltersOnly() {
     final t = context.uai;
+    final pad = _dashboardPagePadding;
 
     return Container(
       color: t.background,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _filtrosRapidos.map((filtro) {
-            final ativo = _filtroRapido == filtro;
-            final bg = ativo ? t.primary : t.card;
-            final fg = ativo ? _readableOn(t.primary) : t.textSecondary;
-
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                selected: ativo,
-                showCheckmark: true,
-                checkmarkColor: fg,
-                label: Text(filtro),
-                selectedColor: bg,
-                backgroundColor: bg,
-                side: BorderSide(
-                  color: ativo ? t.primary.withOpacity(0.45) : t.border,
-                ),
-                labelStyle: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-                onSelected: (_) {
-                  setState(() {
-                    _filtroRapido = filtro;
-                    _searchQuery = '';
-                  });
+      padding: EdgeInsets.fromLTRB(pad.left, 2, pad.right, 10),
+      child: _dashboardWidthLimiter(
+        Container(
+          padding: EdgeInsets.all(_isDesktopDashboard ? 14 : 12),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
                 },
+                style: TextStyle(
+                  color: _onCard(),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+                cursorColor: t.primary,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Buscar por nome, apelido, turma ou responsável...',
+                  hintStyle: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: _ensureVisible(t.primary, t.card),
+                    size: 20,
+                  ),
+                  suffixIcon: _searchQuery.trim().isEmpty
+                      ? null
+                      : IconButton(
+                    tooltip: 'Limpar busca',
+                    onPressed: () {
+                      setState(() {
+                        _searchQuery = '';
+                        _searchController.clear();
+                      });
+                    },
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: t.textMuted,
+                      size: 18,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: t.cardAlt,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: t.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: t.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: t.primary.withOpacity(0.55)),
+                  ),
+                ),
               ),
-            );
-          }).toList(),
+              SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: BouncingScrollPhysics(),
+                child: Row(
+                  children: _filtrosRapidos.map((filtro) {
+                    final ativo = _filtroRapido == filtro;
+                    final accent = filtro == 'Hoje'
+                        ? t.primary
+                        : filtro == '7 dias'
+                        ? t.warning
+                        : filtro == 'Mês atual'
+                        ? t.info
+                        : t.associacao;
+                    final visibleAccent = _ensureVisible(accent, t.card);
+                    final bg = ativo
+                        ? visibleAccent
+                        : Color.alphaBlend(
+                      visibleAccent.withOpacity(0.08),
+                      t.cardAlt,
+                    );
+                    final fg = ativo ? _readableOn(visibleAccent) : visibleAccent;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        selected: ativo,
+                        showCheckmark: true,
+                        checkmarkColor: fg,
+                        label: Text(filtro),
+                        selectedColor: bg,
+                        backgroundColor: bg,
+                        side: BorderSide(
+                          color: ativo
+                              ? visibleAccent.withOpacity(0.38)
+                              : t.border,
+                        ),
+                        labelStyle: TextStyle(
+                          color: fg,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                        onSelected: (_) {
+                          setState(() {
+                            _filtroRapido = filtro;
+                          });
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildFilteredListHeader(int count) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.info, t.card);
+    final pad = _dashboardPagePadding;
+
     return Container(
-      margin: EdgeInsets.fromLTRB(16, 16, 16, 8),
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.uai.error.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.error.withOpacity(0.16)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.filter_alt_rounded, color: context.uai.primary),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '$count resultado${count == 1 ? '' : 's'} encontrado${count == 1 ? '' : 's'}',
-              style: TextStyle(
-                color: context.uai.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+      color: t.background,
+      padding: EdgeInsets.fromLTRB(pad.left, 12, pad.right, 6),
+      child: _dashboardWidthLimiter(
+        Container(
+          padding: EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(accent.withOpacity(0.10), t.card),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withOpacity(0.16)),
           ),
-          if (_filtroRapido != 'Todos')
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _searchQuery = '';
-                  _filtroRapido = 'Todos';
-                });
-              },
-              child: Text('Limpar'),
-            ),
-        ],
+          child: Row(
+            children: [
+              Icon(Icons.filter_alt_rounded, color: accent),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$count resultado${count == 1 ? '' : 's'} encontrado${count == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    color: _onCard(),
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _searchQuery = '';
+                    _searchController.clear();
+                    _filtroRapido = 'Todos';
+                  });
+                },
+                child: Text(
+                  'Limpar',
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1153,79 +1399,178 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }) {
     final t = context.uai;
     final visibleColor = _ensureVisible(color, t.card);
+    final pad = _dashboardPagePadding;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: t.card,
-        borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
-        boxShadow: t.softShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: visibleColor.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: visibleColor.withOpacity(0.28)),
-            ),
-            child: Icon(icon, color: visibleColor, size: 21),
+      color: t.background,
+      padding: EdgeInsets.fromLTRB(pad.left, 14, pad.right, 8),
+      child: _dashboardWidthLimiter(
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w900,
-                    color: t.textPrimary,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: visibleColor.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: visibleColor.withOpacity(0.28)),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: t.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: visibleColor.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: visibleColor.withOpacity(0.32)),
-            ),
-            child: Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: visibleColor,
+                child: Icon(icon, color: visibleColor, size: 21),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                        color: _onCard(),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _onCardMuted(),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: visibleColor.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: visibleColor.withOpacity(0.32)),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: visibleColor,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBirthdayCardsResponsive(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos, {
+        bool isHojeForcado = false,
+        bool isMonthView = false,
+      }) {
+    final cards = <Widget>[];
+
+    for (final doc in alunos) {
+      final birthDate = _parseDataNascimento(doc.data()['data_nascimento']);
+      if (birthDate == null) continue;
+      cards.add(
+        _buildBirthdayCard(
+          doc,
+          birthDate,
+          isMonthView: isMonthView,
+          isHoje: isHojeForcado || _isAniversarioHoje(birthDate),
+          compactMargin: true,
+        ),
+      );
+    }
+
+    final pad = _dashboardPagePadding;
+
+    return Container(
+      color: context.uai.background,
+      padding: EdgeInsets.fromLTRB(pad.left, 6, pad.right, 8),
+      child: _dashboardWidthLimiter(
+        _dashboardResponsiveWrap(
+          children: cards,
+          minItemWidth: 370,
+          maxColumns: _isDesktopDashboard ? 3 : 2,
+          spacing: 12,
+          runSpacing: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoResultsState() {
+    final t = context.uai;
+    final pad = _dashboardPagePadding;
+
+    return Container(
+      color: t.background,
+      padding: EdgeInsets.fromLTRB(pad.left, 12, pad.right, 22),
+      child: _dashboardWidthLimiter(
+        Container(
+          padding: EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 54,
+                color: t.textMuted,
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Nenhum resultado encontrado',
+                style: TextStyle(
+                  color: _onCard(),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Ajuste a busca ou escolha outro filtro de aniversário.',
+                style: TextStyle(
+                  color: _onCardMuted(),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildBirthdayCard(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    DateTime birthDate, {
-    bool isMonthView = false,
-    bool isHoje = false,
-  }) {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      DateTime birthDate, {
+        bool isMonthView = false,
+        bool isHoje = false,
+        bool compactMargin = false,
+      }) {
     final t = context.uai;
     final aluno = doc.data();
     final alunoId = doc.id;
@@ -1254,7 +1599,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         : t.border;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      margin: compactMargin
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -1282,7 +1629,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     _buildAvatar(
                       fotoUrl: fotoUrl,
                       nome: nome,
-                      size: 62,
+                      size: _isDesktopDashboard ? 66 : 62,
                       borderColor: isHoje ? visibleAccent : t.border,
                     ),
                     if (isHoje)
@@ -1295,9 +1642,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                             color: visibleAccent,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _readableOn(
-                                visibleAccent,
-                              ).withOpacity(0.95),
+                              color: _readableOn(visibleAccent).withOpacity(0.95),
                               width: 2,
                             ),
                           ),
@@ -1320,7 +1665,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 15.5,
-                          color: t.textPrimary,
+                          color: _readableOn(cardBg),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1331,7 +1676,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                           child: Text(
                             '"$apelido"',
                             style: TextStyle(
-                              color: t.textSecondary,
+                              color: _readableOn(cardBg).withOpacity(0.68),
                               fontSize: 12,
                               fontStyle: FontStyle.italic,
                               fontWeight: FontWeight.w600,
@@ -1416,26 +1761,29 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     required Color color,
   }) {
     final t = context.uai;
+    final accent = _ensureVisible(color, t.cardAlt);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: accent.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: color),
+          Icon(icon, size: 11, color: accent),
           const SizedBox(width: 4),
           Text(
             text,
             style: TextStyle(
               fontSize: 10.5,
-              color: t.textPrimary,
+              color: _readableOn(t.cardAlt),
               fontWeight: FontWeight.w800,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -1467,19 +1815,19 @@ class _AniversariantesPageState extends State<AniversariantesPage>
       child: ClipOval(
         child: fotoUrl != null && fotoUrl.isNotEmpty
             ? CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: context.uai.cardAlt,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: context.uai.primary,
-                    ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => _avatarFallback(inicial),
-              )
+          imageUrl: fotoUrl,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            color: context.uai.cardAlt,
+            child: Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: context.uai.primary,
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => _avatarFallback(inicial),
+        )
             : _avatarFallback(inicial),
       ),
     );
@@ -1494,7 +1842,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.bold,
-            color: context.uai.textMuted,
+            color: _readableOn(context.uai.cardAlt).withOpacity(0.72),
           ),
         ),
       ),
@@ -1506,103 +1854,103 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   Widget _buildMonthView(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
-    int month,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> allAlunos,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> monthlyBirthdays,
+      int month,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> allAlunos,
+      ) {
     final nomeMes = _getMonthName(month);
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
+    final pad = _dashboardPagePadding;
 
     return Column(
       children: [
         Container(
           width: double.infinity,
-          padding: EdgeInsets.fromLTRB(20, 18, 20, 18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                context.uai.primary,
-                context.uai.primaryDark,
-                context.uai.warning.withOpacity(0.10),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: context.uai.primary.withOpacity(0.2),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
+          color: t.background,
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 10),
           child: SafeArea(
             bottom: false,
-            child: Row(
-              children: [
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedMonth = null),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: EdgeInsets.all(11),
-                      decoration: BoxDecoration(
-                        color: _onPrimary().withOpacity(0.15),
+            child: _dashboardWidthLimiter(
+              Container(
+                padding: EdgeInsets.all(_isDesktopDashboard ? 18 : 14),
+                decoration: BoxDecoration(
+                  gradient: t.primaryGradient,
+                  borderRadius: BorderRadius.circular(t.cardRadius + 6),
+                  border: Border.all(color: onPrimary.withOpacity(0.14)),
+                  boxShadow: t.cardShadow,
+                ),
+                child: Row(
+                  children: [
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedMonth = null),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _onPrimary().withOpacity(0.14),
+                        child: Container(
+                          padding: EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: onPrimary.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: onPrimary.withOpacity(0.14),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.arrow_back_rounded,
+                            color: onPrimary,
+                            size: 25,
+                          ),
                         ),
                       ),
-                      child: Icon(
-                        Icons.arrow_back_rounded,
-                        color: _onPrimary(),
-                        size: 25,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nomeMes,
+                            style: TextStyle(
+                              color: onPrimary,
+                              fontSize: _isDesktopDashboard ? 24 : 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${monthlyBirthdays.length} aniversariante${monthlyBirthdays.length == 1 ? '' : 's'} encontrado${monthlyBirthdays.length == 1 ? '' : 's'}',
+                            style: TextStyle(
+                              color: onPrimary.withOpacity(0.82),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nomeMes,
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: onPrimary.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: onPrimary.withOpacity(0.16)),
+                      ),
+                      child: Text(
+                        '${monthlyBirthdays.length}',
                         style: TextStyle(
-                          color: _onPrimary(),
-                          fontSize: 22,
+                          color: onPrimary,
+                          fontSize: 17,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Text(
-                        '${monthlyBirthdays.length} aniversariante${monthlyBirthdays.length == 1 ? '' : 's'} encontrado${monthlyBirthdays.length == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: _onPrimary().withOpacity(0.82),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _onPrimary().withOpacity(0.16),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: context.uai.card.withOpacity(0.16),
                     ),
-                  ),
-                  child: Text(
-                    '${monthlyBirthdays.length}',
-                    style: TextStyle(
-                      color: _onPrimary(),
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1610,10 +1958,25 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           child: monthlyBirthdays.isEmpty
               ? _buildEmptyMonthState(month)
               : RefreshIndicator(
-                  color: context.uai.primary,
-                  onRefresh: () async => setState(() {}),
-                  child: ListView.builder(
-                    padding: EdgeInsets.fromLTRB(0, 12, 0, 24),
+            color: t.primary,
+            onRefresh: () async => setState(() {}),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth >= 720) {
+                  return GridView.builder(
+                    padding: EdgeInsets.fromLTRB(
+                      pad.left,
+                      12,
+                      pad.right,
+                      24,
+                    ),
+                    gridDelegate:
+                    SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: _isDesktopDashboard ? 430 : 390,
+                      mainAxisExtent: 118,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
                     itemCount: monthlyBirthdays.length,
                     itemBuilder: (context, index) {
                       final doc = monthlyBirthdays[index];
@@ -1627,10 +1990,33 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                         birthDate,
                         isMonthView: true,
                         isHoje: _isAniversarioHoje(birthDate),
+                        compactMargin: true,
                       );
                     },
-                  ),
-                ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: EdgeInsets.fromLTRB(0, 12, 0, 24),
+                  itemCount: monthlyBirthdays.length,
+                  itemBuilder: (context, index) {
+                    final doc = monthlyBirthdays[index];
+                    final birthDate = _parseDataNascimento(
+                      doc.data()['data_nascimento'],
+                    );
+                    if (birthDate == null) return SizedBox.shrink();
+
+                    return _buildBirthdayCard(
+                      doc,
+                      birthDate,
+                      isMonthView: true,
+                      isHoje: _isAniversarioHoje(birthDate),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
         ),
       ],
     );
@@ -1638,60 +2024,102 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
   Widget _buildMonthGridSection(Map<int, int> monthCounts) {
     final t = context.uai;
+    final pad = _dashboardPagePadding;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: t.card,
-        borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
-        boxShadow: t.softShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      color: t.background,
+      padding: EdgeInsets.fromLTRB(pad.left, 24, pad.right, 24),
+      child: _dashboardWidthLimiter(
+        Container(
+          padding: EdgeInsets.all(_isDesktopDashboard ? 16 : 14),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.calendar_view_month_rounded, color: t.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Buscar por mês',
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: t.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: t.primary.withOpacity(0.14)),
+                    ),
+                    child: Icon(
+                      Icons.calendar_view_month_rounded,
+                      color: _ensureVisible(t.primary, t.card),
+                      size: 20,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Buscar por mês',
+                      style: TextStyle(
+                        color: _onCard(),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '12 meses',
+                    style: TextStyle(
+                      color: _onCardMuted(),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                '12 meses',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
+              const SizedBox(height: 14),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+
+                  final columns = width >= 1120
+                      ? 6
+                      : width >= 780
+                      ? 4
+                      : width >= 420
+                      ? 3
+                      : 2;
+
+                  final itemHeight = width >= 1120
+                      ? 106.0
+                      : width >= 780
+                      ? 98.0
+                      : width >= 420
+                      ? 88.0
+                      : 82.0;
+
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      mainAxisExtent: itemHeight,
+                    ),
+                    itemCount: 12,
+                    itemBuilder: (context, index) {
+                      final month = index + 1;
+                      return _buildMonthCard(month, monthCounts[month] ?? 0);
+                    },
+                  );
+                },
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 1.22,
-            ),
-            itemCount: 12,
-            itemBuilder: (context, index) {
-              final month = index + 1;
-              return _buildMonthCard(month, monthCounts[month] ?? 0);
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1700,26 +2128,37 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     final t = context.uai;
     final isCurrentMonth = month == DateTime.now().month;
     final hasBirthdays = count > 0;
-    final accent = isCurrentMonth
-        ? t.primary
-        : hasBirthdays
-        ? t.warning
-        : t.textMuted;
+    final compact = MediaQuery.sizeOf(context).width < 620;
+    final radius = compact ? 14.0 : 15.0;
+
+    final accent = _ensureVisible(
+      isCurrentMonth
+          ? t.primary
+          : hasBirthdays
+          ? t.warning
+          : t.textMuted,
+      t.cardAlt,
+    );
 
     final bg = isCurrentMonth || hasBirthdays
         ? Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt)
         : t.cardAlt;
+    final onBg = _readableOn(bg);
 
     return Material(
-      borderRadius: BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(radius),
       color: Colors.transparent,
       child: InkWell(
         onTap: () => setState(() => _selectedMonth = month),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(radius),
         child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10,
+            vertical: compact ? 8 : 10,
+          ),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: isCurrentMonth || hasBirthdays
                   ? accent.withOpacity(0.28)
@@ -1728,26 +2167,32 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           ),
           child: Stack(
             children: [
-              Center(
+              Align(
+                alignment: Alignment.center,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _getMonthAbbreviation(month).toUpperCase(),
+                      _getMonthAbbreviation(month).replaceAll('.', '').toUpperCase(),
                       style: TextStyle(
                         color: hasBirthdays || isCurrentMonth
                             ? accent
-                            : t.textSecondary,
+                            : onBg.withOpacity(0.70),
                         fontWeight: FontWeight.w900,
-                        fontSize: 15,
+                        fontSize: compact ? 13 : 15,
+                        height: 1,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: compact ? 4 : 5),
                     Text(
                       month.toString().padLeft(2, '0'),
                       style: TextStyle(
-                        color: t.textMuted,
-                        fontSize: 12,
+                        color: onBg.withOpacity(0.62),
+                        fontSize: compact ? 11 : 12,
+                        height: 1,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1755,12 +2200,13 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                 ),
               ),
               Positioned(
-                right: 7,
-                top: 7,
+                right: compact ? 0 : 1,
+                top: compact ? 0 : 1,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
+                  constraints: const BoxConstraints(minWidth: 22),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 6 : 7,
+                    vertical: compact ? 2.5 : 3,
                   ),
                   decoration: BoxDecoration(
                     color: hasBirthdays || isCurrentMonth
@@ -1775,8 +2221,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   ),
                   child: Text(
                     '$count',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: compact ? 10 : 11,
+                      height: 1,
                       fontWeight: FontWeight.w900,
                       color: hasBirthdays || isCurrentMonth
                           ? accent
@@ -1796,119 +2244,180 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // EMPTY / LOADING / ERROR
   // =====================================================
 
-  Widget _buildLoading() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            color: context.uai.primary,
-            strokeWidth: 2.5,
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Carregando aniversariantes...',
-            style: TextStyle(
-              color: context.uai.textSecondary,
-              fontWeight: FontWeight.w500,
+  Widget _buildStateCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    Widget? action,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color, t.card);
+
+    return Container(
+      color: t.background,
+      padding: _dashboardPagePadding,
+      child: Center(
+        child: _dashboardWidthLimiter(
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius + 4),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: accent.withOpacity(0.18)),
+                  ),
+                  child: Icon(icon, size: 38, color: accent),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: _onCard(),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _onCardMuted(),
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (action != null) ...[
+                  SizedBox(height: 18),
+                  action,
+                ],
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoading() {
+    final t = context.uai;
+
+    return Container(
+      color: t.background,
+      padding: _dashboardPagePadding,
+      child: Center(
+        child: _dashboardWidthLimiter(
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius + 4),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    color: t.primary,
+                    strokeWidth: 3,
+                  ),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Carregando aniversariantes...',
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildErrorState(String error) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(26),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 70,
-              color: context.uai.error.withOpacity(0.55),
-            ),
-            SizedBox(height: 14),
-            Text(
-              'Erro ao carregar aniversariantes',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: context.uai.textSecondary, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
+    return _buildStateCard(
+      icon: Icons.error_outline_rounded,
+      title: 'Erro ao carregar aniversariantes',
+      subtitle: error,
+      color: context.uai.error,
     );
   }
 
   Widget _buildEmptyState() {
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
+
     return Column(
       children: [
         Container(
-          height: 120,
-          width: double.infinity,
-          decoration: BoxDecoration(gradient: context.uai.primaryGradient),
-          child: SafeArea(
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.cake_rounded, color: _onPrimary(), size: 30),
-                  SizedBox(width: 10),
-                  Text(
-                    'Aniversariantes',
-                    style: TextStyle(
-                      color: _onPrimary(),
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+          color: t.background,
+          padding: _dashboardPagePadding,
+          child: _dashboardWidthLimiter(
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(_isDesktopDashboard ? 20 : 16),
+              decoration: BoxDecoration(
+                gradient: t.primaryGradient,
+                borderRadius: BorderRadius.circular(t.cardRadius + 6),
+                boxShadow: t.cardShadow,
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cake_rounded, color: onPrimary, size: 30),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Aniversariantes',
+                        style: TextStyle(
+                          color: onPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
         Expanded(
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.celebration_outlined,
-                    size: 86,
-                    color: context.uai.border,
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    'Nenhum aniversariante encontrado',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                      color: context.uai.textMuted,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Não há alunos ativos com data de nascimento cadastrada.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: context.uai.textMuted,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          child: _buildStateCard(
+            icon: Icons.celebration_outlined,
+            title: 'Nenhum aniversariante encontrado',
+            subtitle:
+            'Não há alunos ativos com data de nascimento cadastrada.',
+            color: t.textMuted,
           ),
         ),
       ],
@@ -1916,48 +2425,28 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Widget _buildEmptyMonthState(int month) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(26),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cake_outlined, size: 82, color: context.uai.border),
-            SizedBox(height: 16),
-            Text(
-              'Nenhum aniversariante em ${_getMonthName(month)}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                color: context.uai.textSecondary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Tente buscar outro mês ou conferir os cadastros dos alunos.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: context.uai.textMuted,
-                height: 1.4,
-              ),
-            ),
-            SizedBox(height: 18),
-            TextButton.icon(
-              onPressed: () => setState(() => _selectedMonth = null),
-              icon: Icon(Icons.arrow_back, color: context.uai.primary),
-              label: Text(
-                'Voltar',
-                style: TextStyle(
-                  color: context.uai.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
+    return _buildStateCard(
+      icon: Icons.cake_outlined,
+      title: 'Nenhum aniversariante em ${_getMonthName(month)}',
+      subtitle: 'Tente buscar outro mês ou conferir os cadastros dos alunos.',
+      color: context.uai.textMuted,
+      action: TextButton.icon(
+        onPressed: () => setState(() => _selectedMonth = null),
+        icon: Icon(Icons.arrow_back, color: context.uai.primary),
+        label: Text(
+          'Voltar',
+          style: TextStyle(
+            color: context.uai.primary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
   }
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 03:07
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

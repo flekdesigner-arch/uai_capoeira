@@ -12,7 +12,7 @@ class AcademiaCacheService {
 
   // Cache persistente com Hive
   static const String _boxName = 'academias_cache';
-  late Box _box;
+  Box? _box;
   bool _boxAberto = false;
 
   final Connectivity _connectivity = Connectivity();
@@ -24,6 +24,11 @@ class AcademiaCacheService {
     if (_boxAberto) return;
 
     try {
+      if (kIsWeb) {
+        _boxAberto = false;
+        return;
+      }
+
       final appDocumentDir = await path_provider
           .getApplicationDocumentsDirectory();
 
@@ -91,8 +96,10 @@ class AcademiaCacheService {
     try {
       await _initHive();
 
-      await _box.put('academias', academias);
-      await _box.put('timestamp', DateTime.now().toIso8601String());
+      if (!_boxAberto || _box == null) return;
+
+      await _box!.put('academias', academias);
+      await _box!.put('timestamp', DateTime.now().toIso8601String());
 
       debugPrint('💾 Dados salvos no disco (${academias.length} academias)');
     } catch (e) {
@@ -107,8 +114,10 @@ class AcademiaCacheService {
     try {
       await _initHive();
 
-      final academias = _box.get('academias', defaultValue: []);
-      final timestampStr = _box.get('timestamp');
+      if (!_boxAberto || _box == null) return [];
+
+      final academias = _box!.get('academias', defaultValue: []);
+      final timestampStr = _box!.get('timestamp');
 
       if (academias is! List || academias.isEmpty) {
         debugPrint('📭 Nenhum dado encontrado no disco');
@@ -152,7 +161,9 @@ class AcademiaCacheService {
 
     try {
       await _initHive();
-      await _box.clear();
+      if (!_boxAberto || _box == null) return;
+
+      await _box!.clear();
       debugPrint('🧹 Cache (memória e disco) limpo');
     } catch (e) {
       debugPrint('❌ Erro ao limpar disco: $e');
@@ -432,7 +443,9 @@ class AcademiaCacheService {
       'ultimoCacheMemoria': _ultimoCacheAcademias,
       'cacheMemoriaValido': await _podeUsarCache(),
       'modo': temInternetAgora ? 'online' : 'offline',
-      'cacheDisco': _boxAberto ? _box.containsKey('academias') : false,
+      'cacheDisco': _boxAberto && _box != null
+          ? _box!.containsKey('academias')
+          : false,
     };
   }
 
@@ -483,7 +496,9 @@ class AcademiaCacheService {
     try {
       await _initHive();
 
-      final academiasDisco = _box.get('academias', defaultValue: []);
+      if (!_boxAberto || _box == null) return null;
+
+      final academiasDisco = _box!.get('academias', defaultValue: []);
 
       if (academiasDisco is List) {
         for (final academia in academiasDisco) {

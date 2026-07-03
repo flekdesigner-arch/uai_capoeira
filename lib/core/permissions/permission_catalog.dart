@@ -5,14 +5,15 @@ import 'permission_definition.dart';
 class PermissionCatalog {
   static const String categoryVisibility = 'VISIBILIDADE';
   static const String categoryStudents = 'ALUNOS';
-  static const String categoryAttendance = 'CHAMADA E AVALIAÇÕES';
-  static const String categoryEventsGeneral = 'EVENTOS — GERAL';
-  static const String categoryEventsParticipants = 'EVENTOS — PARTICIPANTES';
-  static const String categoryEventsPayments = 'EVENTOS — PAGAMENTOS';
-  static const String categoryEventsFinancial = 'EVENTOS — FINANCEIRO';
-  static const String categoryUsers = 'USUÁRIOS';
+  static const String categoryAttendance = 'CHAMADA E AVALIAÃÃES';
+  static const String categoryEventsGeneral = 'EVENTOS â GERAL';
+  static const String categoryEventsParticipants = 'EVENTOS â PARTICIPANTES';
+  static const String categoryEventsPayments = 'EVENTOS â PAGAMENTOS';
+  static const String categoryEventsFinancial = 'EVENTOS â FINANCEIRO';
+  static const String categoryUsers = 'USUÃRIOS';
   static const String categoryUniforms = 'UNIFORMES';
   static const String categorySystemAdmin = 'SISTEMA / ADMIN';
+  static const String categorySystemConfig = 'SISTEMA / CONFIGURAÃÃES';
 
   static const List<String> categoriesForUserDetails = [
     categoryVisibility,
@@ -25,6 +26,7 @@ class PermissionCatalog {
     categoryUsers,
     categoryUniforms,
     categorySystemAdmin,
+    categorySystemConfig,
   ];
 
   static const List<PermissionDefinition> all = [
@@ -37,8 +39,8 @@ class PermissionCatalog {
       category: categoryVisibility,
     ),
     PermissionDefinition(
-      title: 'Acessar inscrições',
-      description: 'Mostra o menu Inscrições no app.',
+      title: 'Acessar inscriÃ§Ãµes',
+      description: 'Mostra o menu InscriÃ§Ãµes no app.',
       key: 'pode_acessar_inscricoes',
       aliases: ['podeAcessarInscricoes'],
       icon: Icons.app_registration_rounded,
@@ -53,8 +55,8 @@ class PermissionCatalog {
       category: categoryVisibility,
     ),
     PermissionDefinition(
-      title: 'Acessar associação',
-      description: 'Mostra o menu Associação no app.',
+      title: 'Acessar associaÃ§Ã£o',
+      description: 'Mostra o menu AssociaÃ§Ã£o no app.',
       key: 'pode_acessar_associacao',
       aliases: ['podeAcessarAssociacao'],
       icon: Icons.people_outline_rounded,
@@ -63,7 +65,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Mostrar alunos na barra lateral',
       description:
-          'Mostra o menu Alunos na barra lateral do app. Não substitui a permissão de ver alunos.',
+          'Mostra o menu Alunos na barra lateral do app. NÃ£o substitui a permissÃ£o de ver alunos.',
       key: 'pode_mostrar_alunos_drawer',
       aliases: ['podeMostrarAlunosDrawer'],
       icon: Icons.menu_open_rounded,
@@ -130,7 +132,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Gerenciar participantes',
-      description: 'Permite abrir o módulo de participantes do evento.',
+      description: 'Permite abrir o mÃ³dulo de participantes do evento.',
       key: 'pode_gerenciar_participantes_evento',
       aliases: ['pode_gerenciar_participantes'],
       icon: Icons.groups_rounded,
@@ -164,8 +166,8 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar participação',
-      description: 'Permite editar dados de participação do aluno no evento.',
+      title: 'Editar participaÃ§Ã£o',
+      description: 'Permite editar dados de participaÃ§Ã£o do aluno no evento.',
       key: 'pode_editar_participacao_evento',
       aliases: ['pode_editar_participante_evento'],
       icon: Icons.manage_accounts_rounded,
@@ -229,8 +231,8 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Concluir participação',
-      description: 'Permite marcar/concluir participação do aluno no evento.',
+      title: 'Concluir participaÃ§Ã£o',
+      description: 'Permite marcar/concluir participaÃ§Ã£o do aluno no evento.',
       key: 'pode_concluir_participacao_evento',
       icon: Icons.done_all_rounded,
       category: categoryEventsParticipants,
@@ -253,7 +255,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Registrar pagamento',
-      description: 'Permite lançar pagamentos na participação do aluno.',
+      description: 'Permite lanÃ§ar pagamentos na participaÃ§Ã£o do aluno.',
       key: 'pode_registrar_pagamento_evento',
       aliases: ['pode_registrar_pagamento'],
       icon: Icons.add_card_rounded,
@@ -262,7 +264,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Editar pagamento',
       description:
-          'Permite corrigir valor, forma, status e observações de pagamentos já lançados.',
+          'Permite corrigir valor, forma, status e observaÃ§Ãµes de pagamentos jÃ¡ lanÃ§ados.',
       key: 'pode_editar_pagamento_evento',
       aliases: ['pode_editar_pagamento'],
       icon: Icons.edit_note_rounded,
@@ -271,7 +273,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Excluir pagamento',
       description:
-          'Permite apagar pagamentos e recalcular o saldo da participação.',
+          'Permite apagar pagamentos e recalcular o saldo da participaÃ§Ã£o.',
       key: 'pode_excluir_pagamento_evento',
       aliases: ['pode_excluir_pagamento'],
       icon: Icons.delete_sweep_rounded,
@@ -318,8 +320,8 @@ class PermissionCatalog {
       category: categoryEventsFinancial,
     ),
     PermissionDefinition(
-      title: 'Ver relatórios do evento',
-      description: 'Permite abrir relatórios financeiros e listas do evento.',
+      title: 'Ver relatÃ³rios do evento',
+      description: 'Permite abrir relatÃ³rios financeiros e listas do evento.',
       key: 'pode_ver_relatorio_evento',
       aliases: ['pode_ver_relatorios'],
       icon: Icons.assessment_rounded,
@@ -357,7 +359,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar aluno',
-      description: 'Permite editar informações de alunos.',
+      description: 'Permite editar informaÃ§Ãµes de alunos.',
       key: 'pode_editar_aluno',
       icon: Icons.edit_rounded,
       category: categoryStudents,
@@ -393,7 +395,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Ver resumo da turma',
       description:
-          'Libera o card “Resumo da turma” com estatísticas e relatórios dos alunos da turma.',
+          'Libera o card âResumo da turmaâ com estatÃ­sticas e relatÃ³rios dos alunos da turma.',
       key: 'pode_visualizar_relatorios',
       aliases: ['pode_visualizar_relatorios_turma'],
       icon: Icons.summarize_rounded,
@@ -408,28 +410,38 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar chamada',
-      description: 'Permite editar chamadas.',
+      description: 'Permite editar chamadas jÃ¡ salvas.',
       key: 'pode_editar_chamada',
+      aliases: ['pode_editar_chamadas', 'podeEditarChamada'],
       icon: Icons.edit_calendar_rounded,
       category: categoryAttendance,
     ),
     PermissionDefinition(
+      title: 'Excluir chamada',
+      description:
+          'Permite excluir/desfazer uma chamada jÃ¡ salva e recalcular os contadores dos alunos.',
+      key: 'pode_excluir_chamada',
+      aliases: ['pode_excluir_chamadas', 'podeExcluirChamada'],
+      icon: Icons.delete_sweep_rounded,
+      category: categoryAttendance,
+    ),
+    PermissionDefinition(
       title: 'Ver lista de chamada',
-      description: 'Permite ver histórico de chamadas.',
+      description: 'Permite ver histÃ³rico de chamadas.',
       key: 'pode_ver_lista_de_chamada',
       icon: Icons.list_alt_rounded,
       category: categoryAttendance,
     ),
     PermissionDefinition(
       title: 'Avaliar aluno',
-      description: 'Permite avaliar comportamento, disciplina e evolução.',
+      description: 'Permite avaliar comportamento, disciplina e evoluÃ§Ã£o.',
       key: 'pode_avaliar_aluno',
       icon: Icons.star_rate_rounded,
       category: categoryAttendance,
     ),
     PermissionDefinition(
-      title: 'Gerenciar usuários',
-      description: 'Permite gerenciar usuários e permissões.',
+      title: 'Gerenciar usuÃ¡rios',
+      description: 'Permite gerenciar usuÃ¡rios e permissÃµes.',
       key: 'pode_gerenciar_usuarios',
       icon: Icons.people_rounded,
       category: categoryUsers,
@@ -480,6 +492,15 @@ class PermissionCatalog {
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
+      title: 'Gerenciar temas globais',
+      description:
+          'Permite alterar o tema padrão do app, temas disponíveis para usuários e campanhas visuais.',
+      key: 'pode_gerenciar_temas_globais',
+      aliases: ['podeGerenciarTemasGlobais'],
+      icon: Icons.palette_rounded,
+      category: categorySystemConfig,
+    ),
+    PermissionDefinition(
       title: 'Gerenciar logo do site',
       description: 'Permite alterar a logo exibida no site.',
       key: 'pode_gerenciar_logo_site',
@@ -487,9 +508,9 @@ class PermissionCatalog {
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'Saúde Firebase',
+      title: 'SaÃºde Firebase',
       description:
-          'Permite acessar diagnóstico de banco, storage, functions e uso.',
+          'Permite acessar diagnÃ³stico de banco, storage, functions e uso.',
       key: 'pode_saude_firebase',
       icon: Icons.health_and_safety_rounded,
       category: categorySystemAdmin,
@@ -498,9 +519,9 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Controle de atualizações',
+      title: 'Controle de atualizaÃ§Ãµes',
       description:
-          'Permite gerenciar versões, APKs e publicação de atualizações.',
+          'Permite gerenciar versÃµes, APKs e publicaÃ§Ã£o de atualizaÃ§Ãµes.',
       key: 'pode_controle_atualizacoes',
       icon: Icons.system_update_alt_rounded,
       category: categorySystemAdmin,
@@ -509,8 +530,8 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Configurar indicadores de ausência',
-      description: 'Permite configurar alertas de frequência e ausência.',
+      title: 'Configurar indicadores de ausÃªncia',
+      description: 'Permite configurar alertas de frequÃªncia e ausÃªncia.',
       key: 'pode_configurar_indicadores_ausencia',
       icon: Icons.rule_rounded,
       category: categorySystemAdmin,
@@ -523,29 +544,29 @@ class PermissionCatalog {
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'Gerenciar graduações',
-      description: 'Permite criar, editar e organizar graduações do app.',
+      title: 'Gerenciar graduaÃ§Ãµes',
+      description: 'Permite criar, editar e organizar graduaÃ§Ãµes do app.',
       key: 'pode_gerenciar_graduacoes',
       icon: Icons.workspace_premium_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
       title: 'Gerenciar academias',
-      description: 'Permite gerenciar academias, núcleos, turmas e horários.',
+      description: 'Permite gerenciar academias, nÃºcleos, turmas e horÃ¡rios.',
       key: 'pode_gerenciar_academias',
       icon: Icons.business_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
       title: 'Configurar certificados',
-      description: 'Permite configurar modelos e prévias de certificados.',
+      description: 'Permite configurar modelos e prÃ©vias de certificados.',
       key: 'pode_configurar_certificados',
       icon: Icons.history_edu_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'Executar migrações',
-      description: 'Permite acessar ferramentas de migração de dados.',
+      title: 'Executar migraÃ§Ãµes',
+      description: 'Permite acessar ferramentas de migraÃ§Ã£o de dados.',
       key: 'pode_executar_migracoes',
       icon: Icons.sync_alt_rounded,
       category: categorySystemAdmin,
@@ -555,7 +576,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar alunos',
-      description: 'Permite executar migração de alunos.',
+      description: 'Permite executar migraÃ§Ã£o de alunos.',
       key: 'pode_migrar_alunos',
       icon: Icons.people_alt_rounded,
       category: categorySystemAdmin,
@@ -564,8 +585,8 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Migrar graduações',
-      description: 'Permite executar migração de graduações.',
+      title: 'Migrar graduaÃ§Ãµes',
+      description: 'Permite executar migraÃ§Ã£o de graduaÃ§Ãµes.',
       key: 'pode_migrar_graduacoes',
       icon: Icons.workspace_premium_rounded,
       category: categorySystemAdmin,
@@ -575,7 +596,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar chamadas',
-      description: 'Permite executar migração de chamadas e presenças.',
+      description: 'Permite executar migraÃ§Ã£o de chamadas e presenÃ§as.',
       key: 'pode_migrar_chamadas',
       icon: Icons.history_edu_rounded,
       category: categorySystemAdmin,
@@ -585,7 +606,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar eventos',
-      description: 'Permite executar migração de eventos.',
+      description: 'Permite executar migraÃ§Ã£o de eventos.',
       key: 'pode_migrar_eventos',
       icon: Icons.event_available_rounded,
       category: categorySystemAdmin,
@@ -594,8 +615,8 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Migrar participações',
-      description: 'Permite executar migração de participações de eventos.',
+      title: 'Migrar participaÃ§Ãµes',
+      description: 'Permite executar migraÃ§Ã£o de participaÃ§Ãµes de eventos.',
       key: 'pode_migrar_participacoes',
       icon: Icons.emoji_events_rounded,
       category: categorySystemAdmin,

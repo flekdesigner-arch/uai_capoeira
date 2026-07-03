@@ -85,6 +85,10 @@ class PermissaoService {
       'pode_marcar_patrocinio_evento';
   static const String chaveVerFinanceiroEvento = 'pode_ver_financeiro_evento';
 
+  // Chamada / avaliações.
+  static const String chaveEditarChamada = 'pode_editar_chamada';
+  static const String chaveExcluirChamada = 'pode_excluir_chamada';
+
   // Eventos - financeiro/módulos.
   static const String chaveGerenciarCamisasEvento =
       'pode_gerenciar_camisas_evento';
@@ -208,6 +212,8 @@ class PermissaoService {
       'pode_configurar_certificados',
       'pode_configurar_certificado_evento',
     ],
+    chaveEditarChamada: ['pode_editar_chamadas', 'podeEditarChamada'],
+    chaveExcluirChamada: ['pode_excluir_chamadas', 'podeExcluirChamada'],
   };
 
   // ==================== BASE ====================
@@ -705,6 +711,26 @@ class PermissaoService {
 
   Future<bool> podeVerEventosEmAndamento() async {
     return await _podeGerenciarComPermissaoEvento(chaveVerEventosAndamento);
+  }
+
+  Future<bool> podeEditarChamada() => temPermissao(chaveEditarChamada);
+
+  Future<bool> podeExcluirChamada() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final dadosUsuario = await _carregarDadosUsuario(user.uid);
+      if (!_usuarioEstaAtivo(dadosUsuario)) return false;
+      if (_usuarioEhAdmin(dadosUsuario)) return true;
+
+      final permissoes = await _getPermissoesUsuario(user.uid);
+      return _temPermissaoNoMapa(permissoes, chaveEditarChamada) &&
+          _temPermissaoNoMapa(permissoes, chaveExcluirChamada);
+    } catch (e) {
+      debugPrint('Erro ao verificar permissão de excluir chamada: $e');
+      return false;
+    }
   }
 
   Future<bool> podeCriarEvento() =>
