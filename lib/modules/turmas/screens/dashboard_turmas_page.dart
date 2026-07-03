@@ -257,6 +257,66 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   late Animation<double> _pulseAnimation;
   late Animation<double> _rotateAnimation;
 
+  Future<void> _testarDashboardCacheV2SemTrocarFonte() async {
+    if (!_usarDashboardCacheV2) {
+      debugPrint('🧠 Dashboard Cache V2 está desativado por flag.');
+      return;
+    }
+
+    try {
+      setState(() => _processandoCacheServidor = true);
+
+      debugPrint('🔎 Tentando carregar meta do Dashboard Cache V2...');
+      var meta = await _dashboardCacheService.carregarMeta(
+        widget.turmaId,
+        forceServer: true,
+      );
+
+      final bool metaInvalido =
+          meta == null ||
+          _parseInt(meta['cache_versao']) < 200 ||
+          meta['status_processamento'] != 'pronto' ||
+          meta['necessita_reconstrucao'] == true;
+
+      if (metaInvalido) {
+        debugPrint(
+          '⚠️ Meta inexistente/inválido. Chamando reconstrução no servidor...',
+        );
+        await _dashboardCacheService.reconstruirCache(
+          widget.turmaId,
+          force: false,
+        );
+        meta = await _dashboardCacheService.carregarMeta(
+          widget.turmaId,
+          forceServer: true,
+        );
+      }
+
+      if (meta != null && meta['status_processamento'] == 'pronto') {
+        if (!mounted) return;
+        setState(() {
+          _dashboardCacheMeta = meta;
+          _cacheV2Disponivel = true;
+        });
+        debugPrint('✅ Meta Cache V2 carregado: ${meta['total_alunos']} alunos');
+      } else {
+        debugPrint(
+          '❌ Erro ao testar Cache V2. Usando fallback antigo: Meta inválido após reconstrução',
+        );
+        if (!mounted) return;
+        setState(() => _cacheV2Disponivel = false);
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao testar Cache V2. Usando fallback antigo: $e');
+      if (!mounted) return;
+      setState(() => _cacheV2Disponivel = false);
+    } finally {
+      if (mounted) {
+        setState(() => _processandoCacheServidor = false);
+      }
+    }
+  }
+
   Future<void> _verificarUsoDashboardCacheV2() async {
     try {
       final usar = await _dashboardCacheService.usarCacheV2();
@@ -270,6 +330,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       debugPrint(
         '🧠 Dashboard Cache V2 ${usar ? "ATIVADO por flag" : "DESATIVADO por flag"} para turma ${widget.turmaNome}',
       );
+
+      if (usar) {
+        unawaited(_testarDashboardCacheV2SemTrocarFonte());
+      }
     } catch (e) {
       debugPrint('⚠️ Erro ao verificar flag do Dashboard Cache V2: $e');
 
