@@ -299,6 +299,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           _cacheV2Disponivel = true;
         });
         debugPrint('✅ Meta Cache V2 carregado: ${meta['total_alunos']} alunos');
+
+        unawaited(_carregarCacheV2ParaDiagnostico(forceServer: true));
       } else {
         debugPrint(
           '❌ Erro ao testar Cache V2. Usando fallback antigo: Meta inválido após reconstrução',
@@ -310,6 +312,77 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       debugPrint('❌ Erro ao testar Cache V2. Usando fallback antigo: $e');
       if (!mounted) return;
       setState(() => _cacheV2Disponivel = false);
+    } finally {
+      if (mounted) {
+        setState(() => _processandoCacheServidor = false);
+      }
+    }
+  }
+
+  Future<void> _carregarCacheV2ParaDiagnostico({
+    bool forceServer = true,
+  }) async {
+    if (!_usarDashboardCacheV2) return;
+
+    try {
+      // Aguarda lógica antiga terminar para comparação ser válida no console
+      int tentativas = 0;
+      while (_isLoading && mounted && tentativas < 20) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        tentativas++;
+      }
+
+      if (!mounted) return;
+      setState(() => _processandoCacheServidor = true);
+
+      debugPrint(
+        '🔎 Carregando dados completos do Cache V2 para diagnóstico...',
+      );
+
+      final results = await Future.wait([
+        _dashboardCacheService.carregarMeta(
+          widget.turmaId,
+          forceServer: forceServer,
+        ),
+        _dashboardCacheService.carregarDistribuicoes(
+          widget.turmaId,
+          forceServer: forceServer,
+        ),
+        _dashboardCacheService.carregarAlunosCache(
+          widget.turmaId,
+          forceServer: forceServer,
+        ),
+      ]);
+
+      final meta = results[0] as Map<String, dynamic>?;
+      final distribuicoes = results[1] as Map<String, dynamic>?;
+      final alunosCache = results[2] as List<Map<String, dynamic>>;
+
+      if (!mounted) return;
+
+      setState(() {
+        _dashboardCacheMeta = meta;
+        _dashboardCacheDistribuicoes = distribuicoes;
+        _dashboardCacheAlunos = alunosCache;
+        _cacheV2Disponivel = meta != null && alunosCache.isNotEmpty;
+      });
+
+      debugPrint('🧪 Comparando Dashboard Cache V2 com modelo antigo');
+      debugPrint(
+        '📌 Antigo: ${_alunosDaTurma.length} alunos | Cache V2: ${meta?['total_alunos'] ?? 'null'} alunos (Snapshots: ${alunosCache.length})',
+      );
+      debugPrint('📌 Idade antigo: $_distribuicaoIdade');
+      debugPrint('📌 Idade cache: ${distribuicoes?['idade']}');
+      debugPrint('📌 Graduação antigo: $_distribuicaoGraduacao');
+      debugPrint('📌 Graduação cache: ${distribuicoes?['graduacao']}');
+      debugPrint('📌 Sexo antigo: M $_totalMeninos / F $_totalMeninas');
+      debugPrint('📌 Sexo cache: ${distribuicoes?['sexo']}');
+
+      if (meta?['total_alunos'] != _alunosDaTurma.length) {
+        debugPrint('⚠️ Alerta: Divergência no total de alunos detectada!');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro no diagnóstico do Cache V2: $e');
     } finally {
       if (mounted) {
         setState(() => _processandoCacheServidor = false);
