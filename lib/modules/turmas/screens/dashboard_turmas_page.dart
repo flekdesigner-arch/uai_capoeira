@@ -19,6 +19,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/shared/widgets/card_frequencia_moderno.dart';
+import 'package:uai_capoeira/modules/turmas/services/dashboard_turma_cache_service.dart';
 
 class DashboardTurmasPage extends StatefulWidget {
   final String turmaId;
@@ -41,6 +42,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         AutomaticKeepAliveClientMixin,
         TickerProviderStateMixin,
         WidgetsBindingObserver {
+  final DashboardTurmaCacheService _dashboardCacheService =
+      DashboardTurmaCacheService();
+
+  bool _usarDashboardCacheV2 = false;
+  bool _cacheV2Disponivel = false;
+  bool _processandoCacheServidor = false;
+  Map<String, dynamic>? _dashboardCacheMeta;
+  Map<String, dynamic>? _dashboardCacheDistribuicoes;
+  List<Map<String, dynamic>> _dashboardCacheAlunos = [];
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -63,7 +73,21 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withOpacity(0.68);
-  Color _onGradient() => _readableOn(context.uai.primary);
+
+  bool _isNeonOnDark() {
+    final primary = context.uai.primary;
+    final background = context.uai.background;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        background.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.55;
+  }
+
+  Color _onGradient() {
+    if (_isNeonOnDark()) return const Color(0xFFFFFFFF);
+    return _readableOn(context.uai.primary);
+  }
 
   bool get _isWideDashboard {
     final width = MediaQuery.sizeOf(context).width;
@@ -178,6 +202,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Map<String, List<Map<String, dynamic>>> _alunosPorGraduacao = {};
   List<Map<String, dynamic>> _alunosOrdenadosPorIdade = [];
   Map<String, int> _distribuicaoIdade = {};
+  Map<String, List<Map<String, dynamic>>> _alunosPorFaixaEtaria = {};
   int _totalMeninos = 0;
   int _totalMeninas = 0;
 
@@ -232,6 +257,30 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   late Animation<double> _pulseAnimation;
   late Animation<double> _rotateAnimation;
 
+  Future<void> _verificarUsoDashboardCacheV2() async {
+    try {
+      final usar = await _dashboardCacheService.usarCacheV2();
+
+      if (!mounted) return;
+
+      setState(() {
+        _usarDashboardCacheV2 = usar;
+      });
+
+      debugPrint(
+        '🧠 Dashboard Cache V2 ${usar ? "ATIVADO por flag" : "DESATIVADO por flag"} para turma ${widget.turmaNome}',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Erro ao verificar flag do Dashboard Cache V2: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        _usarDashboardCacheV2 = false;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -253,6 +302,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
     _pulseController.repeat(reverse: true);
 
+    _verificarUsoDashboardCacheV2();
     _inicializarDados();
     _scrollController.addListener(_onScroll);
     _iniciarTimerCache();
@@ -1338,6 +1388,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return 'Precisa acompanhar';
   }
 
+  String _faixaEtariaPorIdade(int idade) {
+    if (idade <= 7) return '4-7 anos';
+    if (idade <= 12) return '8-12 anos';
+    if (idade <= 17) return '13-17 anos';
+    if (idade <= 25) return '18-25 anos';
+    if (idade <= 35) return '26-35 anos';
+    if (idade <= 50) return '36-50 anos';
+    return '50+ anos';
+  }
+
   void _processarTodosDados() {
     final now = DateTime.now();
     _alunosOrdenadosPorFrequencia =
@@ -1391,39 +1451,47 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     _alunosPorGraduacao = alunosPorGrad;
 
     final Map<String, int> faixas = Map.from(_faixasEtarias);
+    final Map<String, List<Map<String, dynamic>>> alunosPorFaixa = {
+      for (final faixa in _faixasEtarias.keys) faixa: <Map<String, dynamic>>[],
+    };
     final List<Map<String, dynamic>> alunosComIdade = [];
+
     for (var aluno in _alunosDaTurma) {
       final dataNasc = (aluno['data_nascimento'] as Timestamp?)?.toDate();
       if (dataNasc != null) {
         int idade = now.year - dataNasc.year;
         if (now.month < dataNasc.month ||
-            (now.month == dataNasc.month && now.day < dataNasc.day))
+            (now.month == dataNasc.month && now.day < dataNasc.day)) {
           idade--;
+        }
+
+        final faixa = _faixaEtariaPorIdade(idade);
         final a = Map<String, dynamic>.from(aluno);
         a['idade_calculada'] = idade;
+        a['faixa_etaria_calculada'] = faixa;
+
         alunosComIdade.add(a);
-        if (idade <= 7)
-          faixas['4-7 anos'] = faixas['4-7 anos']! + 1;
-        else if (idade <= 12)
-          faixas['8-12 anos'] = faixas['8-12 anos']! + 1;
-        else if (idade <= 17)
-          faixas['13-17 anos'] = faixas['13-17 anos']! + 1;
-        else if (idade <= 25)
-          faixas['18-25 anos'] = faixas['18-25 anos']! + 1;
-        else if (idade <= 35)
-          faixas['26-35 anos'] = faixas['26-35 anos']! + 1;
-        else if (idade <= 50)
-          faixas['36-50 anos'] = faixas['36-50 anos']! + 1;
-        else
-          faixas['50+ anos'] = faixas['50+ anos']! + 1;
+        faixas[faixa] = (faixas[faixa] ?? 0) + 1;
+        alunosPorFaixa.putIfAbsent(faixa, () => <Map<String, dynamic>>[]);
+        alunosPorFaixa[faixa]!.add(a);
       }
     }
+
     alunosComIdade.sort(
       (a, b) =>
           (a['idade_calculada'] ?? 0).compareTo(b['idade_calculada'] ?? 0),
     );
+
+    for (final lista in alunosPorFaixa.values) {
+      lista.sort(
+        (a, b) =>
+            (a['idade_calculada'] ?? 0).compareTo(b['idade_calculada'] ?? 0),
+      );
+    }
+
     _alunosOrdenadosPorIdade = alunosComIdade;
     _distribuicaoIdade = faixas;
+    _alunosPorFaixaEtaria = alunosPorFaixa;
     _totalMeninos = _alunosDaTurma
         .where((a) => (a['sexo'] as String?)?.toUpperCase() == 'MASCULINO')
         .length;
@@ -6584,26 +6652,41 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildFaixaEtariaCards() {
+    final totalAlunos = _alunosOrdenadosPorIdade.length;
     final cards = _distribuicaoIdade.entries.map((e) {
-      return _buildFaixaEtariaTile(e.key, e.value);
+      return _buildFaixaEtariaTile(
+        faixa: e.key,
+        quantidade: e.value,
+        totalAlunos: totalAlunos,
+        alunos: _alunosPorFaixaEtaria[e.key] ?? const <Map<String, dynamic>>[],
+      );
     }).toList();
 
     return _dashboardResponsiveWrap(
       children: cards,
-      minItemWidth: 170,
-      maxColumns: _isDesktopDashboard ? 4 : 3,
+      minItemWidth: 310,
+      maxColumns: _isDesktopDashboard ? 2 : 1,
       spacing: 10,
       runSpacing: 10,
     );
   }
 
-  Widget _buildFaixaEtariaTile(String faixa, int quantidade) {
+  Widget _buildFaixaEtariaTile({
+    required String faixa,
+    required int quantidade,
+    required int totalAlunos,
+    required List<Map<String, dynamic>> alunos,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.success, t.card);
+    final percentual = totalAlunos > 0 ? quantidade / totalAlunos : 0.0;
+    final semAlunos = alunos.isEmpty;
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: context.uai.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.success.withOpacity(0.16)),
+        color: t.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withOpacity(0.16)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.045),
@@ -6612,51 +6695,220 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: quantidade > 0 && quantidade <= 6,
+          tilePadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          childrenPadding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+          leading: Container(
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: context.uai.success.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: accent.withOpacity(0.16)),
             ),
             child: Icon(
               _iconesFaixa[faixa] ?? Icons.person,
-              size: 18,
-              color: context.uai.success,
+              size: 21,
+              color: accent,
             ),
           ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              faixa,
-              style: TextStyle(
-                color: _onCard(),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          title: Text(
+            faixa,
+            style: TextStyle(
+              color: _onCard(),
+              fontSize: 13.5,
+              fontWeight: FontWeight.w900,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Padding(
+            padding: EdgeInsets.only(top: 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: percentual,
+                    minHeight: 6,
+                    backgroundColor: t.border,
+                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  totalAlunos == 0
+                      ? 'Sem alunos com idade calculada'
+                      : '${(percentual * 100).toStringAsFixed(0)}% da turma',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-          SizedBox(width: 8),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          trailing: Container(
+            padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: context.uai.success.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: accent.withOpacity(0.16)),
             ),
             child: Text(
               '$quantidade',
               style: TextStyle(
-                color: context.uai.success,
-                fontSize: 12,
+                color: accent,
+                fontSize: 13,
                 fontWeight: FontWeight.w900,
               ),
             ),
           ),
+          children: semAlunos
+              ? [_buildFaixaEtariaEmptyTile(faixa)]
+              : alunos.asMap().entries.map((entry) {
+                  final aluno = entry.value;
+                  final idade = _parseInt(aluno['idade_calculada']);
+                  return _buildAlunoFaixaEtariaTile(
+                    aluno: aluno,
+                    idade: idade,
+                    posicao: entry.key + 1,
+                  );
+                }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFaixaEtariaEmptyTile(String faixa) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.textMuted, t.cardAlt);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: accent, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Nenhum aluno nessa faixa de idade.',
+              style: TextStyle(
+                color: _onCardMuted(),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAlunoFaixaEtariaTile({
+    required Map<String, dynamic> aluno,
+    required int idade,
+    required int posicao,
+  }) {
+    final t = context.uai;
+    final nome = aluno['nome']?.toString() ?? 'Sem nome';
+    final graduacao = _obterNomeGraduacaoAluno(aluno);
+    final accent = _ensureVisible(t.success, t.cardAlt);
+
+    return InkWell(
+      onTap: () => _mostrarDialog(aluno),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 7),
+        padding: EdgeInsets.all(9),
+        decoration: BoxDecoration(
+          color: t.cardAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: t.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.10),
+                shape: BoxShape.circle,
+                border: Border.all(color: accent.withOpacity(0.12)),
+              ),
+              child: Text(
+                '$posicao',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            SizedBox(width: 8),
+            _buildAlunoAvatar(aluno),
+            SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nome,
+                    style: TextStyle(
+                      color: _onCard(),
+                      fontSize: 12.7,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    graduacao,
+                    style: TextStyle(
+                      color: _onCardMuted(),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withOpacity(0.16)),
+              ),
+              child: Text(
+                '$idade a',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                  color: accent,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -7681,6 +7933,35 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         : const Color(0xFFFFFFFF);
   }
 
+  bool _isNeonOnDark() {
+    final primary = context.uai.primary;
+    final background = context.uai.background;
+    final hsl = HSLColor.fromColor(primary);
+
+    return primary.computeLuminance() > 0.50 &&
+        background.computeLuminance() < 0.36 &&
+        hsl.saturation > 0.55;
+  }
+
+  Color _onDialogHero() {
+    if (_isNeonOnDark()) return const Color(0xFFFFFFFF);
+    return _readableOn(context.uai.primary);
+  }
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
+    if (diff >= 0.26) return color;
+
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
   final DateFormat _monthFormat = DateFormat('MMMM', 'pt_BR');
@@ -8138,7 +8419,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
               backgroundColor: context.uai.card.withOpacity(0.15),
               child: Icon(
                 Icons.person_search_rounded,
-                color: context.uai.textPrimary,
+                color: _onDialogHero(),
                 size: 28,
               ),
             ),
@@ -8152,7 +8433,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: context.uai.textPrimary,
+                      color: _onDialogHero(),
                       fontWeight: FontWeight.bold,
                       fontSize: 17,
                       height: 1.1,
@@ -8164,7 +8445,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: context.uai.card.withOpacity(0.78),
+                      color: _onDialogHero().withOpacity(0.78),
                       fontSize: 12,
                     ),
                   ),
@@ -8173,13 +8454,13 @@ class _DetalheFrequenciaAlunoDashboardDialogState
             ),
             IconButton(
               onPressed: _carregar,
-              color: context.uai.textPrimary,
+              color: _onDialogHero(),
               icon: Icon(Icons.refresh_rounded),
               tooltip: 'Atualizar',
             ),
             IconButton(
               onPressed: () => Navigator.pop(context),
-              color: context.uai.textPrimary,
+              color: _onDialogHero(),
               icon: Icon(Icons.close_rounded),
               tooltip: 'Fechar',
             ),
@@ -8378,22 +8659,24 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     required IconData icon,
     required Color color,
   }) {
+    final accent = _ensureVisible(color, context.uai.card);
+
     return Container(
       constraints: BoxConstraints(minWidth: 124),
       padding: EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: accent.withOpacity(0.16)),
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 24),
+          Icon(icon, color: accent, size: 24),
           SizedBox(height: 7),
           Text(
             value,
             style: TextStyle(
-              color: color,
+              color: accent,
               fontSize: 23,
               fontWeight: FontWeight.bold,
             ),
@@ -8430,7 +8713,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: context.uai.cardAlt,
+            color: _readableOn(context.uai.cardAlt).withOpacity(0.70),
             size: 18,
           ),
           SizedBox(width: 8),
@@ -8452,22 +8735,24 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   }
 
   Widget _chipInfo(String text, Color color, IconData icon) {
+    final accent = _ensureVisible(color, context.uai.card);
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: accent.withOpacity(0.08),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: accent.withOpacity(0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 13),
+          Icon(icon, color: accent, size: 13),
           SizedBox(width: 4),
           Text(
             text,
             style: TextStyle(
-              color: color,
+              color: accent,
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -8507,7 +8792,12 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                 child: Container(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: selected ? color.withOpacity(0.12) : Colors.white,
+                    color: selected
+                        ? Color.alphaBlend(
+                            color.withOpacity(0.14),
+                            context.uai.cardAlt,
+                          )
+                        : context.uai.card,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: selected
@@ -8709,3 +8999,10 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     );
   }
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 13:25
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// Ajuste extra: alunos agrupados dentro das faixas de idade.
+// ============================================================
