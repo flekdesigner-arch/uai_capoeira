@@ -17,8 +17,8 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:xml/xml.dart' as xml;
-import 'package:uai_capoeira/shared/widgets/card_frequencia_moderno.dart';
 import 'package:uai_capoeira/modules/turmas/services/dashboard_turma_cache_service.dart';
 
 class DashboardTurmasPage extends StatefulWidget {
@@ -51,6 +51,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Map<String, dynamic>? _dashboardCacheMeta;
   Map<String, dynamic>? _dashboardCacheDistribuicoes;
   List<Map<String, dynamic>> _dashboardCacheAlunos = [];
+
+  String? _faixaEtariaExpandidaKey;
+
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -181,6 +184,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   String? filtroSexo;
   String filtroTemporalFrequencia = 'Ano';
   String? anoSelecionado;
+  String? mesSelecionado;
   List<String> anosDisponiveis = [];
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -300,6 +304,78 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return anosSet.toList()..sort((a, b) => b.compareTo(a));
   }
 
+  String _mesAtualKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}';
+  }
+
+  String _labelMes(String mesKey) {
+    if (mesKey.length < 7) return mesKey;
+    final mesPart = mesKey.substring(5, 7);
+    switch (mesPart) {
+      case '01':
+        return 'Jan';
+      case '02':
+        return 'Fev';
+      case '03':
+        return 'Mar';
+      case '04':
+        return 'Abr';
+      case '05':
+        return 'Mai';
+      case '06':
+        return 'Jun';
+      case '07':
+        return 'Jul';
+      case '08':
+        return 'Ago';
+      case '09':
+        return 'Set';
+      case '10':
+        return 'Out';
+      case '11':
+        return 'Nov';
+      case '12':
+        return 'Dez';
+      default:
+        return mesPart;
+    }
+  }
+
+  List<String> _extrairMesesDisponiveisAnoAtual() {
+    final currentYear = DateTime.now().year.toString();
+    final Set<String> mesesSet = {};
+
+    for (final a in _alunosDaTurma) {
+      final freqPorMes = a['freq_por_mes'];
+      if (freqPorMes is Map) {
+        freqPorMes.forEach((k, v) {
+          final key = k.toString();
+          if (key.startsWith(currentYear) && _parseInt(v) > 0) {
+            mesesSet.add(key);
+          }
+        });
+      }
+      final freqTemporal = a['frequencia_temporal'];
+      if (freqTemporal is Map) {
+        freqTemporal.forEach((k, v) {
+          final key = k.toString();
+          if (key.length == 7 &&
+              key.startsWith(currentYear) &&
+              _parseInt(v) > 0) {
+            mesesSet.add(key);
+          }
+        });
+      }
+    }
+
+    final mesAtual = _mesAtualKey();
+    mesesSet.add(mesAtual);
+
+    final sorted = mesesSet.toList()..sort();
+    return sorted;
+  }
+
   List<Map<String, dynamic>> _converterCacheV2ParaAlunosLegado(
     List<Map<String, dynamic>> alunosCache,
   ) {
@@ -308,6 +384,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final freqSemana = _intFromCache(cache['freq_semana']);
       final freqMes = _intFromCache(cache['freq_mes']);
       final freqPorAno = _mapStringIntFromCache(cache['freq_por_ano']);
+      final freqPorMes = _mapStringIntFromCache(cache['freq_por_mes']);
+      final freqPorSemana = _mapStringIntFromCache(cache['freq_por_semana']);
       final freqPorDiaSemana = _mapStringIntFromCache(
         cache['freq_por_dia_semana'],
       );
@@ -317,6 +395,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         'semana': freqSemana,
         'mes': freqMes,
         ...freqPorAno,
+        ...freqPorMes,
       };
 
       final diaSemanaPadrao = {
@@ -329,11 +408,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         'dom': freqPorDiaSemana['dom'] ?? 0,
       };
 
+      final fotoUrl = _extrairFotoUrlAluno(cache);
+
       return {
         'id': cache['aluno_id'] ?? '',
         'nome': cache['nome'] ?? 'Sem nome',
         'sexo': cache['sexo_normalizado'] ?? cache['sexo'] ?? 'NAO_INFORMADO',
-        'foto_perfil_aluno': cache['foto_url'] ?? '',
+        'foto_perfil_aluno': fotoUrl,
+        'foto_url': fotoUrl,
+        'aluno_foto': fotoUrl,
         'graduacao_id': cache['graduacao_id'],
         'graduacao_nome': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
         'graduacao_atual': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
@@ -341,6 +424,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         'total_presencas': freqTotal,
         'idade_calculada': cache['idade'],
         'frequencia_temporal': temporal,
+        'freq_por_mes': freqPorMes,
+        'freq_por_semana': freqPorSemana,
+        'freq_por_ano': freqPorAno,
         'porDiaSemana': diaSemanaPadrao,
         ...diaSemanaPadrao,
         'avaliacao_nota': cache['avaliacao_nota'],
@@ -355,6 +441,32 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         'ranking_por_ano': cache['ranking_por_ano'],
       };
     }).toList();
+  }
+
+  String _extrairFotoUrlAluno(Map<String, dynamic> data) {
+    const campos = [
+      'foto_perfil_aluno',
+      'foto_url',
+      'aluno_foto',
+      'foto',
+      'foto_perfil',
+      'fotoPerfil',
+      'fotoPerfilAluno',
+      'photoUrl',
+      'imageUrl',
+      'avatarUrl',
+      'url_foto',
+      'imagem_url',
+    ];
+
+    for (final campo in campos) {
+      final valor = data[campo]?.toString().trim() ?? '';
+      if (valor.isNotEmpty && valor.startsWith('http')) {
+        return valor;
+      }
+    }
+
+    return '';
   }
 
   Future<bool> _carregarDashboardPeloCacheV2({bool forceServer = true}) async {
@@ -416,6 +528,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final alunosConvertidos = _converterCacheV2ParaAlunosLegado(alunosCache);
       final anosExtraidos = _extrairAnosDisponiveisCacheV2(meta, alunosCache);
 
+      final semFoto = alunosConvertidos
+          .where((a) => _extrairFotoUrlAluno(a).isEmpty)
+          .length;
+      debugPrint(
+        '🖼️ Cache V2 fotos: ${alunosConvertidos.length - semFoto}/${alunosConvertidos.length} com foto',
+      );
+
       if (!mounted) return false;
 
       setState(() {
@@ -424,6 +543,19 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         _dashboardCacheAlunos = alunosCache;
         _alunosDaTurma = alunosConvertidos;
         anosDisponiveis = anosExtraidos;
+
+        final mesesDisponiveis = _extrairMesesDisponiveisAnoAtual();
+        if (mesSelecionado == null ||
+            !mesesDisponiveis.contains(mesSelecionado)) {
+          final mesAtual = _mesAtualKey();
+          if (mesesDisponiveis.contains(mesAtual)) {
+            mesSelecionado = mesAtual;
+          } else if (mesesDisponiveis.isNotEmpty) {
+            mesSelecionado = mesesDisponiveis.last;
+          } else {
+            mesSelecionado = mesAtual;
+          }
+        }
 
         if (anoSelecionado == null ||
             !anosDisponiveis.contains(anoSelecionado)) {
@@ -442,8 +574,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       _processarTodosDados();
       debugPrint(
-        '✅ Dashboard carregada pelo Cache V2: ${alunosCache.length} alunos',
+        '✅ Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
       );
+      if (_alunosDaTurma.isNotEmpty) {
+        final a = _alunosDaTurma.first;
+        final f = a['frequencia_temporal'] ?? {};
+        debugPrint(
+          "🧪 Cache V2 Frequência: primeiro aluno ${a['nome']} total=${f['total']} mes=${f['mes']} semana=${f['semana']}",
+        );
+      }
       return true;
     } catch (e) {
       debugPrint('❌ Erro ao carregar Dashboard pelo Cache V2: $e');
@@ -453,6 +592,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Future<void> _inicializarDashboardInteligente() async {
     debugPrint('🧠 Inicializando Dashboard com modo inteligente...');
+
     setState(() {
       _isLoading = true;
       _erro = null;
@@ -471,7 +611,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         final carregouV2 = await _carregarDashboardPeloCacheV2(
           forceServer: true,
         );
-        if (carregouV2) return;
+
+        if (carregouV2) {
+          debugPrint(
+            '✅ Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
+          );
+          return;
+        }
 
         debugPrint('⚠️ Cache V2 falhou. Usando fallback antigo.');
       }
@@ -480,7 +626,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       await _carregarAlunosDaTurma();
     } catch (e) {
       debugPrint('❌ Erro inesperado no fluxo inteligente: $e');
-      await _carregarAlunosDaTurma();
+      if (mounted) {
+        await _carregarAlunosDaTurma();
+      }
     }
   }
 
@@ -523,164 +671,22 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<void> _testarDashboardCacheV2SemTrocarFonte() async {
-    if (!_usarDashboardCacheV2) {
-      debugPrint('🧠 Dashboard Cache V2 está desativado por flag.');
-      return;
-    }
-
-    try {
-      setState(() => _processandoCacheServidor = true);
-
-      debugPrint('🔎 Tentando carregar meta do Dashboard Cache V2...');
-      var meta = await _dashboardCacheService.carregarMeta(
-        widget.turmaId,
-        forceServer: true,
-      );
-
-      final bool metaInvalido =
-          meta == null ||
-          _parseInt(meta['cache_versao']) < 200 ||
-          meta['status_processamento'] != 'pronto' ||
-          meta['necessita_reconstrucao'] == true;
-
-      if (metaInvalido) {
-        debugPrint(
-          '⚠️ Meta inexistente/inválido. Chamando reconstrução no servidor...',
-        );
-        await _dashboardCacheService.reconstruirCache(
-          widget.turmaId,
-          force: false,
-        );
-        meta = await _dashboardCacheService.carregarMeta(
-          widget.turmaId,
-          forceServer: true,
-        );
-      }
-
-      if (meta != null && meta['status_processamento'] == 'pronto') {
-        if (!mounted) return;
-        setState(() {
-          _dashboardCacheMeta = meta;
-          _cacheV2Disponivel = true;
-        });
-        debugPrint('✅ Meta Cache V2 carregado: ${meta['total_alunos']} alunos');
-
-        unawaited(_carregarCacheV2ParaDiagnostico(forceServer: true));
-      } else {
-        debugPrint(
-          '❌ Erro ao testar Cache V2. Usando fallback antigo: Meta inválido após reconstrução',
-        );
-        if (!mounted) return;
-        setState(() => _cacheV2Disponivel = false);
-      }
-    } catch (e) {
-      debugPrint('❌ Erro ao testar Cache V2. Usando fallback antigo: $e');
-      if (!mounted) return;
-      setState(() => _cacheV2Disponivel = false);
-    } finally {
-      if (mounted) {
-        setState(() => _processandoCacheServidor = false);
-      }
-    }
+    // Método desativado do fluxo automático na Etapa 7.
+    // Pode ser chamado manualmente para diagnóstico se necessário.
+    return;
   }
 
   Future<void> _carregarCacheV2ParaDiagnostico({
     bool forceServer = true,
   }) async {
-    if (!_usarDashboardCacheV2) return;
-
-    try {
-      // Aguarda lógica antiga terminar para comparação ser válida no console
-      int tentativas = 0;
-      while (_isLoading && mounted && tentativas < 20) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        tentativas++;
-      }
-
-      if (!mounted) return;
-      setState(() => _processandoCacheServidor = true);
-
-      debugPrint(
-        '🔎 Carregando dados completos do Cache V2 para diagnóstico...',
-      );
-
-      final results = await Future.wait([
-        _dashboardCacheService.carregarMeta(
-          widget.turmaId,
-          forceServer: forceServer,
-        ),
-        _dashboardCacheService.carregarDistribuicoes(
-          widget.turmaId,
-          forceServer: forceServer,
-        ),
-        _dashboardCacheService.carregarAlunosCache(
-          widget.turmaId,
-          forceServer: forceServer,
-        ),
-      ]);
-
-      final meta = results[0] as Map<String, dynamic>?;
-      final distribuicoes = results[1] as Map<String, dynamic>?;
-      final alunosCache = results[2] as List<Map<String, dynamic>>;
-
-      if (!mounted) return;
-
-      setState(() {
-        _dashboardCacheMeta = meta;
-        _dashboardCacheDistribuicoes = distribuicoes;
-        _dashboardCacheAlunos = alunosCache;
-        _cacheV2Disponivel = meta != null && alunosCache.isNotEmpty;
-      });
-
-      debugPrint('🧪 Comparando Dashboard Cache V2 com modelo antigo');
-      debugPrint(
-        '📌 Antigo: ${_alunosDaTurma.length} alunos | Cache V2: ${meta?['total_alunos'] ?? 'null'} alunos (Snapshots: ${alunosCache.length})',
-      );
-      debugPrint('📌 Idade antigo: $_distribuicaoIdade');
-      debugPrint('📌 Idade cache: ${distribuicoes?['idade']}');
-      debugPrint('📌 Graduação antigo: $_distribuicaoGraduacao');
-      debugPrint('📌 Graduação cache: ${distribuicoes?['graduacao']}');
-      debugPrint('📌 Sexo antigo: M $_totalMeninos / F $_totalMeninas');
-      debugPrint('📌 Sexo cache: ${distribuicoes?['sexo']}');
-
-      if (meta?['total_alunos'] != _alunosDaTurma.length) {
-        debugPrint('⚠️ Alerta: Divergência no total de alunos detectada!');
-      }
-    } catch (e) {
-      debugPrint('❌ Erro no diagnóstico do Cache V2: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _processandoCacheServidor = false);
-      }
-    }
+    // Método desativado do fluxo automático na Etapa 7.
+    return;
   }
 
   Future<void> _verificarUsoDashboardCacheV2() async {
-    try {
-      final usar = await _dashboardCacheService.usarCacheV2();
-
-      if (!mounted) return;
-
-      setState(() {
-        _usarDashboardCacheV2 = usar;
-      });
-
-      debugPrint(
-        '🧠 Dashboard Cache V2 ${usar ? "ATIVADO por flag" : "DESATIVADO por flag"} para turma ${widget.turmaNome}',
-      );
-
-      if (usar) {
-        unawaited(_testarDashboardCacheV2SemTrocarFonte());
-      }
-    } catch (e) {
-      debugPrint('⚠️ Erro ao verificar flag do Dashboard Cache V2: $e');
-
-      if (!mounted) return;
-
-      setState(() {
-        _usarDashboardCacheV2 = false;
-      });
-    }
+    // Método desativado do fluxo automático na Etapa 7.
+    // Substituído por _inicializarDashboardInteligente.
+    return;
   }
 
   @override
@@ -1917,7 +1923,23 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       case 'Semana':
         return freqMap['semana'] ?? 0;
       case 'Mês':
-        return freqMap['mes'] ?? 0;
+        final mesKey = mesSelecionado ?? _mesAtualKey();
+        // Tenta buscar no mapa direto do aluno se disponível
+        if (aluno.containsKey('freq_por_mes')) {
+          final fpm = aluno['freq_por_mes'];
+          if (fpm is Map && fpm.containsKey(mesKey)) {
+            return _parseInt(fpm[mesKey]);
+          }
+        }
+        // Fallback para frequencia_temporal
+        if (freqMap.containsKey(mesKey)) {
+          return freqMap[mesKey] ?? 0;
+        }
+        // Se for o mês atual, pode estar em 'mes'
+        if (mesKey == _mesAtualKey()) {
+          return freqMap['mes'] ?? 0;
+        }
+        return 0;
       case 'Ano':
         return anoSelecionado != null
             ? (freqMap[anoSelecionado!] ?? 0)
@@ -1945,11 +1967,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       color = Color(int.parse(clean, radix: 16));
     _colorCache[hex] = color;
     return color;
-  }
-
-  Color _corTextoContraste(Color background) {
-    final luminance = background.computeLuminance();
-    return luminance > 0.55 ? context.uai.textPrimary : Colors.white;
   }
 
   Color _corTextoContrasteSuave(Color background) {
@@ -2142,10 +2159,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         ? _alunosFrequentes.first
         : null;
     final melhorValor = melhor != null ? _getFrequenciaPorFiltro(melhor) : 0;
-    final filtroLabel =
-        filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
-        ? anoSelecionado!
-        : filtroTemporalFrequencia;
+
+    String filtroLabel = '';
+    if (filtroTemporalFrequencia == 'Ano' && anoSelecionado != null) {
+      filtroLabel = anoSelecionado!;
+    } else if (filtroTemporalFrequencia == 'Mês' && mesSelecionado != null) {
+      filtroLabel =
+          '${_labelMes(mesSelecionado!)}/${mesSelecionado!.substring(0, 4)}';
+    } else {
+      filtroLabel = filtroTemporalFrequencia;
+    }
 
     return Container(
       margin: EdgeInsets.zero,
@@ -2337,6 +2360,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       filtroAtivo = titulo;
       _visibleItems = 20;
       if (titulo != 'Sexo') filtroSexo = null;
+      if (titulo == 'Idade') {
+        _faixaEtariaExpandidaKey = null;
+      }
+      if (titulo == 'Frequência' && filtroTemporalFrequencia == 'Mês' && mesSelecionado == null) {
+        mesSelecionado = _mesAtualKey();
+      }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2827,10 +2856,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           aluno['id']?.toString() ??
           aluno['nome']?.toString() ??
           UniqueKey().toString();
-      final url =
-          aluno['foto_perfil_aluno']?.toString() ??
-          aluno['aluno_foto']?.toString() ??
-          aluno['foto_url']?.toString();
+      final url = _extrairFotoUrlAluno(aluno);
 
       result[id] = await _carregarFotoAlunoRanking(url);
     }
@@ -3874,10 +3900,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           aluno['id']?.toString() ??
           aluno['nome']?.toString() ??
           UniqueKey().toString();
-      final url =
-          aluno['foto_perfil_aluno']?.toString() ??
-          aluno['aluno_foto']?.toString() ??
-          aluno['foto_url']?.toString();
+      final url = _extrairFotoUrlAluno(aluno);
 
       final bytes = await _baixarBytesRankingUrl(url);
       result[id] = bytes == null ? null : pw.MemoryImage(bytes);
@@ -5797,7 +5820,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Widget _buildAlunoDestaqueCard(int posicao, Map<String, dynamic> aluno) {
     final nome = aluno['nome']?.toString() ?? 'Sem nome';
-    final foto = aluno['foto_perfil_aluno']?.toString() ?? '';
     final freq = _getFrequenciaPorFiltro(aluno);
     final notaAvaliacao = _parseDouble(aluno['nota_avaliacao']);
     final scoreFrequencia = _parseDouble(aluno['score_frequencia']);
@@ -5856,7 +5878,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               ),
             ),
             SizedBox(width: 10),
-            _buildAlunoAvatarDestaque(foto, nome),
+            _buildAlunoAvatarDestaque(aluno),
             SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -5940,27 +5962,25 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _buildAlunoAvatarDestaque(String foto, String nome) {
+  Widget _buildAlunoAvatarDestaque(Map<String, dynamic> aluno) {
+    final foto = _extrairFotoUrlAluno(aluno);
+    final nome = aluno['nome']?.toString() ?? 'Sem nome';
     final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
-    final url = foto.trim();
 
     return ClipOval(
       child: SizedBox.square(
         dimension: 48,
-        child: url.startsWith('http')
-            ? Image.network(
-                url,
+        child: foto.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: foto,
                 fit: BoxFit.cover,
                 width: 48,
                 height: 48,
                 alignment: Alignment.center,
-                filterQuality: FilterQuality.medium,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return _avatarDestaqueFallbackBox(letra);
-                },
+                memCacheWidth: 144,
+                memCacheHeight: 144,
+                placeholder: (_, __) => _avatarDestaqueFallbackBox(letra),
+                errorWidget: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
               )
             : _avatarDestaqueFallbackBox(letra),
       ),
@@ -6041,8 +6061,48 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         ),
         if (filtroTemporalFrequencia == 'Ano' && anosDisponiveis.isNotEmpty)
           _buildSeletorAno(),
+        if (filtroTemporalFrequencia == 'Mês') _buildSeletorMes(),
         SizedBox(height: 12),
       ],
+    );
+  }
+
+  Widget _buildSeletorMes() {
+    final meses = _extrairMesesDisponiveisAnoAtual();
+    if (meses.isEmpty) return SizedBox.shrink();
+
+    return Container(
+      height: 40,
+      margin: EdgeInsets.only(top: 8),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: meses.length,
+        itemBuilder: (ctx, i) {
+          final mKey = meses[i];
+          final ativo = mesSelecionado == mKey;
+          return Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(_labelMes(mKey)),
+              selected: ativo,
+              onSelected: (s) {
+                if (s) {
+                  setState(() {
+                    mesSelecionado = mKey;
+                    _processarTodosDados();
+                  });
+                }
+              },
+              backgroundColor: context.uai.cardAlt,
+              selectedColor: context.uai.info.withOpacity(0.16),
+              labelStyle: TextStyle(
+                color: ativo ? context.uai.info : context.uai.textSecondary,
+                fontWeight: ativo ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -6053,6 +6113,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         onTap: () {
           setState(() {
             filtroTemporalFrequencia = t;
+            if (t == 'Mês' && mesSelecionado == null) {
+              mesSelecionado = _mesAtualKey();
+            }
             _atualizarComFiltro();
           });
         },
@@ -6445,76 +6508,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
         ),
         SizedBox(height: 14),
-        Card(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.pie_chart_rounded,
-                      color: context.uai.associacao,
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Distribuição visual',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                SizedBox(
-                  height: 210,
-                  child: PieChart(
-                    PieChartData(
-                      sections: ordenadas.map((e) {
-                        final cache = _graduacoesCache[e.key];
-                        final String hex =
-                            cache?['hex_cor1']?.toString() ?? '#CCCCCC';
-                        final percentual = totalAlunos > 0
-                            ? (e.value / totalAlunos) * 100
-                            : 0;
-
-                        return PieChartSectionData(
-                          value: e.value.toDouble(),
-                          title: percentual >= 7
-                              ? '${percentual.toStringAsFixed(0)}%'
-                              : '',
-                          radius: 72,
-                          titleStyle: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: _corTextoContraste(_hexToColor(hex)),
-                          ),
-                          color: _hexToColor(hex),
-                        );
-                      }).toList(),
-                      sectionsSpace: 3,
-                      centerSpaceRadius: 44,
-                      centerSpaceColor: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 16),
-                ...ordenadas.map(
-                  (e) => _buildGraduacaoMiniLinha(e.key, e.value, totalAlunos),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(height: 12),
         _buildGraduacaoCardsResponsive(ordenadas, totalAlunos),
       ],
     );
@@ -6574,72 +6567,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGraduacaoMiniLinha(
-    String nomeGraduacao,
-    int quantidade,
-    int totalAlunos,
-  ) {
-    final cache = _graduacoesCache[nomeGraduacao];
-    final String hex = cache?['hex_cor1']?.toString() ?? '#CCCCCC';
-    final cor = nomeGraduacao == 'SEM GRADUAÇÃO'
-        ? context.uai.textMuted
-        : _hexToColor(hex);
-    final percentual = totalAlunos > 0 ? quantidade / totalAlunos : 0.0;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
-              ),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  nomeGraduacao,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _corFundoChipQuantidade(cor),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _corBordaChipQuantidade(cor)),
-                ),
-                child: Text(
-                  '$quantidade   ${(percentual * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: _corTextoChipQuantidade(cor),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: percentual,
-              minHeight: 7,
-              backgroundColor: context.uai.border,
-              valueColor: AlwaysStoppedAnimation<Color>(cor),
-            ),
           ),
         ],
       ),
@@ -6854,27 +6781,24 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildAlunoAvatar(Map<String, dynamic> aluno) {
-    final foto = aluno['foto_perfil_aluno']?.toString().trim() ?? '';
+    final foto = _extrairFotoUrlAluno(aluno);
     final nome = aluno['nome']?.toString().trim() ?? '';
     final letra = nome.isNotEmpty ? nome[0].toUpperCase() : '?';
 
     return ClipOval(
       child: SizedBox.square(
         dimension: 40,
-        child: foto.startsWith('http')
-            ? Image.network(
-                foto,
+        child: foto.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: foto,
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
                 alignment: Alignment.center,
-                filterQuality: FilterQuality.medium,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => _avatarFallback(letra, 40),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return _avatarFallback(letra, 40);
-                },
+                memCacheWidth: 120,
+                memCacheHeight: 120,
+                placeholder: (_, __) => _avatarFallback(letra, 40),
+                errorWidget: (_, __, ___) => _avatarFallback(letra, 40),
               )
             : _avatarFallback(letra, 40),
       ),
@@ -6904,38 +6828,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       return _emptyChart('Nenhum aluno com idade calculada');
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth >= 1060) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 5,
-                child: Column(
-                  children: [
-                    _buildIdadeDistribuicaoCard(),
-                    SizedBox(height: 12),
-                    _buildFaixaEtariaCards(),
-                  ],
-                ),
-              ),
-              SizedBox(width: 16),
-              Expanded(flex: 6, child: _buildListaIdade()),
-            ],
-          );
-        }
-
-        return Column(
-          children: [
-            _buildIdadeDistribuicaoCard(),
-            SizedBox(height: 12),
-            _buildFaixaEtariaCards(),
-            SizedBox(height: 12),
-            _buildListaIdade(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        _buildIdadeDistribuicaoCard(),
+        SizedBox(height: 12),
+        _buildFaixaEtariaCards(),
+      ],
     );
   }
 
@@ -7113,8 +7011,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final accent = _ensureVisible(t.success, t.card);
     final percentual = totalAlunos > 0 ? quantidade / totalAlunos : 0.0;
     final semAlunos = alunos.isEmpty;
+    final expandido = _faixaEtariaExpandidaKey == faixa;
 
     return Container(
+      margin: EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(18),
@@ -7127,94 +7027,138 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
         ],
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: quantidade > 0 && quantidade <= 6,
-          tilePadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          childrenPadding: EdgeInsets.fromLTRB(12, 0, 12, 12),
-          leading: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accent.withOpacity(0.16)),
-            ),
-            child: Icon(
-              _iconesFaixa[faixa] ?? Icons.person,
-              size: 21,
-              color: accent,
-            ),
-          ),
-          title: Text(
-            faixa,
-            style: TextStyle(
-              color: _onCard(),
-              fontSize: 13.5,
-              fontWeight: FontWeight.w900,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Padding(
-            padding: EdgeInsets.only(top: 7),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: LinearProgressIndicator(
-                    value: percentual,
-                    minHeight: 6,
-                    backgroundColor: t.border,
-                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _faixaEtariaExpandidaKey = expandido ? null : faixa;
+              });
+            },
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        accent.withOpacity(0.10),
+                        t.cardAlt,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: accent.withOpacity(0.16)),
+                    ),
+                    child: Icon(
+                      _iconesFaixa[faixa] ?? Icons.person,
+                      size: 21,
+                      color: accent,
+                    ),
                   ),
-                ),
-                SizedBox(height: 5),
-                Text(
-                  totalAlunos == 0
-                      ? 'Sem alunos com idade calculada'
-                      : '${(percentual * 100).toStringAsFixed(0)}% da turma',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: _onCardMuted(),
-                    fontWeight: FontWeight.w700,
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          faixa,
+                          style: TextStyle(
+                            color: _onCard(),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w900,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: LinearProgressIndicator(
+                                  value: percentual,
+                                  minHeight: 6,
+                                  backgroundColor: t.border,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    accent,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              '${(percentual * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: _onCardMuted(),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          trailing: Container(
-            padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-            decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: accent.withOpacity(0.16)),
-            ),
-            child: Text(
-              '$quantidade',
-              style: TextStyle(
-                color: accent,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
+                  SizedBox(width: 12),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        accent.withOpacity(0.10),
+                        t.cardAlt,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: accent.withOpacity(0.16)),
+                    ),
+                    child: Text(
+                      '$quantidade',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: expandido ? 0.5 : 0,
+                    duration: Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: _onCardMuted(),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          children: semAlunos
-              ? [_buildFaixaEtariaEmptyTile(faixa)]
-              : alunos.asMap().entries.map((entry) {
-                  final aluno = entry.value;
-                  final idade = _parseInt(aluno['idade_calculada']);
-                  return _buildAlunoFaixaEtariaTile(
-                    aluno: aluno,
-                    idade: idade,
-                    posicao: entry.key + 1,
-                  );
-                }).toList(),
-        ),
+          AnimatedSize(
+            duration: Duration(milliseconds: 240),
+            curve: Curves.easeInOut,
+            child: expandido
+                ? Container(
+                    padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: semAlunos
+                        ? _buildFaixaEtariaEmptyTile(faixa)
+                        : Column(
+                            children: alunos.asMap().entries.map((entry) {
+                              final aluno = entry.value;
+                              final idade = _parseInt(aluno['idade_calculada']);
+                              return _buildAlunoFaixaEtariaTile(
+                                aluno: aluno,
+                                idade: idade,
+                                posicao: entry.key + 1,
+                              );
+                            }).toList(),
+                          ),
+                  )
+                : SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -7336,183 +7280,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   fontSize: 10.5,
                   fontWeight: FontWeight.w900,
                   color: accent,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildListaIdade() {
-    final totalVisivel = _alunosOrdenadosPorIdade.length > _visibleItems
-        ? _visibleItems
-        : _alunosOrdenadosPorIdade.length;
-
-    final cards = List.generate(totalVisivel, (i) {
-      final aluno = _alunosOrdenadosPorIdade[i];
-      final idade = _parseInt(aluno['idade_calculada']);
-      return _buildAlunoIdadeTile(aluno, idade, i + 1);
-    });
-
-    return Card(
-      elevation: 2,
-      color: context.uai.card,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: context.uai.border),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: context.uai.success.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.sort_rounded,
-                    color: context.uai.success,
-                    size: 18,
-                  ),
-                ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Alunos por idade',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: _onCard(),
-                    ),
-                  ),
-                ),
-                Text(
-                  '${_alunosOrdenadosPorIdade.length} alunos',
-                  style: TextStyle(
-                    color: _onCardMuted(),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
-            _dashboardResponsiveWrap(
-              children: cards,
-              minItemWidth: 300,
-              maxColumns: _isDesktopDashboard ? 3 : 2,
-              spacing: 10,
-              runSpacing: 10,
-            ),
-            if (_alunosOrdenadosPorIdade.length > _visibleItems)
-              Center(
-                child: Padding(
-                  padding: EdgeInsets.only(top: 10),
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _visibleItems += 20),
-                    icon: Icon(Icons.expand_more_rounded),
-                    label: Text('Ver mais...'),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlunoIdadeTile(
-    Map<String, dynamic> aluno,
-    int idade,
-    int posicao,
-  ) {
-    final nome = aluno['nome']?.toString() ?? '?';
-    final graduacao = _obterNomeGraduacaoAluno(aluno);
-
-    return InkWell(
-      onTap: () => _mostrarDialog(aluno),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: context.uai.cardAlt,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: context.uai.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: context.uai.success.withOpacity(0.10),
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                '$posicao',
-                style: TextStyle(
-                  color: context.uai.success,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            SizedBox(width: 9),
-            _buildAlunoAvatar(aluno),
-            SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    nome,
-                    style: TextStyle(
-                      color: _onCard(),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    graduacao,
-                    style: TextStyle(
-                      color: _onCardMuted(),
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 8),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-              decoration: BoxDecoration(
-                color: context.uai.success.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: context.uai.success.withOpacity(0.16),
-                ),
-              ),
-              child: Text(
-                '$idade a',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: context.uai.success,
                 ),
               ),
             ),
@@ -8211,15 +7978,23 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  String _getTituloLista() =>
-      filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
-      ? 'Todos os alunos - $anoSelecionado'
-      : 'Todos os alunos ($filtroTemporalFrequencia)';
+  String _getTituloLista() {
+    if (filtroTemporalFrequencia == 'Ano' && anoSelecionado != null) {
+      return 'Todos os alunos - $anoSelecionado';
+    } else if (filtroTemporalFrequencia == 'Mês' && mesSelecionado != null) {
+      return 'Todos os alunos - ${_labelMes(mesSelecionado!)}';
+    }
+    return 'Todos os alunos ($filtroTemporalFrequencia)';
+  }
 
-  String _getTituloTop5() =>
-      filtroTemporalFrequencia == 'Ano' && anoSelecionado != null
-      ? 'Top 5 - $anoSelecionado'
-      : 'Top 5 ($filtroTemporalFrequencia)';
+  String _getTituloTop5() {
+    if (filtroTemporalFrequencia == 'Ano' && anoSelecionado != null) {
+      return 'Top 5 - $anoSelecionado';
+    } else if (filtroTemporalFrequencia == 'Mês' && mesSelecionado != null) {
+      return 'Top 5 - ${_labelMes(mesSelecionado!)}';
+    }
+    return 'Top 5 ($filtroTemporalFrequencia)';
+  }
 
   Widget _emptyChart(String msg) => Center(
     child: Padding(

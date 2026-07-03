@@ -4985,10 +4985,12 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
     const cacheAlunosColl = db.collection('turmas').doc(turmaId).collection('dashboard_cache_alunos');
 
     try {
+        console.log("[CacheV2] Reconstruindo turma", turmaId);
+
         // 3. Buscar dados básicos (Turma, Alunos, Graduacoes, Avaliacoes)
         const [turmaDoc, alunosSnap, graduacoesSnap, avaliacoesSnap] = await Promise.all([
             db.collection('turmas').doc(turmaId).get(),
-            db.collection('alunos').where('turma_id', '==', turmaId).get(),
+            db.collection('alunos').where('turma_id', '==', turmaId).where('status_atividade', '==', 'ATIVO(A)').get(),
             db.collection('graduacoes').get(),
             db.collection('turmas').doc(turmaId).collection('avaliacoes_alunos').get()
         ]);
@@ -5019,34 +5021,149 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             alunosRaw.push({ id: doc.id, ...doc.data() });
         });
 
-        // 5. Buscar Contadores de Frequência em paralelo (limite prático por turma)
-        const contadoresMap = {};
-        const fetchContadores = alunosRaw.map(async (aluno) => {
-            const contSnap = await db.collection('alunos').doc(aluno.id).collection('contadores').doc('frequencia_dashboard').get();
-            if (contSnap.exists) {
-                contadoresMap[aluno.id] = contSnap.data();
+        console.log("[CacheV2] alunos ativos", alunosRaw.length);
+
+        // 5. Buscar Logs de Presença REAIS da coleção log_presenca_alunos
+        const studentLogsMap = {};
+        const allStudentIds = alunosRaw.map(a => a.id);
+        let totalLogsLidos = 0;
+        let totalLogsUsados = 0;
+
+        for (let i = 0; i < allStudentIds.length; i += 10) {
+            const batchIds = allStudentIds.slice(i, i + 10);
+            const logsSnap = await db.collection('log_presenca_alunos')
+                .where('aluno_id', 'in', batchIds)
+                .get();
+
+            totalLogsLidos += logsSnap.size;
+
+            logsSnap.forEach(doc => {
+                const data = doc.data();
+                const alunoId = data.aluno_id;
+
+                // Só conta presenças válidas
+                const v = data.presente ?? data.is_presente ?? data.presenca ?? data.status_presenca ?? data.status;
+                const isPresente = v === true || v === 1 || v === '1' || v === 'true' || v === 'sim' || v === 'presente';
+
+                if (isPresente) {
+                    if (!studentLogsMap[alunoId]) studentLogsMap[alunoId] = [];
+                    studentLogsMap[alunoId].push(data);
+                    totalLogsUsados++;
+                }
+            });
+        }
+
+        console.log("[CacheV2] logs lidos", totalLogsLidos);
+        console.log("[CacheV2] logs presentes usados", totalLogsUsados);
+
+        // 6. Configuração de Datas e Períodos (Timezone Brasil)
+        const tz = 'America/Sao_Paulo';
+        const now = DateTime.now().setZone(tz);
+        const currentYear = now.toFormat('yyyy');
+        const currentMonthKey = now.toFormat('yyyy-MM');
+        const currentWeekKey = `${now.weekYear}-W${String(now.weekNumber).padStart(2, '0')}`;
+
+        // Início da semana limitada ao mês atual (Regra da Dashboard)
+        const inicioSemanaISO = now.startOf('week');
+        const inicioMesAtual = now.startOf('month');
+        const inicioSemanaDashboard = DateTime.max(inicioSemanaISO, inicioMesAtual);
+
+        console.log("[CacheV2] mesAtual", currentMonthKey, "semanaAtual", currentWeekKey, "anoAtual", currentYear);
+        console.log("[CacheV2] inicioSemanaISO", inicioSemanaISO.toISO());
+        console.log("[CacheV2] inicioMesAtual", inicioMesAtual.toISO());
+        console.log("[CacheV2] inicioSemanaDashboard", inicioSemanaDashboard.toISO());
+
+        const parseDataLog = (log) => {
+            const candidatos = ['data_aula', 'data', 'data_chamada', 'dataChamada', 'createdAt', 'criado_em'];
+            for (const c of candidatos) {
+                const val = log[c];
+                if (!val) continue;
+                if (val.toDate) return DateTime.fromJSDate(val.toDate()).setZone(tz);
+                if (val instanceof Date) return DateTime.fromJSDate(val).setZone(tz);
+                if (typeof val === 'string') {
+                    const dt = DateTime.fromISO(val, { zone: tz });
+                    if (dt.isValid) return dt;
+                    // Tenta dd/MM/yyyy se ISO falhar
+                    const dt2 = DateTime.fromFormat(val, 'dd/MM/yyyy', { zone: tz });
+                    if (dt2.isValid) return dt2;
+                }
             }
-        });
-        await Promise.all(fetchContadores);
+            return null;
+        };
 
-        // 6. Normalização e Primeira Passagem (Cálculo de Max Frequencies e Perfil)
-        const now = DateTime.now().setZone('America/Sao_Paulo');
-        const currentYear = now.year.toString();
+        const normalizarDia = (dt) => {
+            const dias = { 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sab', 7: 'dom' };
+            return dias[dt.weekday] || 'seg';
+        };
+
         const anosDisponiveisSet = new Set();
-
         let maxFreqTotal = 0;
         let maxFreqSemana = 0;
         let maxFreqMes = 0;
         let maxFreqAno = 0;
 
-        const processedAlunos = alunosRaw.map(aluno => {
-            const contador = contadoresMap[aluno.id] || {};
+        // 7. Processamento dos Alunos e Cálculo de Frequência do Zero
+        const processedAlunos = alunosRaw.map((aluno, index) => {
+            const logs = studentLogsMap[aluno.id] || [];
             const avaliacao = avaliacoesMap[aluno.id] || {};
+
+            const fTotal = logs.length;
+            let fSemana = 0;
+            let fMes = 0;
+            let fAno = 0;
+            const fPorAno = {};
+            const fPorMes = {};
+            const fPorSemana = {};
+            const fPorDiaSemana = { 'seg': 0, 'ter': 0, 'qua': 0, 'qui': 0, 'sex': 0, 'sab': 0, 'dom': 0 };
+
+            logs.forEach(log => {
+                const dt = parseDataLog(log);
+                if (dt) {
+                    const y = dt.toFormat('yyyy');
+                    const m = dt.toFormat('yyyy-MM');
+                    const w = `${dt.weekYear}-W${String(dt.weekNumber).padStart(2, '0')}`;
+                    const d = normalizarDia(dt);
+
+                    fPorAno[y] = (fPorAno[y] || 0) + 1;
+                    fPorMes[m] = (fPorMes[m] || 0) + 1;
+                    fPorSemana[w] = (fPorSemana[w] || 0) + 1;
+                    fPorDiaSemana[d] = (fPorDiaSemana[d] || 0) + 1;
+
+                    if (y === currentYear) fAno++;
+                    if (m === currentMonthKey) fMes++;
+
+                    // Lógica de Semana Corrigida: dentro da semana ISO AND dentro do mês atual
+                    if (dt >= inicioSemanaDashboard && dt <= now) {
+                        fSemana++;
+                    }
+
+                    anosDisponiveisSet.add(y);
+                }
+            });
+
+            if (fTotal > maxFreqTotal) maxFreqTotal = fTotal;
+            if (fSemana > maxFreqSemana) maxFreqSemana = fSemana;
+            if (fMes > maxFreqMes) maxFreqMes = fMes;
+            if (fAno > maxFreqAno) maxFreqAno = fAno;
 
             // Perfil
             const nome = (aluno.nome || aluno.nome_completo || 'Sem nome').trim();
             const nome_busca = nome.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const foto_url = aluno.foto_perfil_aluno || aluno.aluno_foto || aluno.foto_url || '';
+
+            const extrairFotoUrl = (data) => {
+                const campos = [
+                    'foto_perfil_aluno', 'foto_url', 'aluno_foto', 'foto', 'foto_perfil',
+                    'fotoPerfil', 'fotoPerfilAluno', 'photoUrl', 'imageUrl', 'avatarUrl',
+                    'url_foto', 'imagem_url'
+                ];
+                for (const campo of campos) {
+                    const valor = String(data[campo] || '').trim();
+                    if (valor && valor.startsWith('http')) return valor;
+                }
+                return '';
+            };
+
+            const foto_url = extrairFotoUrl(aluno);
 
             let sexo_normalizado = 'NAO_INFORMADO';
             const s = (aluno.sexo || '').toUpperCase();
@@ -5074,31 +5191,9 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             const hex_ponta1 = gradData ? (gradData.hex_ponta1 || '#FFFFFF') : '#FFFFFF';
             const hex_ponta2 = gradData ? (gradData.hex_ponta2 || '#FFFFFF') : '#FFFFFF';
 
-            // Frequência
-            const freq_total = parseInt(contador.total || 0);
-            const freq_semana = parseInt(contador.semana || 0);
-            const freq_mes = parseInt(contador.mes || 0);
-            const freq_por_ano = contador.porAno || {};
-            const freq_ano = parseInt(freq_por_ano[currentYear] || 0);
-            const freq_por_dia_semana = {
-                'seg': 0,
-                'ter': 0,
-                'qua': 0,
-                'qui': 0,
-                'sex': 0,
-                'sab': 0,
-                'dom': 0,
-                ...(contador.porDiaSemana || {})
-            };
-
-            Object.keys(freq_por_ano).forEach(year => {
-                if (parseInt(freq_por_ano[year]) > 0) anosDisponiveisSet.add(year);
-            });
-
-            if (freq_total > maxFreqTotal) maxFreqTotal = freq_total;
-            if (freq_semana > maxFreqSemana) maxFreqSemana = freq_semana;
-            if (freq_mes > maxFreqMes) maxFreqMes = freq_mes;
-            if (freq_ano > maxFreqAno) maxFreqAno = freq_ano;
+            if (index < 5) {
+                console.log("[CacheV2] aluno", nome, "total", fTotal, "mes", fMes, "semana", fSemana);
+            }
 
             return {
                 aluno_id: aluno.id,
@@ -5111,7 +5206,7 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
                 data_nascimento: aluno.data_nascimento || null,
                 idade,
                 faixa_idade,
-                ativo: aluno.ativo !== false,
+                ativo: true,
                 graduacao_id: aluno.graduacao_id || (gradData ? gradData.id : null),
                 graduacao_nome,
                 graduacao_nivel,
@@ -5119,18 +5214,27 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
                 hex_cor2,
                 hex_ponta1,
                 hex_ponta2,
-                freq_total,
-                freq_semana,
-                freq_mes,
-                freq_ano,
-                freq_por_ano,
-                freq_por_dia_semana,
+                freq_total: fTotal,
+                freq_semana: fSemana,
+                freq_mes: fMes,
+                freq_ano: fAno,
+                freq_por_ano: fPorAno,
+                freq_por_mes: fPorMes,
+                freq_por_semana: fPorSemana,
+                freq_por_dia_semana: fPorDiaSemana,
+                mes_key_atual: currentMonthKey,
+                semana_key_atual: currentWeekKey,
+                semana_dashboard_inicio: inicioSemanaDashboard.toISO(),
+                semana_regra: "semana_atual_limitada_ao_mes",
+                ano_key_atual: currentYear,
+                frequencia_origem: "log_presenca_alunos",
+                frequencia_recalculada_em: admin.firestore.FieldValue.serverTimestamp(),
                 avaliacao_nota: parseFloat(avaliacao.nota_final || 0),
                 avaliacao_conceito: avaliacao.conceito || "Sem avaliação"
             };
         });
 
-        // 7. Cálculo de Scores de Destaque (60/40)
+        // 8. Cálculo de Scores de Destaque (60/40)
         processedAlunos.forEach(aluno => {
             const calcScore = (freq, max) => {
                 const score_freq = max <= 0 ? 0 : (freq / max) * 10;
@@ -5143,7 +5247,7 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             aluno.destaque_score_por_ano = calcScore(aluno.freq_ano, maxFreqAno);
         });
 
-        // 8. Cálculo de Rankings
+        // 9. Cálculo de Rankings
         const sortByScore = (field) => [...processedAlunos].sort((a, b) => b[field] - a[field]);
         const rankTotal = sortByScore('destaque_score_total');
         const rankSemana = sortByScore('destaque_score_semana');
@@ -5157,23 +5261,9 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             aluno.ranking_por_ano = rankAno.findIndex(a => a.aluno_id === aluno.aluno_id) + 1;
         });
 
-        // 9. Distribuições e Top Lists
-        const dist_idade = {
-            '4-7 anos': 0,
-            '8-12 anos': 0,
-            '13-17 anos': 0,
-            '18-25 anos': 0,
-            '26-35 anos': 0,
-            '36-50 anos': 0,
-            '50+ anos': 0,
-            'NAO_INFORMADA': 0
-        };
-        const dist_sexo = {
-            'MASCULINO': 0,
-            'FEMININO': 0,
-            'OUTRO': 0,
-            'NAO_INFORMADO': 0
-        };
+        // 10. Distribuições e Top Lists
+        const dist_idade = { '4-7 anos': 0, '8-12 anos': 0, '13-17 anos': 0, '18-25 anos': 0, '26-35 anos': 0, '36-50 anos': 0, '50+ anos': 0, 'NAO_INFORMADA': 0 };
+        const dist_sexo = { 'MASCULINO': 0, 'FEMININO': 0, 'OUTRO': 0, 'NAO_INFORMADO': 0 };
         const dist_graduacao = {};
 
         processedAlunos.forEach(aluno => {
@@ -5215,7 +5305,7 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             origem_cache: "cloud_function"
         };
 
-        // 10. Resumo Meta
+        // 11. Resumo Meta
         const avg = (list, field) => list.length === 0 ? 0 : parseFloat((list.reduce((s, a) => s + a[field], 0) / list.length).toFixed(2));
         const best = (list, field) => list.length === 0 ? null : list.reduce((p, c) => (c[field] > (p ? p[field] : -1)) ? c : p, null);
 
@@ -5248,11 +5338,11 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             ultima_atualizacao: admin.firestore.FieldValue.serverTimestamp()
         };
 
-        // 11. Gravação em Batch
+        // 12. Gravação em Batch
         const writes = [];
 
-        // Alunos
         processedAlunos.forEach(aluno => {
+            // Snapshot Cache V2
             const data = {
                 ...aluno,
                 cache_versao: 200,
@@ -5260,15 +5350,33 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
                 atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
                 origem_cache: "cloud_function"
             };
-            delete data.freq_ano; // remover helper
+            delete data.freq_ano;
             writes.push((b) => b.set(cacheAlunosColl.doc(aluno.aluno_id), data, { merge: true }));
+
+            // Sincronizar Contador Legado (Opcional, mas recomendado)
+            const legacyRef = db.collection('alunos').doc(aluno.aluno_id).collection('contadores').doc('frequencia_dashboard');
+            const legacyData = {
+                total: aluno.freq_total,
+                semana: aluno.freq_semana,
+                mes: aluno.freq_mes,
+                porAno: aluno.freq_por_ano,
+                porMes: aluno.freq_por_mes,
+                porSemana: aluno.freq_por_semana,
+                porDiaSemana: aluno.freq_por_dia_semana,
+                ...aluno.freq_por_dia_semana, // seg, ter, qua...
+                ultima_sync_logs: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                cache_versao: 6,
+                modelo: "contador_recalculado_cloud_function_cache_v2",
+                recalculado_completo: true
+            };
+            writes.push((b) => b.set(legacyRef, legacyData, { merge: true }));
         });
 
-        // Distribuições e Meta
         writes.push((b) => b.set(distribuicoesRef, distribuicoesData, { merge: true }));
         writes.push((b) => b.set(metaRef, metaData, { merge: true }));
 
-        // Limpeza de cache órfão
+        // Limpeza de snapshots órfãos
         const existingCacheSnap = await cacheAlunosColl.get();
         const currentIds = new Set(processedAlunos.map(a => a.aluno_id));
         existingCacheSnap.forEach(doc => {
@@ -5287,7 +5395,7 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             totalAlunos: processedAlunos.length,
             totalSnapshots: processedAlunos.length,
             cacheVersao: 200,
-            message: "Dashboard Cache V2 reconstruído com snapshots de alunos."
+            message: "Dashboard Cache V2 reconstruído do zero pelos logs reais."
         };
 
     } catch (error) {
@@ -5305,12 +5413,7 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
             console.error('❌ Erro crítico ao gravar status de erro no Firestore:', dbError);
         }
 
-        // Se for HttpsError do Firebase, lança como está
-        if (error instanceof HttpsError) {
-            throw error;
-        }
-
-        // Erro genérico
+        if (error instanceof HttpsError) throw error;
         throw new HttpsError('internal', error.message || 'Erro interno ao reconstruir cache.');
     }
 });
