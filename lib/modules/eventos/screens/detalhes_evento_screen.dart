@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
+import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/shared/services/svg_service.dart';
 
 class DetalhesEventoScreen extends StatefulWidget {
   final EventoModel evento;
@@ -46,19 +51,20 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
   Color _onCardMuted() => _onCard().withOpacity(0.68);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() =>
-      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   late EventoModel _evento;
   bool _isLoading = false;
+  late Future<List<Map<String, dynamic>>> _participantesFuture;
   bool _podeGerenciar = false; // Nova variável para armazenar permissão
   final _eventoService = EventoService();
   final _permissaoService = PermissaoService();
+  final _participantesCacheService = EventoParticipantesCacheService();
 
   @override
   void initState() {
     super.initState();
     _evento = widget.evento;
+    _participantesFuture = _buscarParticipantesCache();
     _verificarStatusEvento();
     _verificarPermissoes(); // Verificar permissões ao iniciar
   }
@@ -74,6 +80,44 @@ class _DetalhesEventoScreenState extends State<DetalhesEventoScreen> {
       setState(() {
         _podeGerenciar = podeEditar || podeCriar;
       });
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _buscarParticipantesCache({
+    bool forceServer = false,
+  }) {
+    return _participantesCacheService.buscarCacheParticipantes(
+      widget.eventoId,
+      forceServer: forceServer,
+    );
+  }
+
+  void _recarregarParticipantes({bool forceServer = false}) {
+    setState(() {
+      _participantesFuture = _buscarParticipantesCache(
+        forceServer: forceServer,
+      );
+    });
+  }
+
+  Future<void> _atualizarTela() async {
+    try {
+      final eventoAtualizado = await _eventoService.buscarEventoPorId(
+        widget.eventoId,
+      );
+      if (eventoAtualizado != null && mounted) {
+        setState(() => _evento = eventoAtualizado);
+      }
+      if (_evento.status == 'finalizado') {
+        await _participantesCacheService.reconstruirCacheParticipantes(
+          widget.eventoId,
+          forceServer: true,
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao atualizar detalhes do evento: $e');
+    } finally {
+      if (mounted) _recarregarParticipantes(forceServer: true);
     }
   }
 
@@ -195,7 +239,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
 
   @override
   Widget build(BuildContext context) {
-    final status = _evento.status ?? 'andamento';
+    final status = _evento.status;
     final corStatus = status == 'finalizado'
         ? Colors.grey
         : context.uai.success;
@@ -205,41 +249,50 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
       backgroundColor: context.uai.background,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                _buildSliverAppBar(corStatus),
+          : RefreshIndicator(
+              color: context.uai.primary,
+              backgroundColor: context.uai.surface,
+              onRefresh: _atualizarTela,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  _buildSliverAppBar(corStatus),
 
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      _buildStatusBadge(corStatus, textoStatus),
-                      const SizedBox(height: 16),
-                      _buildTituloEvento(),
-                      const SizedBox(height: 8),
-                      _buildTipoEvento(),
-                      const SizedBox(height: 24),
-                      _buildDataHorarioCard(),
-                      const SizedBox(height: 24),
-                      _buildLocalCard(),
-                      const SizedBox(height: 24),
-                      if (_evento.organizadores != null &&
-                          _formatarOrganizadores(_evento.organizadores) !=
-                              'Não informado')
-                        _buildOrganizadoresCard(),
-                      const SizedBox(height: 24),
-                      _buildLinksSection(),
-                      const SizedBox(height: 24),
-                      // Usando a variável de permissão que já foi carregada
-                      if (_podeGerenciar && status != 'finalizado')
-                        _buildAdminActions(),
-                      const SizedBox(height: 16),
-                      _buildActionButtons(),
-                      const SizedBox(height: 16),
-                    ]),
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        _buildStatusBadge(corStatus, textoStatus),
+                        const SizedBox(height: 16),
+                        _buildTituloEvento(),
+                        const SizedBox(height: 8),
+                        _buildTipoEvento(),
+                        const SizedBox(height: 24),
+                        _buildDataHorarioCard(),
+                        const SizedBox(height: 24),
+                        _buildLocalCard(),
+                        const SizedBox(height: 24),
+                        if (_formatarOrganizadores(_evento.organizadores) !=
+                            'Não informado')
+                          _buildOrganizadoresCard(),
+                        const SizedBox(height: 24),
+                        _buildLinksSection(),
+                        if (status == 'finalizado') ...[
+                          const SizedBox(height: 24),
+                          _buildParticipantesEventoSection(),
+                        ],
+                        const SizedBox(height: 24),
+                        // Usando a variável de permissão que já foi carregada
+                        if (_podeGerenciar && status != 'finalizado')
+                          _buildAdminActions(),
+                        const SizedBox(height: 16),
+                        _buildActionButtons(),
+                        const SizedBox(height: 16),
+                      ]),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
     );
   }
@@ -596,6 +649,353 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
           ),
       ],
     );
+  }
+
+  Widget _buildParticipantesEventoSection() {
+    return _buildSimpleSection(
+      title: 'Participantes do evento',
+      icon: Icons.assignment_ind_rounded,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _participantesFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: CircularProgressIndicator(color: context.uai.primary),
+              ),
+            );
+          }
+          if (snapshot.hasError) {
+            return _buildParticipantesInfo(
+              Icons.error_outline_rounded,
+              'Erro ao carregar participantes.',
+              context.uai.error,
+            );
+          }
+          final participantes = snapshot.data ?? [];
+          if (participantes.isEmpty) {
+            return _buildParticipantesInfo(
+              Icons.people_outline_rounded,
+              'Nenhum participante no cache deste evento.',
+              context.uai.info,
+            );
+          }
+          return Column(
+            children: participantes
+                .map((data) => _buildParticipanteCacheTile(data))
+                .toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSimpleSection({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Card(
+      color: context.uai.card,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: context.uai.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: context.uai.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipantesInfo(IconData icon, String text, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.uai.cardAlt,
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        border: Border.all(color: context.uai.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipanteCacheTile(Map<String, dynamic> data) {
+    final nome =
+        _pickFirstClean(data, const ['aluno_nome', 'nome']) ??
+        'Aluno não informado';
+    final graduacao = _pickFirstClean(data, const [
+      'graduacao',
+      'graduacao_nome',
+    ]);
+    final certificado = _pickFirstClean(data, const ['link_certificado']);
+    final foto = _pickFirstClean(data, const ['aluno_foto_url']);
+    final dataEvento = _formatarDataParticipante(data['data_evento']);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: context.uai.cardAlt,
+        borderRadius: BorderRadius.circular(context.uai.cardRadius),
+        border: Border.all(color: context.uai.border),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          leading: _buildParticipanteFoto(nome, foto),
+          title: Text(
+            nome.toUpperCase(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: context.uai.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                if (graduacao != null)
+                  _buildParticipanteChip(
+                    Icons.emoji_events_rounded,
+                    'Pegou $graduacao',
+                    context.uai.warning,
+                  ),
+                if (certificado != null)
+                  _buildParticipanteChip(
+                    Icons.verified_rounded,
+                    'Certificado',
+                    context.uai.success,
+                  ),
+              ],
+            ),
+          ),
+          trailing: _buildParticipanteCorda(data),
+          children: [
+            _buildParticipanteDetail('Data do evento', dataEvento),
+            _buildParticipanteDetail(
+              'Tipo registrado',
+              _pickFirstClean(data, const ['tipo_evento', 'tipo']) ??
+                  _evento.tipo,
+            ),
+            _buildParticipanteDetail(
+              'Status',
+              _pickFirstClean(data, const ['status']) ?? 'Finalizado',
+            ),
+            _buildParticipanteDetail(
+              'Graduação neste evento',
+              graduacao ?? 'Não registrada',
+            ),
+            if (certificado != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _abrirLink(certificado),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                  label: const Text('ABRIR CERTIFICADO'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipanteFoto(String nome, String? fotoUrl) {
+    final initials = _iniciaisNome(nome);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 48,
+        height: 62,
+        color: context.uai.card,
+        child: fotoUrl == null
+            ? Center(
+                child: Text(
+                  initials,
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              )
+            : CachedNetworkImage(
+                imageUrl: fotoUrl,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Center(child: Text(initials)),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildParticipanteCorda(Map<String, dynamic> data) {
+    final cor1 =
+        _colorFromHex(data['graduacao_hex_cor1']) ?? context.uai.warning;
+    final cor2 = _colorFromHex(data['graduacao_hex_cor2']) ?? cor1;
+    final ponta1 = _colorFromHex(data['graduacao_hex_ponta1']) ?? cor1;
+    final ponta2 = _colorFromHex(data['graduacao_hex_ponta2']) ?? cor2;
+
+    return SizedBox(
+      width: 70,
+      height: 42,
+      child: FutureBuilder<String?>(
+        future: SvgService.getSvgContent(context),
+        builder: (context, snapshot) {
+          final svg = SvgService.getModifiedSvg(
+            svgContent: snapshot.data,
+            cor1: cor1,
+            cor2: cor2,
+            ponta1: ponta1,
+            ponta2: ponta2,
+          );
+          if (svg == null) {
+            return Icon(
+              Icons.military_tech_rounded,
+              color: context.uai.warning,
+            );
+          }
+          return SvgPicture.string(svg, fit: BoxFit.contain);
+        },
+      ),
+    );
+  }
+
+  Widget _buildParticipanteChip(IconData icon, String label, Color color) {
+    final visible = _ensureVisible(color, context.uai.cardAlt);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: visible.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: visible, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: visible,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipanteDetail(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: context.uai.textSecondary),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatarDataParticipante(dynamic data) {
+    if (data is Timestamp)
+      return DateFormat('dd/MM/yyyy').format(data.toDate());
+    if (data is DateTime) return DateFormat('dd/MM/yyyy').format(data);
+    final text = data?.toString().trim() ?? '';
+    if (text.isEmpty) return _evento.dataFormatada;
+    final parsed = DateTime.tryParse(text);
+    return parsed == null ? text : DateFormat('dd/MM/yyyy').format(parsed);
+  }
+
+  String? _pickFirstClean(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isEmpty || text.toLowerCase() == 'null') continue;
+      return text;
+    }
+    return null;
+  }
+
+  Color? _colorFromHex(dynamic raw) {
+    if (raw == null) return null;
+    var value = raw.toString().trim();
+    if (value.isEmpty || value.toLowerCase() == 'null') return null;
+    value = value.replaceAll('#', '').replaceAll('0x', '').replaceAll('0X', '');
+    if (value.length == 6) value = 'FF$value';
+    if (value.length != 8) return null;
+    final parsed = int.tryParse(value, radix: 16);
+    return parsed == null ? null : Color(parsed);
+  }
+
+  String _iniciaisNome(String nome) {
+    final partes = nome
+        .trim()
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((parte) => parte.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) return '?';
+    if (partes.length == 1) return partes.first.characters.take(2).join();
+    return '${partes.first.characters.first}${partes.last.characters.first}';
   }
 
   Widget _buildAdminActions() {

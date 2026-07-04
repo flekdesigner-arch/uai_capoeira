@@ -206,7 +206,10 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             return _buildErrorState();
           }
 
-          final data = snapshot.data!.data()!;
+          final data = snapshot.data?.data();
+          if (data == null) {
+            return _buildErrorState();
+          }
           final modifiedSvg = _getModifiedSvg(data);
 
           return RefreshIndicator(

@@ -102,6 +102,50 @@ class PermissaoService {
   static const String chaveConfigurarCertificadosEvento =
       'pode_configurar_certificados_evento';
 
+  // Dashboard / Resumo da Turma.
+  static const String chaveVisualizarDashboardTurma =
+      'pode_visualizar_dashboard_turma';
+  static const String chaveVisualizarDashboardTodasTurmas =
+      'pode_visualizar_dashboard_todas_turmas';
+  static const String chaveVerDashboardFrequencia =
+      'pode_ver_dashboard_frequencia';
+  static const String chaveVerDashboardGraduacao =
+      'pode_ver_dashboard_graduacao';
+  static const String chaveVerDashboardIdade = 'pode_ver_dashboard_idade';
+  static const String chaveVerDashboardSexo = 'pode_ver_dashboard_sexo';
+  static const String chaveVerDashboardFiltroSemana =
+      'pode_ver_dashboard_filtro_semana';
+  static const String chaveVerDashboardFiltroMes =
+      'pode_ver_dashboard_filtro_mes';
+  static const String chaveVerDashboardFiltroAno =
+      'pode_ver_dashboard_filtro_ano';
+  static const String chaveVerDashboardFiltroTotal =
+      'pode_ver_dashboard_filtro_total';
+  static const String chaveVerDashboardTop5Frequencia =
+      'pode_ver_dashboard_top5_frequencia';
+  static const String chaveVerDashboardListaFrequencia =
+      'pode_ver_dashboard_lista_frequencia';
+  static const String chaveVerDashboardMetricasFrequencia =
+      'pode_ver_dashboard_metricas_frequencia';
+  static const String chaveVerDashboardFotosAlunos =
+      'pode_ver_dashboard_fotos_alunos';
+  static const String chaveVerDashboardNomesAlunos =
+      'pode_ver_dashboard_nomes_alunos';
+  static const String chaveVerDashboardDetalhesAluno =
+      'pode_ver_dashboard_detalhes_aluno';
+  static const String chaveRecalcularDashboardTurma =
+      'pode_recalcular_dashboard_turma';
+  static const String chaveExportarDashboardTurma =
+      'pode_exportar_dashboard_turma';
+  static const String chaveCompartilharDashboardTurma =
+      'pode_compartilhar_dashboard_turma';
+  static const String chaveVerDashboardChipCache =
+      'pode_ver_dashboard_chip_cache';
+  static const String chaveVerDashboardDiagnosticoCache =
+      'pode_ver_dashboard_diagnostico_cache';
+  static const String chaveVerDashboardLogsDebug =
+      'pode_ver_dashboard_logs_debug';
+
   /// Aliases/compatibilidade.
   ///
   /// A chave principal é a nova. A lista contém nomes antigos ou nomes usados
@@ -214,6 +258,47 @@ class PermissaoService {
     ],
     chaveEditarChamada: ['pode_editar_chamadas', 'podeEditarChamada'],
     chaveExcluirChamada: ['pode_excluir_chamadas', 'podeExcluirChamada'],
+    chaveVisualizarDashboardTurma: [
+      'visualizar_dashboard_turma',
+      'pode_ver_dashboard_turma',
+      'pode_ver_resumo_turma',
+      'pode_visualizar_relatorios',
+      'pode_visualizar_relatorios_turma'
+    ],
+    chaveVisualizarDashboardTodasTurmas: [
+      'visualizar_dashboard_todas_turmas',
+      'pode_ver_dashboard_todas_turmas'
+    ],
+    chaveVerDashboardFrequencia: ['ver_dashboard_frequencia'],
+    chaveVerDashboardGraduacao: ['ver_dashboard_graduacao'],
+    chaveVerDashboardIdade: ['ver_dashboard_idade'],
+    chaveVerDashboardSexo: ['ver_dashboard_sexo'],
+    chaveVerDashboardFiltroSemana: ['ver_filtro_semana_dashboard'],
+    chaveVerDashboardFiltroMes: ['ver_filtro_mes_dashboard'],
+    chaveVerDashboardFiltroAno: ['ver_filtro_ano_dashboard'],
+    chaveVerDashboardFiltroTotal: ['ver_filtro_total_dashboard'],
+    chaveVerDashboardTop5Frequencia: [
+      'ver_top5_dashboard',
+      'ver_ranking_frequencia_dashboard'
+    ],
+    chaveVerDashboardListaFrequencia: ['ver_lista_frequencia_dashboard'],
+    chaveVerDashboardMetricasFrequencia: ['ver_metricas_frequencia_dashboard'],
+    chaveVerDashboardFotosAlunos: ['ver_fotos_alunos_dashboard'],
+    chaveVerDashboardNomesAlunos: ['ver_nomes_alunos_dashboard'],
+    chaveVerDashboardDetalhesAluno: ['ver_detalhes_aluno_dashboard'],
+    chaveRecalcularDashboardTurma: [
+      'recalcular_dashboard_turma',
+      'pode_reconstruir_dashboard_turma',
+      'pode_reconstruir_cache_dashboard'
+    ],
+    chaveExportarDashboardTurma: [
+      'exportar_dashboard_turma',
+      'pode_exportar_resumo_turma'
+    ],
+    chaveCompartilharDashboardTurma: ['compartilhar_dashboard_turma'],
+    chaveVerDashboardChipCache: ['ver_chip_cache_dashboard'],
+    chaveVerDashboardDiagnosticoCache: ['ver_diagnostico_cache_dashboard'],
+    chaveVerDashboardLogsDebug: ['ver_logs_dashboard', 'ver_debug_dashboard'],
   };
 
   // ==================== BASE ====================
@@ -352,7 +437,21 @@ class PermissaoService {
     }
 
     try {
-      final userDoc = await _firestore.collection('usuarios').doc(userId).get();
+      // Tenta carregar do cache primeiro (mais rápido e economiza leituras)
+      DocumentSnapshot<Map<String, dynamic>> userDoc;
+      try {
+        userDoc = await _firestore
+            .collection('usuarios')
+            .doc(userId)
+            .get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        // Se falhar no cache (ex: PWA sem cache local ainda), busca no servidor
+        userDoc = await _firestore
+            .collection('usuarios')
+            .doc(userId)
+            .get(const GetOptions(source: Source.server));
+      }
+
       if (!userDoc.exists) {
         _cacheUsuario[userId] = {};
         _cacheAdmin[userId] = false;
@@ -380,12 +479,18 @@ class PermissaoService {
 
   Future<void> _carregarTodasPermissoes(String userId) async {
     try {
-      final permissoesDoc = await _firestore
+      final docRef = _firestore
           .collection('usuarios')
           .doc(userId)
           .collection('permissoes_usuario')
-          .doc('configuracoes')
-          .get();
+          .doc('configuracoes');
+
+      DocumentSnapshot<Map<String, dynamic>> permissoesDoc;
+      try {
+        permissoesDoc = await docRef.get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        permissoesDoc = await docRef.get(const GetOptions(source: Source.server));
+      }
 
       if (!permissoesDoc.exists) {
         _cachePermissoes[userId] = {};

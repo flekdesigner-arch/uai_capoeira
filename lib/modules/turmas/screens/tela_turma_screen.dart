@@ -1820,7 +1820,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         title: 'Resumo da turma',
         subtitle: 'Estatísticas e relatórios',
         color: context.uai.warning,
-        permissao: 'pode_visualizar_relatorios',
+        permissao: 'pode_visualizar_dashboard_turma',
         onTap: () {
           Navigator.push(
             context,

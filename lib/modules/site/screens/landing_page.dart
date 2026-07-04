@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -11,6 +9,8 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
+import 'package:uai_capoeira/core/theme/tema_global_service.dart';
+import 'package:uai_capoeira/shared/widgets/uai_dynamic_logo.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_login_screen.dart';
 import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
 import 'package:uai_capoeira/modules/auth/screens/login_screen.dart';
@@ -162,13 +162,24 @@ class _LandingPageState extends State<LandingPage> {
       await controller.initialize();
     }
 
-    if (controller.currentPreset == UaiThemePreset.usuarioPersonalizado ||
-        controller.activeSavedThemeId != null) {
-      await controller.apply(
-        preset: UaiThemePreset.uaiClassico,
-        mode: ThemeMode.light,
-      );
+    UaiThemePreset presetPublico = UaiThemePreset.uaiClassico;
+
+    try {
+      await TemaGlobalService.instance.refresh(silent: true);
+      final config = TemaGlobalService.instance.config;
+
+      if (config.ativo &&
+          UaiThemePresetX.isOfficialId(config.temaPadraoGlobal)) {
+        final resolvido = UaiThemePresetX.fromId(config.temaPadraoGlobal);
+        if (resolvido != UaiThemePreset.usuarioPersonalizado) {
+          presetPublico = resolvido;
+        }
+      }
+    } catch (e) {
+      debugPrint('Tema público global não carregado, usando UAI Clássico: $e');
     }
+
+    await controller.apply(preset: presetPublico, mode: ThemeMode.light);
   }
 
   Color _readableOn(Color background) {
@@ -204,7 +215,7 @@ class _LandingPageState extends State<LandingPage> {
   // ==================== RASTREAMENTO ====================
   Future<void> _registrarLocalizacao() async {
     try {
-      debugPrint('🌐 Registrando localização e dispositivo...');
+      debugPrint('Registrando localização e dispositivo...');
 
       final dispositivo = _dispositivoRastreioService.coletar(
         context,
@@ -216,7 +227,7 @@ class _LandingPageState extends State<LandingPage> {
       final functions = FirebaseFunctions.instance;
       final callable = functions.httpsCallable('registrarLocalizacaoAcesso');
 
-      debugPrint('📡 Chamando Cloud Function registrarLocalizacaoAcesso...');
+      debugPrint('Chamando Cloud Function registrarLocalizacaoAcesso...');
       final result = await callable.call({
         'origem': 'site_landing',
         'dispositivo': dispositivo,
@@ -224,12 +235,12 @@ class _LandingPageState extends State<LandingPage> {
 
       final data = Map<String, dynamic>.from(result.data as Map);
 
-      debugPrint('📡 Resposta da Cloud Function: $data');
+      debugPrint('Resposta da Cloud Function: $data');
 
       if (data['success'] == true && data['docId'] != null) {
         final docId = data['docId'].toString();
 
-        debugPrint('📄 Documento criado com ID: $docId');
+        debugPrint('Documento criado com ID: $docId');
 
         _rastreioService.iniciarSessaoComDocumento(docId);
 
@@ -243,13 +254,13 @@ class _LandingPageState extends State<LandingPage> {
         );
 
         debugPrint(
-          '✅ Rastreamento iniciado com dispositivo para documento $docId',
+          'Rastreamento iniciado com dispositivo para documento $docId',
         );
       } else {
-        debugPrint('❌ Falha na Cloud Function: ${data['error']}');
+        debugPrint('Falha na Cloud Function: ${data['error']}');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao registrar localização/dispositivo: $e');
+      debugPrint('Erro ao registrar localização/dispositivo: $e');
     }
   }
 
@@ -503,7 +514,7 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _onMenuItemTap(int index, String itemId, String label, bool isSpecial) {
-    debugPrint('🔘 Menu clicado: $itemId (origem: drawer)');
+    debugPrint('Menu clicado');
 
     _rastreioService.registrarEvento(
       tipo: 'menu',
@@ -531,7 +542,7 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _onCardTap(String itemId, String titulo, int index) {
-    debugPrint('🔘 Card clicado: $itemId (origem: home_grid)');
+    debugPrint('Card clicado');
 
     _rastreioService.registrarEvento(
       tipo: 'card',
@@ -551,7 +562,7 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _onSocialButtonTap(String rede, String url, String origem) {
-    debugPrint('🔘 Botão social clicado: $rede (origem: $origem)');
+    debugPrint('ðŸ”˜ Botão social clicado: $rede (origem: $origem)');
 
     _rastreioService.registrarEvento(
       tipo: 'botao_social',
@@ -657,7 +668,7 @@ class _LandingPageState extends State<LandingPage> {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      '🔐 ACESSO RESTRITO',
+                      'ACESSO RESTRITO',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: t.textPrimary,
@@ -667,7 +678,7 @@ class _LandingPageState extends State<LandingPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Este acesso é exclusivo para professores e monitores do grupo UAI Capoeira.',
+                      'Este acesso ? exclusivo para professores e monitores do grupo UAI Capoeira.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: t.textSecondary,
@@ -901,6 +912,16 @@ class _LandingPageState extends State<LandingPage> {
 
   // ==================== TEMA PÚBLICO ====================
   Future<void> _mostrarSeletorTemaPublico() async {
+    try {
+      await TemaGlobalService.instance.refresh(silent: true);
+    } catch (e) {
+      debugPrint(
+        'Tema público: não foi possível atualizar a configuração global: $e',
+      );
+    }
+
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1533,7 +1554,7 @@ class _LandingPageState extends State<LandingPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'União, Amizade e Inteligência',
+            'União • Amizade • Inteligência',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: t.textPrimary,
@@ -1561,114 +1582,19 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Widget _buildLogoSvg({required double height}) {
-    final t = context.uai;
+    return AnimatedBuilder(
+      animation: AppThemeController.instance,
+      builder: (context, _) {
+        final preset = AppThemeController.instance.effectivePreset;
 
-    return FutureBuilder<String>(
-      future: rootBundle.loadString('assets/images/logo_uai_tema.svg'),
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          final svg = _aplicarTemaNoLogoUai(snapshot.data!, t);
-
-          return SvgPicture.string(
-            svg,
-            height: height,
-            fit: BoxFit.contain,
-            placeholderBuilder: (_) => SizedBox(
-              height: height,
-              child: Center(child: CircularProgressIndicator(color: t.primary)),
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            height: height,
-            width: height * 1.55,
-            decoration: BoxDecoration(
-              color: t.cardAlt,
-              borderRadius: BorderRadius.circular(t.cardRadius),
-              border: Border.all(color: t.border),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.sports_martial_arts_rounded,
-                  size: height * 0.38,
-                  color: t.primary,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'UAI Capoeira',
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return SizedBox(
+        return UaiDynamicLogo(
           height: height,
-          child: Center(child: CircularProgressIndicator(color: t.primary)),
+          padding: EdgeInsets.zero,
+          loadRemoteConfig: true,
+          themeId: preset.id,
         );
       },
     );
-  }
-
-  String _aplicarTemaNoLogoUai(String svg, dynamic t) {
-    final uaiColor = _colorToHex(t.primary);
-
-    final faixaColor = _isUaiClassicoPublicTheme
-        ? '#111111'
-        : _colorToHex(t.cardAlt);
-
-    final textoColor = _isUaiClassicoPublicTheme
-        ? '#FFFFFF'
-        : _colorToHex(_readableOn(t.cardAlt));
-
-    final strokeColor = _isUaiClassicoPublicTheme
-        ? '#111111'
-        : _colorToHex(t.border);
-
-    var result = svg;
-
-    final replacements = <String, String>{
-      '#FF0000': uaiColor,
-      '#ff0000': uaiColor,
-      'red': uaiColor,
-      '#373435': faixaColor,
-      '#FEFEFE': textoColor,
-      '#fefefe': textoColor,
-    };
-
-    replacements.forEach((from, to) {
-      result = result.replaceAll(from, to);
-    });
-
-    result = result.replaceFirstMapped(
-      RegExp(r'(<polygon[^>]*id="faixa"[^>]*)(/?>)', caseSensitive: false),
-      (match) {
-        var tag = match.group(1) ?? '';
-        final close = match.group(2) ?? '>';
-
-        if (RegExp(r'\sstroke="[^"]*"').hasMatch(tag)) {
-          tag = tag.replaceFirst(
-            RegExp(r'\sstroke="[^"]*"'),
-            ' stroke="$strokeColor"',
-          );
-        } else {
-          tag = '$tag stroke="$strokeColor"';
-        }
-
-        return '$tag$close';
-      },
-    );
-
-    return result;
   }
 
   Widget _buildHeroChip(IconData icon, String label) {
@@ -1983,12 +1909,17 @@ class _LandingPageState extends State<LandingPage> {
 class _PublicThemeSelectorSheet extends StatelessWidget {
   const _PublicThemeSelectorSheet();
 
-  static const List<UaiThemePreset> _publicPresets = [
-    UaiThemePreset.uaiClassico,
-    UaiThemePreset.draculaUai,
-    UaiThemePreset.cafeTerra,
-    UaiThemePreset.verdeNeon,
-  ];
+  List<UaiThemePreset> _publicPresetsFromGlobalConfig() {
+    final presets = TemaGlobalService.instance.resolvedAllowedPresets(
+      includeUserPersonalizado: false,
+    );
+
+    if (presets.isEmpty) {
+      return const [UaiThemePreset.uaiClassico];
+    }
+
+    return presets;
+  }
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -2000,14 +1931,16 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.uai;
     final controller = AppThemeController.instance;
+    final service = TemaGlobalService.instance;
 
     return AnimatedBuilder(
-      animation: controller,
+      animation: Listenable.merge([controller, service]),
       builder: (context, _) {
         final current =
             controller.currentPreset == UaiThemePreset.usuarioPersonalizado
             ? UaiThemePreset.uaiClassico
             : controller.currentPreset;
+        final publicPresets = _publicPresetsFromGlobalConfig();
 
         return Container(
           constraints: BoxConstraints(
@@ -2071,7 +2004,7 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Disponível para visitantes: apenas temas prontos do sistema.',
+                  'Disponível para visitantes: apenas temas liberados pela administração.',
                   style: TextStyle(
                     color: tokens.textSecondary,
                     fontSize: 12.5,
@@ -2084,10 +2017,10 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
-                  itemCount: _publicPresets.length,
+                  itemCount: publicPresets.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
-                    final preset = _publicPresets[index];
+                    final preset = publicPresets[index];
                     final selected = preset == current;
 
                     return _PublicPresetTile(

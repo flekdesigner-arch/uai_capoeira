@@ -25,16 +25,16 @@ class GraduacaoModel {
   factory GraduacaoModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
-    final data = doc.data()!;
+    final data = doc.data();
     return GraduacaoModel(
       id: doc.id,
-      nome: data['nome_graduacao'] ?? '',
-      nivel: data['nivel_graduacao'] ?? 0,
-      cor1: data['hex_cor1'] ?? '#FFFFFF',
-      cor2: data['hex_cor2'] ?? '#FFFFFF',
-      ponta1: data['hex_ponta1'] ?? '#FFFFFF',
-      ponta2: data['hex_ponta2'] ?? '#FFFFFF',
-      titulo: data['titulo_graduacao'] ?? 'ALUNO',
+      nome: data?['nome_graduacao'] ?? '',
+      nivel: data?['nivel_graduacao'] ?? 0,
+      cor1: data?['hex_cor1'] ?? '#FFFFFF',
+      cor2: data?['hex_cor2'] ?? '#FFFFFF',
+      ponta1: data?['hex_ponta1'] ?? '#FFFFFF',
+      ponta2: data?['hex_ponta2'] ?? '#FFFFFF',
+      titulo: data?['titulo_graduacao'] ?? 'ALUNO',
     );
   }
 

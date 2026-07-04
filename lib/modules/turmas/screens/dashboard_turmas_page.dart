@@ -20,6 +20,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/modules/turmas/services/dashboard_turma_cache_service.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
 
 class DashboardTurmasPage extends StatefulWidget {
   final String turmaId;
@@ -44,13 +46,40 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         WidgetsBindingObserver {
   final DashboardTurmaCacheService _dashboardCacheService =
       DashboardTurmaCacheService();
+  final PermissaoService _permissaoService = PermissaoService();
+
+  bool _podeVisualizarDashboardTurma = false;
+  bool _podeVerDashboardFrequencia = false;
+  bool _podeVerDashboardGraduacao = false;
+  bool _podeVerDashboardIdade = false;
+  bool _podeVerDashboardSexo = false;
+  bool _podeRecalcularDashboardTurma = false;
+  bool _podeExportarDashboardTurma = false;
+  bool _podeCompartilharDashboardTurma = false;
+  bool _podeVerDashboardFotosAlunos = false;
+  bool _podeVerDashboardNomesAlunos = false;
+  bool _podeVerDashboardDetalhesAluno = false;
+  bool _podeVerDashboardChipCache = false;
+  bool _podeVerDashboardFiltroSemana = false;
+  bool _podeVerDashboardFiltroMes = false;
+  bool _podeVerDashboardFiltroAno = false;
+  bool _podeVerDashboardFiltroTotal = false;
+  bool _podeVerDashboardTop5Frequencia = false;
+  bool _podeVerDashboardListaFrequencia = false;
+  bool _podeVerDashboardMetricasFrequencia = false;
+  bool _podeVerDashboardDiagnosticoCache = false;
+  bool _podeVerDashboardLogsDebug = false;
+
+  bool _isAdminDashboard = false;
+
+  bool _carregandoPermissoes = true;
 
   bool _usarDashboardCacheV2 = false;
   bool _cacheV2Disponivel = false;
   bool _processandoCacheServidor = false;
   Map<String, dynamic>? _dashboardCacheMeta;
   Map<String, dynamic>? _dashboardCacheDistribuicoes;
-  List<Map<String, dynamic>> _dashboardCacheAlunos = [];
+  List<AlunoSnapshotModel> _dashboardCacheAlunos = [];
 
   String? _faixaEtariaExpandidaKey;
 
@@ -284,21 +313,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   List<String> _extrairAnosDisponiveisCacheV2(
     Map<String, dynamic>? meta,
-    List<Map<String, dynamic>> alunosCache,
+    List<AlunoSnapshotModel> alunosCache,
   ) {
     final fromMeta = List<String>.from(meta?['anos_disponiveis'] ?? []);
     if (fromMeta.isNotEmpty) return fromMeta;
 
     final Set<String> anosSet = {};
     for (final a in alunosCache) {
-      final freqPorAno = a['freq_por_ano'];
-      if (freqPorAno is Map) {
-        freqPorAno.forEach((k, v) {
-          if (k.toString().length == 4 && _parseInt(v) > 0) {
-            anosSet.add(k.toString());
-          }
-        });
-      }
+      a.freqPorAno.forEach((k, v) {
+        if (k.length == 4 && v > 0) {
+          anosSet.add(k);
+        }
+      });
     }
     if (anosSet.isEmpty) anosSet.add(DateTime.now().year.toString());
     return anosSet.toList()..sort((a, b) => b.compareTo(a));
@@ -377,70 +403,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   List<Map<String, dynamic>> _converterCacheV2ParaAlunosLegado(
-    List<Map<String, dynamic>> alunosCache,
+    List<AlunoSnapshotModel> alunosCache,
   ) {
-    return alunosCache.map((cache) {
-      final freqTotal = _intFromCache(cache['freq_total']);
-      final freqSemana = _intFromCache(cache['freq_semana']);
-      final freqMes = _intFromCache(cache['freq_mes']);
-      final freqPorAno = _mapStringIntFromCache(cache['freq_por_ano']);
-      final freqPorMes = _mapStringIntFromCache(cache['freq_por_mes']);
-      final freqPorSemana = _mapStringIntFromCache(cache['freq_por_semana']);
-      final freqPorDiaSemana = _mapStringIntFromCache(
-        cache['freq_por_dia_semana'],
-      );
-
-      final temporal = {
-        'total': freqTotal,
-        'semana': freqSemana,
-        'mes': freqMes,
-        ...freqPorAno,
-        ...freqPorMes,
-      };
-
-      final diaSemanaPadrao = {
-        'seg': freqPorDiaSemana['seg'] ?? 0,
-        'ter': freqPorDiaSemana['ter'] ?? 0,
-        'qua': freqPorDiaSemana['qua'] ?? 0,
-        'qui': freqPorDiaSemana['qui'] ?? 0,
-        'sex': freqPorDiaSemana['sex'] ?? 0,
-        'sab': freqPorDiaSemana['sab'] ?? 0,
-        'dom': freqPorDiaSemana['dom'] ?? 0,
-      };
-
-      final fotoUrl = _extrairFotoUrlAluno(cache);
-
-      return {
-        'id': cache['aluno_id'] ?? '',
-        'nome': cache['nome'] ?? 'Sem nome',
-        'sexo': cache['sexo_normalizado'] ?? cache['sexo'] ?? 'NAO_INFORMADO',
-        'foto_perfil_aluno': fotoUrl,
-        'foto_url': fotoUrl,
-        'aluno_foto': fotoUrl,
-        'graduacao_id': cache['graduacao_id'],
-        'graduacao_nome': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
-        'graduacao_atual': cache['graduacao_nome'] ?? 'SEM GRADUAÇÃO',
-        'data_nascimento': cache['data_nascimento'],
-        'total_presencas': freqTotal,
-        'idade_calculada': cache['idade'],
-        'frequencia_temporal': temporal,
-        'freq_por_mes': freqPorMes,
-        'freq_por_semana': freqPorSemana,
-        'freq_por_ano': freqPorAno,
-        'porDiaSemana': diaSemanaPadrao,
-        ...diaSemanaPadrao,
-        'avaliacao_nota': cache['avaliacao_nota'],
-        'avaliacao_conceito': cache['avaliacao_conceito'],
-        'destaque_score_total': cache['destaque_score_total'],
-        'destaque_score_semana': cache['destaque_score_semana'],
-        'destaque_score_mes': cache['destaque_score_mes'],
-        'destaque_score_por_ano': cache['destaque_score_por_ano'],
-        'ranking_total': cache['ranking_total'],
-        'ranking_semana': cache['ranking_semana'],
-        'ranking_mes': cache['ranking_mes'],
-        'ranking_por_ano': cache['ranking_por_ano'],
-      };
-    }).toList();
+    return alunosCache.map((cache) => cache.toLegacyMap()).toList();
   }
 
   String _extrairFotoUrlAluno(Map<String, dynamic> data) {
@@ -501,10 +466,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         forceServer: forceServer,
       );
 
-      var alunosCache = await _dashboardCacheService.carregarAlunosCache(
+      var alunosCache = await _dashboardCacheService.carregarAlunosSnapshot(
         widget.turmaId,
         forceServer: forceServer,
-        orderBy: 'nome_busca',
       );
 
       if (alunosCache.isEmpty) {
@@ -513,10 +477,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           widget.turmaId,
           force: false,
         );
-        alunosCache = await _dashboardCacheService.carregarAlunosCache(
+        alunosCache = await _dashboardCacheService.carregarAlunosSnapshot(
           widget.turmaId,
           forceServer: true,
-          orderBy: 'nome_busca',
         );
       }
 
@@ -689,6 +652,89 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return;
   }
 
+  Future<void> _carregarPermissoes() async {
+    setState(() => _carregandoPermissoes = true);
+
+    try {
+      final p = await _permissaoService.getTodasPermissoes();
+      final isAdmin = await _permissaoService.usuarioAtualEhAdmin();
+
+      setState(() {
+        _isAdminDashboard = isAdmin;
+
+        _podeVisualizarDashboardTurma =
+            isAdmin || p['pode_visualizar_dashboard_turma'] == true;
+        _podeVerDashboardFrequencia =
+            isAdmin || p['pode_ver_dashboard_frequencia'] == true;
+        _podeVerDashboardGraduacao =
+            isAdmin || p['pode_ver_dashboard_graduacao'] == true;
+        _podeVerDashboardIdade =
+            isAdmin || p['pode_ver_dashboard_idade'] == true;
+        _podeVerDashboardSexo = isAdmin || p['pode_ver_dashboard_sexo'] == true;
+        _podeRecalcularDashboardTurma =
+            isAdmin || p['pode_recalcular_dashboard_turma'] == true;
+        _podeExportarDashboardTurma =
+            isAdmin || p['pode_exportar_dashboard_turma'] == true;
+        _podeCompartilharDashboardTurma =
+            isAdmin || p['pode_compartilhar_dashboard_turma'] == true;
+        _podeVerDashboardFotosAlunos =
+            isAdmin || p['pode_ver_dashboard_fotos_alunos'] == true;
+        _podeVerDashboardNomesAlunos =
+            isAdmin || p['pode_ver_dashboard_nomes_alunos'] == true;
+        _podeVerDashboardDetalhesAluno =
+            isAdmin || p['pode_ver_dashboard_detalhes_aluno'] == true;
+        _podeVerDashboardChipCache =
+            isAdmin || p['pode_ver_dashboard_chip_cache'] == true;
+        _podeVerDashboardFiltroSemana =
+            isAdmin || p['pode_ver_dashboard_filtro_semana'] == true;
+        _podeVerDashboardFiltroMes =
+            isAdmin || p['pode_ver_dashboard_filtro_mes'] == true;
+        _podeVerDashboardFiltroAno =
+            isAdmin || p['pode_ver_dashboard_filtro_ano'] == true;
+        _podeVerDashboardFiltroTotal =
+            isAdmin || p['pode_ver_dashboard_filtro_total'] == true;
+        _podeVerDashboardTop5Frequencia =
+            isAdmin || p['pode_ver_dashboard_top5_frequencia'] == true;
+        _podeVerDashboardListaFrequencia =
+            isAdmin || p['pode_ver_dashboard_lista_frequencia'] == true;
+        _podeVerDashboardMetricasFrequencia =
+            isAdmin || p['pode_ver_dashboard_metricas_frequencia'] == true;
+        _podeVerDashboardDiagnosticoCache =
+            isAdmin || p['pode_ver_dashboard_diagnostico_cache'] == true;
+        _podeVerDashboardLogsDebug =
+            isAdmin || p['pode_ver_dashboard_logs_debug'] == true;
+
+        // Se o filtro inicial não for permitido, tenta o primeiro disponível
+        if (filtroAtivo == 'Frequência' && !_podeVerDashboardFrequencia) {
+          if (_podeVerDashboardGraduacao) {
+            filtroAtivo = 'Graduação';
+          } else if (_podeVerDashboardIdade) {
+            filtroAtivo = 'Idade';
+          } else if (_podeVerDashboardSexo) {
+            filtroAtivo = 'Sexo';
+          } else if (_podeVerDashboardTop5Frequencia) {
+            filtroAtivo = 'Aluno Destaque';
+          }
+        }
+
+        if (filtroTemporalFrequencia == 'Ano' && !_podeVerDashboardFiltroAno) {
+          if (_podeVerDashboardFiltroMes) {
+            filtroTemporalFrequencia = 'Mês';
+          } else if (_podeVerDashboardFiltroSemana) {
+            filtroTemporalFrequencia = 'Semana';
+          } else if (_podeVerDashboardFiltroTotal) {
+            filtroTemporalFrequencia = 'Total';
+          }
+        }
+
+        _carregandoPermissoes = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar permissões da Dashboard: $e');
+      setState(() => _carregandoPermissoes = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -710,7 +756,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
     _pulseController.repeat(reverse: true);
 
-    _inicializarDashboardInteligente();
+    _carregarPermissoes().then((_) {
+      if (_podeVisualizarDashboardTurma) {
+        _inicializarDashboardInteligente();
+      }
+    });
+
     _scrollController.addListener(_onScroll);
     _iniciarTimerCache();
 
@@ -2007,6 +2058,40 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    if (_carregandoPermissoes) {
+      return Scaffold(
+        backgroundColor: context.uai.background,
+        appBar: AppBar(title: Text('Carregando...')),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_podeVisualizarDashboardTurma) {
+      return Scaffold(
+        backgroundColor: context.uai.background,
+        appBar: AppBar(title: Text('Acesso Negado')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.lock_person_rounded,
+                size: 64,
+                color: context.uai.textMuted,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Você não tem permissão para acessar o resumo da turma.',
+                style: TextStyle(color: context.uai.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -2052,24 +2137,28 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             ),
         elevation: 0,
         actions: [
-          if (_ultimaAtualizacao != null && !_isAtualizando)
+          if (_ultimaAtualizacao != null &&
+              !_isAtualizando &&
+              _podeVerDashboardChipCache)
             _buildCacheIndicator(),
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              if (!_isAtualizando)
-                IconButton(
-                  icon: Icon(Icons.refresh_rounded),
-                  onPressed: () => _atualizarDashboardInteligente(force: true),
-                  tooltip: 'Forçar recálculo pelos logs reais',
-                ),
-              if (_isAtualizando)
-                RotationTransition(
-                  turns: _rotateAnimation,
-                  child: Icon(Icons.sync_rounded, color: context.uai.card),
-                ),
-            ],
-          ),
+          if (_podeRecalcularDashboardTurma || _isAdminDashboard)
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                if (!_isAtualizando)
+                  IconButton(
+                    icon: Icon(Icons.refresh_rounded),
+                    onPressed: () =>
+                        _atualizarDashboardInteligente(force: true),
+                    tooltip: 'Forçar recálculo pelos logs reais',
+                  ),
+                if (_isAtualizando)
+                  RotationTransition(
+                    turns: _rotateAnimation,
+                    child: Icon(Icons.sync_rounded, color: context.uai.card),
+                  ),
+              ],
+            ),
         ],
       ),
       body: Column(
@@ -2091,25 +2180,31 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildCacheIndicator() {
+    final appBarBg =
+        Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
+    final onAppBar =
+        Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
+
     if (_usarDashboardCacheV2 && _cacheV2Disponivel) {
       return Container(
-        margin: EdgeInsets.only(right: 4),
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: context.uai.info.withOpacity(0.15),
+          color: onAppBar.withOpacity(0.14),
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: onAppBar.withOpacity(0.18)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_done_rounded, size: 12, color: context.uai.info),
-            SizedBox(width: 4),
+            Icon(Icons.cloud_done_rounded, size: 14, color: onAppBar),
+            const SizedBox(width: 6),
             Text(
               'Servidor',
               style: TextStyle(
-                fontSize: 10,
-                color: context.uai.info,
-                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: onAppBar,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ],
@@ -2123,24 +2218,31 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     Color cor = minutosRestantes <= 0
         ? context.uai.error
         : (minutosRestantes < 30 ? context.uai.warning : context.uai.success);
+
+    // Se estiver no AppBar clássico (fundo escuro/colorido), tentamos usar cor branca/legível
+    // em vez de info/warning/success puros se o contraste for ruim.
+    final bool isClassicAppBar = appBarBg.computeLuminance() < 0.45;
+    final Color chipColor = isClassicAppBar ? onAppBar : cor;
+
     return Container(
-      margin: EdgeInsets.only(right: 4),
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.15),
+        color: chipColor.withOpacity(0.14),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: chipColor.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.access_time, size: 12, color: cor),
-          SizedBox(width: 4),
+          Icon(Icons.access_time_rounded, size: 14, color: chipColor),
+          const SizedBox(width: 6),
           Text(
             minutosRestantes <= 0 ? 'Exp' : '${minutosRestantes}m',
             style: TextStyle(
-              fontSize: 10,
-              color: cor,
-              fontWeight: FontWeight.bold,
+              fontSize: 11,
+              color: chipColor,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -2363,7 +2465,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       if (titulo == 'Idade') {
         _faixaEtariaExpandidaKey = null;
       }
-      if (titulo == 'Frequência' && filtroTemporalFrequencia == 'Mês' && mesSelecionado == null) {
+      if (titulo == 'Frequência' &&
+          filtroTemporalFrequencia == 'Mês' &&
+          mesSelecionado == null) {
         mesSelecionado = _mesAtualKey();
       }
     });
@@ -2431,6 +2535,26 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildConteudoPrincipal() {
     _agendarCentralizacaoAbaInicial();
 
+    final hasAnyTab =
+        _podeVerDashboardFrequencia ||
+        _podeVerDashboardGraduacao ||
+        _podeVerDashboardIdade ||
+        _podeVerDashboardSexo ||
+        _podeVerDashboardTop5Frequencia;
+
+    if (!hasAnyTab) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            'Nenhum módulo do resumo foi liberado para este usuário.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.uai.textSecondary),
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: [
         Container(
@@ -2454,19 +2578,28 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             child: Row(
               children: [
                 SizedBox(width: 12),
-                _filtroChip(
-                  'Aluno Destaque',
-                  Icons.emoji_events_rounded,
-                  context.uai.warning,
-                ),
-                _filtroChip('Frequência', Icons.trending_up, context.uai.info),
-                _filtroChip(
-                  'Graduação',
-                  Icons.workspace_premium,
-                  context.uai.associacao,
-                ),
-                _filtroChip('Idade', Icons.cake, context.uai.success),
-                _filtroChip('Sexo', Icons.people, context.uai.error),
+                if (_podeVerDashboardTop5Frequencia)
+                  _filtroChip(
+                    'Aluno Destaque',
+                    Icons.emoji_events_rounded,
+                    context.uai.warning,
+                  ),
+                if (_podeVerDashboardFrequencia)
+                  _filtroChip(
+                    'Frequência',
+                    Icons.trending_up,
+                    context.uai.info,
+                  ),
+                if (_podeVerDashboardGraduacao)
+                  _filtroChip(
+                    'Graduação',
+                    Icons.workspace_premium,
+                    context.uai.associacao,
+                  ),
+                if (_podeVerDashboardIdade)
+                  _filtroChip('Idade', Icons.cake, context.uai.success),
+                if (_podeVerDashboardSexo)
+                  _filtroChip('Sexo', Icons.people, context.uai.error),
                 SizedBox(width: MediaQuery.of(context).size.width * 0.28),
               ],
             ),
@@ -2553,66 +2686,161 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     }
   }
 
-  Widget _buildAbaFrequencia() => RefreshIndicator(
-    onRefresh: () => _atualizarDadosReais(recalcularTudo: true),
+  Widget _wrapWithRefreshIndicator({
+    required Widget child,
+    required Color color,
+  }) {
+    if (!_podeRecalcularDashboardTurma && !_isAdminDashboard) return child;
+    return RefreshIndicator(
+      onRefresh: () => _atualizarDashboardInteligente(force: true),
+      color: color,
+      child: child,
+    );
+  }
+
+  Widget _buildAbaFrequencia() => _wrapWithRefreshIndicator(
     color: context.uai.info,
     child: SingleChildScrollView(
       controller: _scrollController,
-      physics: AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: _dashboardPagePadding,
       child: _dashboardWidthLimiter(
         LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth >= 1060) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: Column(
-                      children: [
-                        _buildHeaderMetricas(),
-                        SizedBox(height: 14),
-                        _buildFiltroTemporal(),
-                        _buildGraficoFrequencia(),
-                      ],
-                    ),
+            final isWide = constraints.maxWidth >= 1060;
+
+            final sections = <Widget>[];
+
+            // 1. Header de Métricas
+            if (_podeVerDashboardMetricasFrequencia) {
+              sections.add(_buildHeaderMetricas());
+            }
+
+            // 2. Filtro Temporal e Seletor de Mês
+            final bool temAlgumFiltro =
+                _podeVerDashboardFiltroSemana ||
+                _podeVerDashboardFiltroMes ||
+                _podeVerDashboardFiltroAno ||
+                _podeVerDashboardFiltroTotal;
+
+            if (temAlgumFiltro) {
+              sections.add(const SizedBox(height: 14));
+              sections.add(_buildFiltroTemporal());
+            }
+
+            // 3. Conteúdo Principal (Gráfico e Listas)
+            if (isWide) {
+              final leftCol = <Widget>[];
+              final rightCol = <Widget>[];
+
+              leftCol.add(_buildGraficoFrequencia());
+
+              if (_podeVerDashboardTop5Frequencia &&
+                  _podeVerDashboardNomesAlunos) {
+                rightCol.add(_buildListaTop5());
+              }
+
+              if (_podeVerDashboardListaFrequencia &&
+                  _podeVerDashboardNomesAlunos) {
+                if (rightCol.isNotEmpty) {
+                  rightCol.add(const SizedBox(height: 16));
+                }
+                rightCol.add(_buildListaCompleta());
+              }
+
+              if (rightCol.isEmpty) {
+                // Se não tem permissão para nomes, mostramos um aviso se a aba ficaria muito vazia
+                if (!_podeVerDashboardNomesAlunos &&
+                    _podeVerDashboardListaFrequencia) {
+                  rightCol.add(_buildNoNamesWarning());
+                }
+              }
+
+              sections.add(const SizedBox(height: 14));
+              sections.add(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 6, child: Column(children: leftCol)),
+                    if (rightCol.isNotEmpty) ...[
+                      const SizedBox(width: 16),
+                      Expanded(flex: 5, child: Column(children: rightCol)),
+                    ],
+                  ],
+                ),
+              );
+            } else {
+              sections.add(const SizedBox(height: 14));
+              sections.add(_buildGraficoFrequencia());
+
+              if (_podeVerDashboardTop5Frequencia &&
+                  _podeVerDashboardNomesAlunos) {
+                sections.add(const SizedBox(height: 20));
+                sections.add(_buildListaTop5());
+              }
+
+              if (_podeVerDashboardListaFrequencia &&
+                  _podeVerDashboardNomesAlunos) {
+                sections.add(const SizedBox(height: 20));
+                sections.add(_buildListaCompleta());
+              } else if (!_podeVerDashboardNomesAlunos &&
+                  _podeVerDashboardListaFrequencia) {
+                sections.add(const SizedBox(height: 20));
+                sections.add(_buildNoNamesWarning());
+              }
+            }
+
+            if (sections.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Text(
+                    'Sem permissões para visualizar dados desta aba.',
+                    textAlign: TextAlign.center,
                   ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      children: [
-                        _buildListaTop5(),
-                        SizedBox(height: 16),
-                        _buildListaCompleta(),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               );
             }
 
-            return Column(
-              children: [
-                _buildHeaderMetricas(),
-                SizedBox(height: 14),
-                _buildFiltroTemporal(),
-                _buildGraficoFrequencia(),
-                SizedBox(height: 20),
-                _buildListaTop5(),
-                SizedBox(height: 20),
-                _buildListaCompleta(),
-              ],
-            );
+            return Column(children: sections);
           },
         ),
       ),
     ),
   );
 
-  Widget _buildAbaGraduacao() => RefreshIndicator(
-    onRefresh: () => _atualizarDadosReais(recalcularTudo: true),
+  Widget _buildNoNamesWarning() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.uai.border),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.lock_person_rounded,
+            color: context.uai.textMuted,
+            size: 32,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Libere nomes/detalhes dos alunos para exibir a lista nominal.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAbaGraduacao() => _wrapWithRefreshIndicator(
     color: context.uai.associacao,
     child: SingleChildScrollView(
       controller: _scrollController,
@@ -2622,8 +2850,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     ),
   );
 
-  Widget _buildAbaIdade() => RefreshIndicator(
-    onRefresh: () => _atualizarDadosReais(recalcularTudo: true),
+  Widget _buildAbaIdade() => _wrapWithRefreshIndicator(
     color: context.uai.success,
     child: SingleChildScrollView(
       controller: _scrollController,
@@ -2633,8 +2860,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     ),
   );
 
-  Widget _buildAbaSexo() => RefreshIndicator(
-    onRefresh: () => _atualizarDadosReais(recalcularTudo: true),
+  Widget _buildAbaSexo() => _wrapWithRefreshIndicator(
     color: context.uai.error,
     child: SingleChildScrollView(
       controller: _scrollController,
@@ -5432,15 +5658,25 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     }
   }
 
-  Widget _buildAbaAlunoDestaque() => RefreshIndicator(
-    onRefresh: () => _atualizarDadosReais(recalcularTudo: true),
-    color: context.uai.warning,
-    child: SingleChildScrollView(
-      physics: AlwaysScrollableScrollPhysics(),
-      padding: _dashboardPagePadding,
-      child: _dashboardWidthLimiter(_buildAlunoDestaqueConteudo()),
-    ),
-  );
+  Widget _buildAbaAlunoDestaque() {
+    if (!_podeVerDashboardTop5Frequencia || !_podeVerDashboardNomesAlunos) {
+      return Center(
+        child: Text(
+          'Você não tem permissão para visualizar o Aluno Destaque.',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
+      );
+    }
+
+    return _wrapWithRefreshIndicator(
+      color: context.uai.warning,
+      child: SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: _dashboardPagePadding,
+        child: _dashboardWidthLimiter(_buildAlunoDestaqueConteudo()),
+      ),
+    );
+  }
 
   Widget _buildAlunoDestaqueConteudo() {
     final avaliados = _alunosDestaque
@@ -5583,133 +5819,141 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   ),
                 ],
               ),
-              SizedBox(height: 11),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isGerandoImagemDestaque
-                          ? null
-                          : _compartilharRankingAlunoDestaque,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: context.uai.warning,
-                        side: BorderSide(
-                          color: context.uai.warning.withOpacity(0.16),
-                        ),
-                        backgroundColor: context.uai.warning
-                            .withOpacity(0.10)
-                            .withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(
-                          vertical: 11,
-                          horizontal: 8,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                      ),
-                      icon: _isGerandoImagemDestaque
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: context.uai.warning,
-                              ),
-                            )
-                          : Icon(Icons.image_rounded, size: 18),
-                      label: Text(
-                        _isGerandoImagemDestaque ? 'Imagem...' : 'Imagem',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isGerandoPdfDestaque
-                          ? null
-                          : _compartilharPdfRankingAlunoDestaque,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: context.uai.primary,
-                        side: BorderSide(
-                          color: context.uai.error.withOpacity(0.16),
-                        ),
-                        backgroundColor: context.uai.error
-                            .withOpacity(0.10)
-                            .withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(
-                          vertical: 11,
-                          horizontal: 8,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+              if (_podeCompartilharDashboardTurma ||
+                  _podeExportarDashboardTurma) ...[
+                SizedBox(height: 11),
+                Row(
+                  children: [
+                    if (_podeCompartilharDashboardTurma)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isGerandoImagemDestaque
+                              ? null
+                              : _compartilharRankingAlunoDestaque,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.uai.warning,
+                            side: BorderSide(
+                              color: context.uai.warning.withOpacity(0.16),
+                            ),
+                            backgroundColor: context.uai.warning
+                                .withOpacity(0.10)
+                                .withOpacity(0.45),
+                            padding: EdgeInsets.symmetric(
+                              vertical: 11,
+                              horizontal: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                          icon: _isGerandoImagemDestaque
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: context.uai.warning,
+                                  ),
+                                )
+                              : Icon(Icons.image_rounded, size: 18),
+                          label: Text(
+                            _isGerandoImagemDestaque ? 'Imagem...' : 'Imagem',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ),
-                      icon: _isGerandoPdfDestaque
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: context.uai.primary,
-                              ),
-                            )
-                          : Icon(Icons.picture_as_pdf_rounded, size: 18),
-                      label: Text(
-                        _isGerandoPdfDestaque ? 'PDF...' : 'PDF',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
+                    if (_podeCompartilharDashboardTurma &&
+                        _podeExportarDashboardTurma)
+                      SizedBox(width: 8),
+                    if (_podeExportarDashboardTurma) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isGerandoPdfDestaque
+                              ? null
+                              : _compartilharPdfRankingAlunoDestaque,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.uai.primary,
+                            side: BorderSide(
+                              color: context.uai.error.withOpacity(0.16),
+                            ),
+                            backgroundColor: context.uai.error
+                                .withOpacity(0.10)
+                                .withOpacity(0.45),
+                            padding: EdgeInsets.symmetric(
+                              vertical: 11,
+                              horizontal: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                          icon: _isGerandoPdfDestaque
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: context.uai.primary,
+                                  ),
+                                )
+                              : Icon(Icons.picture_as_pdf_rounded, size: 18),
+                          label: Text(
+                            _isGerandoPdfDestaque ? 'PDF...' : 'PDF',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isGerandoPdfCompletoDestaque
-                          ? null
-                          : _compartilharPdfCompletoRankingAlunoDestaque,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: context.uai.associacao,
-                        side: BorderSide(
-                          color: context.uai.associacao.withOpacity(0.16),
-                        ),
-                        backgroundColor: context.uai.associacao
-                            .withOpacity(0.10)
-                            .withOpacity(0.45),
-                        padding: EdgeInsets.symmetric(
-                          vertical: 11,
-                          horizontal: 6,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isGerandoPdfCompletoDestaque
+                              ? null
+                              : _compartilharPdfCompletoRankingAlunoDestaque,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.uai.associacao,
+                            side: BorderSide(
+                              color: context.uai.associacao.withOpacity(0.16),
+                            ),
+                            backgroundColor: context.uai.associacao
+                                .withOpacity(0.10)
+                                .withOpacity(0.45),
+                            padding: EdgeInsets.symmetric(
+                              vertical: 11,
+                              horizontal: 6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                          icon: _isGerandoPdfCompletoDestaque
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: context.uai.associacao,
+                                  ),
+                                )
+                              : Icon(Icons.groups_rounded, size: 18),
+                          label: Text(
+                            _isGerandoPdfCompletoDestaque ? 'Tudo...' : 'Todos',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ),
-                      icon: _isGerandoPdfCompletoDestaque
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: context.uai.associacao,
-                              ),
-                            )
-                          : Icon(Icons.groups_rounded, size: 18),
-                      label: Text(
-                        _isGerandoPdfCompletoDestaque ? 'Tudo...' : 'Todos',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                    ],
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -5963,7 +6207,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildAlunoAvatarDestaque(Map<String, dynamic> aluno) {
-    final foto = _extrairFotoUrlAluno(aluno);
+    final foto = _podeVerDashboardFotosAlunos
+        ? _extrairFotoUrlAluno(aluno)
+        : '';
     final nome = aluno['nome']?.toString() ?? 'Sem nome';
     final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
 
@@ -6041,6 +6287,15 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   // ============ FILTRO TEMPORAL ============
   Widget _buildFiltroTemporal() {
+    final showSemana = _podeVerDashboardFiltroSemana;
+    final showMes = _podeVerDashboardFiltroMes;
+    final showAno = _podeVerDashboardFiltroAno;
+    final showTotal = _podeVerDashboardFiltroTotal;
+
+    if (!showSemana && !showMes && !showAno && !showTotal) {
+      return SizedBox.shrink();
+    }
+
     return Column(
       children: [
         Container(
@@ -6052,10 +6307,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           ),
           child: Row(
             children: [
-              _btnTemporal('Semana', Icons.calendar_view_week),
-              _btnTemporal('Mês', Icons.calendar_month),
-              _btnTemporal('Ano', Icons.calendar_today),
-              _btnTemporal('Total', Icons.history),
+              if (showSemana) _btnTemporal('Semana', Icons.calendar_view_week),
+              if (showMes) _btnTemporal('Mês', Icons.calendar_month),
+              if (showAno) _btnTemporal('Ano', Icons.calendar_today),
+              if (showTotal) _btnTemporal('Total', Icons.history),
             ],
           ),
         ),
@@ -6377,29 +6632,20 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         : ordenadas.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final graduacaoDestaque = ordenadas.isEmpty ? '-' : ordenadas.first.key;
 
+    final t = context.uai;
+    final Color cardBg = t.card;
+    final Color onCard = _onCard();
+
     return Column(
       children: [
         Container(
           width: double.infinity,
-          padding: EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                context.uai.associacao,
-                context.uai.associacao,
-                context.uai.primaryDark,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: context.uai.associacao.withOpacity(0.25),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
+            color: cardBg,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6407,18 +6653,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               Row(
                 children: [
                   Container(
-                    padding: EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: context.uai.card.withOpacity(0.16),
+                      color: t.associacao.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
                       Icons.workspace_premium_rounded,
-                      color: context.uai.textPrimary,
-                      size: 24,
+                      color: t.associacao,
+                      size: 26,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -6426,17 +6672,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         Text(
                           'Mapa de Graduações',
                           style: TextStyle(
-                            color: context.uai.textPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            color: onCard,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           'Distribuição dos alunos por corda',
                           style: TextStyle(
-                            color: context.uai.card.withOpacity(0.70),
+                            color: _onCardMuted(),
                             fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -6444,7 +6691,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   ),
                 ],
               ),
-              SizedBox(height: 18),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
@@ -6452,50 +6699,56 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       valor: '$totalAlunos',
                       label: 'Alunos',
                       icon: Icons.groups_rounded,
+                      color: t.info,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _graduacaoResumoCard(
                       valor: '$totalGraduacoes',
                       label: 'Cordas',
                       icon: Icons.military_tech_rounded,
+                      color: t.warning,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _graduacaoResumoCard(
                       valor: '$maiorGrupo',
                       label: 'Maior grupo',
                       icon: Icons.bar_chart_rounded,
+                      color: t.success,
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 14),
+              const SizedBox(height: 16),
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
-                  color: context.uai.card.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: context.uai.card.withOpacity(0.16)),
+                  color: t.cardAlt,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: t.border),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.auto_awesome_rounded,
-                      color: context.uai.warning,
+                      color: t.warning,
                       size: 18,
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Primeira graduação na ordem: $graduacaoDestaque',
                         style: TextStyle(
-                          color: context.uai.textPrimary,
+                          color: onCard,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w800,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -6507,7 +6760,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             ],
           ),
         ),
-        SizedBox(height: 14),
+        const SizedBox(height: 16),
         _buildGraduacaoCardsResponsive(ordenadas, totalAlunos),
       ],
     );
@@ -6539,31 +6792,34 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     required String valor,
     required String label,
     required IconData icon,
+    required Color color,
   }) {
+    final t = context.uai;
     return Container(
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.uai.card.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.card.withOpacity(0.12)),
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.18)),
       ),
       child: Column(
         children: [
-          Icon(icon, color: context.uai.textPrimary, size: 22),
-          SizedBox(height: 6),
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
           Text(
             valor,
             style: TextStyle(
-              color: context.uai.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              color: _onCard(),
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
             ),
           ),
           Text(
             label,
             style: TextStyle(
-              color: context.uai.card.withOpacity(0.70),
+              color: _onCardMuted(),
               fontSize: 10,
+              fontWeight: FontWeight.w800,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -6607,6 +6863,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
+            enabled: _podeVerDashboardDetalhesAluno,
             tilePadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             childrenPadding: EdgeInsets.fromLTRB(12, 0, 12, 12),
             leading: Container(
@@ -6781,7 +7038,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildAlunoAvatar(Map<String, dynamic> aluno) {
-    final foto = _extrairFotoUrlAluno(aluno);
+    final foto = _podeVerDashboardFotosAlunos
+        ? _extrairFotoUrlAluno(aluno)
+        : '';
     final nome = aluno['nome']?.toString().trim() ?? '';
     final letra = nome.isNotEmpty ? nome[0].toUpperCase() : '?';
 
@@ -7031,11 +7290,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: () {
-              setState(() {
-                _faixaEtariaExpandidaKey = expandido ? null : faixa;
-              });
-            },
+            onTap: _podeVerDashboardDetalhesAluno
+                ? () {
+                    setState(() {
+                      _faixaEtariaExpandidaKey = expandido ? null : faixa;
+                    });
+                  }
+                : null,
             borderRadius: BorderRadius.circular(18),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -7123,15 +7384,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       ),
                     ),
                   ),
-                  SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: expandido ? 0.5 : 0,
-                    duration: Duration(milliseconds: 200),
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: _onCardMuted(),
+                  if (_podeVerDashboardDetalhesAluno) ...[
+                    SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: expandido ? 0.5 : 0,
+                      duration: Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: _onCardMuted(),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -7139,7 +7402,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           AnimatedSize(
             duration: Duration(milliseconds: 240),
             curve: Curves.easeInOut,
-            child: expandido
+            child: expandido && _podeVerDashboardDetalhesAluno
                 ? Container(
                     padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
                     child: semAlunos

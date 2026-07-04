@@ -41,6 +41,7 @@ dependencies:
   # =============================================
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.10+1
+  path_drawing: ^1.0.1
   shimmer: ^3.0.0
   flutter_animate: ^4.5.0
   animations: ^2.0.11

@@ -54,7 +54,158 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         .toColor();
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  Color _onPrimary() => _readableOn(_safeHeaderBase());
+
+  Color _onCard() => _readableOn(context.uai.card);
+
+  Color _onCardMuted() => _onCard().withOpacity(0.68);
+
+  bool _neonOnDark() {
+    final t = context.uai;
+    final hsl = HSLColor.fromColor(t.primary);
+
+    return t.primary.computeLuminance() > 0.48 &&
+        t.background.computeLuminance() < 0.22 &&
+        hsl.saturation > 0.55;
+  }
+
+  Color _safeHeaderBase([Color? preferred]) {
+    final t = context.uai;
+    final base = preferred ?? t.primary;
+
+    if (_neonOnDark() && preferred == null) {
+      return Color.alphaBlend(t.primary.withOpacity(0.54), t.surface);
+    }
+
+    return base;
+  }
+
+  Gradient _safeHeaderGradient([Color? preferred]) {
+    final base = _safeHeaderBase(preferred);
+    final hsl = HSLColor.fromColor(base);
+    final bgIsDark = base.computeLuminance() < 0.45;
+
+    final end = hsl
+        .withLightness(
+      bgIsDark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.10).clamp(0.0, 1.0),
+    )
+        .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
+        .toColor();
+
+    return LinearGradient(
+      colors: [base, end],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  bool get _isWideDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 900;
+  }
+
+  bool get _isDesktopDashboard {
+    final width = MediaQuery.sizeOf(context).width;
+    return width >= 1180;
+  }
+
+  double get _dashboardMaxWidth {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 1360;
+    if (width >= 1180) return 1240;
+    if (width >= 900) return 1080;
+    return width;
+  }
+
+  EdgeInsets get _dashboardPagePadding {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1180) return const EdgeInsets.fromLTRB(22, 18, 22, 34);
+    if (width >= 900) return const EdgeInsets.fromLTRB(18, 16, 18, 30);
+    return const EdgeInsets.fromLTRB(14, 14, 14, 26);
+  }
+
+  Widget _dashboardWidthLimiter(Widget child) {
+    if (!_isWideDashboard) return child;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _dashboardMaxWidth),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _dashboardRefreshList({
+    required List<Widget> children,
+    EdgeInsets? padding,
+  }) {
+    final pagePadding = padding ?? _dashboardPagePadding;
+
+    return RefreshIndicator(
+      color: context.uai.primary,
+      backgroundColor: context.uai.surface,
+      onRefresh: _carregar,
+      child: ListView(
+        padding: pagePadding,
+        children: [
+          _dashboardWidthLimiter(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernLoading() {
+    final t = context.uai;
+
+    return Container(
+      color: t.background,
+      padding: _dashboardPagePadding,
+      child: Center(
+        child: _dashboardWidthLimiter(
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(_isDesktopDashboard ? 30 : 24),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(t.cardRadius + 4),
+              border: Border.all(color: t.border),
+              boxShadow: t.softShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    color: t.primary,
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Carregando Área do Aluno...',
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w800,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   LinearGradient _accentGradient(Color color) {
     final t = context.uai;
@@ -250,12 +401,16 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
   @override
   Widget build(BuildContext context) {
+    final t = context.uai;
+    final tabAccent = _ensureVisible(t.primary, t.card);
+    final tabSelectedFg = _readableOn(tabAccent);
+
     return Scaffold(
-      backgroundColor: context.uai.background,
+      backgroundColor: t.background,
       appBar: AppBar(
         title: const Text(
           'Área do Aluno',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
         elevation: 0,
@@ -281,505 +436,556 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(58),
+          preferredSize: const Size.fromHeight(64),
           child: Container(
             width: double.infinity,
-            color: context.uai.primary,
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                indicatorColor: _onPrimary(),
-                indicatorWeight: 3,
-                labelColor: _onPrimary(),
-                unselectedLabelColor: _onPrimary().withOpacity(0.72),
-                labelStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            color: t.surface,
+            padding: EdgeInsets.fromLTRB(
+              _isWideDashboard ? 18 : 10,
+              7,
+              _isWideDashboard ? 18 : 10,
+              9,
+            ),
+            child: _dashboardWidthLimiter(
+              Container(
+                decoration: BoxDecoration(
+                  color: t.card,
+                  borderRadius: BorderRadius.circular(t.buttonRadius + 4),
+                  border: Border.all(color: t.border),
+                  boxShadow: t.softShadow,
                 ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-                tabs: const [
-                  Tab(icon: Icon(Icons.dashboard_rounded), text: 'Geral'),
-                  Tab(icon: Icon(Icons.security_rounded), text: 'Segurança'),
-                  Tab(icon: Icon(Icons.badge_rounded), text: 'Dados'),
-                  Tab(icon: Icon(Icons.edit_note_rounded), text: 'Textos'),
-                  Tab(
-                    icon: Icon(Icons.assignment_turned_in_rounded),
-                    text: 'Solicitações',
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  dividerColor: Colors.transparent,
+                  indicator: BoxDecoration(
+                    color: tabAccent,
+                    borderRadius: BorderRadius.circular(t.buttonRadius),
                   ),
-                  Tab(icon: Icon(Icons.account_circle_rounded), text: 'Contas'),
-                  Tab(icon: Icon(Icons.history_rounded), text: 'Logs'),
-                ],
+                  indicatorPadding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 6,
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelColor: tabSelectedFg,
+                  unselectedLabelColor: t.textSecondary,
+                  labelStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.dashboard_rounded), text: 'Geral'),
+                    Tab(icon: Icon(Icons.security_rounded), text: 'Segurança'),
+                    Tab(icon: Icon(Icons.badge_rounded), text: 'Dados'),
+                    Tab(icon: Icon(Icons.edit_note_rounded), text: 'Textos'),
+                    Tab(
+                      icon: Icon(Icons.assignment_turned_in_rounded),
+                      text: 'Solicitações',
+                    ),
+                    Tab(icon: Icon(Icons.account_circle_rounded), text: 'Contas'),
+                    Tab(icon: Icon(Icons.history_rounded), text: 'Logs'),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
       body: _carregando
-          ? Center(child: CircularProgressIndicator(color: context.uai.primary))
+          ? _buildModernLoading()
           : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTabGeral(),
-                _buildTabSeguranca(),
-                _buildTabDados(),
-                _buildTabTextos(),
-                _buildTabSolicitacoes(),
-                _buildTabContasGoogle(),
-                _buildTabLogs(),
-              ],
-            ),
+        controller: _tabController,
+        children: [
+          _buildTabGeral(),
+          _buildTabSeguranca(),
+          _buildTabDados(),
+          _buildTabTextos(),
+          _buildTabSolicitacoes(),
+          _buildTabContasGoogle(),
+          _buildTabLogs(),
+        ],
+      ),
     );
   }
 
   Widget _buildTabGeral() {
     final visivel = _getBool('visivel_site');
+    final t = context.uai;
 
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 14),
-          _buildResumoRapido(),
-          const SizedBox(height: 14),
-          _buildCard(
-            icon: Icons.visibility_rounded,
-            title: 'Visibilidade no site',
-            subtitle: visivel
-                ? 'A Área do Aluno está aparecendo no site público.'
-                : 'A Área do Aluno está oculta no site público.',
-            color: visivel ? Colors.green : Colors.grey,
-            children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Mostrar Área do Aluno no site'),
-                subtitle: const Text(
-                  'Ativa ou oculta a entrada pública no site.',
+    return _dashboardRefreshList(
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 14),
+        _buildResumoRapido(),
+        const SizedBox(height: 14),
+        _buildCard(
+          icon: Icons.visibility_rounded,
+          title: 'Visibilidade no site',
+          subtitle: visivel
+              ? 'A Área do Aluno está aparecendo no site público.'
+              : 'A Área do Aluno está oculta no site público.',
+          color: visivel ? t.success : t.textMuted,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Mostrar Área do Aluno no site',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
-                value: visivel,
-                activeColor: Colors.green,
-                onChanged: _alterarVisibilidadeAreaAluno,
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildCard(
-            icon: Icons.fact_check_rounded,
-            title: 'Status da implementação',
-            subtitle: 'Acompanhe o que já está pronto e o que vem depois.',
-            color: Colors.indigo,
-            children: [
-              _buildChecklistItem('Login público com Cloud Function', true),
-              _buildChecklistItem('Logs de acesso e erro', true),
-              _buildChecklistItem('Dashboard inicial do aluno', true),
-              _buildChecklistItem('Solicitações de alteração', true),
-              _buildChecklistItem('Frequência detalhada no portal', true),
-              _buildChecklistItem('Certificados e eventos participados', true),
-            ],
-          ),
-        ],
-      ),
+              subtitle: Text(
+                'Ativa ou oculta a entrada pública no site.',
+                style: TextStyle(color: t.textSecondary),
+              ),
+              value: visivel,
+              activeColor: _ensureVisible(t.success, t.card),
+              onChanged: _alterarVisibilidadeAreaAluno,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildCard(
+          icon: Icons.fact_check_rounded,
+          title: 'Status da implementação',
+          subtitle: 'Acompanhe o que já está pronto e o que vem depois.',
+          color: t.info,
+          children: [
+            _buildChecklistItem('Login público com Cloud Function', true),
+            _buildChecklistItem('Logs de acesso e erro', true),
+            _buildChecklistItem('Dashboard inicial do aluno', true),
+            _buildChecklistItem('Solicitações de alteração', true),
+            _buildChecklistItem('Frequência detalhada no portal', true),
+            _buildChecklistItem('Certificados e eventos participados', true),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildTabSeguranca() {
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildCard(
-            icon: Icons.security_rounded,
-            title: 'Segurança de acesso',
-            subtitle: 'Controle quem pode entrar na Área do Aluno.',
-            color: Colors.blue,
-            children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Aceitar somente alunos ativos'),
-                subtitle: const Text('Bloqueia alunos com status INATIVO(A).'),
-                value: _getBool('aceitar_apenas_ativos', padrao: true),
-                activeColor: Colors.blue,
-                onChanged: (value) =>
-                    _salvarCampo('aceitar_apenas_ativos', value),
-              ),
-              const Divider(),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Exigir confirmação por telefone'),
-                subtitle: const Text(
-                  'Além da data e iniciais, pede os últimos 4 dígitos do contato.',
+    final t = context.uai;
+
+    return _dashboardRefreshList(
+      children: [
+        _buildCard(
+          icon: Icons.security_rounded,
+          title: 'Segurança de acesso',
+          subtitle: 'Controle quem pode entrar na Área do Aluno.',
+          color: t.info,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Aceitar somente alunos ativos',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
-                value: _getBool('exigir_telefone_confirmacao', padrao: true),
-                activeColor: Colors.blue,
-                onChanged: (value) =>
-                    _salvarCampo('exigir_telefone_confirmacao', value),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildCard(
-            icon: Icons.account_circle_rounded,
-            title: 'Conta Google e acesso',
-            subtitle: 'Controle vínculo Google e nível de acesso do aluno.',
-            color: Colors.deepPurple,
-            children: [
-              _buildSwitchCampo(
-                'Ativar acesso com Google',
-                'google_login_ativo',
-                description:
-                    'Ativa a opção de vincular uma conta Google ao perfil do aluno.',
-                padrao: false,
+              subtitle: Text(
+                'Bloqueia alunos com status INATIVO(A).',
+                style: TextStyle(color: t.textSecondary),
               ),
-              _buildModoCampo(
-                title: 'Modo de vinculação',
-                keyName: 'google_vinculacao_modo',
-                description: 'Define quando o vínculo Google será pedido.',
-                options: const {
-                  'desativada': 'Desativada',
-                  'opcional': 'Opcional',
-                  'recomendada': 'Recomendada',
-                  'obrigatoria_para_completo': 'Obrigatória p/ completo',
-                  'obrigatoria_apos_vincular': 'Obrigatória após vínculo',
-                },
+              value: _getBool('aceitar_apenas_ativos', padrao: true),
+              activeColor: _ensureVisible(t.info, t.card),
+              onChanged: (value) => _salvarCampo('aceitar_apenas_ativos', value),
+            ),
+            Divider(color: t.border),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Exigir confirmação por telefone',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              const Divider(),
-              _buildSwitchCampo(
-                'Permitir acesso básico sem Google',
-                'permitir_acesso_basico_sem_google',
-                description:
-                    'Quando ativado, o aluno pode ver informações limitadas usando o login básico.',
+              subtitle: Text(
+                'Além da data e iniciais, pede os últimos 4 dígitos do contato.',
+                style: TextStyle(color: t.textSecondary),
               ),
-              _buildSwitchCampo(
-                'Permitir vincular no primeiro acesso',
-                'permitir_vincular_google_no_primeiro_acesso',
-                description:
-                    'Permite criar o vínculo Google durante a primeira entrada.',
-              ),
-              _buildSwitchCampo(
-                'Permitir trocar Google sem Admin',
-                'permitir_trocar_google_sem_admin',
-                description:
-                    'Permite trocar a conta Google vinculada sem ação do admin.',
-                padrao: false,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildInfoBox(
-            icon: Icons.privacy_tip_rounded,
-            color: Colors.blue,
-            title: 'Como a validação funciona',
-            text:
-                'O site não consulta a coleção de alunos diretamente. Ele chama uma Cloud Function, que valida data, iniciais e telefone usando o Admin SDK. Isso permite controlar melhor os dados retornados ao aluno.',
-          ),
-          const SizedBox(height: 14),
-          _buildCard(
-            icon: Icons.password_rounded,
-            title: 'Modelo de identificação',
-            subtitle: 'Campos usados na entrada pública.',
-            color: context.uai.inscricoes,
-            children: const [
-              _ReadOnlyLine(title: 'Data de nascimento', value: 'Obrigatório'),
-              Divider(),
-              _ReadOnlyLine(
-                title: 'Iniciais do nome completo',
-                value: 'Obrigatório',
-              ),
-              Divider(),
-              _ReadOnlyLine(
-                title: 'Últimos 4 dígitos do telefone',
-                value: 'Configurável',
-              ),
-            ],
-          ),
-        ],
-      ),
+              value: _getBool('exigir_telefone_confirmacao', padrao: true),
+              activeColor: _ensureVisible(t.info, t.card),
+              onChanged: (value) =>
+                  _salvarCampo('exigir_telefone_confirmacao', value),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildCard(
+          icon: Icons.account_circle_rounded,
+          title: 'Conta Google e acesso',
+          subtitle: 'Controle vínculo Google e nível de acesso do aluno.',
+          color: t.associacao,
+          children: [
+            _buildSwitchCampo(
+              'Ativar acesso com Google',
+              'google_login_ativo',
+              description:
+              'Ativa a opção de vincular uma conta Google ao perfil do aluno.',
+              padrao: false,
+            ),
+            _buildModoCampo(
+              title: 'Modo de vinculação',
+              keyName: 'google_vinculacao_modo',
+              description: 'Define quando o vínculo Google será pedido.',
+              icon: Icons.link_rounded,
+              color: t.associacao,
+              options: const {
+                'desativada': 'Desativada',
+                'opcional': 'Opcional',
+                'recomendada': 'Recomendada',
+                'obrigatoria_para_completo': 'Obrigatória p/ completo',
+                'obrigatoria_apos_vincular': 'Obrigatória após vínculo',
+              },
+            ),
+            Divider(color: t.border),
+            _buildSwitchCampo(
+              'Permitir acesso básico sem Google',
+              'permitir_acesso_basico_sem_google',
+              description:
+              'Quando ativado, o aluno pode ver informações limitadas usando o login básico.',
+            ),
+            _buildSwitchCampo(
+              'Permitir vincular no primeiro acesso',
+              'permitir_vincular_google_no_primeiro_acesso',
+              description:
+              'Permite criar o vínculo Google durante a primeira entrada.',
+            ),
+            _buildSwitchCampo(
+              'Permitir trocar Google sem Admin',
+              'permitir_trocar_google_sem_admin',
+              description:
+              'Permite trocar a conta Google vinculada sem ação do admin.',
+              padrao: false,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildInfoBox(
+          icon: Icons.privacy_tip_rounded,
+          color: t.info,
+          title: 'Como a validação funciona',
+          text:
+          'O site não consulta a coleção de alunos diretamente. Ele chama uma Cloud Function, que valida data, iniciais e telefone usando o Admin SDK. Isso permite controlar melhor os dados retornados ao aluno.',
+        ),
+        const SizedBox(height: 14),
+        _buildCard(
+          icon: Icons.password_rounded,
+          title: 'Modelo de identificação',
+          subtitle: 'Campos usados na entrada pública.',
+          color: t.inscricoes,
+          children: const [
+            _ReadOnlyLine(title: 'Data de nascimento', value: 'Obrigatório'),
+            Divider(),
+            _ReadOnlyLine(
+              title: 'Iniciais do nome completo',
+              value: 'Obrigatório',
+            ),
+            Divider(),
+            _ReadOnlyLine(
+              title: 'Últimos 4 dígitos do telefone',
+              value: 'Configurável',
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildTabDados() {
+    final t = context.uai;
+
     return RefreshIndicator(
+      color: t.primary,
+      backgroundColor: t.surface,
       onRefresh: _carregar,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-            children: [
-              _buildResponsiveConfigGrid(
-                maxWidth: constraints.maxWidth,
-                children: [
-                  _buildCard(
-                    icon: Icons.badge_rounded,
-                    title: 'Status geral',
-                    subtitle: 'Módulos principais da Área do Aluno.',
-                    color: context.uai.associacao,
-                    children: [
-                      _buildConfigSwitchTile(
-                        title: 'Dashboard',
-                        keyName: 'mostrar_dashboard',
-                        activeDescription:
-                            'Mostra o painel principal depois do login.',
-                        inactiveDescription:
-                            'O painel principal não aparece para o aluno.',
-                        icon: Icons.dashboard_rounded,
-                        color: context.uai.associacao,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Foto',
-                        keyName: 'mostrar_foto',
-                        activeDescription:
-                            'Mostra a foto cadastrada no perfil do aluno.',
-                        inactiveDescription:
-                            'A foto do perfil fica oculta no painel.',
-                        icon: Icons.photo_camera_rounded,
-                        color: context.uai.info,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Academia e turma',
-                        keyName: 'mostrar_academia_turma',
-                        activeDescription:
-                            'Mostra academia, turma e dados básicos da turma.',
-                        inactiveDescription:
-                            'Academia e turma não aparecem para o aluno.',
-                        icon: Icons.groups_rounded,
-                        color: context.uai.associacao,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Graduação atual',
-                        keyName: 'mostrar_graduacao_atual',
-                        activeDescription:
-                            'Mostra a graduação atual no resumo do aluno.',
-                        inactiveDescription:
-                            'A graduação atual fica oculta no painel.',
-                        icon: Icons.military_tech_rounded,
-                        color: Colors.indigo,
-                      ),
-                    ],
-                  ),
-                  _buildPermissoesGoogleCard(
-                    titulo: 'Acesso sem Google',
-                    subtitulo: 'O que aparece usando apenas o login básico.',
-                    prefixo: 'sem_google',
-                    color: Colors.orange,
-                  ),
-                  _buildPermissoesGoogleCard(
-                    titulo: 'Acesso com Google',
-                    subtitulo:
-                        'O que aparece com conta Google vinculada e confirmada.',
-                    prefixo: 'com_google',
-                    color: Colors.green,
-                  ),
-                  _buildCard(
-                    icon: Icons.event_available_rounded,
-                    title: 'Evento e participação',
-                    subtitle: 'Detalhes exibidos nos eventos do aluno.',
-                    color: Colors.indigo,
-                    children: [
-                      _buildConfigSwitchTile(
-                        title: 'Eventos',
-                        keyName: 'mostrar_eventos',
-                        activeDescription:
-                            'Mostra eventos em andamento e participações.',
-                        inactiveDescription:
-                            'Eventos e participações não aparecem.',
-                        icon: Icons.event_rounded,
-                        color: Colors.indigo,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Financeiro do evento',
-                        keyName: 'mostrar_financeiro_eventos',
-                        activeDescription:
-                            'Valores do evento aparecem no detalhe da participação.',
-                        inactiveDescription:
-                            'Valores e saldos ficam ocultos no evento.',
-                        icon: Icons.payments_rounded,
-                        color: context.uai.success,
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Modo financeiro',
-                        keyName: 'modo_financeiro',
-                        description:
-                            'Define se o aluno vê valores completos, resumo ou nada.',
-                        icon: Icons.account_balance_wallet_rounded,
-                        color: context.uai.success,
-                        options: const {
-                          'completo': 'Completo',
-                          'resumo': 'Resumo',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Graduação do evento',
-                        keyName: 'mostrar_graduacao_evento',
-                        activeDescription:
-                            'A nova graduação pode aparecer no evento.',
-                        inactiveDescription:
-                            'A nova graduação não aparece no evento.',
-                        icon: Icons.emoji_events_rounded,
-                        color: Colors.deepPurple,
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Modo graduação do evento',
-                        keyName: 'modo_graduacao_evento',
-                        description:
-                            'Controla se a graduação aparece, fica em suspense ou é ocultada.',
-                        icon: Icons.auto_awesome_rounded,
-                        color: Colors.deepPurple,
-                        options: const {
-                          'completo': 'Completo',
-                          'suspense': 'Suspense',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Camisa',
-                        keyName: 'mostrar_camisa_evento',
-                        activeDescription:
-                            'Mostra tamanho e situação de entrega da camisa.',
-                        inactiveDescription:
-                            'Tamanho e entrega da camisa ficam ocultos.',
-                        icon: Icons.checkroom_rounded,
-                        color: Colors.orange,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Presença',
-                        keyName: 'mostrar_presenca_evento',
-                        activeDescription:
-                            'Mostra se a presença no evento foi confirmada.',
-                        inactiveDescription:
-                            'A presença no evento não aparece.',
-                        icon: Icons.fact_check_rounded,
-                        color: context.uai.info,
-                      ),
-                      _buildConfigSwitchTile(
-                        title: 'Certificados',
-                        keyName: 'mostrar_certificados',
-                        activeDescription:
-                            'Mostra certificados liberados para visualização.',
-                        inactiveDescription:
-                            'Certificados não aparecem para o aluno.',
-                        icon: Icons.card_membership_rounded,
-                        color: Colors.brown,
-                      ),
-                    ],
-                  ),
-                  _buildCard(
-                    icon: Icons.privacy_tip_rounded,
-                    title: 'Dados pessoais',
-                    subtitle: 'Nível de exposição dos dados do cadastro.',
-                    color: Colors.teal,
-                    children: [
-                      _buildConfigSwitchTile(
-                        title: 'Dados básicos',
-                        keyName: 'mostrar_dados_basicos',
-                        activeDescription:
-                            'Mostra as informações básicas permitidas.',
-                        inactiveDescription:
-                            'Quando desativado, o card de dados básicos não aparece para o aluno.',
-                        icon: Icons.badge_rounded,
-                        color: Colors.teal,
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Modo dados básicos',
-                        keyName: 'modo_dados_basicos',
-                        description:
-                            'Controla se os dados aparecem completos, limitados ou ocultos.',
-                        icon: Icons.manage_accounts_rounded,
-                        color: Colors.teal,
-                        options: const {
-                          'completo': 'Completo',
-                          'limitado': 'Limitado',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Telefone',
-                        keyName: 'modo_telefone',
-                        description:
-                            'Define se telefone aparece completo, mascarado ou oculto.',
-                        icon: Icons.phone_android_rounded,
-                        color: context.uai.warning,
-                        options: const {
-                          'completo': 'Completo',
-                          'mascarado': 'Mascarado',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Endereço',
-                        keyName: 'modo_endereco',
-                        description:
-                            'Define se endereço aparece completo, resumido ou oculto.',
-                        icon: Icons.location_city_rounded,
-                        color: Colors.blueGrey,
-                        options: const {
-                          'completo': 'Completo',
-                          'cidade_bairro': 'Bairro e cidade',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                      _buildConfigDropdownTile(
-                        title: 'Responsável',
-                        keyName: 'modo_responsavel',
-                        description:
-                            'Define se os dados do responsável aparecem completos, só nome ou ocultos.',
-                        icon: Icons.supervisor_account_rounded,
-                        color: Colors.purple,
-                        options: const {
-                          'completo': 'Completo',
-                          'nome': 'Somente nome',
-                          'oculto': 'Oculto',
-                        },
-                      ),
-                    ],
-                  ),
-                  _buildCard(
-                    icon: Icons.edit_document,
-                    title: 'Solicitações',
-                    subtitle: 'Correções enviadas pelo aluno.',
-                    color: Colors.orange,
-                    children: [
-                      _buildConfigSwitchTile(
-                        title: 'Solicitar alteração',
-                        keyName: 'mostrar_solicitacao_alteracao',
-                        activeDescription:
-                            'Permite enviar pedidos de correção para análise.',
-                        inactiveDescription:
-                            'O botão de solicitar alteração não aparece.',
-                        icon: Icons.edit_note_rounded,
-                        color: Colors.orange,
-                      ),
-                      _buildInfoBox(
-                        icon: Icons.assignment_turned_in_rounded,
-                        color: Colors.orange,
-                        title: 'Fila de análise',
-                        text:
-                            'As solicitações continuam na aba Solicitações com comparação dos dados atuais e pedidos.',
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _buildInfoBox(
-                icon: Icons.lock_outline_rounded,
-                color: context.uai.associacao,
-                title: 'Somente leitura',
-                text:
-                    'Mesmo que os dados estejam visíveis, o aluno não altera a coleção original. Alterações futuras são enviadas como solicitação.',
-              ),
-            ],
-          );
-        },
+      child: ListView(
+        padding: _dashboardPagePadding,
+        children: [
+          _dashboardWidthLimiter(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildResponsiveConfigGrid(
+                      maxWidth: constraints.maxWidth,
+                      children: [
+                        _buildCard(
+                          icon: Icons.badge_rounded,
+                          title: 'Status geral',
+                          subtitle: 'Módulos principais da Área do Aluno.',
+                          color: t.associacao,
+                          children: [
+                            _buildConfigSwitchTile(
+                              title: 'Dashboard',
+                              keyName: 'mostrar_dashboard',
+                              activeDescription:
+                              'Mostra o painel principal depois do login.',
+                              inactiveDescription:
+                              'O painel principal não aparece para o aluno.',
+                              icon: Icons.dashboard_rounded,
+                              color: t.associacao,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Foto',
+                              keyName: 'mostrar_foto',
+                              activeDescription:
+                              'Mostra a foto cadastrada no perfil do aluno.',
+                              inactiveDescription:
+                              'A foto do perfil fica oculta no painel.',
+                              icon: Icons.photo_camera_rounded,
+                              color: t.info,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Academia e turma',
+                              keyName: 'mostrar_academia_turma',
+                              activeDescription:
+                              'Mostra academia, turma e dados básicos da turma.',
+                              inactiveDescription:
+                              'Academia e turma não aparecem para o aluno.',
+                              icon: Icons.groups_rounded,
+                              color: t.associacao,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Graduação atual',
+                              keyName: 'mostrar_graduacao_atual',
+                              activeDescription:
+                              'Mostra a graduação atual no resumo do aluno.',
+                              inactiveDescription:
+                              'A graduação atual fica oculta no painel.',
+                              icon: Icons.military_tech_rounded,
+                              color: t.info,
+                            ),
+                          ],
+                        ),
+                        _buildPermissoesGoogleCard(
+                          titulo: 'Acesso sem Google',
+                          subtitulo:
+                          'O que aparece usando apenas o login básico.',
+                          prefixo: 'sem_google',
+                          color: t.warning,
+                        ),
+                        _buildPermissoesGoogleCard(
+                          titulo: 'Acesso com Google',
+                          subtitulo:
+                          'O que aparece com conta Google vinculada e confirmada.',
+                          prefixo: 'com_google',
+                          color: t.success,
+                        ),
+                        _buildCard(
+                          icon: Icons.event_available_rounded,
+                          title: 'Evento e participação',
+                          subtitle: 'Detalhes exibidos nos eventos do aluno.',
+                          color: t.info,
+                          children: [
+                            _buildConfigSwitchTile(
+                              title: 'Eventos',
+                              keyName: 'mostrar_eventos',
+                              activeDescription:
+                              'Mostra eventos em andamento e participações.',
+                              inactiveDescription:
+                              'Eventos e participações não aparecem.',
+                              icon: Icons.event_rounded,
+                              color: t.info,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Financeiro do evento',
+                              keyName: 'mostrar_financeiro_eventos',
+                              activeDescription:
+                              'Valores do evento aparecem no detalhe da participação.',
+                              inactiveDescription:
+                              'Valores e saldos ficam ocultos no evento.',
+                              icon: Icons.payments_rounded,
+                              color: t.success,
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Modo financeiro',
+                              keyName: 'modo_financeiro',
+                              description:
+                              'Define se o aluno vê valores completos, resumo ou nada.',
+                              icon: Icons.account_balance_wallet_rounded,
+                              color: t.success,
+                              options: const {
+                                'completo': 'Completo',
+                                'resumo': 'Resumo',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Graduação do evento',
+                              keyName: 'mostrar_graduacao_evento',
+                              activeDescription:
+                              'A nova graduação pode aparecer no evento.',
+                              inactiveDescription:
+                              'A nova graduação não aparece no evento.',
+                              icon: Icons.emoji_events_rounded,
+                              color: t.associacao,
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Modo graduação do evento',
+                              keyName: 'modo_graduacao_evento',
+                              description:
+                              'Controla se a graduação aparece, fica em suspense ou é ocultada.',
+                              icon: Icons.auto_awesome_rounded,
+                              color: t.associacao,
+                              options: const {
+                                'completo': 'Completo',
+                                'suspense': 'Suspense',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Camisa',
+                              keyName: 'mostrar_camisa_evento',
+                              activeDescription:
+                              'Mostra tamanho e situação de entrega da camisa.',
+                              inactiveDescription:
+                              'Tamanho e entrega da camisa ficam ocultos.',
+                              icon: Icons.checkroom_rounded,
+                              color: t.warning,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Presença',
+                              keyName: 'mostrar_presenca_evento',
+                              activeDescription:
+                              'Mostra se a presença no evento foi confirmada.',
+                              inactiveDescription:
+                              'A presença no evento não aparece.',
+                              icon: Icons.fact_check_rounded,
+                              color: t.info,
+                            ),
+                            _buildConfigSwitchTile(
+                              title: 'Certificados',
+                              keyName: 'mostrar_certificados',
+                              activeDescription:
+                              'Mostra certificados liberados para visualização.',
+                              inactiveDescription:
+                              'Certificados não aparecem para o aluno.',
+                              icon: Icons.card_membership_rounded,
+                              color: t.associacao,
+                            ),
+                          ],
+                        ),
+                        _buildCard(
+                          icon: Icons.privacy_tip_rounded,
+                          title: 'Dados pessoais',
+                          subtitle: 'Nível de exposição dos dados do cadastro.',
+                          color: t.inscricoes,
+                          children: [
+                            _buildConfigSwitchTile(
+                              title: 'Dados básicos',
+                              keyName: 'mostrar_dados_basicos',
+                              activeDescription:
+                              'Mostra as informações básicas permitidas.',
+                              inactiveDescription:
+                              'Quando desativado, o card de dados básicos não aparece para o aluno.',
+                              icon: Icons.badge_rounded,
+                              color: t.inscricoes,
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Modo dados básicos',
+                              keyName: 'modo_dados_basicos',
+                              description:
+                              'Controla se os dados aparecem completos, limitados ou ocultos.',
+                              icon: Icons.manage_accounts_rounded,
+                              color: t.inscricoes,
+                              options: const {
+                                'completo': 'Completo',
+                                'limitado': 'Limitado',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Telefone',
+                              keyName: 'modo_telefone',
+                              description:
+                              'Define se telefone aparece completo, mascarado ou oculto.',
+                              icon: Icons.phone_android_rounded,
+                              color: t.warning,
+                              options: const {
+                                'completo': 'Completo',
+                                'mascarado': 'Mascarado',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Endereço',
+                              keyName: 'modo_endereco',
+                              description:
+                              'Define se endereço aparece completo, resumido ou oculto.',
+                              icon: Icons.location_city_rounded,
+                              color: t.textMuted,
+                              options: const {
+                                'completo': 'Completo',
+                                'cidade_bairro': 'Bairro e cidade',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                            _buildConfigDropdownTile(
+                              title: 'Responsável',
+                              keyName: 'modo_responsavel',
+                              description:
+                              'Define se os dados do responsável aparecem completos, só nome ou ocultos.',
+                              icon: Icons.supervisor_account_rounded,
+                              color: t.associacao,
+                              options: const {
+                                'completo': 'Completo',
+                                'nome': 'Somente nome',
+                                'oculto': 'Oculto',
+                              },
+                            ),
+                          ],
+                        ),
+                        _buildCard(
+                          icon: Icons.edit_document,
+                          title: 'Solicitações',
+                          subtitle: 'Correções enviadas pelo aluno.',
+                          color: t.warning,
+                          children: [
+                            _buildConfigSwitchTile(
+                              title: 'Solicitar alteração',
+                              keyName: 'mostrar_solicitacao_alteracao',
+                              activeDescription:
+                              'Permite enviar pedidos de correção para análise.',
+                              inactiveDescription:
+                              'O botão de solicitar alteração não aparece.',
+                              icon: Icons.edit_note_rounded,
+                              color: t.warning,
+                            ),
+                            _buildInfoBox(
+                              icon: Icons.assignment_turned_in_rounded,
+                              color: t.warning,
+                              title: 'Fila de análise',
+                              text:
+                              'As solicitações continuam na aba Solicitações com comparação dos dados atuais e pedidos.',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _buildInfoBox(
+                      icon: Icons.lock_outline_rounded,
+                      color: t.associacao,
+                      title: 'Somente leitura',
+                      text:
+                      'Mesmo que os dados estejam visíveis, o aluno não altera a coleção original. Alterações futuras são enviadas como solicitação.',
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -805,7 +1011,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           'Mostrar dados básicos',
           '${prefixo}_mostrar_dados_basicos',
           description:
-              'Quando desativado, o card de dados básicos não aparece para o aluno.',
+          'Quando desativado, o card de dados básicos não aparece para o aluno.',
         ),
         _buildModoCampo(
           title: 'Modo dados básicos',
@@ -837,7 +1043,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           'Permitir solicitação de alteração',
           '${prefixo}_mostrar_solicitacao_alteracao',
           description:
-              'Permite enviar pedidos de correção dos dados cadastrais.',
+          'Permite enviar pedidos de correção dos dados cadastrais.',
         ),
         const Divider(),
         _buildSwitchCampo(
@@ -959,31 +1165,31 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: narrow
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    content,
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Switch(
-                        value: enabled,
-                        activeColor: accent,
-                        onChanged: (value) => _salvarCampo(keyName, value),
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: content),
-                    const SizedBox(width: 12),
-                    Switch(
-                      value: enabled,
-                      activeColor: accent,
-                      onChanged: (value) => _salvarCampo(keyName, value),
-                    ),
-                  ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              content,
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Switch(
+                  value: enabled,
+                  activeColor: accent,
+                  onChanged: (value) => _salvarCampo(keyName, value),
                 ),
+              ),
+            ],
+          )
+              : Row(
+            children: [
+              Expanded(child: content),
+              const SizedBox(width: 12),
+              Switch(
+                value: enabled,
+                activeColor: accent,
+                onChanged: (value) => _salvarCampo(keyName, value),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1008,210 +1214,224 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildTabTextos() {
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildCard(
-            icon: Icons.edit_note_rounded,
-            title: 'Textos da tela pública',
-            subtitle: 'Personalize as mensagens que aparecerão para o aluno.',
-            color: Colors.orange,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.title_rounded, color: context.uai.warning),
-                title: const Text('Mensagem do topo'),
-                subtitle: Text(
-                  _getString('mensagem_topo'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _editarTexto(
-                  campo: 'mensagem_topo',
-                  titulo: 'Mensagem do topo',
-                  label: 'Mensagem',
-                  maxLines: 2,
+    final t = context.uai;
+
+    return _dashboardRefreshList(
+      children: [
+        _buildCard(
+          icon: Icons.edit_note_rounded,
+          title: 'Textos da tela pública',
+          subtitle: 'Personalize as mensagens que aparecerão para o aluno.',
+          color: t.warning,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.title_rounded, color: t.warning),
+              title: Text(
+                'Mensagem do topo',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.help_outline_rounded,
-                  color: context.uai.warning,
-                ),
-                title: const Text('Texto de ajuda'),
-                subtitle: Text(
-                  _getString('texto_ajuda'),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _editarTexto(
-                  campo: 'texto_ajuda',
-                  titulo: 'Texto de ajuda',
-                  label: 'Ajuda',
-                  maxLines: 4,
+              subtitle: Text(
+                _getString('mensagem_topo'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.textSecondary),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded, color: t.textMuted),
+              onTap: () => _editarTexto(
+                campo: 'mensagem_topo',
+                titulo: 'Mensagem do topo',
+                label: 'Mensagem',
+                maxLines: 2,
+              ),
+            ),
+            Divider(color: t.border),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.help_outline_rounded, color: t.warning),
+              title: Text(
+                'Texto de ajuda',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.block_rounded, color: context.uai.warning),
-                title: const Text('Mensagem da área desativada'),
-                subtitle: Text(
-                  _getString('mensagem_area_desativada'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _editarTexto(
-                  campo: 'mensagem_area_desativada',
-                  titulo: 'Mensagem da área desativada',
-                  label: 'Mensagem',
-                  maxLines: 3,
+              subtitle: Text(
+                _getString('texto_ajuda'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.textSecondary),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded, color: t.textMuted),
+              onTap: () => _editarTexto(
+                campo: 'texto_ajuda',
+                titulo: 'Texto de ajuda',
+                label: 'Ajuda',
+                maxLines: 4,
+              ),
+            ),
+            Divider(color: t.border),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.block_rounded, color: t.warning),
+              title: Text(
+                'Mensagem da área desativada',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.visibility_off_rounded,
-                  color: context.uai.warning,
-                ),
-                title: const Text('Mensagem de dados ocultos'),
-                subtitle: Text(
-                  _getString('mensagem_dados_ocultos'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _editarTexto(
-                  campo: 'mensagem_dados_ocultos',
-                  titulo: 'Mensagem de dados ocultos',
-                  label: 'Mensagem',
-                  maxLines: 3,
+              subtitle: Text(
+                _getString('mensagem_area_desativada'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.textSecondary),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded, color: t.textMuted),
+              onTap: () => _editarTexto(
+                campo: 'mensagem_area_desativada',
+                titulo: 'Mensagem da área desativada',
+                label: 'Mensagem',
+                maxLines: 3,
+              ),
+            ),
+            Divider(color: t.border),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.visibility_off_rounded, color: t.warning),
+              title: Text(
+                'Mensagem de dados ocultos',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildPreviewCard(),
-        ],
-      ),
+              subtitle: Text(
+                _getString('mensagem_dados_ocultos'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.textSecondary),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded, color: t.textMuted),
+              onTap: () => _editarTexto(
+                campo: 'mensagem_dados_ocultos',
+                titulo: 'Mensagem de dados ocultos',
+                label: 'Mensagem',
+                maxLines: 3,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildPreviewCard(),
+      ],
     );
   }
 
   Widget _buildTabSolicitacoes() {
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildCard(
-            icon: Icons.assignment_turned_in_rounded,
-            title: 'Solicitações pendentes',
-            subtitle: 'Compare o cadastro atual com a alteração solicitada.',
-            color: context.uai.warning,
-            children: [
-              SizedBox(
-                height: 420,
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('area_aluno_solicitacoes_alteracao')
-                      .where('status', isEqualTo: 'pendente')
-                      .orderBy('criado_em', descending: true)
-                      .limit(50)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(
-                        child: CircularProgressIndicator(
-                          color: context.uai.primary,
-                        ),
-                      );
-                    }
+    final t = context.uai;
 
-                    if (snapshot.hasError) {
-                      return _buildEmptyState(
-                        icon: Icons.error_outline_rounded,
-                        title: 'Erro ao carregar',
-                        text:
-                            'Não foi possível carregar as solicitações. Talvez precise criar um índice no Firestore.',
-                      );
-                    }
-
-                    final docs = snapshot.data?.docs ?? [];
-
-                    if (docs.isEmpty) {
-                      return _buildEmptyState(
-                        icon: Icons.inbox_rounded,
-                        title: 'Nenhuma pendente',
-                        text:
-                            'Quando um aluno pedir alteração, aparecerá aqui.',
-                      );
-                    }
-
-                    return ListView.separated(
-                      itemCount: docs.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final doc = docs[index];
-                        final data = doc.data();
-                        final campos = _camposAlterados(data);
-
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor: context.uai.warning.withOpacity(
-                              0.12,
-                            ),
-                            child: Icon(
-                              Icons.edit_document,
-                              color: context.uai.warning,
-                            ),
-                          ),
-                          title: Text(
-                            data['aluno_nome']?.toString() ??
-                                'Aluno não informado',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            '${campos.length} campo(s): ${campos.map(_labelCampo).join(', ')}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.chevron_right_rounded),
-                              Text(
-                                _formatTimestamp(data['criado_em']),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: context.uai.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          onTap: () => _abrirDetalheSolicitacao(doc),
-                        );
-                      },
+    return _dashboardRefreshList(
+      children: [
+        _buildCard(
+          icon: Icons.assignment_turned_in_rounded,
+          title: 'Solicitações pendentes',
+          subtitle: 'Compare o cadastro atual com a alteração solicitada.',
+          color: t.warning,
+          children: [
+            SizedBox(
+              height: _isDesktopDashboard ? 520 : 420,
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('area_aluno_solicitacoes_alteracao')
+                    .where('status', isEqualTo: 'pendente')
+                    .orderBy('criado_em', descending: true)
+                    .limit(50)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(
+                      child: CircularProgressIndicator(color: t.primary),
                     );
-                  },
-                ),
+                  }
+
+                  if (snapshot.hasError) {
+                    return _buildEmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Erro ao carregar',
+                      text:
+                      'Não foi possível carregar as solicitações. Talvez precise criar um índice no Firestore.',
+                    );
+                  }
+
+                  final docs = snapshot.data?.docs ?? [];
+
+                  if (docs.isEmpty) {
+                    return _buildEmptyState(
+                      icon: Icons.inbox_rounded,
+                      title: 'Nenhuma pendente',
+                      text: 'Quando um aluno pedir alteração, aparecerá aqui.',
+                    );
+                  }
+
+                  return ListView.separated(
+                    itemCount: docs.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: t.border),
+                    itemBuilder: (context, index) {
+                      final doc = docs[index];
+                      final data = doc.data();
+                      final campos = _camposAlterados(data);
+
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: t.warning.withOpacity(0.12),
+                          child: Icon(Icons.edit_document, color: t.warning),
+                        ),
+                        title: Text(
+                          data['aluno_nome']?.toString() ??
+                              'Aluno não informado',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: t.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${campos.length} campo(s): ${campos.map(_labelCampo).join(', ')}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: t.textSecondary),
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.chevron_right_rounded, color: t.textMuted),
+                            Text(
+                              _formatTimestamp(data['criado_em']),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: t.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _abrirDetalheSolicitacao(doc),
+                      );
+                    },
+                  );
+                },
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildSolicitacoesHistoricoCard(),
-        ],
-      ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildSolicitacoesHistoricoCard(),
+      ],
     );
   }
 
@@ -1262,7 +1482,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                       aprovado
                           ? Icons.check_circle_rounded
                           : Icons.cancel_rounded,
-                      color: aprovado ? Colors.green : Colors.red,
+                      color: aprovado ? context.uai.success : context.uai.error,
                     ),
                     title: Text(
                       data['aluno_nome']?.toString() ?? 'Aluno não informado',
@@ -1289,8 +1509,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Future<void> _abrirDetalheSolicitacao(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     final data = doc.data();
     final status = data['status']?.toString() ?? 'pendente';
     final campos = _camposAlterados(data);
@@ -1397,12 +1617,12 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                         icon: status == 'aprovado'
                             ? Icons.check_circle_rounded
                             : Icons.cancel_rounded,
-                        color: status == 'aprovado' ? Colors.green : Colors.red,
+                        color: status == 'aprovado' ? context.uai.success : context.uai.error,
                         title: status == 'aprovado'
                             ? 'Solicitação aprovada'
                             : 'Solicitação recusada',
                         text:
-                            'Analisado em ${_formatTimestamp(data['analisado_em'])}.',
+                        'Analisado em ${_formatTimestamp(data['analisado_em'])}.',
                       ),
                     ],
                   ],
@@ -1416,21 +1636,21 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildSolicitacaoHeader(Map<String, dynamic> data, String status) {
+    final t = context.uai;
     final color = status == 'pendente'
-        ? context.uai.warning
+        ? t.warning
         : status == 'aprovado'
-        ? context.uai.success
-        : context.uai.error;
+        ? t.success
+        : t.error;
+    final bg = _ensureVisible(color, t.surface);
+    final onBg = _readableOn(bg);
 
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.78)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: _safeHeaderGradient(bg),
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: onBg.withOpacity(0.12)),
       ),
       child: Row(
         children: [
@@ -1438,12 +1658,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.16),
+              color: onBg.withOpacity(0.16),
               borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: onBg.withOpacity(0.14)),
             ),
             child: Icon(
               Icons.assignment_turned_in_rounded,
-              color: _onPrimary(),
+              color: onBg,
               size: 31,
             ),
           ),
@@ -1457,8 +1678,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _onPrimary(),
-                    fontWeight: FontWeight.bold,
+                    color: onBg,
+                    fontWeight: FontWeight.w900,
                     fontSize: 17,
                     height: 1.1,
                   ),
@@ -1469,7 +1690,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _onPrimary().withOpacity(0.80),
+                    color: onBg.withOpacity(0.80),
                     fontSize: 12,
                   ),
                 ),
@@ -1478,14 +1699,36 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                   spacing: 7,
                   runSpacing: 6,
                   children: [
-                    _buildWhiteChip(status.toUpperCase()),
-                    _buildWhiteChip(_formatTimestamp(data['criado_em'])),
+                    _buildColorChip(status.toUpperCase(), bg),
+                    _buildColorChip(_formatTimestamp(data['criado_em']), bg),
                   ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildColorChip(String text, Color background) {
+    if (text.trim().isEmpty || text == '--') return const SizedBox.shrink();
+    final onBg = _readableOn(background);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: onBg.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: onBg.withOpacity(0.15)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: onBg,
+          fontWeight: FontWeight.bold,
+          fontSize: 10,
+        ),
       ),
     );
   }
@@ -1514,17 +1757,17 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   Widget _buildObservacaoAluno(String texto) {
     return _buildInfoBox(
       icon: Icons.notes_rounded,
-      color: Colors.blue,
+      color: context.uai.info,
       title: 'Observação do aluno',
       text: texto,
     );
   }
 
   Widget _buildComparacaoSolicitacao(
-    List<String> campos,
-    Map<String, dynamic> originais,
-    Map<String, dynamic> solicitados,
-  ) {
+      List<String> campos,
+      Map<String, dynamic> originais,
+      Map<String, dynamic> solicitados,
+      ) {
     if (campos.isEmpty) {
       return _buildEmptyState(
         icon: Icons.info_outline_rounded,
@@ -1600,13 +1843,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                     _buildValorComparacao(
                       titulo: 'Atual',
                       valor: original,
-                      color: Colors.grey,
+                      color: context.uai.textMuted,
                     ),
                     const SizedBox(height: 8),
                     _buildValorComparacao(
                       titulo: 'Solicitado',
                       valor: solicitado,
-                      color: Colors.green,
+                      color: context.uai.success,
                     ),
                   ],
                 );
@@ -1619,7 +1862,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                     child: _buildValorComparacao(
                       titulo: 'Atual',
                       valor: original,
-                      color: Colors.grey,
+                      color: context.uai.textMuted,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1629,7 +1872,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                     child: _buildValorComparacao(
                       titulo: 'Solicitado',
                       valor: solicitado,
-                      color: Colors.green,
+                      color: context.uai.success,
                     ),
                   ),
                 ],
@@ -1667,7 +1910,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           Text(
             titulo,
             style: TextStyle(
-              color: color == Colors.grey
+              color: color == context.uai.textMuted
                   ? context.uai.textSecondary
                   : _ensureVisible(color, context.uai.card),
               fontSize: 11,
@@ -1689,13 +1932,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Future<void> _confirmarAprovarSolicitacao(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     final confirmar = await _confirmarAcao(
       titulo: 'Aprovar solicitação?',
       mensagem:
-          'Os campos alterados serão aplicados no cadastro oficial do aluno.',
-      cor: Colors.green,
+      'Os campos alterados serão aplicados no cadastro oficial do aluno.',
+      cor: context.uai.success,
       textoBotao: 'APROVAR',
     );
 
@@ -1705,8 +1948,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Future<void> _confirmarRecusaSolicitacao(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     final observacaoController = TextEditingController();
 
     final confirmar = await showDialog<bool>(
@@ -1796,8 +2039,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Future<void> _aprovarSolicitacao(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     try {
       final data = doc.data();
       final alunoId = data['aluno_id']?.toString() ?? '';
@@ -1805,7 +2048,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       final campos = _camposAlterados(data);
 
       if (alunoId.isEmpty || campos.isEmpty) {
-        _mostrarSnack('Solicitação inválida.', Colors.red);
+        _mostrarSnack('Solicitação inválida.', context.uai.error);
         return;
       }
 
@@ -1883,17 +2126,17 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
       _mostrarSnack(
         '✅ Solicitação aprovada e cadastro atualizado.',
-        Colors.green,
+        context.uai.success,
       );
     } catch (e) {
-      _mostrarSnack('Erro ao aprovar solicitação: $e', Colors.red);
+      _mostrarSnack('Erro ao aprovar solicitação: $e', context.uai.error);
     }
   }
 
   Future<void> _recusarSolicitacao(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    String observacao,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      String observacao,
+      ) async {
     try {
       final admin = await _dadosAdminAtual();
 
@@ -1910,7 +2153,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
       _mostrarSnack('Solicitação recusada.', context.uai.warning);
     } catch (e) {
-      _mostrarSnack('Erro ao recusar solicitação: $e', Colors.red);
+      _mostrarSnack('Erro ao recusar solicitação: $e', context.uai.error);
     }
   }
 
@@ -1934,9 +2177,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       if (data != null) {
         nome =
             data['nome_completo']?.toString() ??
-            data['nome']?.toString() ??
-            data['email']?.toString() ??
-            nome;
+                data['nome']?.toString() ??
+                data['email']?.toString() ??
+                nome;
       }
     } catch (_) {}
 
@@ -2014,51 +2257,58 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildTabContasGoogle() {
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildCard(
-            icon: Icons.account_circle_rounded,
-            title: 'Contas vinculadas',
-            subtitle: 'Acompanhe e resete vínculos Google da Área do Aluno.',
-            color: Colors.deepPurple,
-            children: [
-              TextField(
-                controller: _contasBuscaController,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  labelText:
-                      'Buscar por aluno, turma, e-mail Google ou nome Google',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: context.uai.border),
-                  ),
-                  suffixIcon: _contasBuscaController.text.trim().isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Limpar busca',
-                          onPressed: () {
-                            _contasBuscaController.clear();
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.close_rounded),
-                        ),
+    final t = context.uai;
+
+    return _dashboardRefreshList(
+      children: [
+        _buildCard(
+          icon: Icons.account_circle_rounded,
+          title: 'Contas vinculadas',
+          subtitle: 'Acompanhe e resete vínculos Google da Área do Aluno.',
+          color: t.associacao,
+          children: [
+            TextField(
+              controller: _contasBuscaController,
+              style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w700),
+              cursorColor: t.primary,
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded, color: _ensureVisible(t.primary, t.cardAlt)),
+                labelText: 'Buscar por aluno, turma, e-mail Google ou nome Google',
+                labelStyle: TextStyle(color: t.textSecondary),
+                filled: true,
+                fillColor: t.cardAlt,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(t.inputRadius),
+                  borderSide: BorderSide(color: t.border),
                 ),
-                onChanged: (_) => setState(() {}),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(t.inputRadius),
+                  borderSide: BorderSide(color: t.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(t.inputRadius),
+                  borderSide: BorderSide(color: t.primary, width: 1.4),
+                ),
+                suffixIcon: _contasBuscaController.text.trim().isEmpty
+                    ? null
+                    : IconButton(
+                  tooltip: 'Limpar busca',
+                  onPressed: () {
+                    _contasBuscaController.clear();
+                    setState(() {});
+                  },
+                  icon: Icon(Icons.close_rounded, color: t.textMuted),
+                ),
               ),
-              const SizedBox(height: 12),
-              _buildContasAcoes(),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildListaContasVinculadas(),
-        ],
-      ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            _buildContasAcoes(),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _buildListaContasVinculadas(),
+      ],
     );
   }
 
@@ -2071,8 +2321,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           onPressed: _contasSelecionadas.isEmpty
               ? null
               : () => _confirmarResetVinculos(
-                  alunoIds: _contasSelecionadas.toList(),
-                ),
+            alunoIds: _contasSelecionadas.toList(),
+          ),
           icon: const Icon(Icons.link_off_rounded),
           label: Text('Resetar selecionados (${_contasSelecionadas.length})'),
         ),
@@ -2080,7 +2330,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           onPressed: () => _confirmarResetVinculos(resetarTodos: true),
           icon: const Icon(Icons.warning_amber_rounded),
           label: const Text('Resetar todos'),
-          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+          style: OutlinedButton.styleFrom(foregroundColor: context.uai.error),
         ),
       ],
     );
@@ -2106,10 +2356,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         if (snapshot.hasError) {
           return _buildInfoBox(
             icon: Icons.error_outline_rounded,
-            color: Colors.red,
+            color: context.uai.error,
             title: 'Erro ao carregar alunos',
             text:
-                'Pode ser necessário revisar permissões ou índices do Firestore.',
+            'Pode ser necessário revisar permissões ou índices do Firestore.',
           );
         }
 
@@ -2157,14 +2407,14 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
             if (docsVinculados.isEmpty)
               _buildInfoBox(
                 icon: Icons.account_circle_outlined,
-                color: Colors.grey,
+                color: context.uai.textMuted,
                 title: 'Sem contas vinculadas',
                 text: 'Nenhuma conta Google vinculada ainda.',
               )
             else if (docs.isEmpty)
               _buildInfoBox(
                 icon: Icons.search_off_rounded,
-                color: Colors.grey,
+                color: context.uai.textMuted,
                 title: 'Nenhuma conta encontrada',
                 text: 'A busca não encontrou contas vinculadas.',
               )
@@ -2207,13 +2457,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           icon: Icons.verified_user_rounded,
           label: 'Contas vinculadas',
           value: vinculadas.toString(),
-          color: Colors.green,
+          color: context.uai.success,
         ),
         _buildResumoPill(
           icon: Icons.link_off_rounded,
           label: 'Sem vínculo',
           value: semVinculo.toString(),
-          color: Colors.orange,
+          color: context.uai.warning,
         ),
         if (buscaAtiva)
           _buildResumoPill(
@@ -2287,8 +2537,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildContasGridResponsivo(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -2304,10 +2554,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           children: docs
               .map(
                 (doc) => SizedBox(
-                  width: itemWidth.isFinite ? itemWidth : double.infinity,
-                  child: _buildContaAlunoTile(doc),
-                ),
-              )
+              width: itemWidth.isFinite ? itemWidth : double.infinity,
+              child: _buildContaAlunoTile(doc),
+            ),
+          )
               .toList(),
         );
       },
@@ -2433,18 +2683,18 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                       child: Center(
                         child: carregandoCorda
                             ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: t.primary,
-                                ),
-                              )
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: t.primary,
+                          ),
+                        )
                             : SvgPicture.string(
-                                cordaSvg!,
-                                height: 56,
-                                fit: BoxFit.contain,
-                              ),
+                          cordaSvg!,
+                          height: 56,
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                   ],
@@ -2578,11 +2828,11 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         child: fotoUrl.isEmpty
             ? fallback()
             : CachedNetworkImage(
-                imageUrl: fotoUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => fallback(),
-                errorWidget: (context, url, error) => fallback(),
-              ),
+          imageUrl: fotoUrl,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => fallback(),
+          errorWidget: (context, url, error) => fallback(),
+        ),
       ),
     );
   }
@@ -2728,8 +2978,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           .whereType<xml.XmlElement>()
           .firstWhere(
             (e) => e.getAttribute('id') == id,
-            orElse: () => xml.XmlElement(xml.XmlName('')),
-          );
+        orElse: () => xml.XmlElement(xml.XmlName('')),
+      );
       if (element.name.local.isEmpty) return;
 
       final hex =
@@ -2740,9 +2990,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         'style',
         oldStyle.contains('fill:')
             ? oldStyle.replaceAll(
-                RegExp(r'fill:\s*#[0-9a-fA-F]{3,8}'),
-                'fill:$hex',
-              )
+          RegExp(r'fill:\s*#[0-9a-fA-F]{3,8}'),
+          'fill:$hex',
+        )
             : 'fill:$hex;$oldStyle',
       );
     }
@@ -2799,10 +3049,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   void _salvarGraduacaoContaNoCache(
-    String id,
-    Map<String, dynamic> data, {
-    String? nomeFallback,
-  }) {
+      String id,
+      Map<String, dynamic> data, {
+        String? nomeFallback,
+      }) {
     final nome = _textoConta(
       data['nome_graduacao'] ?? data['nome'] ?? data['titulo'],
       fallback: nomeFallback ?? '',
@@ -2831,8 +3081,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget buildContaAlunoTileAntigo(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
     final data = doc.data();
     final t = context.uai;
     final vinculado = _isContaGoogleVinculada(data);
@@ -2878,12 +3128,12 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
               Text(
                 vinculado
                     ? [
-                        if (email.isNotEmpty) email,
-                        if (googleNome.isNotEmpty) googleNome,
-                        if (vinculadoEm.isNotEmpty) 'Vinculado em $vinculadoEm',
-                        if (ultimoAcesso.isNotEmpty)
-                          'Último acesso Google $ultimoAcesso',
-                      ].join(' • ')
+                  if (email.isNotEmpty) email,
+                  if (googleNome.isNotEmpty) googleNome,
+                  if (vinculadoEm.isNotEmpty) 'Vinculado em $vinculadoEm',
+                  if (ultimoAcesso.isNotEmpty)
+                    'Último acesso Google $ultimoAcesso',
+                ].join(' • ')
                     : 'Aguardando vínculo',
               ),
               if (vinculado) ...[
@@ -2903,7 +3153,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         ),
         secondary: Icon(
           vinculado ? Icons.verified_user_rounded : Icons.link_off_rounded,
-          color: vinculado ? Colors.green : Colors.grey,
+          color: vinculado ? context.uai.success : context.uai.textMuted,
         ),
         controlAffinity: ListTileControlAffinity.leading,
         isThreeLine: vinculado,
@@ -2959,51 +3209,42 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
       if (data['success'] == true) {
         setState(_contasSelecionadas.clear);
-        _mostrarSnack('Vínculo Google resetado.', Colors.green);
+        _mostrarSnack('Vínculo Google resetado.', context.uai.success);
       } else {
         _mostrarSnack(
           data['message']?.toString() ?? 'Não foi possível resetar o vínculo.',
-          Colors.red,
+          context.uai.error,
         );
       }
     } catch (e) {
-      _mostrarSnack('Erro ao resetar vínculo: $e', Colors.red);
+      _mostrarSnack('Erro ao resetar vínculo: $e', context.uai.error);
     }
   }
 
   Widget _buildTabLogs() {
-    return RefreshIndicator(
-      onRefresh: _carregar,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 30),
-        children: [
-          _buildLogsResumoHeader(),
-          const SizedBox(height: 14),
-          _buildLimparLogsCardCompacto(),
-          const SizedBox(height: 14),
-          _buildLogsSegmentadosCard(),
-        ],
-      ),
+    return _dashboardRefreshList(
+      children: [
+        _buildLogsResumoHeader(),
+        const SizedBox(height: 14),
+        _buildLimparLogsCardCompacto(),
+        const SizedBox(height: 14),
+        _buildLogsSegmentadosCard(),
+      ],
     );
   }
 
   Widget _buildLogsResumoHeader() {
+    final t = context.uai;
+    final bg = _safeHeaderBase(t.info);
+    final onBg = _readableOn(bg);
+
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 18 : 15),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.uai.textPrimary, context.uai.textSecondary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: context.uai.textPrimary.withOpacity(0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        gradient: _safeHeaderGradient(t.info),
+        borderRadius: BorderRadius.circular(t.cardRadius + 2),
+        border: Border.all(color: onBg.withOpacity(0.12)),
+        boxShadow: t.cardShadow,
       ),
       child: Row(
         children: [
@@ -3011,12 +3252,13 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.13),
-              borderRadius: BorderRadius.circular(18),
+              color: onBg.withOpacity(0.13),
+              borderRadius: BorderRadius.circular(t.buttonRadius + 2),
+              border: Border.all(color: onBg.withOpacity(0.15)),
             ),
             child: Icon(
               Icons.manage_history_rounded,
-              color: _onPrimary(),
+              color: onBg,
               size: 30,
             ),
           ),
@@ -3028,9 +3270,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 Text(
                   'Central de logs',
                   style: TextStyle(
-                    color: _onPrimary(),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
+                    color: onBg,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
                     height: 1.1,
                   ),
                 ),
@@ -3038,9 +3280,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 Text(
                   'Acompanhe acessos, tentativas bloqueadas e faça limpeza quando necessário.',
                   style: TextStyle(
-                    color: _onPrimary().withOpacity(0.78),
+                    color: onBg.withOpacity(0.82),
                     fontSize: 12,
                     height: 1.25,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -3103,29 +3346,29 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 _buildLogActionButton(
                   label: 'Acessos',
                   icon: Icons.login_rounded,
-                  color: Colors.green,
+                  color: context.uai.success,
                   onTap: () => _confirmarLimparLogs(
                     collection: 'area_aluno_logs_acesso',
                     titulo: 'Apagar logs de acesso?',
                     descricao:
-                        'Todos os registros de alunos que acessaram a Área do Aluno serão apagados.',
+                    'Todos os registros de alunos que acessaram a Área do Aluno serão apagados.',
                   ),
                 ),
                 _buildLogActionButton(
                   label: 'Erros',
                   icon: Icons.warning_rounded,
-                  color: Colors.orange,
+                  color: context.uai.warning,
                   onTap: () => _confirmarLimparLogs(
                     collection: 'area_aluno_logs_erro',
                     titulo: 'Apagar logs de erro?',
                     descricao:
-                        'Todos os registros de tentativas inválidas ou bloqueadas serão apagados.',
+                    'Todos os registros de tentativas inválidas ou bloqueadas serão apagados.',
                   ),
                 ),
                 _buildLogActionButton(
                   label: 'Todos',
                   icon: Icons.delete_forever_rounded,
-                  color: Colors.red,
+                  color: context.uai.error,
                   filled: true,
                   onTap: _confirmarLimparTodosLogs,
                 ),
@@ -3352,10 +3595,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
             return _buildLogCard(
               icon: Icons.check_circle_rounded,
-              color: possivelTroca ? Colors.deepOrange : Colors.green,
+              color: possivelTroca ? context.uai.warning : context.uai.success,
               title: data['aluno_nome']?.toString() ?? 'Aluno não informado',
               subtitle:
-                  data['turma']?.toString() ??
+              data['turma']?.toString() ??
                   data['motivo']?.toString() ??
                   'Acesso liberado',
               timestamp: data['acesso_em'],
@@ -3364,12 +3607,12 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                   _LogChip(
                     icon: Icons.home_work_rounded,
                     label: data['academia'].toString(),
-                    color: Colors.blue,
+                    color: context.uai.info,
                   ),
                 _LogChip(
                   icon: Icons.login_rounded,
                   label: 'Acesso',
-                  color: Colors.green,
+                  color: context.uai.success,
                 ),
                 if ((data['turma']?.toString() ?? '').isNotEmpty)
                   _LogChip(
@@ -3388,23 +3631,23 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                   _LogChip(
                     icon: Icons.public_rounded,
                     label: dispositivo['navegador_nome'].toString(),
-                    color: Colors.indigo,
+                    color: context.uai.info,
                   ),
                 if ((dispositivo['sistema_operacional_aproximado']
-                            ?.toString() ??
-                        '')
+                    ?.toString() ??
+                    '')
                     .isNotEmpty)
                   _LogChip(
                     icon: Icons.memory_rounded,
                     label: dispositivo['sistema_operacional_aproximado']
                         .toString(),
-                    color: Colors.purple,
+                    color: context.uai.associacao,
                   ),
                 if (possivelTroca)
                   _LogChip(
                     icon: Icons.report_rounded,
                     label: 'Mesmo aparelho em outro aluno',
-                    color: Colors.deepOrange,
+                    color: context.uai.warning,
                   ),
               ],
             );
@@ -3424,8 +3667,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     final tipo = dispositivo['tipo_dispositivo']?.toString().trim() ?? '';
     final sistema =
         dispositivo['sistema_operacional_aproximado']?.toString().trim() ??
-        dispositivo['tipo_plataforma']?.toString().trim() ??
-        '';
+            dispositivo['tipo_plataforma']?.toString().trim() ??
+            '';
     final marca =
         dispositivo['celular_marca_aproximada']?.toString().trim() ?? '';
     final modelo =
@@ -3483,7 +3726,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
             return _buildLogCard(
               icon: Icons.cancel_rounded,
-              color: Colors.red,
+              color: context.uai.error,
               title: data['motivo']?.toString() ?? 'Tentativa bloqueada',
               subtitle: 'Dados usados na tentativa de acesso',
               timestamp: data['tentativa_em'],
@@ -3530,7 +3773,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           return _buildEmptyLog(
             icon: Icons.error_outline_rounded,
             text:
-                'Erro ao carregar alertas. Pode ser necessário criar índice no Firestore.',
+            'Erro ao carregar alertas. Pode ser necessário criar índice no Firestore.',
           );
         }
 
@@ -3554,21 +3797,21 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
             return _buildLogCard(
               icon: Icons.report_rounded,
-              color: Colors.deepOrange,
+              color: context.uai.warning,
               title:
-                  data['aluno_nome_atual']?.toString() ?? 'Aluno não informado',
+              data['aluno_nome_atual']?.toString() ?? 'Aluno não informado',
               subtitle: 'Mesmo dispositivo usado em múltiplos alunos',
               timestamp: data['criado_em'],
               chips: [
                 _LogChip(
                   icon: Icons.devices_rounded,
                   label: _textoDispositivoLog(dispositivo),
-                  color: Colors.deepOrange,
+                  color: context.uai.warning,
                 ),
                 _LogChip(
                   icon: Icons.security_rounded,
                   label: data['tipo']?.toString() ?? 'alerta',
-                  color: Colors.red,
+                  color: context.uai.error,
                 ),
               ],
               trailing: TextButton(
@@ -3583,8 +3826,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Future<void> _marcarAlertaResolvido(
-    DocumentReference<Map<String, dynamic>> ref,
-  ) async {
+      DocumentReference<Map<String, dynamic>> ref,
+      ) async {
     try {
       await ref.set({
         'resolvido': true,
@@ -3592,10 +3835,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       }, SetOptions(merge: true));
 
       if (!mounted) return;
-      _mostrarSnack('Alerta marcado como resolvido.', Colors.green);
+      _mostrarSnack('Alerta marcado como resolvido.', context.uai.success);
     } catch (e) {
       if (!mounted) return;
-      _mostrarSnack('Erro ao resolver alerta: $e', Colors.red);
+      _mostrarSnack('Erro ao resolver alerta: $e', context.uai.error);
     }
   }
 
@@ -3722,62 +3965,143 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildHeader() {
+    final t = context.uai;
     final visivel = _getBool('visivel_site');
+    final headerBg = _safeHeaderBase();
+    final onHeader = _readableOn(headerBg);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(_isDesktopDashboard ? 18 : 15),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.uai.primary, context.uai.error],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: context.uai.primary.withOpacity(0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        gradient: _safeHeaderGradient(),
+        borderRadius: BorderRadius.circular(t.cardRadius + 4),
+        border: Border.all(color: onHeader.withOpacity(0.12)),
+        boxShadow: t.cardShadow,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+
+          final icon = Container(
+            width: compact ? 56 : 62,
+            height: compact ? 56 : 62,
+            decoration: BoxDecoration(
+              color: onHeader.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(t.cardRadius - 2),
+              border: Border.all(color: onHeader.withOpacity(0.16)),
+            ),
+            child: Icon(
+              Icons.school_rounded,
+              color: onHeader,
+              size: compact ? 29 : 34,
+            ),
+          );
+
+          final text = Column(
+            crossAxisAlignment:
+            compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Painel da Área do Aluno',
+                textAlign: compact ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onHeader,
+                  fontSize: compact ? 21 : 25,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Controle acesso, segurança, dados visíveis, textos e logs.',
+                textAlign: compact ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onHeader.withOpacity(0.82),
+                  fontSize: 12.5,
+                  height: 1.30,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                alignment: compact ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildHeroChip(
+                    icon: visivel
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    label: visivel ? 'ATIVA NO SITE' : 'OCULTA NO SITE',
+                    color: visivel ? t.success : t.textMuted,
+                  ),
+                  _buildHeroChip(
+                    icon: Icons.security_rounded,
+                    label: 'SEGURANÇA',
+                    color: t.info,
+                  ),
+                  _buildHeroChip(
+                    icon: Icons.history_rounded,
+                    label: 'LOGS',
+                    color: t.warning,
+                  ),
+                ],
+              ),
+            ],
+          );
+
+          if (compact) {
+            return Column(
+              children: [
+                icon,
+                const SizedBox(height: 13),
+                text,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: 15),
+              Expanded(child: text),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeroChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    final headerBg = _safeHeaderBase();
+    final onHeader = _readableOn(headerBg);
+    final accent = _ensureVisible(color, headerBg);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: onHeader.withOpacity(0.13),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: onHeader.withOpacity(0.15)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.14),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(Icons.school_rounded, color: _onPrimary(), size: 30),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Painel da Área do Aluno',
-                  style: TextStyle(
-                    color: _onPrimary(),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Controle acesso, segurança, dados visíveis, textos e logs.',
-                  style: TextStyle(
-                    color: _onPrimary().withOpacity(0.80),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+          Icon(icon, color: accent, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: onHeader,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
             ),
           ),
-          const SizedBox(width: 10),
-          _buildHeaderStatusChip(visivel),
         ],
       ),
     );
@@ -3788,7 +4112,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: visivel
-            ? Colors.green.withOpacity(0.22)
+            ? context.uai.success.withOpacity(0.22)
             : _onPrimary().withOpacity(0.14),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: _onPrimary().withOpacity(0.24)),
@@ -3805,6 +4129,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildResumoRapido() {
+    final t = context.uai;
     final visivel = _getBool('visivel_site');
     final apenasAtivos = _getBool('aceitar_apenas_ativos', padrao: true);
     final telefone = _getBool('exigir_telefone_confirmacao', padrao: true);
@@ -3814,31 +4139,32 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         icon: visivel ? Icons.visibility : Icons.visibility_off,
         label: 'Site',
         value: visivel ? 'Ativo' : 'Oculto',
-        color: visivel ? context.uai.success : context.uai.textMuted,
+        color: visivel ? t.success : t.textMuted,
       ),
       _ResumoCardData(
         icon: Icons.person_pin_rounded,
         label: 'Acesso',
         value: apenasAtivos ? 'Só ativos' : 'Todos',
-        color: context.uai.info,
+        color: t.info,
       ),
       _ResumoCardData(
         icon: Icons.phone_android_rounded,
         label: 'Telefone',
-        value: telefone ? 'Exige' : 'Não exige',
-        color: context.uai.warning,
+        value: telefone ? 'Exige' : 'Livre',
+        color: t.warning,
       ),
     ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 420;
-        final spacing = compact ? 8.0 : 10.0;
-        final itemWidth = compact
+        final spacing = constraints.maxWidth < 420 ? 8.0 : 10.0;
+        final columns = constraints.maxWidth < 340 ? 1 : 3;
+        final itemWidth = columns == 1
             ? constraints.maxWidth
-            : (constraints.maxWidth - spacing * 2) / 3;
+            : (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
         return Wrap(
+          alignment: WrapAlignment.center,
           spacing: spacing,
           runSpacing: spacing,
           children: cards.map((card) {
@@ -3865,40 +4191,32 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }) {
     final t = context.uai;
     final accent = _ensureVisible(color, t.card);
-    final bg = Color.alphaBlend(accent.withOpacity(0.055), t.card);
+    final bg = Color.alphaBlend(accent.withOpacity(0.08), t.card);
 
     return Material(
       color: bg,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(t.cardRadius - 6),
       clipBehavior: Clip.antiAlias,
       child: Container(
-        padding: const EdgeInsets.all(13),
+        constraints: const BoxConstraints(minHeight: 82),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 11),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(t.cardRadius - 6),
           border: Border.all(color: accent.withOpacity(0.14)),
           boxShadow: t.softShadow,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: accent.withOpacity(0.16)),
-              ),
-              child: Icon(icon, color: accent, size: 21),
-            ),
-            const SizedBox(height: 7),
+            Icon(icon, color: accent, size: 22),
+            const SizedBox(height: 6),
             Text(
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: t.textPrimary,
-                fontWeight: FontWeight.bold,
+                color: _onCard(),
+                fontWeight: FontWeight.w900,
                 fontSize: 12.5,
               ),
             ),
@@ -3908,9 +4226,9 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
+                color: _onCardMuted(),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -3928,7 +4246,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
             done
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
-            color: done ? Colors.green : Colors.grey,
+            color: done ? context.uai.success : context.uai.textMuted,
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -3949,11 +4267,11 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
   }
 
   Widget _buildSwitchCampo(
-    String title,
-    String key, {
-    String? description,
-    bool padrao = true,
-  }) {
+      String title,
+      String key, {
+        String? description,
+        bool padrao = true,
+      }) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 430;
@@ -3981,31 +4299,31 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: narrow
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    text,
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Switch(
-                        value: value,
-                        activeColor: context.uai.associacao,
-                        onChanged: (value) => _salvarCampo(key, value),
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: text),
-                    const SizedBox(width: 12),
-                    Switch(
-                      value: value,
-                      activeColor: context.uai.associacao,
-                      onChanged: (value) => _salvarCampo(key, value),
-                    ),
-                  ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              text,
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Switch(
+                  value: value,
+                  activeColor: context.uai.associacao,
+                  onChanged: (value) => _salvarCampo(key, value),
                 ),
+              ),
+            ],
+          )
+              : Row(
+            children: [
+              Expanded(child: text),
+              const SizedBox(width: 12),
+              Switch(
+                value: value,
+                activeColor: context.uai.associacao,
+                onChanged: (value) => _salvarCampo(key, value),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -4085,10 +4403,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           items: options.entries
               .map(
                 (entry) => DropdownMenuItem<String>(
-                  value: entry.key,
-                  child: Text(entry.value, overflow: TextOverflow.ellipsis),
-                ),
-              )
+              value: entry.key,
+              child: Text(entry.value, overflow: TextOverflow.ellipsis),
+            ),
+          )
               .toList(),
           onChanged: (newValue) {
             if (newValue == null) return;
@@ -4100,16 +4418,16 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: narrow
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [label, const SizedBox(height: 8), dropdown],
-                )
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [label, const SizedBox(height: 8), dropdown],
+          )
               : Row(
-                  children: [
-                    Expanded(child: label),
-                    const SizedBox(width: 12),
-                    SizedBox(width: 210, child: dropdown),
-                  ],
-                ),
+            children: [
+              Expanded(child: label),
+              const SizedBox(width: 12),
+              SizedBox(width: 210, child: dropdown),
+            ],
+          ),
         );
       },
     );
@@ -4120,7 +4438,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       icon: Icons.preview_rounded,
       title: 'Prévia dos textos',
       subtitle: 'Como a mensagem aparecerá para o aluno.',
-      color: Colors.brown,
+      color: context.uai.associacao,
       children: [
         Container(
           width: double.infinity,
@@ -4148,7 +4466,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 _getString(
                   'texto_ajuda',
                   padrao:
-                      'Informe sua data de nascimento, as iniciais do seu nome completo e os últimos 4 dígitos do telefone cadastrado.',
+                  'Informe sua data de nascimento, as iniciais do seu nome completo e os últimos 4 dígitos do telefone cadastrado.',
                 ),
                 style: TextStyle(
                   color: context.uai.textSecondary,
@@ -4217,14 +4535,14 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       icon: Icons.delete_sweep_rounded,
       title: 'Limpeza de logs',
       subtitle: 'Apague registros antigos de acesso e erro da Área do Aluno.',
-      color: Colors.red,
+      color: context.uai.error,
       children: [
         _buildInfoBox(
           icon: Icons.warning_amber_rounded,
-          color: Colors.orange,
+          color: context.uai.warning,
           title: 'Atenção',
           text:
-              'Essa ação apaga os registros de logs permanentemente. As solicitações de alteração não serão apagadas.',
+          'Essa ação apaga os registros de logs permanentemente. As solicitações de alteração não serão apagadas.',
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
@@ -4236,7 +4554,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 collection: 'area_aluno_logs_acesso',
                 titulo: 'Apagar logs de acesso?',
                 descricao:
-                    'Todos os registros de alunos que acessaram a Área do Aluno serão apagados.',
+                'Todos os registros de alunos que acessaram a Área do Aluno serão apagados.',
               ),
               icon: const Icon(Icons.login_rounded),
               label: const Text('APAGAR ACESSOS'),
@@ -4252,7 +4570,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
                 collection: 'area_aluno_logs_erro',
                 titulo: 'Apagar logs de erro?',
                 descricao:
-                    'Todos os registros de tentativas inválidas ou bloqueadas serão apagados.',
+                'Todos os registros de tentativas inválidas ou bloqueadas serão apagados.',
               ),
               icon: const Icon(Icons.warning_rounded),
               label: const Text('APAGAR ERROS'),
@@ -4308,8 +4626,8 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     final confirmar = await _confirmarAcao(
       titulo: 'Apagar todos os logs?',
       mensagem:
-          'Isso apagará todos os logs de acesso e todos os logs de erro da Área do Aluno. Essa ação não pode ser desfeita.',
-      cor: Colors.red,
+      'Isso apagará todos os logs de acesso e todos os logs de erro da Área do Aluno. Essa ação não pode ser desfeita.',
+      cor: context.uai.error,
       textoBotao: 'APAGAR TUDO',
     );
 
@@ -4318,7 +4636,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     await _limparColecaoLogs('area_aluno_logs_acesso');
     await _limparColecaoLogs('area_aluno_logs_erro');
 
-    _mostrarSnack('✅ Todos os logs foram apagados.', Colors.green);
+    _mostrarSnack('✅ Todos os logs foram apagados.', context.uai.success);
   }
 
   Future<void> _confirmarLimparLogs({
@@ -4329,7 +4647,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
     final confirmar = await _confirmarAcao(
       titulo: titulo,
       mensagem: '$descricao\n\nEssa ação não pode ser desfeita.',
-      cor: Colors.red,
+      cor: context.uai.error,
       textoBotao: 'APAGAR',
     );
 
@@ -4337,7 +4655,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
     await _limparColecaoLogs(collection);
 
-    _mostrarSnack('✅ Logs apagados com sucesso.', Colors.green);
+    _mostrarSnack('✅ Logs apagados com sucesso.', context.uai.success);
   }
 
   Future<void> _limparColecaoLogs(String collection) async {
@@ -4369,7 +4687,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
         }
       }
     } catch (e) {
-      _mostrarSnack('Erro ao apagar logs: $e', Colors.red);
+      _mostrarSnack('Erro ao apagar logs: $e', context.uai.error);
     }
   }
 
@@ -4378,7 +4696,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       icon: Icons.login_rounded,
       title: 'Últimos acessos',
       subtitle: 'Alunos que conseguiram acessar a Área do Aluno.',
-      color: Colors.green,
+      color: context.uai.success,
       children: [
         SizedBox(
           height: 360,
@@ -4415,11 +4733,11 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
                   return _buildLogTile(
                     icon: Icons.check_circle_rounded,
-                    color: Colors.green,
+                    color: context.uai.success,
                     title:
-                        data['aluno_nome']?.toString() ?? 'Aluno não informado',
+                    data['aluno_nome']?.toString() ?? 'Aluno não informado',
                     subtitle:
-                        data['turma']?.toString() ??
+                    data['turma']?.toString() ??
                         data['motivo']?.toString() ??
                         'Acesso liberado',
                     timestamp: data['acesso_em'],
@@ -4439,7 +4757,7 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
       icon: Icons.warning_rounded,
       title: 'Logs de erro',
       subtitle: 'Tentativas inválidas ou bloqueadas.',
-      color: Colors.red,
+      color: context.uai.error,
       children: [
         SizedBox(
           height: 360,
@@ -4476,10 +4794,10 @@ class _AreaAlunoAdminScreenState extends State<AreaAlunoAdminScreen>
 
                   return _buildLogTile(
                     icon: Icons.cancel_rounded,
-                    color: Colors.red,
+                    color: context.uai.error,
                     title: data['motivo']?.toString() ?? 'Tentativa bloqueada',
                     subtitle:
-                        'Iniciais: ${data['iniciais_usadas'] ?? '-'} | Nasc.: ${data['data_nascimento_usada'] ?? '-'}',
+                    'Iniciais: ${data['iniciais_usadas'] ?? '-'} | Nasc.: ${data['data_nascimento_usada'] ?? '-'}',
                     timestamp: data['tentativa_em'],
                     extra: data['telefone_final_usado'] != null
                         ? 'Final tel.: ${data['telefone_final_usado']}'
@@ -4701,3 +5019,9 @@ class _ReadOnlyLine extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// Tela refatorada visualmente em 03/07/2026 às 11:39
+// Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
+// Lógica original preservada.
+// ============================================================

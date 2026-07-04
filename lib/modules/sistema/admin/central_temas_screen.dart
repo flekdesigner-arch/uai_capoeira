@@ -7,7 +7,11 @@ import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/tema_global_config.dart';
+import 'package:uai_capoeira/core/logo/uai_logo_config.dart';
+import 'package:uai_capoeira/core/logo/uai_logo_service.dart';
 import 'package:uai_capoeira/core/theme/tema_global_service.dart';
+import 'package:uai_capoeira/modules/sistema/admin/screens/uai_logo_editor_screen.dart';
+import 'package:uai_capoeira/shared/widgets/uai_dynamic_logo.dart';
 
 Color _previewReadableOn(Color background) {
   return background.computeLuminance() > 0.50
@@ -96,6 +100,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     );
     _draft = ThemeGlobalDraft.fromConfig(TemaGlobalService.instance.config);
     _campanhaController = TextEditingController(text: _draft.campanhaNome);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _carregarLogoTemaAtual();
+    });
   }
 
   @override
@@ -112,6 +119,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       _dirty = false;
       _message = null;
     });
+    Future.microtask(() => _carregarLogoTemaAtual());
   }
 
   void _markDirty() {
@@ -120,6 +128,14 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       return;
     }
     setState(() {});
+  }
+
+  Future<void> _carregarLogoTemaAtual({bool force = false}) async {
+    final themeId = _draft.temaPadraoGlobal.trim();
+    if (themeId.isEmpty) return;
+
+    await UaiLogoService.instance.loadForTheme(themeId, force: force);
+    if (mounted) setState(() {});
   }
 
   Future<void> _reload() async {
@@ -347,6 +363,11 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                                       ],
                                     ),
                                     const SizedBox(height: 14),
+                                    _buildLogoDinamicaCard(
+                                      context,
+                                      previewTokens,
+                                    ),
+                                    const SizedBox(height: 14),
                                     Row(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -366,6 +387,11 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                                     _buildTemaPadraoCard(
                                       context,
                                       config,
+                                      previewTokens,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _buildLogoDinamicaCard(
+                                      context,
                                       previewTokens,
                                     ),
                                     const SizedBox(height: 14),
@@ -570,6 +596,128 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildLogoDinamicaCard(
+    BuildContext context,
+    UaiThemeTokens previewTokens,
+  ) {
+    final t = context.uai;
+    final themeId = _draft.temaPadraoGlobal.trim().isNotEmpty
+        ? _draft.temaPadraoGlobal.trim()
+        : 'uai_classico';
+
+    return _buildSectionCard(
+      context,
+      title: 'Logo dinâmica do tema',
+      icon: Icons.auto_awesome_motion_rounded,
+      child: AnimatedBuilder(
+        animation: UaiLogoService.instance,
+        builder: (context, _) {
+          final config = UaiLogoService.instance.configForTheme(themeId);
+          final hasSlot =
+              config.slotUaiAtivo && config.slotUaiUrl.trim().isNotEmpty;
+          final hasOrnamento =
+              config.ornamentoAtivo && config.ornamentoUrl.trim().isNotEmpty;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ajuste a identidade visual da logo do tema selecionado sem abrir a edição avançada.',
+                style: TextStyle(color: t.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: t.cardAlt,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.border),
+                ),
+                child: Center(
+                  child: UaiDynamicLogo(
+                    height: 132,
+                    padding: EdgeInsets.zero,
+                    themeOverride: previewTokens,
+                    logoConfig: config,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _accessiblePreviewPill(
+                    label: config.ativo ? 'Config. ativa' : 'Padrão automático',
+                    accent: config.ativo ? t.primary : t.warning,
+                    baseSurface: t.card,
+                  ),
+                  _accessiblePreviewPill(
+                    label: config.usarLogoPersonalizada
+                        ? 'Personalizada'
+                        : 'Sem override',
+                    accent: config.usarLogoPersonalizada ? t.info : t.border,
+                    baseSurface: t.card,
+                  ),
+                  if (hasSlot)
+                    _accessiblePreviewPill(
+                      label: 'UAI interno',
+                      accent: t.success,
+                      baseSurface: t.card,
+                    ),
+                  if (hasOrnamento)
+                    _accessiblePreviewPill(
+                      label: 'Ornamento',
+                      accent: t.info,
+                      baseSurface: t.card,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Tema em edição: $themeId',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => UaiLogoEditorScreen(
+                                  themeId: themeId,
+                                  previewTokens: previewTokens,
+                                ),
+                              ),
+                            );
+                            if (!mounted) return;
+                            await UaiLogoService.instance.loadForTheme(
+                              themeId,
+                              force: true,
+                            );
+                            if (mounted) setState(() {});
+                          },
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text('Personalizar logo deste tema'),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

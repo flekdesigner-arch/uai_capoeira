@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class GerenciarParticipacoesScreen extends StatefulWidget {
@@ -17,6 +19,8 @@ class _GerenciarParticipacoesScreenState
     extends State<GerenciarParticipacoesScreen> {
   final TextEditingController _searchController = TextEditingController();
   final PermissaoService _permissaoService = PermissaoService();
+  final EventoParticipantesCacheService _cacheService =
+      EventoParticipantesCacheService();
   late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
     service: _permissaoService,
   );
@@ -28,6 +32,7 @@ class _GerenciarParticipacoesScreenState
   bool _accessDenied = false;
   bool _podeAdicionar = false;
   bool _podeEditar = false;
+  final Map<String, String?> _fotoAlunoCache = {};
 
   bool get _temFiltroAtivo =>
       _searchQuery.trim().isNotEmpty || _filtroEvento != null;
@@ -141,6 +146,17 @@ class _GerenciarParticipacoesScreenState
     } catch (e) {
       debugPrint('Erro ao carregar eventos: $e');
     }
+  }
+
+  String? _pickFirstClean(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isEmpty || text.toLowerCase() == 'null') continue;
+      return text;
+    }
+    return null;
   }
 
   void _showSnack(String message, {required _SnackType type}) {
@@ -305,10 +321,28 @@ class _GerenciarParticipacoesScreenState
     if (confirm != true) return;
 
     try {
-      await FirebaseFirestore.instance
+      final participacaoRef = FirebaseFirestore.instance
           .collection('participacoes_eventos')
-          .doc(participacaoId)
-          .delete();
+          .doc(participacaoId);
+      final participacaoDoc = await participacaoRef.get();
+      final participacaoData = participacaoDoc.data() ?? {};
+      final eventoId = _pickFirstClean(participacaoData, const [
+        'evento_id',
+        'eventoId',
+        'id_evento',
+        'evento_doc_id',
+        'eventoDocId',
+        'idEvento',
+      ]);
+
+      await participacaoRef.delete();
+
+      if (eventoId != null) {
+        await _cacheService.removerCacheDaParticipacao(
+          eventoId,
+          participacaoId,
+        );
+      }
 
       if (!mounted) return;
 
@@ -902,7 +936,15 @@ class _GerenciarParticipacoesScreenState
               children: [
                 Row(
                   children: [
-                    _avatarAluno(alunoNome),
+                    _avatarAluno(
+                      alunoNome,
+                      fotoUrl: _fotoParticipacao(participacao),
+                      alunoId: _pickFirstClean(participacao, const [
+                        'aluno_id',
+                        'alunoId',
+                        'id_aluno',
+                      ]),
+                    ),
                     const SizedBox(width: 11),
                     Expanded(
                       child: Column(
@@ -1025,29 +1067,109 @@ class _GerenciarParticipacoesScreenState
     );
   }
 
-  Widget _avatarAluno(String nome) {
+  Widget _avatarAluno(String nome, {String? fotoUrl, String? alunoId}) {
     final t = context.uai;
     final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
     final onPrimary = _readableOn(t.primary);
 
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(t.buttonRadius),
-      ),
-      child: Center(
-        child: Text(
-          inicial,
-          style: TextStyle(
-            color: onPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
+    Widget fallback() {
+      return Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: t.primaryGradient,
+          borderRadius: BorderRadius.circular(t.buttonRadius),
+        ),
+        child: Center(
+          child: Text(
+            inicial,
+            style: TextStyle(
+              color: onPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
-      ),
+      );
+    }
+
+    Widget image(String url) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(t.buttonRadius),
+        child: SizedBox(
+          width: 50,
+          height: 50,
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => fallback(),
+            errorWidget: (_, __, ___) => fallback(),
+          ),
+        ),
+      );
+    }
+
+    if (fotoUrl != null) return image(fotoUrl);
+
+    final cleanAlunoId = alunoId?.trim();
+    if (cleanAlunoId == null || cleanAlunoId.isEmpty) return fallback();
+
+    if (_fotoAlunoCache.containsKey(cleanAlunoId)) {
+      final cached = _fotoAlunoCache[cleanAlunoId];
+      return cached == null ? fallback() : image(cached);
+    }
+
+    return FutureBuilder<String?>(
+      future: _buscarFotoAluno(cleanAlunoId),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        if (url == null || url.trim().isEmpty) return fallback();
+        return image(url);
+      },
     );
+  }
+
+  Future<String?> _buscarFotoAluno(String alunoId) async {
+    if (_fotoAlunoCache.containsKey(alunoId)) return _fotoAlunoCache[alunoId];
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('alunos')
+          .doc(alunoId)
+          .get();
+      final data = doc.data() ?? {};
+      final foto = _pickFirstClean(data, const [
+        'aluno_foto_url',
+        'foto_perfil_aluno',
+        'foto_url',
+        'fotoUrl',
+        'photoURL',
+        'avatar',
+        'avatar_url',
+        'imagem_url',
+        'foto',
+      ]);
+      _fotoAlunoCache[alunoId] = foto;
+      return foto;
+    } catch (e) {
+      debugPrint('Erro ao buscar foto do aluno $alunoId: $e');
+      _fotoAlunoCache[alunoId] = null;
+      return null;
+    }
+  }
+
+  String? _fotoParticipacao(Map<String, dynamic> participacao) {
+    return _pickFirstClean(participacao, const [
+      'aluno_foto_url',
+      'foto_perfil_aluno',
+      'foto_url',
+      'fotoUrl',
+      'photoURL',
+      'avatar',
+      'avatar_url',
+      'imagem_url',
+      'foto',
+    ]);
   }
 
   Widget _infoChip(IconData icon, String text, Color color) {
@@ -1426,6 +1548,8 @@ class FormularioParticipacao extends StatefulWidget {
 }
 
 class _FormularioParticipacaoState extends State<FormularioParticipacao> {
+  final EventoParticipantesCacheService _cacheService =
+      EventoParticipantesCacheService();
   final _formKey = GlobalKey<FormState>();
 
   final _alunoNomeController = TextEditingController();
@@ -1814,17 +1938,26 @@ class _FormularioParticipacaoState extends State<FormularioParticipacao> {
         'atualizado_em': FieldValue.serverTimestamp(),
       };
 
+      final String participacaoId;
       if (widget.participacaoId == null) {
         data['criado_em'] = FieldValue.serverTimestamp();
 
-        await FirebaseFirestore.instance
+        final docRef = await FirebaseFirestore.instance
             .collection('participacoes_eventos')
             .add(data);
+        participacaoId = docRef.id;
       } else {
+        participacaoId = widget.participacaoId!;
         await FirebaseFirestore.instance
             .collection('participacoes_eventos')
-            .doc(widget.participacaoId)
+            .doc(participacaoId)
             .update(data);
+      }
+
+      try {
+        await _cacheService.atualizarCacheDaParticipacao(participacaoId);
+      } catch (e) {
+        debugPrint('Erro ao atualizar cache da participação: $e');
       }
 
       widget.onSalvo();

@@ -47,7 +47,10 @@ class GraduacaoService {
       final doc = await _firestore.collection(_collection).doc(id).get();
 
       if (doc.exists) {
-        return {'id': doc.id, ...doc.data()!};
+        final data = doc.data();
+        if (data != null) {
+          return {'id': doc.id, ...data};
+        }
       }
       return null;
     } catch (e) {

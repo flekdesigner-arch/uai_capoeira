@@ -5,20 +5,22 @@ import 'permission_definition.dart';
 class PermissionCatalog {
   static const String categoryVisibility = 'VISIBILIDADE';
   static const String categoryStudents = 'ALUNOS';
-  static const String categoryAttendance = 'CHAMADA E AVALIAÃÃES';
-  static const String categoryEventsGeneral = 'EVENTOS â GERAL';
-  static const String categoryEventsParticipants = 'EVENTOS â PARTICIPANTES';
-  static const String categoryEventsPayments = 'EVENTOS â PAGAMENTOS';
-  static const String categoryEventsFinancial = 'EVENTOS â FINANCEIRO';
-  static const String categoryUsers = 'USUÃRIOS';
+  static const String categoryAttendance = 'CHAMADA E AVALIAÇÕES';
+  static const String categoryEventsGeneral = 'EVENTOS — GERAL';
+  static const String categoryEventsParticipants = 'EVENTOS — PARTICIPANTES';
+  static const String categoryEventsPayments = 'EVENTOS — PAGAMENTOS';
+  static const String categoryEventsFinancial = 'EVENTOS — FINANCEIRO';
+  static const String categoryUsers = 'USUÁRIOS';
   static const String categoryUniforms = 'UNIFORMES';
   static const String categorySystemAdmin = 'SISTEMA / ADMIN';
-  static const String categorySystemConfig = 'SISTEMA / CONFIGURAÃÃES';
+  static const String categorySystemConfig = 'SISTEMA / CONFIGURATIONS';
+  static const String categoryDashboardTurma = 'DASHBOARD / RESUMO DA TURMA';
 
   static const List<String> categoriesForUserDetails = [
     categoryVisibility,
     categoryStudents,
     categoryAttendance,
+    categoryDashboardTurma,
     categoryEventsGeneral,
     categoryEventsParticipants,
     categoryEventsPayments,
@@ -39,8 +41,8 @@ class PermissionCatalog {
       category: categoryVisibility,
     ),
     PermissionDefinition(
-      title: 'Acessar inscriÃ§Ãµes',
-      description: 'Mostra o menu InscriÃ§Ãµes no app.',
+      title: 'Acessar inscrições',
+      description: 'Mostra o menu Inscrições no app.',
       key: 'pode_acessar_inscricoes',
       aliases: ['podeAcessarInscricoes'],
       icon: Icons.app_registration_rounded,
@@ -55,8 +57,8 @@ class PermissionCatalog {
       category: categoryVisibility,
     ),
     PermissionDefinition(
-      title: 'Acessar associaÃ§Ã£o',
-      description: 'Mostra o menu AssociaÃ§Ã£o no app.',
+      title: 'Acessar associação',
+      description: 'Mostra o menu Associação no app.',
       key: 'pode_acessar_associacao',
       aliases: ['podeAcessarAssociacao'],
       icon: Icons.people_outline_rounded,
@@ -65,7 +67,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Mostrar alunos na barra lateral',
       description:
-          'Mostra o menu Alunos na barra lateral do app. NÃ£o substitui a permissÃ£o de ver alunos.',
+          'Mostra o menu Alunos na barra lateral do app. Não substitui a permissão de ver alunos.',
       key: 'pode_mostrar_alunos_drawer',
       aliases: ['podeMostrarAlunosDrawer'],
       icon: Icons.menu_open_rounded,
@@ -132,7 +134,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Gerenciar participantes',
-      description: 'Permite abrir o mÃ³dulo de participantes do evento.',
+      description: 'Permite abrir o módulo de participantes do evento.',
       key: 'pode_gerenciar_participantes_evento',
       aliases: ['pode_gerenciar_participantes'],
       icon: Icons.groups_rounded,
@@ -147,8 +149,8 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Ver detalhe da participacao',
-      description: 'Permite abrir o detalhe da participacao do aluno.',
+      title: 'Ver detalhe da participação',
+      description: 'Permite abrir o detalhe da participação do aluno.',
       key: 'pode_ver_detalhe_participacao_evento',
       aliases: ['pode_visualizar_detalhe_participacao_evento'],
       icon: Icons.badge_rounded,
@@ -166,23 +168,23 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar participaÃ§Ã£o',
-      description: 'Permite editar dados de participaÃ§Ã£o do aluno no evento.',
+      title: 'Editar participação',
+      description: 'Permite editar dados de participação do aluno no evento.',
       key: 'pode_editar_participacao_evento',
       aliases: ['pode_editar_participante_evento'],
       icon: Icons.manage_accounts_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar dados da participacao',
-      description: 'Permite editar dados gerais da participacao.',
+      title: 'Editar dados da participação',
+      description: 'Permite editar dados gerais da participação.',
       key: 'pode_editar_dados_participacao_evento',
       aliases: ['pode_editar_participante_evento'],
       icon: Icons.edit_note_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar camisa da participacao',
+      title: 'Editar camisa da participação',
       description:
           'Permite alterar tamanho, modelagem, tipo e entrega de camisa.',
       key: 'pode_editar_camisa_participacao_evento',
@@ -191,8 +193,8 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar graduacao da participacao',
-      description: 'Permite alterar graduacao/corda da participacao.',
+      title: 'Editar graduação da participação',
+      description: 'Permite alterar graduação/corda da participação.',
       key: 'pode_editar_graduacao_participacao_evento',
       aliases: ['pode_editar_graduacao_evento'],
       icon: Icons.emoji_events_rounded,
@@ -200,23 +202,23 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar status de pagamento',
-      description: 'Permite alterar status de pagamento da participacao.',
+      description: 'Permite alterar status de pagamento da participação.',
       key: 'pode_editar_status_pagamento_participacao_evento',
       aliases: ['pode_editar_status_pagamento_evento'],
       icon: Icons.price_check_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar observacoes da participacao',
-      description: 'Permite editar observacoes internas da participacao.',
+      title: 'Editar observações da participação',
+      description: 'Permite editar observações internas da participação.',
       key: 'pode_editar_observacoes_participacao_evento',
       aliases: ['pode_editar_observacoes_evento'],
       icon: Icons.notes_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Editar status da participacao',
-      description: 'Permite alterar o status geral da participacao.',
+      title: 'Editar status da participação',
+      description: 'Permite alterar o status geral da participação.',
       key: 'pode_editar_status_participacao_evento',
       aliases: ['pode_alterar_status_participacao_evento'],
       icon: Icons.published_with_changes_rounded,
@@ -231,23 +233,23 @@ class PermissionCatalog {
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Concluir participaÃ§Ã£o',
-      description: 'Permite marcar/concluir participaÃ§Ã£o do aluno no evento.',
+      title: 'Concluir participação',
+      description: 'Permite marcar/concluir participação do aluno no evento.',
       key: 'pode_concluir_participacao_evento',
       icon: Icons.done_all_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Cancelar participacao',
-      description: 'Permite cancelar participacao no evento.',
+      title: 'Cancelar participação',
+      description: 'Permite cancelar participação no evento.',
       key: 'pode_cancelar_participacao_evento',
       aliases: ['pode_cancelar_participacao'],
       icon: Icons.cancel_rounded,
       category: categoryEventsParticipants,
     ),
     PermissionDefinition(
-      title: 'Desfazer conclusao da participacao',
-      description: 'Permite desfazer conclusao/finalizacao individual.',
+      title: 'Desfazer conclusão da participação',
+      description: 'Permite desfazer conclusão/finalização individual.',
       key: 'pode_desfazer_conclusao_participacao_evento',
       aliases: ['pode_desfazer_conclusao_participacao'],
       icon: Icons.undo_rounded,
@@ -255,7 +257,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Registrar pagamento',
-      description: 'Permite lanÃ§ar pagamentos na participaÃ§Ã£o do aluno.',
+      description: 'Permite lançar pagamentos na participação do aluno.',
       key: 'pode_registrar_pagamento_evento',
       aliases: ['pode_registrar_pagamento'],
       icon: Icons.add_card_rounded,
@@ -264,7 +266,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Editar pagamento',
       description:
-          'Permite corrigir valor, forma, status e observaÃ§Ãµes de pagamentos jÃ¡ lanÃ§ados.',
+          'Permite corrigir valor, forma, status e observações de pagamentos já lançados.',
       key: 'pode_editar_pagamento_evento',
       aliases: ['pode_editar_pagamento'],
       icon: Icons.edit_note_rounded,
@@ -273,14 +275,14 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Excluir pagamento',
       description:
-          'Permite apagar pagamentos e recalcular o saldo da participaÃ§Ã£o.',
+          'Permite apagar pagamentos e recalcular o saldo da participação.',
       key: 'pode_excluir_pagamento_evento',
       aliases: ['pode_excluir_pagamento'],
       icon: Icons.delete_sweep_rounded,
       category: categoryEventsPayments,
     ),
     PermissionDefinition(
-      title: 'Marcar patrocinio',
+      title: 'Marcar patrocínio',
       description: 'Permite marcar pagamento/participante como patrocinado.',
       key: 'pode_marcar_patrocinio_evento',
       aliases: ['pode_marcar_patrocinio'],
@@ -289,7 +291,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver financeiro do evento',
-      description: 'Permite visualizar informacoes financeiras do evento.',
+      description: 'Permite visualizar informações financeiras do evento.',
       key: 'pode_ver_financeiro_evento',
       aliases: ['pode_visualizar_financeiro_evento'],
       icon: Icons.account_balance_wallet_rounded,
@@ -320,8 +322,8 @@ class PermissionCatalog {
       category: categoryEventsFinancial,
     ),
     PermissionDefinition(
-      title: 'Ver relatÃ³rios do evento',
-      description: 'Permite abrir relatÃ³rios financeiros e listas do evento.',
+      title: 'Ver relatórios do evento',
+      description: 'Permite abrir relatórios financeiros e listas do evento.',
       key: 'pode_ver_relatorio_evento',
       aliases: ['pode_ver_relatorios'],
       icon: Icons.assessment_rounded,
@@ -337,7 +339,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Configurar certificados do evento',
-      description: 'Permite configurar certificados especificos do evento.',
+      description: 'Permite configurar certificados específicos do evento.',
       key: 'pode_configurar_certificados_evento',
       aliases: ['pode_configurar_certificado_evento'],
       icon: Icons.tune_rounded,
@@ -359,7 +361,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar aluno',
-      description: 'Permite editar informaÃ§Ãµes de alunos.',
+      description: 'Permite editar informações de alunos.',
       key: 'pode_editar_aluno',
       icon: Icons.edit_rounded,
       category: categoryStudents,
@@ -395,7 +397,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Ver resumo da turma',
       description:
-          'Libera o card âResumo da turmaâ com estatÃ­sticas e relatÃ³rios dos alunos da turma.',
+          'Libera o card “Resumo da turma” com estatísticas e relatórios dos alunos da turma.',
       key: 'pode_visualizar_relatorios',
       aliases: ['pode_visualizar_relatorios_turma'],
       icon: Icons.summarize_rounded,
@@ -410,7 +412,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar chamada',
-      description: 'Permite editar chamadas jÃ¡ salvas.',
+      description: 'Permite editar chamadas já salvas.',
       key: 'pode_editar_chamada',
       aliases: ['pode_editar_chamadas', 'podeEditarChamada'],
       icon: Icons.edit_calendar_rounded,
@@ -419,7 +421,7 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Excluir chamada',
       description:
-          'Permite excluir/desfazer uma chamada jÃ¡ salva e recalcular os contadores dos alunos.',
+          'Permite excluir/desfazer uma chamada já salva e recalcular os contadores dos alunos.',
       key: 'pode_excluir_chamada',
       aliases: ['pode_excluir_chamadas', 'podeExcluirChamada'],
       icon: Icons.delete_sweep_rounded,
@@ -427,21 +429,21 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver lista de chamada',
-      description: 'Permite ver histÃ³rico de chamadas.',
+      description: 'Permite ver histórico de chamadas.',
       key: 'pode_ver_lista_de_chamada',
       icon: Icons.list_alt_rounded,
       category: categoryAttendance,
     ),
     PermissionDefinition(
       title: 'Avaliar aluno',
-      description: 'Permite avaliar comportamento, disciplina e evoluÃ§Ã£o.',
+      description: 'Permite avaliar comportamento, disciplina e evolução.',
       key: 'pode_avaliar_aluno',
       icon: Icons.star_rate_rounded,
       category: categoryAttendance,
     ),
     PermissionDefinition(
-      title: 'Gerenciar usuÃ¡rios',
-      description: 'Permite gerenciar usuÃ¡rios e permissÃµes.',
+      title: 'Gerenciar usuários',
+      description: 'Permite gerenciar usuários e permissões.',
       key: 'pode_gerenciar_usuarios',
       icon: Icons.people_rounded,
       category: categoryUsers,
@@ -508,9 +510,9 @@ class PermissionCatalog {
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'SaÃºde Firebase',
+      title: 'Saúde Firebase',
       description:
-          'Permite acessar diagnÃ³stico de banco, storage, functions e uso.',
+          'Permite acessar diagnóstico de banco, storage, functions e uso.',
       key: 'pode_saude_firebase',
       icon: Icons.health_and_safety_rounded,
       category: categorySystemAdmin,
@@ -519,9 +521,9 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Controle de atualizaÃ§Ãµes',
+      title: 'Controle de atualizações',
       description:
-          'Permite gerenciar versÃµes, APKs e publicaÃ§Ã£o de atualizaÃ§Ãµes.',
+          'Permite gerenciar versões, APKs e publicação de atualizações.',
       key: 'pode_controle_atualizacoes',
       icon: Icons.system_update_alt_rounded,
       category: categorySystemAdmin,
@@ -530,8 +532,8 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Configurar indicadores de ausÃªncia',
-      description: 'Permite configurar alertas de frequÃªncia e ausÃªncia.',
+      title: 'Configurar indicadores de ausência',
+      description: 'Permite configurar alertas de frequência e ausência.',
       key: 'pode_configurar_indicadores_ausencia',
       icon: Icons.rule_rounded,
       category: categorySystemAdmin,
@@ -544,29 +546,29 @@ class PermissionCatalog {
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'Gerenciar graduaÃ§Ãµes',
-      description: 'Permite criar, editar e organizar graduaÃ§Ãµes do app.',
+      title: 'Gerenciar graduações',
+      description: 'Permite criar, editar e organizar graduações do app.',
       key: 'pode_gerenciar_graduacoes',
       icon: Icons.workspace_premium_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
       title: 'Gerenciar academias',
-      description: 'Permite gerenciar academias, nÃºcleos, turmas e horÃ¡rios.',
+      description: 'Permite gerenciar academias, núcleos, turmas e horários.',
       key: 'pode_gerenciar_academias',
       icon: Icons.business_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
       title: 'Configurar certificados',
-      description: 'Permite configurar modelos e prÃ©vias de certificados.',
+      description: 'Permite configurar modelos e prévias de certificados.',
       key: 'pode_configurar_certificados',
       icon: Icons.history_edu_rounded,
       category: categorySystemAdmin,
     ),
     PermissionDefinition(
-      title: 'Executar migraÃ§Ãµes',
-      description: 'Permite acessar ferramentas de migraÃ§Ã£o de dados.',
+      title: 'Executar migrações',
+      description: 'Permite acessar ferramentas de migração de dados.',
       key: 'pode_executar_migracoes',
       icon: Icons.sync_alt_rounded,
       category: categorySystemAdmin,
@@ -576,7 +578,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar alunos',
-      description: 'Permite executar migraÃ§Ã£o de alunos.',
+      description: 'Permite executar migração de alunos.',
       key: 'pode_migrar_alunos',
       icon: Icons.people_alt_rounded,
       category: categorySystemAdmin,
@@ -585,8 +587,8 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Migrar graduaÃ§Ãµes',
-      description: 'Permite executar migraÃ§Ã£o de graduaÃ§Ãµes.',
+      title: 'Migrar graduações',
+      description: 'Permite executar migração de graduações.',
       key: 'pode_migrar_graduacoes',
       icon: Icons.workspace_premium_rounded,
       category: categorySystemAdmin,
@@ -596,7 +598,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar chamadas',
-      description: 'Permite executar migraÃ§Ã£o de chamadas e presenÃ§as.',
+      description: 'Permite executar migração de chamadas e presenças.',
       key: 'pode_migrar_chamadas',
       icon: Icons.history_edu_rounded,
       category: categorySystemAdmin,
@@ -606,7 +608,7 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Migrar eventos',
-      description: 'Permite executar migraÃ§Ã£o de eventos.',
+      description: 'Permite executar migração de eventos.',
       key: 'pode_migrar_eventos',
       icon: Icons.event_available_rounded,
       category: categorySystemAdmin,
@@ -615,14 +617,211 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
-      title: 'Migrar participaÃ§Ãµes',
-      description: 'Permite executar migraÃ§Ã£o de participaÃ§Ãµes de eventos.',
+      title: 'Migrar participações',
+      description: 'Permite executar migração de participações de eventos.',
       key: 'pode_migrar_participacoes',
       icon: Icons.emoji_events_rounded,
       category: categorySystemAdmin,
       critical: true,
       adminOnlySuggested: true,
       delegable: false,
+    ),
+    PermissionDefinition(
+      title: 'Visualizar resumo da turma',
+      description: 'Permite abrir a Dashboard/Resumo da Turma.',
+      key: 'pode_visualizar_dashboard_turma',
+      aliases: [
+        'visualizar_dashboard_turma',
+        'pode_ver_dashboard_turma',
+        'pode_ver_resumo_turma',
+      ],
+      icon: Icons.dashboard_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver resumo de todas as turmas',
+      description: 'Permite acessar Dashboard/Resumo de qualquer turma.',
+      key: 'pode_visualizar_dashboard_todas_turmas',
+      aliases: [
+        'visualizar_dashboard_todas_turmas',
+        'pode_ver_dashboard_todas_turmas',
+      ],
+      icon: Icons.groups_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver aba Frequência',
+      description:
+          'Permite visualizar frequência, Top 5, lista completa e filtros temporais.',
+      key: 'pode_ver_dashboard_frequencia',
+      aliases: ['ver_dashboard_frequencia'],
+      icon: Icons.query_stats_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver aba Graduação',
+      description:
+          'Permite visualizar distribuição/listas por graduação/corda.',
+      key: 'pode_ver_dashboard_graduacao',
+      aliases: ['ver_dashboard_graduacao'],
+      icon: Icons.military_tech_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver aba Idade',
+      description:
+          'Permite visualizar faixas etárias e alunos agrupados por idade.',
+      key: 'pode_ver_dashboard_idade',
+      aliases: ['ver_dashboard_idade'],
+      icon: Icons.cake_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver aba Sexo',
+      description: 'Permite visualizar distribuição por sexo/gênero.',
+      key: 'pode_ver_dashboard_sexo',
+      aliases: ['ver_dashboard_sexo'],
+      icon: Icons.wc_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Usar filtro Semana',
+      description: 'Permite consultar frequência da semana.',
+      key: 'pode_ver_dashboard_filtro_semana',
+      aliases: ['ver_filtro_semana_dashboard'],
+      icon: Icons.calendar_view_week_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Usar filtro Mês',
+      description:
+          'Permite consultar frequência por mês e usar o seletor mensal.',
+      key: 'pode_ver_dashboard_filtro_mes',
+      aliases: ['ver_filtro_mes_dashboard'],
+      icon: Icons.calendar_month_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Usar filtro Ano',
+      description: 'Permite consultar frequência por ano.',
+      key: 'pode_ver_dashboard_filtro_ano',
+      aliases: ['ver_filtro_ano_dashboard'],
+      icon: Icons.event_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Usar filtro Total',
+      description: 'Permite consultar histórico total de frequência.',
+      key: 'pode_ver_dashboard_filtro_total',
+      aliases: ['ver_filtro_total_dashboard'],
+      icon: Icons.all_inclusive_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver Top 5 de frequência',
+      description: 'Permite visualizar ranking Top 5 de alunos por frequência.',
+      key: 'pode_ver_dashboard_top5_frequencia',
+      aliases: ['ver_top5_dashboard', 'ver_ranking_frequencia_dashboard'],
+      icon: Icons.emoji_events_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver lista completa de frequência',
+      description: 'Permite visualizar todos os alunos na lista de frequência.',
+      key: 'pode_ver_dashboard_lista_frequencia',
+      aliases: ['ver_lista_frequencia_dashboard'],
+      icon: Icons.format_list_numbered_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver métricas de frequência',
+      description:
+          'Permite visualizar cards de resumo, médias e indicadores da aba Frequência.',
+      key: 'pode_ver_dashboard_metricas_frequencia',
+      aliases: ['ver_metricas_frequencia_dashboard'],
+      icon: Icons.insights_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver fotos dos alunos',
+      description:
+          'Permite exibir fotos dos alunos na Dashboard. Sem esta permissão, usar avatar/inicial.',
+      key: 'pode_ver_dashboard_fotos_alunos',
+      aliases: ['ver_fotos_alunos_dashboard'],
+      icon: Icons.photo_camera_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver nomes dos alunos',
+      description: 'Permite visualizar nomes dos alunos nas listas e rankings.',
+      key: 'pode_ver_dashboard_nomes_alunos',
+      aliases: ['ver_nomes_alunos_dashboard'],
+      icon: Icons.badge_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver detalhes do aluno no resumo',
+      description:
+          'Permite visualizar informações individuais dos alunos dentro da Dashboard.',
+      key: 'pode_ver_dashboard_detalhes_aluno',
+      aliases: ['ver_detalhes_aluno_dashboard'],
+      icon: Icons.person_search_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Recalcular resumo da turma',
+      description:
+          'Permite forçar reconstrução do Cache V2 pelo botão de atualizar/recalcular.',
+      key: 'pode_recalcular_dashboard_turma',
+      aliases: [
+        'recalcular_dashboard_turma',
+        'pode_reconstruir_dashboard_turma',
+        'pode_reconstruir_cache_dashboard',
+      ],
+      icon: Icons.sync_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Exportar resumo da turma',
+      description: 'Permite exportar PDF, imagem ou relatório da Dashboard.',
+      key: 'pode_exportar_dashboard_turma',
+      aliases: ['exportar_dashboard_turma', 'pode_exportar_resumo_turma'],
+      icon: Icons.picture_as_pdf_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Compartilhar resumo da turma',
+      description: 'Permite compartilhar dados/resumo da Dashboard.',
+      key: 'pode_compartilhar_dashboard_turma',
+      aliases: ['compartilhar_dashboard_turma'],
+      icon: Icons.share_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver indicador do cache',
+      description: 'Permite visualizar o chip "Servidor"/cache na Dashboard.',
+      key: 'pode_ver_dashboard_chip_cache',
+      aliases: ['ver_chip_cache_dashboard'],
+      icon: Icons.cloud_done_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver diagnóstico do cache',
+      description:
+          'Permite visualizar informações técnicas/diagnóstico do Cache V2.',
+      key: 'pode_ver_dashboard_diagnostico_cache',
+      aliases: ['ver_diagnostico_cache_dashboard'],
+      icon: Icons.bug_report_rounded,
+      category: categoryDashboardTurma,
+    ),
+    PermissionDefinition(
+      title: 'Ver logs/debug do resumo',
+      description:
+          'Permite acessar recursos visuais ou ações de debug da Dashboard.',
+      key: 'pode_ver_dashboard_logs_debug',
+      aliases: ['ver_logs_dashboard', 'ver_debug_dashboard'],
+      icon: Icons.terminal_rounded,
+      category: categoryDashboardTurma,
     ),
   ];
 

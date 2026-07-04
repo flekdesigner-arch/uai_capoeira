@@ -536,6 +536,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       if (categoria.contains('FINANCEIRO')) return t.success;
       if (categoria == PermissionCatalog.categoryUsers) return t.error;
       if (categoria == PermissionCatalog.categoryUniforms) return t.accent;
+      if (categoria == PermissionCatalog.categoryDashboardTurma) return t.info;
       if (categoria == PermissionCatalog.categorySystemAdmin) return t.primary;
       return t.primary;
     }
@@ -556,6 +557,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       }
       if (categoria == PermissionCatalog.categoryUniforms) {
         return Icons.shopping_bag_rounded;
+      }
+      if (categoria == PermissionCatalog.categoryDashboardTurma) {
+        return Icons.analytics_rounded;
       }
       if (categoria == PermissionCatalog.categorySystemAdmin) {
         return Icons.admin_panel_settings_rounded;
@@ -727,6 +731,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         return 'Usuários';
       case PermissionCatalog.categoryUniforms:
         return 'Uniformes';
+      case PermissionCatalog.categoryDashboardTurma:
+        return 'Dashboard / Resumo da Turma';
       case PermissionCatalog.categorySystemAdmin:
         return 'Sistema / Admin';
       default:

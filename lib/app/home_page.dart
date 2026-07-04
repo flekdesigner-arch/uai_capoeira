@@ -10,6 +10,8 @@ import 'package:uai_capoeira/modules/usuarios/services/usuario_acesso_service.da
 // Telas
 import 'package:uai_capoeira/modules/turmas/screens/turmas_academia_screen.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/shared/widgets/uai_dynamic_logo.dart';
 
 class HomePage extends StatefulWidget {
@@ -65,8 +67,8 @@ class _HomePageState extends State<HomePage> {
 
     debugPrint(
       acessoRegistrado
-          ? '✅ Último acesso confirmado para ${currentUser!.uid}'
-          : '⚠️ Último acesso não foi confirmado para ${currentUser!.uid}',
+          ? 'Último acesso confirmado para ${currentUser!.uid}'
+          : 'Último acesso não foi confirmado para ${currentUser!.uid}',
     );
   }
 
@@ -74,7 +76,7 @@ class _HomePageState extends State<HomePage> {
     final uid = currentUser?.uid;
 
     if (uid == null || uid.isEmpty) {
-      debugPrint('⚠️ HomePage: usuário nulo ao carregar academias.');
+      debugPrint('HomePage: usuário nulo ao carregar academias.');
       return [];
     }
 
@@ -85,7 +87,7 @@ class _HomePageState extends State<HomePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🌐 Modo offline - usando dados salvos'),
+          content: Text('Modo offline - usando dados salvos'),
           backgroundColor: context.uai.warning,
           duration: Duration(seconds: 2),
         ),
@@ -94,7 +96,7 @@ class _HomePageState extends State<HomePage> {
 
     final academias = await _cacheService.carregarAcademiasComAlunos(uid);
 
-    debugPrint('🏫 HomePage: academias carregadas: ${academias.length}');
+    debugPrint('HomePage: academias carregadas: ${academias.length}');
 
     return academias;
   }
@@ -179,7 +181,7 @@ class _HomePageState extends State<HomePage> {
         final String displayName = userData['nome_completo'] ?? 'Usuário';
         final String? photoUrl = userData['foto_url'] as String?;
 
-        debugPrint('🔄 Perfil atualizado: $displayName');
+        debugPrint('Perfil atualizado: $displayName');
 
         return Column(
           children: [
@@ -311,7 +313,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildLogo() {
-    return const UaiDynamicLogo(height: 150);
+    return AnimatedBuilder(
+      animation: AppThemeController.instance,
+      builder: (context, _) {
+        final preset = AppThemeController.instance.effectivePreset;
+
+        return UaiDynamicLogo(
+          height: 150,
+          loadRemoteConfig: true,
+          themeId: preset.id,
+        );
+      },
+    );
   }
 
   Widget _buildAcademiasFuture() {
@@ -554,21 +567,21 @@ class _HomePageState extends State<HomePage> {
                   border: Border.all(color: t.primary.withOpacity(0.25)),
                 ),
                 child:
-                academia['logo_url'] != null &&
-                    academia['logo_url'].toString().isNotEmpty
+                    academia['logo_url'] != null &&
+                        academia['logo_url'].toString().isNotEmpty
                     ? ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: academia['logo_url'],
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        CircularProgressIndicator(
-                          color: context.uai.primary,
+                        borderRadius: BorderRadius.circular(10),
+                        child: CachedNetworkImage(
+                          imageUrl: academia['logo_url'],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) =>
+                              CircularProgressIndicator(
+                                color: context.uai.primary,
+                              ),
+                          errorWidget: (context, url, error) =>
+                              Icon(Icons.error),
                         ),
-                    errorWidget: (context, url, error) =>
-                        Icon(Icons.error),
-                  ),
-                )
+                      )
                     : Icon(Icons.location_on, color: t.primary, size: 24),
               ),
               SizedBox(width: 16),

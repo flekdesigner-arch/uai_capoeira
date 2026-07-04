@@ -37,6 +37,7 @@ enum _PermissionFilter {
   alunos,
   chamada,
   uniformes,
+  dashboard,
 }
 
 class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
@@ -445,6 +446,8 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
               permissao.category == PermissionCatalog.categoryAttendance,
             _PermissionFilter.uniformes =>
               permissao.category == PermissionCatalog.categoryUniforms,
+            _PermissionFilter.dashboard =>
+              permissao.category == PermissionCatalog.categoryDashboardTurma,
           };
         })
         .toList(growable: false);
@@ -1065,6 +1068,7 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.alunos => 'Alunos',
       _PermissionFilter.chamada => 'Chamada',
       _PermissionFilter.uniformes => 'Uniformes',
+      _PermissionFilter.dashboard => 'Dashboard',
     };
   }
 
@@ -1078,6 +1082,7 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.alunos => Icons.people_rounded,
       _PermissionFilter.chamada => Icons.fact_check_rounded,
       _PermissionFilter.uniformes => Icons.shopping_bag_rounded,
+      _PermissionFilter.dashboard => Icons.analytics_rounded,
     };
   }
 
@@ -1092,6 +1097,7 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.alunos => t.uniformes,
       _PermissionFilter.chamada => t.warning,
       _PermissionFilter.uniformes => t.accent,
+      _PermissionFilter.dashboard => t.info,
     };
   }
 
@@ -1216,6 +1222,8 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
                   ],
                 ),
               ),
+              if (categoria == PermissionCatalog.categoryDashboardTurma)
+                _buildDashboardQuickPackages(context),
               Divider(height: 1, color: t.border),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -1268,6 +1276,9 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
     if (categoria == PermissionCatalog.categoryUniforms) {
       return t.accent;
     }
+    if (categoria == PermissionCatalog.categoryDashboardTurma) {
+      return t.info;
+    }
     return t.primary;
   }
 
@@ -1290,6 +1301,9 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
     if (categoria == PermissionCatalog.categoryUniforms) {
       return Icons.shopping_bag_rounded;
     }
+    if (categoria == PermissionCatalog.categoryDashboardTurma) {
+      return Icons.analytics_rounded;
+    }
     return Icons.admin_panel_settings_rounded;
   }
 
@@ -1303,11 +1317,209 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
     if (categoria == PermissionCatalog.categorySystemAdmin) {
       return 'Sistema / Admin';
     }
+    if (categoria == PermissionCatalog.categoryDashboardTurma) {
+      return 'Dashboard / Resumo';
+    }
     return categoria
         .replaceAll('EVENTOS — ', 'Eventos — ')
         .replaceAll('ALUNOS', 'Alunos')
         .replaceAll('USUÁRIOS', 'Usuários')
         .replaceAll('UNIFORMES', 'Uniformes');
+  }
+
+  Widget _buildDashboardQuickPackages(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      color: t.cardAlt.withOpacity(0.42),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bolt_rounded, size: 14, color: t.warning),
+              const SizedBox(width: 6),
+              Text(
+                'Ações Rápidas (Pacotes)',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _quickPackageButton(
+                  label: 'Professor básico',
+                  icon: Icons.school_rounded,
+                  onTap: () => _aplicarPacoteDashboard('professor_basico'),
+                ),
+                const SizedBox(width: 8),
+                _quickPackageButton(
+                  label: 'Somente frequência',
+                  icon: Icons.query_stats_rounded,
+                  onTap: () => _aplicarPacoteDashboard('somente_frequencia'),
+                ),
+                const SizedBox(width: 8),
+                _quickPackageButton(
+                  label: 'Só agregados',
+                  icon: Icons.analytics_rounded,
+                  onTap: () => _aplicarPacoteDashboard('so_agregados'),
+                ),
+                const SizedBox(width: 8),
+                _quickPackageButton(
+                  label: 'Admin Full',
+                  icon: Icons.security_rounded,
+                  onTap: () => _aplicarPacoteDashboard('admin_full'),
+                  color: t.error,
+                ),
+                const SizedBox(width: 8),
+                _quickPackageButton(
+                  label: 'Limpar',
+                  icon: Icons.clear_all_rounded,
+                  onTap: () => _aplicarPacoteDashboard('limpar'),
+                  color: t.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickPackageButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final t = context.uai;
+    final activeColor = color ?? t.primary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            border: Border.all(color: activeColor.withOpacity(0.24)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: activeColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: activeColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _aplicarPacoteDashboard(String pacote) async {
+    final Map<String, bool> updates = {};
+
+    final allDashboardKeys = _catalogo
+        .where((p) => p.category == PermissionCatalog.categoryDashboardTurma)
+        .expand((p) => p.linkedKeys)
+        .toSet();
+
+    if (pacote == 'limpar') {
+      for (final key in allDashboardKeys) {
+        updates[key] = false;
+      }
+    } else if (pacote == 'admin_full') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Ativar Admin Dashboard?'),
+          content: const Text(
+            'Isso liberará todas as funções, incluindo recalcular cache, exportar PDF e logs de debug.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Ativar tudo'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+      for (final key in allDashboardKeys) {
+        updates[key] = true;
+      }
+    } else {
+      // Começa limpando para garantir estado do pacote
+      for (final key in allDashboardKeys) {
+        updates[key] = false;
+      }
+
+      final Set<String> keysParaAtivar = {
+        'pode_visualizar_dashboard_turma',
+        'pode_ver_dashboard_frequencia',
+        'pode_ver_dashboard_filtro_semana',
+        'pode_ver_dashboard_filtro_mes',
+        'pode_ver_dashboard_filtro_ano',
+        'pode_ver_dashboard_filtro_total',
+        'pode_ver_dashboard_top5_frequencia',
+        'pode_ver_dashboard_lista_frequencia',
+        'pode_ver_dashboard_metricas_frequencia',
+        'pode_ver_dashboard_nomes_alunos',
+        'pode_ver_dashboard_detalhes_aluno',
+        'pode_ver_dashboard_fotos_alunos',
+      };
+
+      if (pacote == 'professor_basico') {
+        keysParaAtivar.addAll([
+          'pode_ver_dashboard_graduacao',
+          'pode_ver_dashboard_idade',
+          'pode_ver_dashboard_sexo',
+          'pode_ver_dashboard_chip_cache',
+        ]);
+      } else if (pacote == 'so_agregados') {
+        keysParaAtivar.addAll([
+          'pode_ver_dashboard_graduacao',
+          'pode_ver_dashboard_idade',
+          'pode_ver_dashboard_sexo',
+          'pode_ver_dashboard_chip_cache',
+        ]);
+        // Remove individuais
+        keysParaAtivar.removeAll([
+          'pode_ver_dashboard_nomes_alunos',
+          'pode_ver_dashboard_detalhes_aluno',
+          'pode_ver_dashboard_fotos_alunos',
+          'pode_ver_dashboard_lista_frequencia',
+        ]);
+      }
+
+      for (final key in keysParaAtivar) {
+        updates[key] = true;
+      }
+    }
+
+    setState(() {
+      _permissoes.addAll(updates);
+    });
   }
 
   Widget _buildBottomActions(BuildContext context) {

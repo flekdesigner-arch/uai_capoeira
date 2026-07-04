@@ -8,6 +8,7 @@ import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/admin/criar_evento_screen.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
 
 class GerenciarEventosScreen extends StatefulWidget {
   const GerenciarEventosScreen({super.key});
@@ -20,6 +21,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
   final TextEditingController _searchController = TextEditingController();
   final PermissaoService _permissaoService = PermissaoService();
+  final EventoParticipantesCacheService _cacheService =
+      EventoParticipantesCacheService();
   late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
     service: _permissaoService,
   );
@@ -573,11 +576,28 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
             'atualizado_em': FieldValue.serverTimestamp(),
           });
 
+      var cacheAtualizado = false;
+      if (novoStatus == 'finalizado') {
+        try {
+          await _cacheService.reconstruirCacheParticipantes(
+            eventoId,
+            forceServer: true,
+          );
+          cacheAtualizado = true;
+        } catch (e) {
+          debugPrint('Erro ao reconstruir cache de participantes: $e');
+        }
+      }
+
       if (!mounted) return;
 
       _showSnack(
-        'Status alterado para ${novoStatus == 'andamento' ? 'Em andamento' : 'Finalizado'}',
-        type: _SnackType.success,
+        novoStatus == 'finalizado' && cacheAtualizado
+            ? 'Evento finalizado e participantes atualizados.'
+            : 'Status alterado para ${novoStatus == 'andamento' ? 'Em andamento' : 'Finalizado'}',
+        type: cacheAtualizado || novoStatus == 'andamento'
+            ? _SnackType.success
+            : _SnackType.warning,
       );
     } catch (e) {
       debugPrint('Erro ao alterar status: $e');

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
+
 /// Serviço de Cache V2 para o Dashboard de Turmas.
 ///
 /// Baseado na arquitetura de Visual Snapshot, onde os dados pesados
@@ -99,6 +101,33 @@ class DashboardTurmaCacheService {
       return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar alunos do cache: $e');
+      return [];
+    }
+  }
+
+  /// Carrega a lista de alunos da subcoleção de cache já tipada no modelo AlunoSnapshotModel.
+  Future<List<AlunoSnapshotModel>> carregarAlunosSnapshot(
+    String turmaId, {
+    String orderBy = 'nome_busca',
+    bool descending = false,
+    bool forceServer = false,
+  }) async {
+    try {
+      final query = _firestore
+          .collection('turmas')
+          .doc(turmaId)
+          .collection('dashboard_cache_alunos')
+          .orderBy(orderBy, descending: descending);
+
+      final snapshot = await query.get(
+        GetOptions(source: forceServer ? Source.server : Source.serverAndCache),
+      );
+
+      return snapshot.docs
+          .map((doc) => AlunoSnapshotModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar snapshots de alunos: $e');
       return [];
     }
   }

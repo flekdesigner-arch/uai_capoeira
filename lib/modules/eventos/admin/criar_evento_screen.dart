@@ -9,6 +9,7 @@ import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
+import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
 import 'package:uai_capoeira/modules/eventos/widgets/evento_certificado_config_dialog.dart';
 
 class CriarEventoScreen extends StatefulWidget {
@@ -33,6 +34,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   final GlobalKey _linksKey = GlobalKey();
 
   final EventoService _eventoService = EventoService();
+  final EventoParticipantesCacheService _cacheService =
+      EventoParticipantesCacheService();
   final PermissaoService _permissaoService = PermissaoService();
   late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
     service: _permissaoService,
@@ -2176,6 +2179,17 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           await storageRef.delete();
         } catch (e) {
           debugPrint('Erro ao renomear banner: $e');
+        }
+      }
+
+      if (widget.evento != null && _status == 'finalizado') {
+        try {
+          await _cacheService.reconstruirCacheParticipantes(
+            eventoId,
+            forceServer: true,
+          );
+        } catch (e) {
+          debugPrint('Erro ao reconstruir cache após salvar evento: $e');
         }
       }
 
