@@ -11,6 +11,7 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
+import 'package:uai_capoeira/core/theme/tema_global_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_config_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_service.dart';
@@ -1037,9 +1038,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     final t = context.uai;
     final controller = AppThemeController.instance;
 
-    final presets = UaiThemePreset.values
-        .where((preset) => preset != UaiThemePreset.usuarioPersonalizado)
-        .toList();
+    final temaGlobal = TemaGlobalService.instance;
+    final presets = temaGlobal.resolvedAllowedPresets(
+      includeUserPersonalizado: false,
+    );
+    final lockChoice =
+        temaGlobal.forcarTemaGlobal || !temaGlobal.permitirUsuarioEscolher;
+    final globalLockedMessage = temaGlobal.forcarTemaGlobal
+        ? 'O tema global está sendo aplicado para todos.'
+        : 'A escolha de tema está bloqueada pela administração.';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1103,7 +1110,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Temas prontos para a Área do Aluno',
+                                  lockChoice
+                                      ? globalLockedMessage
+                                      : 'Temas liberados pela administração.',
                                   style: TextStyle(
                                     color: t.textSecondary,
                                     fontSize: 12,
@@ -1132,13 +1141,20 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                         itemBuilder: (context, index) {
                           final preset = presets[index];
                           final selected =
-                              controller.currentPreset == preset &&
+                              controller.effectivePreset == preset &&
                               controller.activeSavedThemeId == null;
 
                           return _buildThemePresetTile(
                             preset: preset,
                             selected: selected,
                             onTap: () async {
+                              if (lockChoice) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(globalLockedMessage)),
+                                );
+                                return;
+                              }
+
                               await controller.apply(
                                 preset: preset,
                                 mode: preset.isDark

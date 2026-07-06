@@ -408,32 +408,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return alunosCache.map((cache) => cache.toLegacyMap()).toList();
   }
 
-  String _extrairFotoUrlAluno(Map<String, dynamic> data) {
-    const campos = [
-      'foto_perfil_aluno',
-      'foto_url',
-      'aluno_foto',
-      'foto',
-      'foto_perfil',
-      'fotoPerfil',
-      'fotoPerfilAluno',
-      'photoUrl',
-      'imageUrl',
-      'avatarUrl',
-      'url_foto',
-      'imagem_url',
-    ];
-
-    for (final campo in campos) {
-      final valor = data[campo]?.toString().trim() ?? '';
-      if (valor.isNotEmpty && valor.startsWith('http')) {
-        return valor;
-      }
-    }
-
-    return '';
-  }
-
   Future<bool> _carregarDashboardPeloCacheV2({bool forceServer = true}) async {
     try {
       debugPrint('🔎 Tentando carregar Dashboard pelo Cache V2...');
@@ -490,6 +464,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       final alunosConvertidos = _converterCacheV2ParaAlunosLegado(alunosCache);
       final anosExtraidos = _extrairAnosDisponiveisCacheV2(meta, alunosCache);
+
+      await _carregarAvaliacoesAlunos();
 
       final semFoto = alunosConvertidos
           .where((a) => _extrairFotoUrlAluno(a).isEmpty)
@@ -1808,13 +1784,17 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   double _getNotaAvaliacaoAluno(Map<String, dynamic> aluno) {
     final alunoId = aluno['id']?.toString() ?? '';
     final avaliacao = _avaliacoesAlunos[alunoId];
-    return _parseDouble(avaliacao?['nota_final']);
+    return _parseDouble(
+      avaliacao?['nota_final'] ?? avaliacao?['ultima_nota_final'],
+    );
   }
 
   String _getConceitoAvaliacaoAluno(Map<String, dynamic> aluno) {
     final alunoId = aluno['id']?.toString() ?? '';
     final avaliacao = _avaliacoesAlunos[alunoId];
-    return avaliacao?['conceito']?.toString() ?? 'Sem avaliação';
+    return avaliacao?['conceito']?.toString() ??
+        avaliacao?['ultimo_conceito']?.toString() ??
+        'Sem avaliação';
   }
 
   double _calcularScoreFrequencia(
@@ -1901,6 +1881,30 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             b['nota_destaque'],
           ).compareTo(_parseDouble(a['nota_destaque'])),
         );
+
+    if (_podeVerDashboardLogsDebug) {
+      final avaliados = _alunosDestaque
+          .where((a) => _parseDouble(a['nota_avaliacao']) > 0)
+          .length;
+      final primeiroAvaliado = _alunosDestaque
+          .cast<Map<String, dynamic>?>()
+          .firstWhere(
+            (a) => _parseDouble(a?['nota_avaliacao']) > 0,
+            orElse: () => null,
+          );
+      debugPrint(
+        'Dashboard avaliacoes: ${_avaliacoesAlunos.length} docs | '
+        '$avaliados alunos com nota no destaque',
+      );
+      if (primeiroAvaliado != null) {
+        debugPrint(
+          'Primeiro avaliado: ${primeiroAvaliado['nome']} | '
+          'aval=${_parseDouble(primeiroAvaliado['nota_avaliacao']).toStringAsFixed(1)} | '
+          'freq=${_parseDouble(primeiroAvaliado['score_frequencia']).toStringAsFixed(1)} | '
+          'destaque=${_parseDouble(primeiroAvaliado['nota_destaque']).toStringAsFixed(1)}',
+        );
+      }
+    }
 
     final Map<String, int> distGrad = {};
     final Map<String, List<Map<String, dynamic>>> alunosPorGrad = {};
@@ -6122,7 +6126,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               ),
             ),
             SizedBox(width: 10),
-            _buildAlunoAvatarDestaque(aluno),
+            _buildDashboardAlunoAvatar(aluno, size: 52, isDestaque: true),
             SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -6201,64 +6205,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlunoAvatarDestaque(Map<String, dynamic> aluno) {
-    final foto = _podeVerDashboardFotosAlunos
-        ? _extrairFotoUrlAluno(aluno)
-        : '';
-    final nome = aluno['nome']?.toString() ?? 'Sem nome';
-    final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
-
-    return ClipOval(
-      child: SizedBox.square(
-        dimension: 48,
-        child: foto.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: foto,
-                fit: BoxFit.cover,
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                memCacheWidth: 144,
-                memCacheHeight: 144,
-                placeholder: (_, __) => _avatarDestaqueFallbackBox(letra),
-                errorWidget: (_, __, ___) => _avatarDestaqueFallbackBox(letra),
-              )
-            : _avatarDestaqueFallbackBox(letra),
-      ),
-    );
-  }
-
-  Widget _avatarDestaqueFallbackBox(String letra) {
-    return Container(
-      width: 48,
-      height: 48,
-      color: context.uai.warning.withOpacity(0.16),
-      alignment: Alignment.center,
-      child: Text(
-        letra,
-        style: TextStyle(
-          color: context.uai.warning,
-          fontWeight: FontWeight.w900,
-          fontSize: 18,
-        ),
-      ),
-    );
-  }
-
-  Widget _avatarDestaqueFallback(String letra) {
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: context.uai.warning.withOpacity(0.16),
-      child: Text(
-        letra,
-        style: TextStyle(
-          color: context.uai.warning,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -6964,7 +6910,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     horizontal: 10,
                     vertical: 2,
                   ),
-                  leading: _buildAlunoAvatar(a),
+                  leading: _buildDashboardAlunoAvatar(a, size: 40),
                   title: Text(
                     nomeAluno,
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -7037,47 +6983,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _buildAlunoAvatar(Map<String, dynamic> aluno) {
-    final foto = _podeVerDashboardFotosAlunos
-        ? _extrairFotoUrlAluno(aluno)
-        : '';
-    final nome = aluno['nome']?.toString().trim() ?? '';
-    final letra = nome.isNotEmpty ? nome[0].toUpperCase() : '?';
-
-    return ClipOval(
-      child: SizedBox.square(
-        dimension: 40,
-        child: foto.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: foto,
-                fit: BoxFit.cover,
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                memCacheWidth: 120,
-                memCacheHeight: 120,
-                placeholder: (_, __) => _avatarFallback(letra, 40),
-                errorWidget: (_, __, ___) => _avatarFallback(letra, 40),
-              )
-            : _avatarFallback(letra, 40),
-      ),
-    );
-  }
-
-  Widget _avatarFallback(String letra, double size) {
-    return Container(
-      width: size,
-      height: size,
-      color: context.uai.cardAlt,
-      alignment: Alignment.center,
-      child: Text(
-        letra,
-        style: TextStyle(
-          color: context.uai.textMuted,
-          fontWeight: FontWeight.w900,
-          fontSize: size * 0.38,
-        ),
-      ),
+  Widget _buildDashboardAlunoAvatar(
+    Map<String, dynamic> aluno, {
+    double size = 40,
+    bool isDestaque = false,
+  }) {
+    return _sharedDashboardAlunoAvatar(
+      context,
+      aluno,
+      podeVerFotos: _podeVerDashboardFotosAlunos,
+      isAdmin: _isAdminDashboard,
+      size: size,
+      isDestaque: isDestaque,
     );
   }
 
@@ -7499,7 +7416,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               ),
             ),
             SizedBox(width: 8),
-            _buildAlunoAvatar(aluno),
+            _buildDashboardAlunoAvatar(aluno, size: 40),
             SizedBox(width: 9),
             Expanded(
               child: Column(
@@ -7890,7 +7807,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         ),
         child: Row(
           children: [
-            _buildAlunoAvatar(aluno),
+            _buildDashboardAlunoAvatar(aluno, size: 40),
             SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -7999,7 +7916,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               ),
             ),
             SizedBox(width: 10),
-            _buildAlunoAvatar(aluno),
+            _buildDashboardAlunoAvatar(aluno, size: 40),
             SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -8236,6 +8153,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           turmaNome: widget.turmaNome,
           filtroTemporal: filtroTemporalFrequencia,
           anoSelecionado: anoSelecionado,
+          podeVerFotos: _podeVerDashboardFotosAlunos,
+          isAdmin: _isAdminDashboard,
         );
       },
     );
@@ -8379,6 +8298,8 @@ class _DetalheFrequenciaAlunoDashboardDialog extends StatefulWidget {
   final String turmaNome;
   final String filtroTemporal;
   final String? anoSelecionado;
+  final bool podeVerFotos;
+  final bool isAdmin;
 
   _DetalheFrequenciaAlunoDashboardDialog({
     required this.aluno,
@@ -8388,6 +8309,8 @@ class _DetalheFrequenciaAlunoDashboardDialog extends StatefulWidget {
     required this.turmaNome,
     required this.filtroTemporal,
     required this.anoSelecionado,
+    required this.podeVerFotos,
+    required this.isAdmin,
   });
 
   @override
@@ -8884,14 +8807,12 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         bottom: false,
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 25,
-              backgroundColor: context.uai.card.withOpacity(0.15),
-              child: Icon(
-                Icons.person_search_rounded,
-                color: _onDialogHero(),
-                size: 28,
-              ),
+            _sharedDashboardAlunoAvatar(
+              context,
+              widget.aluno,
+              podeVerFotos: widget.podeVerFotos,
+              isAdmin: widget.isAdmin,
+              size: 50,
             ),
             SizedBox(width: 12),
             Expanded(
@@ -9000,19 +8921,28 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       );
     }
 
-    return Column(
-      children: [
-        _buildResumo(),
-        _buildAbas(),
-        Expanded(
-          child: _listaAtual.isEmpty
-              ? _buildVazio()
-              : ListView.builder(
-                  padding: EdgeInsets.fromLTRB(14, 10, 14, 20),
-                  itemCount: _listaAtual.length,
-                  itemBuilder: (context, index) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: Column(children: [_buildResumo()])),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _SliverHeaderDelegate(
+            height: 56,
+            child: Container(
+              color: context.uai.background,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: _buildAbas(),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(14, 6, 14, 20),
+          sliver: _listaAtual.isEmpty
+              ? SliverFillRemaining(hasScrollBody: false, child: _buildVazio())
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
                     return _buildItem(_listaAtual[index]);
-                  },
+                  }, childCount: _listaAtual.length),
                 ),
         ),
       ],
@@ -9024,7 +8954,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
 
     return Container(
       margin: EdgeInsets.all(14),
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(22),
@@ -9039,50 +8969,35 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       ),
       child: Column(
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 520;
-
-              final cards = [
-                _metricCard(
+          Row(
+            children: [
+              Expanded(
+                child: _metricCard(
                   value: '${_presencas.length}',
                   label: 'Presenças',
                   icon: Icons.check_circle_rounded,
                   color: context.uai.success,
                 ),
-                _metricCard(
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _metricCard(
                   value: '${_ausencias.length}',
                   label: 'Ausências',
                   icon: Icons.cancel_rounded,
                   color: context.uai.error,
                 ),
-                _metricCard(
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _metricCard(
                   value: '${_percentual.toStringAsFixed(0)}%',
                   label: 'Frequência',
                   icon: Icons.pie_chart_rounded,
                   color: context.uai.warning,
                 ),
-              ];
-
-              if (narrow) {
-                return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  alignment: WrapAlignment.center,
-                  children: cards,
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(child: cards[0]),
-                  SizedBox(width: 10),
-                  Expanded(child: cards[1]),
-                  SizedBox(width: 10),
-                  Expanded(child: cards[2]),
-                ],
-              );
-            },
+              ),
+            ],
           ),
           SizedBox(height: 14),
           ClipRRect(
@@ -9132,8 +9047,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     final accent = _ensureVisible(color, context.uai.card);
 
     return Container(
-      constraints: BoxConstraints(minWidth: 124),
-      padding: EdgeInsets.all(13),
+      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
@@ -9141,22 +9055,24 @@ class _DetalheFrequenciaAlunoDashboardDialogState
       ),
       child: Column(
         children: [
-          Icon(icon, color: accent, size: 24),
-          SizedBox(height: 7),
+          Icon(icon, color: accent, size: 20),
+          SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(
               color: accent,
-              fontSize: 23,
+              fontSize: 19,
               fontWeight: FontWeight.bold,
             ),
           ),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: context.uai.textSecondary,
               fontWeight: FontWeight.w700,
-              fontSize: 11,
+              fontSize: 10,
             ),
           ),
         ],
@@ -9476,3 +9392,121 @@ class _DetalheFrequenciaAlunoDashboardDialogState
 // Lógica original preservada.
 // Ajuste extra: alunos agrupados dentro das faixas de idade.
 // ============================================================
+
+String _extrairFotoUrlAluno(Map<String, dynamic> data) {
+  const campos = [
+    'foto_perfil_aluno',
+    'foto_url',
+    'aluno_foto',
+    'foto',
+    'foto_perfil',
+    'fotoPerfil',
+    'fotoPerfilAluno',
+    'photoUrl',
+    'imageUrl',
+    'avatarUrl',
+    'url_foto',
+    'imagem_url',
+  ];
+
+  for (final campo in campos) {
+    final valor = data[campo]?.toString().trim() ?? '';
+    if (valor.isNotEmpty && valor.startsWith('http')) {
+      return valor;
+    }
+  }
+
+  return '';
+}
+
+Widget _sharedDashboardAlunoAvatar(
+  BuildContext context,
+  Map<String, dynamic> aluno, {
+  required bool podeVerFotos,
+  required bool isAdmin,
+  double size = 40,
+  bool isDestaque = false,
+}) {
+  final t = context.uai;
+  final nome = (aluno['nome'] ?? aluno['aluno_nome'] ?? 'Sem nome').toString();
+  final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
+  final fotoUrl = _extrairFotoUrlAluno(aluno);
+  final podeMostrarFoto = podeVerFotos || isAdmin;
+
+  final Color fallbackBg = isDestaque ? t.warning.withOpacity(0.16) : t.cardAlt;
+  final Color fallbackText = isDestaque ? t.warning : t.textMuted;
+  final Color borderColor = isDestaque
+      ? t.warning.withValues(alpha: 0.3)
+      : t.border.withValues(alpha: 0.5);
+
+  Widget fallback = Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: fallbackBg,
+      border: Border.all(color: borderColor, width: 1.2),
+    ),
+    child: Text(
+      letra,
+      style: TextStyle(
+        color: fallbackText,
+        fontWeight: FontWeight.w900,
+        fontSize: size * 0.38,
+      ),
+    ),
+  );
+
+  if (!podeMostrarFoto || fotoUrl.isEmpty) return fallback;
+
+  return Center(
+    child: SizedBox.square(
+      dimension: size,
+      child: CachedNetworkImage(
+        imageUrl: fotoUrl,
+        memCacheWidth: (size * 3).toInt(),
+        memCacheHeight: (size * 3).toInt(),
+        placeholder: (_, __) => fallback,
+        errorWidget: (_, __, ___) => fallback,
+        imageBuilder: (context, imageProvider) => Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 1.2),
+            image: DecorationImage(
+              image: imageProvider,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SliverHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+
+  _SliverHeaderDelegate({required this.child, required this.height});
+
+  @override
+  double get minExtent => height;
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(_SliverHeaderDelegate oldDelegate) {
+    return child != oldDelegate.child || height != oldDelegate.height;
+  }
+}

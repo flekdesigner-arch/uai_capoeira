@@ -1150,7 +1150,11 @@ class _LandingPageState extends State<LandingPage> {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: onPrimary.withOpacity(0.16)),
                   ),
-                  child: _buildLogoSvg(height: 54),
+                  child: SizedBox(
+                    width: 132,
+                    height: 66,
+                    child: _buildLogoSvg(height: 66, width: 132),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1581,7 +1585,7 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildLogoSvg({required double height}) {
+  Widget _buildLogoSvg({required double height, double? width}) {
     return AnimatedBuilder(
       animation: AppThemeController.instance,
       builder: (context, _) {
@@ -1589,7 +1593,9 @@ class _LandingPageState extends State<LandingPage> {
 
         return UaiDynamicLogo(
           height: height,
+          width: width ?? height * 2,
           padding: EdgeInsets.zero,
+          fit: BoxFit.contain,
           loadRemoteConfig: true,
           themeId: preset.id,
         );
