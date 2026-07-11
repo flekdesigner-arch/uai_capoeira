@@ -97,9 +97,12 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
       if (!mounted) return;
       _abrirResultado(resultado);
     } on FirebaseFunctionsException catch (e) {
+      _logFunctionError('finalizarTentativaEstudo', e);
       if (!mounted) return;
       _mostrarMensagem(_mensagemFunction(e));
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('finalizarTentativaEstudo erro inesperado: $e');
+      debugPrint('finalizarTentativaEstudo stack: $stack');
       if (!mounted) return;
       _mostrarMensagem('Nao foi possivel enviar a atividade. Tente novamente.');
     } finally {
@@ -109,8 +112,15 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
 
   String _gerarClientAttemptId() {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = Random.secure().nextInt(1 << 32);
-    return 'flutter_${timestamp}_$random';
+    const maxRandom = 999999999;
+    int randomValue;
+    try {
+      randomValue = Random.secure().nextInt(maxRandom);
+    } catch (_) {
+      randomValue = Random().nextInt(maxRandom);
+    }
+    final randomText = randomValue.toString().padLeft(9, '0');
+    return 'tentativa_${timestamp}_$randomText';
   }
 
   void _abrirResultado(ResultadoTentativaEstudoModel resultado) {
@@ -138,18 +148,32 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
     ).showSnackBar(SnackBar(content: Text(mensagem)));
   }
 
+  void _logFunctionError(
+    String functionName,
+    FirebaseFunctionsException error,
+  ) {
+    debugPrint('$functionName FirebaseFunctionsException code: ${error.code}');
+    debugPrint(
+      '$functionName FirebaseFunctionsException message: ${error.message}',
+    );
+    debugPrint(
+      '$functionName FirebaseFunctionsException details: ${error.details}',
+    );
+  }
+
   String _mensagemFunction(FirebaseFunctionsException error) {
     switch (error.code) {
       case 'unauthenticated':
-        return 'Entre com sua conta Google para responder a atividade.';
+        return 'Entre novamente com Google para enviar a atividade.';
       case 'permission-denied':
-        return 'Seu usuario nao tem permissao para responder por este aluno.';
+        return 'Seu acesso de aluno nao foi confirmado para esta atividade.';
       case 'failed-precondition':
-        return error.message?.trim().isNotEmpty == true
-            ? error.message!.trim()
-            : 'Esta atividade ainda nao esta pronta para envio.';
+        return 'Esta atividade ainda nao esta pronta para correcao. Confira se todas as perguntas tem gabarito ativo.';
       case 'invalid-argument':
-        return 'Revise as respostas e tente novamente.';
+        return 'Alguma resposta esta invalida. Recarregue a atividade e tente novamente.';
+      case 'unavailable':
+      case 'deadline-exceeded':
+        return 'Falha de conexao com o servidor. Tente novamente.';
       case 'not-found':
         return 'Nao encontramos este estudo ou aluno.';
       default:
