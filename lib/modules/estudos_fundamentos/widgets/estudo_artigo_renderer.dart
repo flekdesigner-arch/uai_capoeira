@@ -109,6 +109,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
             estudo.textoAprofundado,
             Icons.menu_book_rounded,
           ),
+        if (estudo.imagensUrls.isNotEmpty) _imagensSection(context),
         if (estudo.mitoOuFato.isNotEmpty)
           _section(
             context,
@@ -174,6 +175,78 @@ class EstudoArtigoRenderer extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _imagensSection(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius + 2),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.photo_library_rounded, color: t.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Imagens do estudo',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...estudo.imagensUrls.map(
+            (url) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: t.cardAlt,
+                borderRadius: BorderRadius.circular(t.cardRadius),
+                border: Border.all(color: t.border),
+              ),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        color: t.primary,
+                        strokeWidth: 2,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Center(
+                    child: Text(
+                      'Imagem não carregada',
+                      style: TextStyle(
+                        color: t.textMuted,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

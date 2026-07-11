@@ -183,6 +183,10 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.ciclo.capaUrl.isNotEmpty) ...[
+            _capaImagem(context, widget.ciclo.capaUrl, aspectRatio: 16 / 6),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -289,6 +293,10 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (estudo.capaUrl.isNotEmpty) ...[
+            _capaImagem(context, estudo.capaUrl, aspectRatio: 16 / 8),
+            const SizedBox(height: 10),
+          ],
           Wrap(
             spacing: 7,
             runSpacing: 7,
@@ -384,6 +392,32 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _capaImagem(
+    BuildContext context,
+    String url, {
+    required double aspectRatio,
+  }) {
+    final t = context.uai;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
+        child: Image.network(
+          EstudoModel.normalizarImagemUrl(url),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Center(
+            child: Icon(Icons.image_not_supported_rounded, color: t.textMuted),
+          ),
+        ),
       ),
     );
   }

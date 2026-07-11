@@ -21,6 +21,7 @@ class EstudoModel {
   final String videoYoutubeUrl;
   final String linkExterno;
   final String capaUrl;
+  final List<String> imagensUrls;
   final String status;
   final bool mostrarNaLinhaDoTempo;
   final bool mostrarComoEmBreve;
@@ -51,6 +52,7 @@ class EstudoModel {
     required this.videoYoutubeUrl,
     required this.linkExterno,
     required this.capaUrl,
+    required this.imagensUrls,
     required this.status,
     required this.mostrarNaLinhaDoTempo,
     required this.mostrarComoEmBreve,
@@ -83,6 +85,7 @@ class EstudoModel {
       videoYoutubeUrl: '',
       linkExterno: '',
       capaUrl: '',
+      imagensUrls: <String>[],
       status: EstudoCicloStatus.rascunho,
       mostrarNaLinhaDoTempo: true,
       mostrarComoEmBreve: false,
@@ -119,7 +122,8 @@ class EstudoModel {
       fontes: _text(map['fontes']),
       videoYoutubeUrl: _text(map['videoYoutubeUrl']),
       linkExterno: _text(map['linkExterno']),
-      capaUrl: _text(map['capaUrl']),
+      capaUrl: normalizarImagemUrl(_text(map['capaUrl'])),
+      imagensUrls: normalizarListaUrls(map['imagensUrls']),
       status: EstudoCicloStatus.isValid(status)
           ? status
           : EstudoCicloStatus.rascunho,
@@ -163,7 +167,8 @@ class EstudoModel {
       'fontes': fontes.trim(),
       'videoYoutubeUrl': videoYoutubeUrl.trim(),
       'linkExterno': linkExterno.trim(),
-      'capaUrl': capaUrl.trim(),
+      'capaUrl': normalizarImagemUrl(capaUrl),
+      'imagensUrls': normalizarListaUrls(imagensUrls),
       'status': status,
       'mostrarNaLinhaDoTempo': mostrarNaLinhaDoTempo,
       'mostrarComoEmBreve': mostrarComoEmBreve,
@@ -197,6 +202,7 @@ class EstudoModel {
     String? videoYoutubeUrl,
     String? linkExterno,
     String? capaUrl,
+    List<String>? imagensUrls,
     String? status,
     bool? mostrarNaLinhaDoTempo,
     bool? mostrarComoEmBreve,
@@ -227,6 +233,7 @@ class EstudoModel {
       videoYoutubeUrl: videoYoutubeUrl ?? this.videoYoutubeUrl,
       linkExterno: linkExterno ?? this.linkExterno,
       capaUrl: capaUrl ?? this.capaUrl,
+      imagensUrls: imagensUrls ?? this.imagensUrls,
       status: status ?? this.status,
       mostrarNaLinhaDoTempo:
           mostrarNaLinhaDoTempo ?? this.mostrarNaLinhaDoTempo,
@@ -239,6 +246,52 @@ class EstudoModel {
       criadoPor: criadoPor ?? this.criadoPor,
       atualizadoPor: atualizadoPor ?? this.atualizadoPor,
     );
+  }
+
+  static List<String> normalizarListaUrls(dynamic value) {
+    final rawItems = <String>[];
+    if (value is Iterable) {
+      rawItems.addAll(value.map((item) => item?.toString() ?? ''));
+    } else if (value is String) {
+      rawItems.addAll(value.split(RegExp(r'\r?\n')));
+    }
+
+    final seen = <String>{};
+    final urls = <String>[];
+    for (final item in rawItems) {
+      final url = normalizarImagemUrl(item);
+      if (url.isEmpty || seen.contains(url)) continue;
+      seen.add(url);
+      urls.add(url);
+    }
+    return List.unmodifiable(urls);
+  }
+
+  static String normalizarImagemUrl(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+
+    final uri = Uri.tryParse(text);
+    final host = uri?.host.toLowerCase() ?? '';
+    final hostDriveValido =
+        host == 'drive.google.com' ||
+        host == 'www.drive.google.com' ||
+        host.endsWith('.drive.google.com');
+    if (uri != null && hostDriveValido) {
+      final segments = uri.pathSegments;
+      final fileIndex = segments.indexOf('d');
+      if (fileIndex >= 0 && fileIndex + 1 < segments.length) {
+        final fileId = segments[fileIndex + 1].trim();
+        if (fileId.isNotEmpty) {
+          return 'https://drive.google.com/uc?export=view&id=$fileId';
+        }
+      }
+      final id = uri.queryParameters['id']?.trim() ?? '';
+      if (id.isNotEmpty) {
+        return 'https://drive.google.com/uc?export=view&id=$id';
+      }
+    }
+    return text;
   }
 
   static String _text(dynamic value, {String fallback = ''}) {

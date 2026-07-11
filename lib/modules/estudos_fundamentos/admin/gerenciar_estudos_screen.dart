@@ -1083,6 +1083,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
   late final TextEditingController _reflexao;
   late final TextEditingController _fontes;
   late final TextEditingController _capa;
+  late final TextEditingController _imagens;
   late final TextEditingController _youtube;
   late final TextEditingController _link;
 
@@ -1116,6 +1117,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     _reflexao = TextEditingController(text: e.reflexaoFinal);
     _fontes = TextEditingController(text: e.fontes);
     _capa = TextEditingController(text: e.capaUrl);
+    _imagens = TextEditingController(text: e.imagensUrls.join('\n'));
     _youtube = TextEditingController(text: e.videoYoutubeUrl);
     _link = TextEditingController(text: e.linkExterno);
     _status = e.status;
@@ -1140,6 +1142,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       _reflexao,
       _fontes,
       _capa,
+      _imagens,
       _youtube,
       _link,
     ]) {
@@ -1179,7 +1182,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       palavrasImportantes: _palavras.text.trim(),
       reflexaoFinal: _reflexao.text.trim(),
       fontes: _fontes.text.trim(),
-      capaUrl: _capa.text.trim(),
+      capaUrl: EstudoModel.normalizarImagemUrl(_capa.text),
+      imagensUrls: EstudoModel.normalizarListaUrls(_imagens.text),
       videoYoutubeUrl: _youtube.text.trim(),
       linkExterno: _link.text.trim(),
       status: novoStatus,
@@ -1382,6 +1386,15 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                         _capa,
                         'Capa URL opcional',
                         validator: _validarUrlGenerica,
+                      ),
+                      const SizedBox(height: 10),
+                      _textField(
+                        _imagens,
+                        'Imagens do estudo',
+                        maxLines: 4,
+                        helperText:
+                            'Uma URL por linha. Use links públicos e diretos de imagem. Links do Google Drive precisam estar públicos.',
+                        validator: _validarUrlsImagem,
                       ),
                       const SizedBox(height: 10),
                       _textField(
@@ -1671,6 +1684,21 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
             return null;
           },
     );
+  }
+
+  String? _validarUrlsImagem(String? value) {
+    final linhas = (value ?? '')
+        .split(RegExp(r'\r?\n'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty);
+    for (final linha in linhas) {
+      final url = EstudoModel.normalizarImagemUrl(linha);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !uri.hasScheme) {
+        return 'Informe URLs válidas, uma por linha';
+      }
+    }
+    return null;
   }
 
   String? _validarUrlVideo(String? value) {

@@ -443,155 +443,188 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
             border: Border.all(color: t.border),
             boxShadow: t.softShadow,
           ),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
+              if (ciclo.capaUrl.isNotEmpty) ...[
+                _capaCiclo(context, ciclo.capaUrl),
+                const SizedBox(height: 12),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        t.primary.withValues(alpha: 0.10),
-                        t.cardAlt,
-                      ),
-                      borderRadius: BorderRadius.circular(t.cardRadius),
-                    ),
-                    child: Center(
-                      child: Text(
-                        ciclo.numero.toString(),
-                        style: TextStyle(
-                          color: t.primary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                  Column(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: Color.alphaBlend(
+                            t.primary.withValues(alpha: 0.10),
+                            t.cardAlt,
+                          ),
+                          borderRadius: BorderRadius.circular(t.cardRadius),
+                        ),
+                        child: Center(
+                          child: Text(
+                            ciclo.numero.toString(),
+                            style: TextStyle(
+                              color: t.primary,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      if (index < 99)
+                        Container(width: 2, height: 42, color: t.border),
+                    ],
                   ),
-                  if (index < 99)
-                    Container(width: 2, height: 42, color: t.border),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _statusChip(
-                          context,
-                          bloqueado ? 'Em breve' : 'Publicado',
-                          bloqueado,
+                        Wrap(
+                          spacing: 7,
+                          runSpacing: 7,
+                          children: [
+                            _statusChip(
+                              context,
+                              bloqueado ? 'Em breve' : 'Publicado',
+                              bloqueado,
+                            ),
+                            if (count != null)
+                              _miniChip(
+                                context,
+                                Icons.article_rounded,
+                                '$count estudos',
+                              ),
+                            if (!bloqueado)
+                              _miniChip(
+                                context,
+                                Icons.check_circle_rounded,
+                                '${resumo.concluidos}/${resumo.total} concluidos',
+                              ),
+                            if (ciclo.periodoHistorico.isNotEmpty)
+                              _miniChip(
+                                context,
+                                Icons.event_rounded,
+                                ciclo.periodoHistorico,
+                              ),
+                          ],
                         ),
-                        if (count != null)
-                          _miniChip(
-                            context,
-                            Icons.article_rounded,
-                            '$count estudos',
+                        const SizedBox(height: 8),
+                        Text(
+                          ciclo.titulo.isEmpty
+                              ? 'Ciclo sem titulo'
+                              : ciclo.titulo,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 18,
+                            height: 1.12,
+                            fontWeight: FontWeight.w900,
                           ),
-                        if (!bloqueado)
-                          _miniChip(
-                            context,
-                            Icons.check_circle_rounded,
-                            '${resumo.concluidos}/${resumo.total} concluidos',
+                        ),
+                        if (ciclo.subtitulo.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            ciclo.subtitulo,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        if (ciclo.periodoHistorico.isNotEmpty)
-                          _miniChip(
-                            context,
-                            Icons.event_rounded,
-                            ciclo.periodoHistorico,
+                        ],
+                        if (ciclo.descricao.isNotEmpty) ...[
+                          const SizedBox(height: 7),
+                          Text(
+                            ciclo.descricao,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              height: 1.35,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                        ],
+                        if (!bloqueado) ...[
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(99),
+                            child: LinearProgressIndicator(
+                              value: resumo.total <= 0
+                                  ? 0
+                                  : resumo.percentual / 100,
+                              minHeight: 8,
+                              backgroundColor: t.cardAlt,
+                              color: t.success,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${resumo.percentual}% - ${resumo.statusLabel}',
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.icon(
+                            onPressed: bloqueado
+                                ? null
+                                : () => _abrirCiclo(context, config, ciclo),
+                            icon: Icon(
+                              bloqueado
+                                  ? Icons.lock_outline_rounded
+                                  : Icons.menu_book_rounded,
+                            ),
+                            label: Text(
+                              bloqueado
+                                  ? 'Este ciclo sera liberado em breve'
+                                  : 'Ver estudos',
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      ciclo.titulo.isEmpty ? 'Ciclo sem titulo' : ciclo.titulo,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 18,
-                        height: 1.12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    if (ciclo.subtitulo.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        ciclo.subtitulo,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                    if (ciclo.descricao.isNotEmpty) ...[
-                      const SizedBox(height: 7),
-                      Text(
-                        ciclo.descricao,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          height: 1.35,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    if (!bloqueado) ...[
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: resumo.total <= 0
-                              ? 0
-                              : resumo.percentual / 100,
-                          minHeight: 8,
-                          backgroundColor: t.cardAlt,
-                          color: t.success,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        '${resumo.percentual}% - ${resumo.statusLabel}',
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilledButton.icon(
-                        onPressed: bloqueado
-                            ? null
-                            : () => _abrirCiclo(context, config, ciclo),
-                        icon: Icon(
-                          bloqueado
-                              ? Icons.lock_outline_rounded
-                              : Icons.menu_book_rounded,
-                        ),
-                        label: Text(
-                          bloqueado
-                              ? 'Este ciclo sera liberado em breve'
-                              : 'Ver estudos',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _capaCiclo(BuildContext context, String url) {
+    final t = context.uai;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: AspectRatio(
+        aspectRatio: 16 / 7,
+        child: Image.network(
+          EstudoModel.normalizarImagemUrl(url),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Center(
+            child: Icon(Icons.image_not_supported_rounded, color: t.textMuted),
+          ),
+        ),
+      ),
     );
   }
 
