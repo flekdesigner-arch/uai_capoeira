@@ -179,6 +179,14 @@ service cloud.firestore {
     match /configuracoes/{document} {
       allow read, write: if true;
     }
+    match /mensagens_aniversario/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /cache_alunos/{document} {
+      allow read, create, update, delete: if isAdmin();
+    }
 
     match /config_graduacoes/{document} {
       allow read, write: if true;
