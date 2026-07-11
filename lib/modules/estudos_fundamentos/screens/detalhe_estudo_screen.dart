@@ -5,6 +5,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_mod
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/progresso_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/progresso_estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/screens/responder_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/widgets/estudo_artigo_renderer.dart';
 
 class DetalheEstudoScreen extends StatefulWidget {
@@ -89,6 +90,27 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
     }
   }
 
+  void _abrirAtividade() {
+    if (widget.alunoId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Acesse novamente pela Area do Aluno.')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResponderEstudoScreen(
+          alunoId: widget.alunoId,
+          estudoId: widget.estudo.id,
+          cicloId: widget.ciclo.id,
+          estudoTitulo: widget.estudo.titulo,
+          cicloTitulo: widget.ciclo.titulo,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
@@ -161,6 +183,11 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
                         label: const Text('Voltar para o ciclo'),
                       ),
                       FilledButton.icon(
+                        onPressed: _abrirAtividade,
+                        icon: const Icon(Icons.quiz_rounded),
+                        label: const Text('Fazer atividade'),
+                      ),
+                      FilledButton.tonalIcon(
                         onPressed: concluido || _salvando
                             ? null
                             : _marcarConcluido,
