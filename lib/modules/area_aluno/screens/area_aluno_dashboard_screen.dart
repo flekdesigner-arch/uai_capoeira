@@ -18,6 +18,8 @@ import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_eventos_serv
 import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 import 'package:uai_capoeira/modules/area_aluno/widgets/area_aluno_meus_eventos_section.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/screens/estudos_home_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_config_service.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
@@ -52,9 +54,12 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   String? _cordaSvg;
   bool _vinculandoGoogle = false;
   bool _tutorialPosVinculoMostrado = false;
+  bool _carregandoConfigEstudos = true;
+  bool _mostrarEstudosFundamentos = false;
 
   final RastreioSiteService _rastreioService = RastreioSiteService();
   final AreaAlunoSessionService _sessionService = AreaAlunoSessionService();
+  final EstudosConfigService _estudosConfigService = EstudosConfigService();
 
   String get _nome => _safeText(widget.aluno['nome'], 'Aluno');
   String get _apelido => _safeText(widget.aluno['apelido'], '');
@@ -73,11 +78,36 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
   AreaAlunoConfig get _areaConfig => AreaAlunoConfig.fromMap(widget.config);
 
+  bool get _sessaoGoogleValidada {
+    final modoAcesso = _safeText(
+      widget.authPayload['modo_acesso'],
+      '',
+    ).toLowerCase();
+    final googleUid = _safeText(widget.authPayload['google_uid'], '');
+    final alunoPayloadId = _safeText(
+      widget.authPayload['alunoSelecionadoId'] ??
+          widget.authPayload['aluno_id_login'] ??
+          widget.authPayload['aluno_id'],
+      '',
+    );
+    final user = FirebaseAuth.instance.currentUser;
+
+    return modoAcesso == 'google' &&
+        googleUid.isNotEmpty &&
+        user?.uid == googleUid &&
+        _alunoId.isNotEmpty &&
+        alunoPayloadId == _alunoId;
+  }
+
+  bool get _podeMostrarEstudosFundamentos =>
+      _mostrarEstudosFundamentos && _sessaoGoogleValidada;
+
   bool get _temAcoesDashboard =>
       _areaConfig.mostrarDadosBasicos ||
       _areaConfig.mostrarSolicitacaoAlteracao ||
       _areaConfig.mostrarFrequencia ||
-      _areaConfig.mostrarCertificados;
+      _areaConfig.mostrarCertificados ||
+      _podeMostrarEstudosFundamentos;
 
   Map<String, dynamic> get _turmaInfo {
     final data = widget.aluno['turma_info'];
@@ -98,6 +128,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   void initState() {
     super.initState();
     _loadCordaSvg();
+    _carregarConfigEstudosFundamentos();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _talvezMostrarTutorialPosVinculo();
     });
@@ -368,6 +399,25 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty || text == 'null') return fallback;
     return text;
+  }
+
+  Future<void> _carregarConfigEstudosFundamentos() async {
+    try {
+      final disponivel = await _estudosConfigService
+          .moduloDisponivelParaAluno();
+      if (!mounted) return;
+      setState(() {
+        _mostrarEstudosFundamentos = disponivel;
+        _carregandoConfigEstudos = false;
+      });
+    } catch (e) {
+      debugPrint('Erro ao carregar config de Estudos e Fundamentos: $e');
+      if (!mounted) return;
+      setState(() {
+        _mostrarEstudosFundamentos = false;
+        _carregandoConfigEstudos = false;
+      });
+    }
   }
 
   Future<void> _sairAreaAluno() async {
@@ -1011,6 +1061,40 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _abrirEstudosFundamentos() async {
+    if (!_sessaoGoogleValidada) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Entre com Google para acessar os Estudos e Fundamentos.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _rastreioService.registrarClique(
+      nome: 'abrir_estudos_fundamentos',
+      origem: 'area_aluno_dashboard',
+      metadata: {'aluno_nome': _nome, 'aluno_id': _alunoId},
+    );
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EstudosHomeScreen(
+          aluno: widget.aluno,
+          authPayload: widget.authPayload,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      await _carregarConfigEstudosFundamentos();
+    }
   }
 
   Future<void> _abrirDetalhesEventoAluno(AreaAlunoEventoResumo evento) async {
@@ -2082,6 +2166,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           subtitle: 'Eventos e certificados',
           color: t.warning,
           onTap: _abrirCertificados,
+        ),
+      if (!_carregandoConfigEstudos && _podeMostrarEstudosFundamentos)
+        _DashboardCardData(
+          icon: Icons.history_edu_rounded,
+          title: 'Estudos e Fundamentos',
+          subtitle: 'Formacao teorica da capoeira',
+          color: t.info,
+          onTap: _abrirEstudosFundamentos,
         ),
     ];
 

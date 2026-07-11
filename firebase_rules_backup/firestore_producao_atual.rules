@@ -1,0 +1,98 @@
+﻿rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    //  LEITURA PÚBLICA (todo mundo pode ler)
+    // ==========================================
+    match /{document=**} {
+      allow read: if true;
+    }
+    
+    // ==========================================
+    // ✍️ ESCRITA - REGRAS ESPECÍFICAS
+    // ==========================================
+    
+    //  ESTATÍSTICAS DE GRADUAÇÕES (para cache do sistema)
+    match /estatisticas/graduacoes {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    //  ESTATÍSTICAS GERAIS
+    match /estatisticas/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // ️ ESTATÍSTICAS - Contador de visitas
+    match /estatisticas/visitas {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    //  ESTATÍSTICAS_ACESSOS - Permite criar e atualizar documentos
+    match /estatisticas_acessos/{document} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if request.auth != null;
+    }
+    
+    //  GRADUAÇÕES - Liberado completamente (site público)
+    match /graduacoes/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    //  ALUNOS - Leitura pública, escrita apenas para admin
+    match /alunos/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    //  USUARIOS
+    match /usuarios/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    //  CAMPEONATO_INSCRICOES
+    match /campeonato_inscricoes/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if request.auth != null;
+    }
+    
+    //  INSCRICOES
+    match /inscricoes/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if request.auth != null;
+    }
+    
+    // ⚙️ CONFIGURAÇÕES
+    match /configuracoes/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    //  CONFIG_GRADUACOES
+    match /config_graduacoes/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // ✅ PARTICIPAÇÕES
+    match /participacoes_eventos_em_andamento/{document} {
+      allow read: if true;
+      allow update: if true;
+      allow create: if true;
+      allow delete: if request.auth != null;
+    }
+    
+    //  DEMAIS COLEÇÕES - Só usuários logados podem escrever
+    match /{document=**} {
+      allow write: if request.auth != null;
+    }
+  }
+}

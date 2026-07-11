@@ -33,3 +33,9 @@ ios/Runner/GeneratedPluginRegistrant.*
 *.env
 **/secrets.json
 **/credentials.json
+
+# Firebase Rules local tests
+firebase_rules_test/functional_tests/node_modules/
+firebase_rules_test/functional_tests/package-lock.json
+firestore-debug.log
+*-debug.log

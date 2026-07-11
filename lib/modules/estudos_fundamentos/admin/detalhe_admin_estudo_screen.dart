@@ -1,0 +1,764 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_gabarito_pergunta_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_perguntas_estudo_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/preview_estudo_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/perguntas_estudos_repository.dart';
+
+class DetalheAdminEstudoScreen extends StatefulWidget {
+  const DetalheAdminEstudoScreen({super.key, required this.estudo});
+
+  final EstudoModel estudo;
+
+  @override
+  State<DetalheAdminEstudoScreen> createState() =>
+      _DetalheAdminEstudoScreenState();
+}
+
+class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
+  final EstudosRepository _estudosRepository = EstudosRepository();
+  final EstudosCiclosRepository _ciclosRepository = EstudosCiclosRepository();
+  final PerguntasEstudosRepository _perguntasRepository =
+      PerguntasEstudosRepository();
+
+  bool _salvando = false;
+  EstudoModel? _estudoAtualizado;
+
+  EstudoModel get _estudo => _estudoAtualizado ?? widget.estudo;
+
+  Color _readableOn(Color background) => background.computeLuminance() > 0.48
+      ? const Color(0xFF111827)
+      : Colors.white;
+
+  void _mostrarMensagem(String mensagem) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  void _logErro(Object error, StackTrace? stackTrace) {
+    if (!kDebugMode) return;
+    if (error is FirebaseException) {
+      debugPrint(
+        'Erro Firebase no detalhe do estudo: code=${error.code} message=${error.message}',
+      );
+    } else {
+      debugPrint('Erro no detalhe do estudo: $error');
+    }
+    if (stackTrace != null) debugPrint(stackTrace.toString());
+  }
+
+  Future<bool?> _confirmar({
+    required String titulo,
+    required String mensagem,
+    required String acao,
+  }) {
+    final t = context.uai;
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text(titulo, style: TextStyle(color: t.textPrimary)),
+        content: Text(mensagem, style: TextStyle(color: t.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(acao),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editarEstudo(List<EstudoCicloModel> ciclos) async {
+    final resultado = await showDialog<EstudoModel>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => EstudoFormDialog(ciclos: ciclos, estudo: _estudo),
+    );
+    if (resultado == null) return;
+
+    setState(() => _salvando = true);
+    try {
+      await _estudosRepository.atualizarEstudo(resultado);
+      if (!mounted) return;
+      setState(() => _estudoAtualizado = resultado);
+      _mostrarMensagem('Estudo atualizado.');
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel atualizar o estudo.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  void _abrirPreview() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PreviewEstudoScreen(estudo: _estudo)),
+    );
+  }
+
+  Future<void> _duplicarEstudo() async {
+    final ok = await _confirmar(
+      titulo: 'Duplicar estudo?',
+      mensagem: 'A copia nascera como rascunho.',
+      acao: 'Duplicar',
+    );
+    if (ok != true) return;
+    setState(() => _salvando = true);
+    try {
+      await _estudosRepository.duplicarEstudo(_estudo);
+      if (mounted) _mostrarMensagem('Estudo duplicado como rascunho.');
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel duplicar o estudo.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _alterarStatusEstudo(String status) async {
+    if (_estudo.id.isEmpty || _estudo.status == status) return;
+    final ok = await _confirmar(
+      titulo: 'Alterar status?',
+      mensagem:
+          'Alterar status para ${EstudoCicloStatus.label(status)} neste estudo?',
+      acao: 'Confirmar',
+    );
+    if (ok != true) return;
+    setState(() => _salvando = true);
+    try {
+      await _estudosRepository.alterarStatus(_estudo.id, status);
+      if (!mounted) return;
+      setState(() => _estudoAtualizado = _estudo.copyWith(status: status));
+      _mostrarMensagem(
+        'Status alterado para ${EstudoCicloStatus.label(status)}.',
+      );
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _novaPergunta(
+    List<EstudoCicloModel> ciclos,
+    List<PerguntaEstudoModel> perguntas,
+  ) async {
+    if (_estudo.id.trim().isEmpty || _estudo.cicloId.trim().isEmpty) {
+      _mostrarMensagem('Salve o estudo com ciclo antes de criar perguntas.');
+      return;
+    }
+
+    final proximaOrdem = perguntas.isEmpty
+        ? 1
+        : perguntas.map((p) => p.ordem).reduce((a, b) => a > b ? a : b) + 1;
+    final pergunta = PerguntaEstudoModel.empty().copyWith(
+      cicloId: _estudo.cicloId,
+      cicloTituloSnapshot: _estudo.cicloTituloSnapshot,
+      estudoId: _estudo.id,
+      estudoTituloSnapshot: _estudo.titulo,
+      estudoNumeroSnapshot: _estudo.numero,
+      tipo: PerguntaEstudoTipo.multiplaEscolha,
+      dificuldade: PerguntaEstudoDificuldade.facil,
+      peso: 1,
+      ordem: proximaOrdem,
+      status: PerguntaEstudoStatus.rascunho,
+      podeAparecerEmAvaliacao: true,
+    );
+
+    await _abrirFormularioPergunta(ciclos, pergunta);
+  }
+
+  Future<void> _editarPergunta(
+    List<EstudoCicloModel> ciclos,
+    PerguntaEstudoModel pergunta,
+  ) {
+    return _abrirFormularioPergunta(ciclos, pergunta);
+  }
+
+  Future<void> _abrirFormularioPergunta(
+    List<EstudoCicloModel> ciclos,
+    PerguntaEstudoModel pergunta,
+  ) async {
+    final cicloAtual = ciclos.where((c) => c.id == _estudo.cicloId).toList();
+    if (cicloAtual.isEmpty) {
+      _mostrarMensagem(
+        'Nao foi possivel carregar o ciclo deste estudo para editar perguntas.',
+      );
+      return;
+    }
+
+    final resultado = await showDialog<PerguntaEstudoModel>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PerguntaFormDialog(
+        ciclos: cicloAtual,
+        estudos: [_estudo],
+        pergunta: pergunta,
+      ),
+    );
+    if (resultado == null) return;
+
+    setState(() => _salvando = true);
+    try {
+      if (resultado.id.isEmpty) {
+        await _perguntasRepository.criarPergunta(resultado);
+        if (mounted) _mostrarMensagem('Pergunta criada neste estudo.');
+      } else {
+        await _perguntasRepository.atualizarPergunta(resultado);
+        if (mounted) _mostrarMensagem('Pergunta atualizada.');
+      }
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel salvar a pergunta.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _duplicarPergunta(PerguntaEstudoModel pergunta) async {
+    final ok = await _confirmar(
+      titulo: 'Duplicar pergunta?',
+      mensagem: 'A copia nascera como rascunho e sem gabarito.',
+      acao: 'Duplicar',
+    );
+    if (ok != true) return;
+    setState(() => _salvando = true);
+    try {
+      await _perguntasRepository.duplicarPergunta(pergunta);
+      if (mounted) _mostrarMensagem('Pergunta duplicada como rascunho.');
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel duplicar a pergunta.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  bool _perguntaIncompleta(PerguntaEstudoModel pergunta) {
+    return pergunta.cicloId.isEmpty ||
+        pergunta.estudoId.isEmpty ||
+        pergunta.enunciado.isEmpty ||
+        pergunta.ordem <= 0 ||
+        pergunta.peso <= 0 ||
+        pergunta.alternativasPublicas
+                .where((a) => a.texto.trim().isNotEmpty)
+                .length <
+            2;
+  }
+
+  Future<void> _alterarStatusPergunta(
+    PerguntaEstudoModel pergunta,
+    String status,
+  ) async {
+    if (pergunta.id.isEmpty || pergunta.status == status) return;
+    if (status == PerguntaEstudoStatus.ativa && _perguntaIncompleta(pergunta)) {
+      final ok = await _confirmar(
+        titulo: 'Ativar pergunta incompleta?',
+        mensagem:
+            'Esta pergunta ainda parece incompleta. Deseja ativar mesmo assim?',
+        acao: 'Ativar',
+      );
+      if (ok != true) return;
+    } else {
+      final ok = await _confirmar(
+        titulo: 'Alterar status?',
+        mensagem:
+            'Alterar status para ${PerguntaEstudoStatus.label(status)} nesta pergunta?',
+        acao: 'Confirmar',
+      );
+      if (ok != true) return;
+    }
+    setState(() => _salvando = true);
+    try {
+      await _perguntasRepository.alterarStatus(pergunta.id, status);
+      if (mounted) {
+        _mostrarMensagem(
+          'Status alterado para ${PerguntaEstudoStatus.label(status)}.',
+        );
+      }
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  void _abrirGabarito(PerguntaEstudoModel pergunta) {
+    if (pergunta.id.trim().isEmpty) {
+      _mostrarMensagem('Salve a pergunta antes de cadastrar gabarito.');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GerenciarGabaritoPerguntaScreen(pergunta: pergunta),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        title: const Text(
+          'Detalhe do estudo',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ?? t.primary,
+        foregroundColor: _readableOn(
+          Theme.of(context).appBarTheme.backgroundColor ?? t.primary,
+        ),
+      ),
+      body: StreamBuilder<List<EstudoCicloModel>>(
+        stream: _ciclosRepository.watchCiclosAdmin(),
+        builder: (context, ciclosSnapshot) {
+          if (ciclosSnapshot.hasError) return _erro(ciclosSnapshot.error);
+          if (!ciclosSnapshot.hasData) {
+            return Center(child: CircularProgressIndicator(color: t.primary));
+          }
+          final ciclos = ciclosSnapshot.data ?? const <EstudoCicloModel>[];
+          return StreamBuilder<List<PerguntaEstudoModel>>(
+            stream: _perguntasRepository.watchPerguntasPorEstudo(_estudo.id),
+            builder: (context, perguntasSnapshot) {
+              if (perguntasSnapshot.hasError) {
+                return _erro(perguntasSnapshot.error);
+              }
+              if (!perguntasSnapshot.hasData) {
+                return Center(
+                  child: CircularProgressIndicator(color: t.primary),
+                );
+              }
+              final perguntas =
+                  perguntasSnapshot.data ?? const <PerguntaEstudoModel>[];
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  MediaQuery.sizeOf(context).width >= 900 ? 22 : 14,
+                  16,
+                  MediaQuery.sizeOf(context).width >= 900 ? 22 : 14,
+                  96,
+                ),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1080),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _estudoHeader(ciclos),
+                          const SizedBox(height: 12),
+                          _perguntasHeader(ciclos, perguntas),
+                          const SizedBox(height: 10),
+                          if (perguntas.isEmpty)
+                            _mensagemCard(
+                              icon: Icons.quiz_rounded,
+                              titulo: 'Nenhuma pergunta neste estudo.',
+                              texto:
+                                  'Crie perguntas ja vinculadas a este estudo.',
+                            )
+                          else
+                            ...perguntas.map(
+                              (pergunta) => _perguntaCard(ciclos, pergunta),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _estudoHeader(List<EstudoCicloModel> ciclos) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _statusChip(_estudo.status),
+              _miniChip(Icons.timeline_rounded, _estudo.cicloTituloSnapshot),
+              _miniChip(
+                Icons.tag_rounded,
+                'Estudo ${_estudo.numero.toString().padLeft(3, '0')}',
+              ),
+              _miniChip(Icons.swap_vert_rounded, 'Ordem ${_estudo.ordem}'),
+              if (_estudo.duracaoEstimadaMin > 0)
+                _miniChip(
+                  Icons.schedule_rounded,
+                  '${_estudo.duracaoEstimadaMin} min',
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _estudo.titulo.isEmpty ? 'Estudo sem titulo' : _estudo.titulo,
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 22,
+              height: 1.08,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (_estudo.subtitulo.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              _estudo.subtitulo,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+          if (_estudo.resumo.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _estudo.resumo,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: t.textPrimary,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _actionButton(
+                Icons.open_in_new_rounded,
+                'Abrir preview',
+                _salvando ? null : _abrirPreview,
+              ),
+              _actionButton(
+                Icons.edit_rounded,
+                'Editar',
+                _salvando ? null : () => _editarEstudo(ciclos),
+              ),
+              _actionButton(
+                Icons.copy_rounded,
+                'Duplicar',
+                _salvando ? null : _duplicarEstudo,
+              ),
+              for (final status in EstudoCicloStatus.values)
+                if (_estudo.status != status)
+                  _actionButton(
+                    _statusIcon(status),
+                    EstudoCicloStatus.label(status),
+                    _salvando ? null : () => _alterarStatusEstudo(status),
+                  ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _perguntasHeader(
+    List<EstudoCicloModel> ciclos,
+    List<PerguntaEstudoModel> perguntas,
+  ) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${perguntas.length} perguntas vinculadas',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: _salvando
+                ? null
+                : () => _novaPergunta(ciclos, perguntas),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Nova pergunta neste estudo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _perguntaCard(
+    List<EstudoCicloModel> ciclos,
+    PerguntaEstudoModel pergunta,
+  ) {
+    final t = context.uai;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _statusChip(pergunta.status),
+              _miniChip(
+                Icons.category_rounded,
+                PerguntaEstudoTipo.label(pergunta.tipo),
+              ),
+              _miniChip(
+                Icons.signal_cellular_alt_rounded,
+                PerguntaEstudoDificuldade.label(pergunta.dificuldade),
+              ),
+              _miniChip(Icons.score_rounded, 'Peso ${pergunta.peso}'),
+              _miniChip(Icons.swap_vert_rounded, 'Ordem ${pergunta.ordem}'),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Text(
+            pergunta.enunciado.isEmpty
+                ? 'Pergunta sem enunciado'
+                : pergunta.enunciado,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 16,
+              height: 1.2,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _actionButton(
+                Icons.edit_rounded,
+                'Editar',
+                _salvando ? null : () => _editarPergunta(ciclos, pergunta),
+              ),
+              _actionButton(
+                Icons.key_rounded,
+                'Gabarito',
+                _salvando ? null : () => _abrirGabarito(pergunta),
+              ),
+              _actionButton(
+                Icons.copy_rounded,
+                'Duplicar',
+                _salvando ? null : () => _duplicarPergunta(pergunta),
+              ),
+              for (final status in PerguntaEstudoStatus.values)
+                if (pergunta.status != status)
+                  _actionButton(
+                    _statusIcon(status),
+                    PerguntaEstudoStatus.label(status),
+                    _salvando
+                        ? null
+                        : () => _alterarStatusPergunta(pergunta, status),
+                  ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionButton(IconData icon, String label, VoidCallback? onTap) {
+    final t = context.uai;
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: t.primary,
+        side: BorderSide(color: t.border),
+      ),
+    );
+  }
+
+  Widget _miniChip(IconData icon, String label) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: t.primary, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String status) {
+    final t = context.uai;
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(color.withValues(alpha: 0.11), t.card),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        EstudoCicloStatus.isValid(status)
+            ? EstudoCicloStatus.label(status)
+            : PerguntaEstudoStatus.label(status),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    final t = context.uai;
+    switch (status) {
+      case EstudoCicloStatus.publicado:
+      case PerguntaEstudoStatus.ativa:
+        return t.success;
+      case EstudoCicloStatus.emBreve:
+        return t.info;
+      case EstudoCicloStatus.oculto:
+      case PerguntaEstudoStatus.inativa:
+        return t.warning;
+      case EstudoCicloStatus.arquivado:
+      case PerguntaEstudoStatus.arquivada:
+        return t.error;
+      default:
+        return t.textMuted;
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status) {
+      case EstudoCicloStatus.publicado:
+      case PerguntaEstudoStatus.ativa:
+        return Icons.check_circle_rounded;
+      case EstudoCicloStatus.emBreve:
+        return Icons.hourglass_empty_rounded;
+      case EstudoCicloStatus.oculto:
+      case PerguntaEstudoStatus.inativa:
+        return Icons.visibility_off_rounded;
+      case EstudoCicloStatus.arquivado:
+      case PerguntaEstudoStatus.arquivada:
+        return Icons.archive_rounded;
+      default:
+        return Icons.edit_note_rounded;
+    }
+  }
+
+  Widget _mensagemCard({
+    required IconData icon,
+    required String titulo,
+    required String texto,
+  }) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: t.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titulo,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(texto, style: TextStyle(color: t.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _erro(Object? error) {
+    final t = context.uai;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Text(
+          'Nao foi possivel carregar: $error',
+          style: TextStyle(color: t.error, fontWeight: FontWeight.w800),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}

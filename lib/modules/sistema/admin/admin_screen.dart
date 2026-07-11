@@ -1,6 +1,7 @@
 // lib/modules/sistema/admin/admin_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:googleapis/shared.dart';
 
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/permissions/permission_catalog.dart';
@@ -24,6 +25,8 @@ import 'package:uai_capoeira/modules/sistema/admin/indicadores_ausencia_screen.d
 import 'package:uai_capoeira/modules/sistema/admin/central_temas_screen.dart';
 import 'package:uai_capoeira/modules/sistema/firebase_saude/admin/firebase_saude_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/modo_troll_screen.dart';
+import 'package:uai_capoeira/modules/sistema/admin/caca_bug/caca_bug_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_fundamentos_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -82,7 +85,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final t = context.uai;
     final temaEscuro =
         t.background.computeLuminance() < 0.45 ||
-            t.surface.computeLuminance() < 0.45;
+        t.surface.computeLuminance() < 0.45;
 
     if (temaEscuro) return const Color(0xFFFFFFFF);
 
@@ -127,10 +130,10 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   int _dashboardColumns(
-      double width, {
-        double minItemWidth = 360,
-        int maxColumns = 4,
-      }) {
+    double width, {
+    double minItemWidth = 360,
+    int maxColumns = 4,
+  }) {
     if (width <= 0) return 1;
     return (width / minItemWidth).floor().clamp(1, maxColumns);
   }
@@ -209,17 +212,17 @@ class _AdminScreenState extends State<AdminScreen> {
   void _mostrarAcessoNegado(BuildContext context, [_AdminCardData? item]) {
     final mensagem =
         item?.deniedMessage ??
-            'Você não tem permissão para acessar este módulo.';
+        'Você não tem permissão para acessar este módulo.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
     );
   }
 
   void _abrirTelaProtegida(
-      BuildContext context,
-      _AdminCardData item,
-      _AdminPermissionState access,
-      ) {
+    BuildContext context,
+    _AdminCardData item,
+    _AdminPermissionState access,
+  ) {
     if (!_podeVerCard(item, access)) {
       _mostrarAcessoNegado(context, item);
       return;
@@ -382,19 +385,19 @@ class _AdminScreenState extends State<AdminScreen> {
                   child: visibleMigrations.isEmpty
                       ? _buildEmptyMigrationState(sheetContext)
                       : ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-                    itemCount: visibleMigrations.length,
-                    itemBuilder: (context, index) {
-                      final item = visibleMigrations[index];
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                          itemCount: visibleMigrations.length,
+                          itemBuilder: (context, index) {
+                            final item = visibleMigrations[index];
 
-                      return _buildMigrationTile(
-                        context: sheetContext,
-                        item: item,
-                        access: access,
-                      );
-                    },
-                  ),
+                            return _buildMigrationTile(
+                              context: sheetContext,
+                              item: item,
+                              access: access,
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -613,7 +616,11 @@ class _AdminScreenState extends State<AdminScreen> {
                       borderRadius: BorderRadius.circular(t.cardRadius),
                       border: Border.all(color: accent.withValues(alpha: 0.16)),
                     ),
-                    child: Icon(Icons.error_outline_rounded, color: accent, size: 34),
+                    child: Icon(
+                      Icons.error_outline_rounded,
+                      color: accent,
+                      size: 34,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Text(
@@ -741,6 +748,19 @@ class _AdminScreenState extends State<AdminScreen> {
         adminOnly: true,
       ),
       _AdminCardData(
+        icon: Icons.bug_report_rounded,
+        title: 'Caça Bug',
+        subtitle: 'Diagnóstico temporário de sessão e erros',
+        color: t.warning,
+        tela: const CacaBugScreen(),
+        permissions: const [
+          'pode_acessar_caca_bug',
+          'pode_ver_relatorio_caca_bug',
+          'pode_configurar_caca_bug',
+        ],
+        critical: true,
+      ),
+      _AdminCardData(
         icon: Icons.rule_rounded,
         title: 'Indicadores de Ausência',
         subtitle: 'Configure dias e cores do alerta de frequência',
@@ -802,6 +822,14 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.history_edu_rounded,
+        title: 'Estudos e Fundamentos',
+        subtitle: 'Ciclos, estudos, artigos, vídeos e avaliações teóricas',
+        color: t.info,
+        tela: const GerenciarEstudosFundamentosScreen(),
+        permissions: const ['pode_gerenciar_estudos_fundamentos'],
+      ),
+      _AdminCardData(
+        icon: Icons.history_edu_rounded,
         title: 'Configurar Certificados',
         subtitle: 'Templates, prévias e geração automática por SVG',
         color: t.inscricoes,
@@ -843,9 +871,9 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildAdminScaffold(
-      BuildContext context,
-      _AdminPermissionState access,
-      ) {
+    BuildContext context,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
     final siteCards = _siteCards(t);
     final appCards = _appCards(t);
@@ -914,9 +942,9 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildHeaderResumo(
-      BuildContext context,
-      _AdminPermissionState access,
-      ) {
+    BuildContext context,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
     final onPrimary = _onGradient();
 
@@ -1198,10 +1226,10 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildMigrationButton(
-      BuildContext context,
-      _AdminCardData item,
-      _AdminPermissionState access,
-      ) {
+    BuildContext context,
+    _AdminCardData item,
+    _AdminPermissionState access,
+  ) {
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.card);
 

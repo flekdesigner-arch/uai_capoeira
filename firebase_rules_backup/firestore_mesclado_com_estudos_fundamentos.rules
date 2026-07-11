@@ -1,0 +1,273 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    /*
+      Proposta segura mesclada.
+      ATENCAO: este arquivo nao contem o export real das rules de producao.
+      Ele foi montado para servir de base de mesclagem manual com as regras
+      atuais do Firebase Console.
+
+      Nao conectar ao firebase.json nem fazer deploy direto.
+    */
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function usuarioDoc(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid);
+    }
+
+    function permissoesUsuarioDoc(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid)/permissoes_usuario/configuracoes;
+    }
+
+    function alunoDoc(alunoId) {
+      return /databases/$(database)/documents/alunos/$(alunoId);
+    }
+
+    function usuarioContaLiberada(uid) {
+      return exists(usuarioDoc(uid))
+        && !(
+          ("status_conta" in get(usuarioDoc(uid)).data)
+          && get(usuarioDoc(uid)).data.status_conta in [
+            "bloqueada",
+            "bloqueado",
+            "inativa",
+            "inativo",
+            "rejeitada",
+            "rejeitado"
+          ]
+        );
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && usuarioContaLiberada(request.auth.uid)
+        && exists(usuarioDoc(request.auth.uid))
+        && (
+          (("peso_permissao" in get(usuarioDoc(request.auth.uid)).data)
+            && get(usuarioDoc(request.auth.uid)).data.peso_permissao >= 90)
+          || get(usuarioDoc(request.auth.uid)).data.tipo == "admin"
+          || get(usuarioDoc(request.auth.uid)).data.tipo == "administrador"
+        );
+    }
+
+    function podeGerenciarEstudosFundamentos() {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && usuarioContaLiberada(request.auth.uid)
+          && exists(permissoesUsuarioDoc(request.auth.uid))
+          && get(permissoesUsuarioDoc(request.auth.uid)).data.pode_gerenciar_estudos_fundamentos == true
+        );
+    }
+
+    function alunoPertenceAoUsuario(alunoId) {
+      return isSignedIn()
+        && exists(alunoDoc(alunoId))
+        && get(alunoDoc(alunoId)).data.areaAlunoGoogleVinculado == true
+        && get(alunoDoc(alunoId)).data.areaAlunoGoogleUid == request.auth.uid;
+    }
+
+    function estudosConfig() {
+      return get(/databases/$(database)/documents/estudos_config/global).data;
+    }
+
+    function statusPublicadoOuEmBrevePermitido(data) {
+      return data.status == "publicado"
+        || (data.status == "em_breve" && estudosConfig().mostrarEmBreve == true);
+    }
+
+    function conteudoVisivelParaAluno(data) {
+      return data.mostrarNaLinhaDoTempo == true
+        && statusPublicadoOuEmBrevePermitido(data);
+    }
+
+    function progressoCamposPermitidos() {
+      return [
+        "alunoId",
+        "googleUid",
+        "estudoId",
+        "cicloId",
+        "status",
+        "iniciadoEm",
+        "concluidoEm",
+        "atualizadoEm",
+        "ultimaVisualizacaoEm",
+        "percentualLeitura",
+        "origem"
+      ];
+    }
+
+    function perguntaPublicaSemGabarito(data) {
+      return !("respostaCorreta" in data)
+        && !("alternativaCorretaId" in data)
+        && !("correta" in data)
+        && !("isCorrect" in data)
+        && !("feedbackCorreto" in data)
+        && !("justificativaCorreta" in data)
+        && !("score" in data);
+    }
+
+    /*
+      Blocos legados explicitados para substituir o fallback global.
+      As permissÃƒÂµes abaixo tentam preservar o comportamento atual informado.
+      Ajuste fino ainda pode ser necessÃƒÂ¡rio quando o export real do Console
+      for comparado linha a linha.
+    */
+
+    match /estatisticas/graduacoes {
+      allow read, write: if true;
+    }
+
+    match /estatisticas/visitas {
+      allow read, write: if true;
+    }
+
+    match /estatisticas/{document} {
+      allow read, write: if true;
+    }
+
+    match /estatisticas_acessos/{document} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    match /graduacoes/{document} {
+      allow read, write: if true;
+    }
+
+    match /alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /usuarios/{userId} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /usuarios/{userId}/permissoes_usuario/{document=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /alunos/{alunoId}/contadores/{document=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /campeonato_inscricoes/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isSignedIn();
+    }
+
+    match /inscricoes/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isSignedIn();
+    }
+
+    match /configuracoes/{document} {
+      allow read, write: if true;
+    }
+
+    match /config_graduacoes/{document} {
+      allow read, write: if true;
+    }
+
+    match /participacoes_eventos_em_andamento/{document} {
+      allow read: if true;
+      allow update, create: if true;
+      allow delete: if isSignedIn();
+    }
+
+    match /eventos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /eventos/{eventoId}/participantes_cache/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /turmas/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /turmas/{turmaId}/dashboard_cache/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /turmas/{turmaId}/dashboard_cache_alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /turmas/{turmaId}/avaliacoes_alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /estudos_config/global {
+      allow read: if isSignedIn();
+      allow create, update, delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /estudos_ciclos/{cicloId} {
+      allow read: if podeGerenciarEstudosFundamentos()
+        || (isSignedIn() && conteudoVisivelParaAluno(resource.data));
+      allow create, update, delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /estudos/{estudoId} {
+      allow read: if podeGerenciarEstudosFundamentos()
+        || (isSignedIn() && conteudoVisivelParaAluno(resource.data));
+      allow create, update, delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /estudos_perguntas/{perguntaId} {
+      allow read: if podeGerenciarEstudosFundamentos();
+      allow create, update: if podeGerenciarEstudosFundamentos()
+        && perguntaPublicaSemGabarito(request.resource.data);
+      allow delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /alunos_estudos_progresso/{alunoId}/estudos/{estudoId} {
+      allow read: if podeGerenciarEstudosFundamentos() || alunoPertenceAoUsuario(alunoId);
+      allow create, update: if alunoPertenceAoUsuario(alunoId)
+        && request.resource.data.alunoId == alunoId
+        && request.resource.data.googleUid == request.auth.uid
+        && request.resource.data.estudoId == estudoId
+        && request.resource.data.status in ["iniciado", "concluido"]
+        && request.resource.data.percentualLeitura is int
+        && request.resource.data.percentualLeitura >= 0
+        && request.resource.data.percentualLeitura <= 100
+        && request.resource.data.keys().hasOnly(progressoCamposPermitidos());
+      allow delete: if false;
+    }
+
+    match /estudos_gabaritos/{perguntaId} {
+      allow read, create, update, delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /avaliacoes_tentativas/{tentativaId} {
+      allow read: if podeGerenciarEstudosFundamentos()
+        || (
+          isSignedIn()
+          && resource.data.alunoId is string
+          && alunoPertenceAoUsuario(resource.data.alunoId)
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
