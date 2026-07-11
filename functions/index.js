@@ -15,6 +15,452 @@ admin.initializeApp();
 const db = admin.firestore();
 const storage = new Storage();
 const bucketName = 'uai-capoeira-52753.firebasestorage.app';
+const ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL = 70;
+const ESTUDOS_VERSAO_AVALIACAO = 1;
+const ESTUDOS_PERGUNTA_STATUS_AVALIAVEL = new Set(['publicado', 'ativa']);
+
+function estudosTextoSeguro(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function estudosArrayStrings(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((item) => estudosTextoSeguro(String(item)))
+        .filter((item) => item.length > 0);
+}
+
+function validarClientAttemptIdEstudo(clientAttemptId) {
+    const id = estudosTextoSeguro(clientAttemptId);
+    if (!id || id.length > 80 || id.includes('/') || !/^[A-Za-z0-9._-]+$/.test(id)) {
+        throw new HttpsError(
+            'invalid-argument',
+            'clientAttemptId obrigatorio, curto e seguro.'
+        );
+    }
+    return id;
+}
+
+function validarTextoObrigatorioEstudo(value, fieldName) {
+    const text = estudosTextoSeguro(value);
+    if (!text) {
+        throw new HttpsError('invalid-argument', `${fieldName} obrigatorio.`);
+    }
+    return text;
+}
+
+function estudosSetsIguais(a, b) {
+    if (a.size !== b.size) return false;
+    for (const item of a) {
+        if (!b.has(item)) return false;
+    }
+    return true;
+}
+
+function estudoPerguntaDiscursiva(tipo) {
+    const normalized = estudosTextoSeguro(tipo).toLowerCase();
+    return [
+        'discursiva',
+        'texto',
+        'resposta_texto',
+        'dissertativa',
+        'aberta'
+    ].includes(normalized);
+}
+
+function estudoPerguntaMultiplaSelecao(tipo) {
+    const normalized = estudosTextoSeguro(tipo).toLowerCase();
+    return [
+        'multipla_selecao',
+        'multiplas_respostas',
+        'checkbox',
+        'multipla_escolha_multipla'
+    ].includes(normalized);
+}
+
+function resolverAlternativaCorretaUnicaEstudo(gabarito) {
+    const corretaPrincipal = estudosTextoSeguro(gabarito?.alternativaCorretaId);
+    if (corretaPrincipal) return corretaPrincipal;
+
+    const corretas = estudosArrayStrings(gabarito?.alternativasCorretasIds);
+    return corretas.length === 1 ? corretas[0] : '';
+}
+function validarFormatoRespostaEstudo(pergunta, resposta) {
+    const tipo = estudosTextoSeguro(pergunta.tipo).toLowerCase();
+    const alternativaSelecionadaId = estudosTextoSeguro(resposta?.alternativaSelecionadaId);
+    const possuiAlternativasSelecionadasIds = Object.prototype.hasOwnProperty.call(
+        resposta || {},
+        'alternativasSelecionadasIds'
+    );
+    const alternativasSelecionadasRaw = resposta?.alternativasSelecionadasIds;
+    const alternativasSelecionadasIds = estudosArrayStrings(alternativasSelecionadasRaw);
+    const respostaTexto = resposta?.respostaTexto;
+
+    if (estudoPerguntaDiscursiva(tipo)) {
+        if (typeof respostaTexto !== 'string' || respostaTexto.trim().length === 0) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta textual precisa ser uma string nao vazia.'
+            );
+        }
+        return;
+    }
+
+    if (tipo === 'multipla_escolha' || tipo === 'verdadeiro_falso') {
+        if (!alternativaSelecionadaId) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta objetiva precisa de alternativaSelecionadaId.'
+            );
+        }
+        if (possuiAlternativasSelecionadasIds) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta objetiva de alternativa unica nao aceita alternativasSelecionadasIds.'
+            );
+        }
+        return;
+    }
+
+    if (estudoPerguntaMultiplaSelecao(tipo)) {
+        if (!Array.isArray(alternativasSelecionadasRaw) || alternativasSelecionadasIds.length === 0) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta de multipla selecao precisa de alternativasSelecionadasIds.'
+            );
+        }
+        if (new Set(alternativasSelecionadasIds).size !== alternativasSelecionadasIds.length) {
+            throw new HttpsError(
+                'invalid-argument',
+                'alternativasSelecionadasIds nao pode conter duplicadas.'
+            );
+        }
+        if (alternativaSelecionadaId) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta de multipla selecao nao aceita alternativaSelecionadaId.'
+            );
+        }
+        return;
+    }
+
+    throw new HttpsError('invalid-argument', `Tipo de pergunta nao suportado: ${tipo || 'vazio'}.`);
+}
+function validarTentativaEstudoPertenceAoUsuario(tentativaData, alunoId, estudoId, googleUid) {
+    if (
+        tentativaData.alunoId !== alunoId ||
+        tentativaData.estudoId !== estudoId ||
+        tentativaData.googleUid !== googleUid
+    ) {
+        throw new HttpsError(
+            'permission-denied',
+            'Tentativa idempotente nao pertence ao usuario autenticado.'
+        );
+    }
+}
+function estudoRespostaSeguraExistente(data) {
+    return {
+        success: true,
+        tentativaId: data.tentativaId || '',
+        estudoId: data.estudoId || '',
+        cicloId: data.cicloId || '',
+        totalQuestoes: data.totalQuestoes || 0,
+        totalObjetivas: data.totalObjetivas || 0,
+        totalDiscursivas: data.totalDiscursivas || 0,
+        totalRespondidas: data.totalRespondidas || 0,
+        acertos: data.acertos || 0,
+        percentual: data.percentual || 0,
+        aprovado: data.aprovado === true,
+        status: data.status || 'finalizada',
+        possuiPendenciaManual: data.possuiPendenciaManual === true,
+        criterioAprovacaoPercentual:
+            data.criterioAprovacaoPercentual || ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL,
+        idempotente: true
+    };
+}
+
+function estudoResultadoSeguroNovo(data) {
+    return {
+        success: true,
+        tentativaId: data.tentativaId,
+        estudoId: data.estudoId,
+        cicloId: data.cicloId,
+        totalQuestoes: data.totalQuestoes,
+        totalObjetivas: data.totalObjetivas,
+        totalDiscursivas: data.totalDiscursivas,
+        totalRespondidas: data.totalRespondidas,
+        acertos: data.acertos,
+        percentual: data.percentual,
+        aprovado: data.aprovado,
+        status: data.status,
+        possuiPendenciaManual: data.possuiPendenciaManual,
+        criterioAprovacaoPercentual: data.criterioAprovacaoPercentual,
+        idempotente: false
+    };
+}
+
+exports.finalizarTentativaEstudo = onCall(async (request) => {
+    if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+    }
+
+    const payload = request.data || {};
+    const googleUid = request.auth.uid;
+    const alunoId = validarTextoObrigatorioEstudo(payload.alunoId, 'alunoId');
+    const estudoId = validarTextoObrigatorioEstudo(payload.estudoId, 'estudoId');
+    const clientAttemptId = validarClientAttemptIdEstudo(payload.clientAttemptId);
+    const respostasInput = payload.respostas;
+
+    if (!Array.isArray(respostasInput) || respostasInput.length === 0) {
+        throw new HttpsError('invalid-argument', 'respostas precisa ser um array nao vazio.');
+    }
+    if (respostasInput.length > 100) {
+        throw new HttpsError('invalid-argument', 'respostas excede o limite permitido.');
+    }
+
+    const tentativaId = `${alunoId}_${estudoId}_${clientAttemptId}`;
+    const tentativaRef = db.collection('estudos_tentativas').doc(tentativaId);
+
+    const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+    if (!alunoDoc.exists) {
+        throw new HttpsError('not-found', 'Aluno nao encontrado.');
+    }
+    const aluno = alunoDoc.data() || {};
+    if (aluno.areaAlunoGoogleUid !== googleUid || aluno.areaAlunoGoogleVinculado !== true) {
+        throw new HttpsError('permission-denied', 'Aluno nao vinculado ao usuario autenticado.');
+    }
+
+    const estudoDoc = await db.collection('estudos').doc(estudoId).get();
+    if (!estudoDoc.exists) {
+        throw new HttpsError('not-found', 'Estudo nao encontrado.');
+    }
+    const estudo = estudoDoc.data() || {};
+    if (estudo.status !== 'publicado') {
+        throw new HttpsError('failed-precondition', 'Estudo nao publicado.');
+    }
+    const cicloId = estudosTextoSeguro(estudo.cicloId);
+
+    const perguntasSnap = await db
+        .collection('estudos_perguntas')
+        .where('estudoId', '==', estudoId)
+        .get();
+
+    const perguntas = perguntasSnap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((pergunta) =>
+            ESTUDOS_PERGUNTA_STATUS_AVALIAVEL.has(estudosTextoSeguro(pergunta.status)) &&
+            pergunta.podeAparecerEmAvaliacao !== false
+        );
+
+    if (perguntas.length === 0) {
+        throw new HttpsError('failed-precondition', 'Estudo sem perguntas validas para avaliacao.');
+    }
+
+    const perguntasPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
+    const respostasPorPergunta = new Map();
+
+    for (const resposta of respostasInput) {
+        const perguntaId = validarTextoObrigatorioEstudo(resposta?.perguntaId, 'respostas.perguntaId');
+        if (!perguntasPorId.has(perguntaId)) {
+            throw new HttpsError(
+                'invalid-argument',
+                'Resposta enviada para pergunta que nao pertence ao estudo.'
+            );
+        }
+        if (respostasPorPergunta.has(perguntaId)) {
+            throw new HttpsError('invalid-argument', 'Resposta duplicada para a mesma pergunta.');
+        }
+        validarFormatoRespostaEstudo(perguntasPorId.get(perguntaId), resposta || {});
+        respostasPorPergunta.set(perguntaId, resposta || {});
+    }
+
+    const tentativaExistente = await tentativaRef.get();
+    if (tentativaExistente.exists) {
+        const tentativaData = tentativaExistente.data() || {};
+        validarTentativaEstudoPertenceAoUsuario(tentativaData, alunoId, estudoId, googleUid);
+        return estudoRespostaSeguraExistente(tentativaData);
+    }
+
+    const gabaritosDocs = await Promise.all(
+        perguntas.map((pergunta) => db.collection('estudos_gabaritos').doc(pergunta.id).get())
+    );
+    const gabaritosPorPergunta = new Map();
+    gabaritosDocs.forEach((doc) => {
+        if (doc.exists) {
+            gabaritosPorPergunta.set(doc.id, doc.data() || {});
+        }
+    });
+
+    let totalObjetivas = 0;
+    let totalDiscursivas = 0;
+    let totalRespondidas = 0;
+    let acertos = 0;
+    let possuiPendenciaManual = false;
+    const respostasResumoSeguro = [];
+
+    for (const pergunta of perguntas) {
+        const resposta = respostasPorPergunta.get(pergunta.id);
+        const gabaritoPergunta = gabaritosPorPergunta.get(pergunta.id);
+        const tipoPergunta = estudosTextoSeguro(pergunta.tipo);
+        const tipoGabarito = estudosTextoSeguro(gabaritoPergunta?.tipoPergunta);
+        const tipo = tipoPergunta || tipoGabarito || estudosTextoSeguro(resposta?.tipo);
+        const respondida = resposta !== undefined;
+
+        if (respondida) {
+            totalRespondidas += 1;
+        }
+
+        if (estudoPerguntaDiscursiva(tipo)) {
+            totalDiscursivas += 1;
+            possuiPendenciaManual = true;
+            respostasResumoSeguro.push({
+                perguntaId: pergunta.id,
+                respondida,
+                pendenteManual: true,
+                tipo: tipo || 'discursiva'
+            });
+            continue;
+        }
+
+        const gabarito = gabaritoPergunta;
+        if (!gabarito || gabarito.ativo !== true) {
+            throw new HttpsError(
+                'failed-precondition',
+                'Pergunta objetiva sem gabarito ativo.'
+            );
+        }
+
+        const tipoNormalizado = estudosTextoSeguro(tipo).toLowerCase();
+        let correta = false;
+
+        totalObjetivas += 1;
+
+        if (tipoNormalizado === 'multipla_escolha' || tipoNormalizado === 'verdadeiro_falso') {
+            const corretaUnica = resolverAlternativaCorretaUnicaEstudo(gabarito);
+            if (!corretaUnica) {
+                throw new HttpsError(
+                    'failed-precondition',
+                    'Pergunta objetiva sem alternativa correta unica configurada.'
+                );
+            }
+            correta = estudosTextoSeguro(resposta?.alternativaSelecionadaId) === corretaUnica;
+        } else if (estudoPerguntaMultiplaSelecao(tipoNormalizado)) {
+            const corretasMultiplas = estudosArrayStrings(gabarito.alternativasCorretasIds);
+            if (corretasMultiplas.length === 0) {
+                throw new HttpsError(
+                    'failed-precondition',
+                    'Pergunta de multipla selecao sem alternativas corretas configuradas.'
+                );
+            }
+            const enviadas = estudosArrayStrings(resposta?.alternativasSelecionadasIds);
+            correta = estudosSetsIguais(new Set(enviadas), new Set(corretasMultiplas));
+        } else {
+            throw new HttpsError('invalid-argument', `Tipo de pergunta nao suportado: ${tipoNormalizado || 'vazio'}.`);
+        }
+
+        if (correta) {
+            acertos += 1;
+        }
+
+        respostasResumoSeguro.push({
+            perguntaId: pergunta.id,
+            respondida,
+            correta,
+            pendenteManual: false,
+            tipo: tipo || 'objetiva'
+        });
+    }
+
+    const percentual = totalObjetivas > 0
+        ? Math.round((acertos / totalObjetivas) * 100)
+        : 0;
+    const aprovado =
+        percentual >= ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL && !possuiPendenciaManual;
+    const status = possuiPendenciaManual ? 'pendente_correcao' : 'finalizada';
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const tentativaData = {
+        tentativaId,
+        alunoId,
+        googleUid,
+        estudoId,
+        cicloId,
+        clientAttemptId,
+        respostasResumoSeguro,
+        totalQuestoes: perguntas.length,
+        totalObjetivas,
+        totalDiscursivas,
+        totalRespondidas,
+        acertos,
+        percentual,
+        aprovado,
+        status,
+        possuiPendenciaManual,
+        criterioAprovacaoPercentual: ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL,
+        origem: 'cloud_function',
+        versaoAvaliacao: ESTUDOS_VERSAO_AVALIACAO,
+        createdAt: now,
+        finalizedAt: now
+    };
+    const resultadoRef = db
+        .collection('alunos_estudos_resultados')
+        .doc(alunoId)
+        .collection('estudos')
+        .doc(estudoId);
+
+    const resultadoTransacao = await db.runTransaction(async (transaction) => {
+        const tentativaTx = await transaction.get(tentativaRef);
+        if (tentativaTx.exists) {
+            const tentativaExistenteData = tentativaTx.data() || {};
+            validarTentativaEstudoPertenceAoUsuario(
+                tentativaExistenteData,
+                alunoId,
+                estudoId,
+                googleUid
+            );
+            return {
+                idempotente: true,
+                tentativaData: tentativaExistenteData
+            };
+        }
+
+        const resultadoTx = await transaction.get(resultadoRef);
+        const resultadoAtual = resultadoTx.exists ? (resultadoTx.data() || {}) : {};
+        const melhorAtual = Number(resultadoAtual.melhorPercentual || 0);
+        const melhorPercentual = Math.max(melhorAtual, percentual);
+        const aprovadoAtual = resultadoAtual.aprovado === true;
+        const resultadoData = {
+            alunoId,
+            googleUid,
+            estudoId,
+            cicloId,
+            melhorPercentual,
+            ultimaTentativaId: tentativaId,
+            ultimoPercentual: percentual,
+            tentativasCount: admin.firestore.FieldValue.increment(1),
+            aprovado: aprovadoAtual || aprovado,
+            status,
+            updatedAt: now,
+            origem: 'cloud_function'
+        };
+
+        if ((aprovadoAtual || aprovado) && !resultadoAtual.concluidoEm) {
+            resultadoData.concluidoEm = now;
+        }
+
+        transaction.create(tentativaRef, tentativaData);
+        transaction.set(resultadoRef, resultadoData, { merge: true });
+        return {
+            idempotente: false,
+            tentativaData
+        };
+    });
+
+    if (resultadoTransacao.idempotente) {
+        return estudoRespostaSeguraExistente(resultadoTransacao.tentativaData);
+    }
+
+    return estudoResultadoSeguroNovo(resultadoTransacao.tentativaData);
+});
 
 // ============================================
 // HELPERS - NOTIFICAÇÕES FCM
