@@ -104,11 +104,17 @@ service cloud.firestore {
     function perguntaPublicaSemGabarito(data) {
       return !("respostaCorreta" in data)
         && !("alternativaCorretaId" in data)
+        && !("alternativasCorretasIds" in data)
         && !("correta" in data)
         && !("isCorrect" in data)
         && !("feedbackCorreto" in data)
         && !("justificativaCorreta" in data)
-        && !("score" in data);
+        && !("score" in data)
+        && !("nota" in data)
+        && !("aprovado" in data)
+        && !("certificado" in data)
+        && !("emblema" in data)
+        && !("badge" in data);
     }
 
     /*
@@ -210,6 +216,146 @@ service cloud.firestore {
     }
 
     match /turmas/{turmaId}/avaliacoes_alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /chamadas/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /chamadas_turma/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /log_presenca_alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /locks_chamada/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /contador_presencas_alunos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /configuracoes_sistema/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /configuracoes_sistema/logo_dinamica/temas/{themeId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /caca_bug_sessoes/{sessaoId} {
+      allow read: if isAdmin();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /caca_bug_sessoes/{sessaoId}/eventos/{eventoId} {
+      allow read: if isAdmin();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /academias/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /participacoes_eventos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /inscricoes_aprovadas/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /configuracoes_site/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /site_conteudo/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /timeline_publicacoes/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /config_site_assistente/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /patrocinadores_eventos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /patrocinadores_eventos/{patrocinadorId}/pagamentos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /posts/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /galeria/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /banners/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /uniformes_estoque/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /vendas_uniformes/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /pedidos_uniformes/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /remessas/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /fornecedores/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /pagamentos/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /movimentacoes_estoque/{document} {
       allow read: if true;
       allow write: if isSignedIn();
     }
