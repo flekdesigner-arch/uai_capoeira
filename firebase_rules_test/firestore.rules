@@ -109,6 +109,7 @@ service cloud.firestore {
         && !("isCorrect" in data)
         && !("feedbackCorreto" in data)
         && !("justificativaCorreta" in data)
+        && !("respostaEsperadaTexto" in data)
         && !("score" in data)
         && !("nota" in data)
         && !("aprovado" in data)
@@ -116,7 +117,6 @@ service cloud.firestore {
         && !("emblema" in data)
         && !("badge" in data);
     }
-
     /*
       Blocos legados explicitados para substituir o fallback global.
       As permissÃƒÂµes abaixo tentam preservar o comportamento atual informado.
@@ -390,7 +390,6 @@ service cloud.firestore {
         && perguntaPublicaSemGabarito(request.resource.data);
       allow delete: if podeGerenciarEstudosFundamentos();
     }
-
     match /alunos_estudos_progresso/{alunoId}/estudos/{estudoId} {
       allow read: if podeGerenciarEstudosFundamentos() || alunoPertenceAoUsuario(alunoId);
       allow create, update: if alunoPertenceAoUsuario(alunoId)
@@ -407,6 +406,16 @@ service cloud.firestore {
 
     match /estudos_gabaritos/{perguntaId} {
       allow read, create, update, delete: if podeGerenciarEstudosFundamentos();
+    }
+
+    match /alunos_estudos_resultados/{alunoId}/estudos/{estudoId} {
+      allow read: if podeGerenciarEstudosFundamentos() || alunoPertenceAoUsuario(alunoId);
+      allow create, update, delete: if false;
+    }
+
+    match /estudos_tentativas/{tentativaId} {
+      allow read: if podeGerenciarEstudosFundamentos();
+      allow create, update, delete: if false;
     }
 
     match /avaliacoes_tentativas/{tentativaId} {
