@@ -199,6 +199,145 @@ function estudoResultadoSeguroNovo(data) {
     };
 }
 
+
+function estudosNumeroSeguro(value, fallback = 0) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value.trim());
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return fallback;
+}
+
+function estudosAlternativasPublicasSeguras(alternativasRaw) {
+    if (!Array.isArray(alternativasRaw)) return [];
+
+    return alternativasRaw
+        .map((alternativa, index) => {
+            const item = alternativa && typeof alternativa === 'object' ? alternativa : {};
+            const alternativaSegura = {};
+            const id = estudosTextoSeguro(item.id);
+            const texto = estudosTextoSeguro(item.texto);
+            const label = estudosTextoSeguro(item.label);
+            const letra = estudosTextoSeguro(item.letra);
+            const valor = estudosTextoSeguro(item.valor);
+
+            if (id) alternativaSegura.id = id;
+            if (texto) alternativaSegura.texto = texto;
+            if (label) alternativaSegura.label = label;
+            if (letra) alternativaSegura.letra = letra;
+            if (valor) alternativaSegura.valor = valor;
+            alternativaSegura.ordem = estudosNumeroSeguro(item.ordem, index + 1);
+
+            return alternativaSegura;
+        })
+        .filter((alternativa) => Object.keys(alternativa).length > 1)
+        .sort((a, b) => {
+            if (a.ordem !== b.ordem) return a.ordem - b.ordem;
+            return estudosTextoSeguro(a.id).localeCompare(estudosTextoSeguro(b.id));
+        });
+}
+
+function estudosTagsSeguras(tagsRaw) {
+    return estudosArrayStrings(tagsRaw).slice(0, 20);
+}
+
+function estudoPerguntaSeguraDto(perguntaDoc, cicloIdFallback) {
+    const data = perguntaDoc.data() || {};
+    const perguntaSegura = {
+        perguntaId: perguntaDoc.id,
+        estudoId: estudosTextoSeguro(data.estudoId),
+        cicloId: estudosTextoSeguro(data.cicloId) || cicloIdFallback,
+        enunciado: estudosTextoSeguro(data.enunciado),
+        tipo: estudosTextoSeguro(data.tipo),
+        alternativasPublicas: estudosAlternativasPublicasSeguras(data.alternativasPublicas),
+        dificuldade: estudosTextoSeguro(data.dificuldade),
+        peso: estudosNumeroSeguro(data.peso, 1),
+        ordem: estudosNumeroSeguro(data.ordem, 0),
+        tags: estudosTagsSeguras(data.tags)
+    };
+
+    if (Object.prototype.hasOwnProperty.call(data, 'obrigatoria')) {
+        perguntaSegura.obrigatoria = data.obrigatoria === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'podeAparecerEmAvaliacao')) {
+        perguntaSegura.podeAparecerEmAvaliacao = data.podeAparecerEmAvaliacao !== false;
+    }
+
+    return perguntaSegura;
+}
+
+function ordenarPerguntasEstudo(a, b) {
+    const dataA = a.data() || {};
+    const dataB = b.data() || {};
+    const ordemA = estudosNumeroSeguro(dataA.ordem, Number.MAX_SAFE_INTEGER);
+    const ordemB = estudosNumeroSeguro(dataB.ordem, Number.MAX_SAFE_INTEGER);
+
+    if (ordemA !== ordemB) return ordemA - ordemB;
+    return a.id.localeCompare(b.id);
+}
+
+exports.buscarPerguntasEstudo = onCall(async (request) => {
+    if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+    }
+
+    const payload = request.data || {};
+    const googleUid = request.auth.uid;
+    const alunoId = validarTextoObrigatorioEstudo(payload.alunoId, 'alunoId');
+    const estudoId = validarTextoObrigatorioEstudo(payload.estudoId, 'estudoId');
+
+    const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+    if (!alunoDoc.exists) {
+        throw new HttpsError('not-found', 'Aluno nao encontrado.');
+    }
+
+    const aluno = alunoDoc.data() || {};
+    if (aluno.areaAlunoGoogleUid !== googleUid || aluno.areaAlunoGoogleVinculado !== true) {
+        throw new HttpsError('permission-denied', 'Aluno nao vinculado ao usuario autenticado.');
+    }
+
+    const estudoDoc = await db.collection('estudos').doc(estudoId).get();
+    if (!estudoDoc.exists) {
+        throw new HttpsError('not-found', 'Estudo nao encontrado.');
+    }
+
+    const estudo = estudoDoc.data() || {};
+    if (estudo.status !== 'publicado') {
+        throw new HttpsError('failed-precondition', 'Estudo nao publicado.');
+    }
+
+    const cicloId = estudosTextoSeguro(estudo.cicloId);
+    const perguntasSnap = await db
+        .collection('estudos_perguntas')
+        .where('estudoId', '==', estudoId)
+        .get();
+
+    const perguntas = perguntasSnap.docs
+        .filter((doc) => {
+            const pergunta = doc.data() || {};
+            return ESTUDOS_PERGUNTA_STATUS_AVALIAVEL.has(estudosTextoSeguro(pergunta.status)) &&
+                pergunta.podeAparecerEmAvaliacao !== false;
+        })
+        .sort(ordenarPerguntasEstudo)
+        .map((doc) => estudoPerguntaSeguraDto(doc, cicloId));
+
+    console.log('buscarPerguntasEstudo concluida', {
+        alunoId,
+        estudoId,
+        totalPerguntas: perguntas.length
+    });
+
+    return {
+        success: true,
+        alunoId,
+        estudoId,
+        cicloId,
+        totalPerguntas: perguntas.length,
+        perguntas
+    };
+});
+
 exports.finalizarTentativaEstudo = onCall(async (request) => {
     if (!request.auth?.uid) {
         throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
