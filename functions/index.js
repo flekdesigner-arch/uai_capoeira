@@ -424,53 +424,37 @@ function estudosFundamentosPathAlunoEstudoValido(ref, raizEsperada) {
     );
 }
 
+async function estudosFundamentosColetarAlunoEstudosRefs(raiz, estudoId, etapa) {
+    const refs = new Map();
+    try {
+        const alunosSnap = await db.collection(raiz).get();
+        for (const alunoDoc of alunosSnap.docs) {
+            const estudosSnap = await db.collection(raiz).doc(alunoDoc.id).collection('estudos').get();
+            estudosSnap.docs.forEach((doc) => {
+                const data = doc.data() || {};
+                const pertenceAoEstudo = doc.id === estudoId || data.estudoId === estudoId;
+                if (pertenceAoEstudo && estudosFundamentosPathAlunoEstudoValido(doc.ref, raiz)) {
+                    refs.set(doc.ref.path, doc.ref);
+                }
+            });
+        }
+        return refs;
+    } catch (error) {
+        console.error('Erro ao coletar documentos de aluno para exclusao', {
+            etapa,
+            raiz,
+            message: error?.message
+        });
+        throw new HttpsError('internal', 'Nao foi possivel concluir a exclusao do estudo.', { etapa });
+    }
+}
+
 async function estudosFundamentosDeleteAlunoDocsPorEstudo(estudoId) {
     const resumo = estudosFundamentosResumoExclusao();
-    const [resultadosSnap, progressosSnap] = await Promise.all([
-        db.collectionGroup('estudos').where('estudoId', '==', estudoId).get(),
-        db.collectionGroup('estudos').where('estudoId', '==', estudoId).get()
+    const [resultadoRefs, progressoRefs] = await Promise.all([
+        estudosFundamentosColetarAlunoEstudosRefs('alunos_estudos_resultados', estudoId, 'limpar_resultados_alunos'),
+        estudosFundamentosColetarAlunoEstudosRefs('alunos_estudos_progresso', estudoId, 'limpar_progressos_alunos')
     ]);
-
-    const resultadoRefs = new Map();
-    const progressoRefs = new Map();
-    resultadosSnap.docs.forEach((doc) => {
-        if (estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_resultados') && doc.data()?.estudoId === estudoId) {
-            resultadoRefs.set(doc.ref.path, doc.ref);
-        }
-    });
-    progressosSnap.docs.forEach((doc) => {
-        if (estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_progresso') && doc.data()?.estudoId === estudoId) {
-            progressoRefs.set(doc.ref.path, doc.ref);
-        }
-    });
-
-    const [alunosResultadosSnap, alunosProgressosSnap] = await Promise.all([
-        db.collection('alunos_estudos_resultados').get(),
-        db.collection('alunos_estudos_progresso').get()
-    ]);
-
-    const resultadoDiretoRefs = alunosResultadosSnap.docs.map((alunoDoc) =>
-        db.collection('alunos_estudos_resultados').doc(alunoDoc.id).collection('estudos').doc(estudoId)
-    );
-    const progressoDiretoRefs = alunosProgressosSnap.docs.map((alunoDoc) =>
-        db.collection('alunos_estudos_progresso').doc(alunoDoc.id).collection('estudos').doc(estudoId)
-    );
-
-    const [resultadoDiretoDocs, progressoDiretoDocs] = await Promise.all([
-        resultadoDiretoRefs.length > 0 ? db.getAll(...resultadoDiretoRefs) : [],
-        progressoDiretoRefs.length > 0 ? db.getAll(...progressoDiretoRefs) : []
-    ]);
-
-    resultadoDiretoDocs.forEach((doc) => {
-        if (doc.exists && doc.id === estudoId && estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_resultados')) {
-            resultadoRefs.set(doc.ref.path, doc.ref);
-        }
-    });
-    progressoDiretoDocs.forEach((doc) => {
-        if (doc.exists && doc.id === estudoId && estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_progresso')) {
-            progressoRefs.set(doc.ref.path, doc.ref);
-        }
-    });
 
     resumo.resultadosApagados = await estudosFundamentosCommitDeletes(Array.from(resultadoRefs.values()));
     resumo.progressosApagados = await estudosFundamentosCommitDeletes(Array.from(progressoRefs.values()));
