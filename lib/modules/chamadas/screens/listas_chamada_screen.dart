@@ -77,7 +77,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
   Color _appButtonFg() =>
       Theme.of(context).appBarTheme.foregroundColor ??
-      _readableOn(_appButtonBg());
+          _readableOn(_appButtonBg());
 
   bool _temaPrimarioMuitoClaroEmFundoEscuro() {
     final primary = context.uai.primary;
@@ -107,10 +107,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-          bgIsDark
-              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-        )
+      bgIsDark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+    )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -301,7 +301,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
             final diasGrade = List.generate(
               42,
-              (index) => DateTime(
+                  (index) => DateTime(
                 primeiroDiaGrade.year,
                 primeiroDiaGrade.month,
                 primeiroDiaGrade.day + index,
@@ -474,9 +474,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         backgroundColor: context.uai.error
                                             .withOpacity(0.10),
                                         valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              context.uai.primary,
-                                            ),
+                                        AlwaysStoppedAnimation<Color>(
+                                          context.uai.primary,
+                                        ),
                                       ),
                                       const SizedBox(height: 12),
                                     ],
@@ -495,14 +495,14 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                     GridView.builder(
                                       shrinkWrap: true,
                                       physics:
-                                          const NeverScrollableScrollPhysics(),
+                                      const NeverScrollableScrollPhysics(),
                                       gridDelegate:
-                                          const SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: 7,
-                                            crossAxisSpacing: 5,
-                                            mainAxisSpacing: 5,
-                                            childAspectRatio: 0.94,
-                                          ),
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 7,
+                                        crossAxisSpacing: 5,
+                                        mainAxisSpacing: 5,
+                                        childAspectRatio: 0.94,
+                                      ),
                                       itemCount: diasGrade.length,
                                       itemBuilder: (context, index) {
                                         final dia = diasGrade[index];
@@ -511,17 +511,17 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         return _buildDiaCalendario(
                                           dia: dia,
                                           mesAtual:
-                                              dia.month == mesVisivel.month,
+                                          dia.month == mesVisivel.month,
                                           chamadasDia: chamadasDia,
                                           onTap: chamadasDia.isEmpty
                                               ? null
                                               : () =>
-                                                    _abrirChamadasDoDiaCalendario(
-                                                      dialogContext:
-                                                          dialogContext,
-                                                      dia: dia,
-                                                      chamadasDia: chamadasDia,
-                                                    ),
+                                              _abrirChamadasDoDiaCalendario(
+                                                dialogContext:
+                                                dialogContext,
+                                                dia: dia,
+                                                chamadasDia: chamadasDia,
+                                              ),
                                         );
                                       },
                                     ),
@@ -539,7 +539,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                             onPressed: () {
                                               setState(() {
                                                 _dataSelecionadaCalendario =
-                                                    null;
+                                                null;
                                               });
                                               Navigator.pop(dialogContext);
                                             },
@@ -557,18 +557,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                                 Navigator.pop(dialogContext),
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor:
-                                                  Theme.of(context)
-                                                      .appBarTheme
-                                                      .backgroundColor ??
+                                              Theme.of(context)
+                                                  .appBarTheme
+                                                  .backgroundColor ??
                                                   context.uai.primary,
                                               foregroundColor:
-                                                  Theme.of(context)
-                                                      .appBarTheme
-                                                      .foregroundColor ??
+                                              Theme.of(context)
+                                                  .appBarTheme
+                                                  .foregroundColor ??
                                                   _readableOn(
                                                     Theme.of(context)
-                                                            .appBarTheme
-                                                            .backgroundColor ??
+                                                        .appBarTheme
+                                                        .backgroundColor ??
                                                         context.uai.primary,
                                                   ),
                                             ),
@@ -653,11 +653,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
   bool get _podeExcluirChamada =>
       _podeEditarChamada &&
-      _temPermissaoDiretaOuAlias(const [
-        'pode_excluir_chamada',
-        'pode_excluir_chamadas',
-        'podeExcluirChamada',
-      ]);
+          _temPermissaoDiretaOuAlias(const [
+            'pode_excluir_chamada',
+            'pode_excluir_chamadas',
+            'podeExcluirChamada',
+          ]);
 
   Query<Map<String, dynamic>> _queryBaseChamadas() {
     return _firestore
@@ -678,9 +678,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarChamadasDoMesCalendario(
-    DateTime mes, {
-    bool forceRefresh = false,
-  }) async {
+      DateTime mes, {
+        bool forceRefresh = false,
+      }) async {
     final chave = _chaveMes(mes);
 
     if (!forceRefresh && _cacheChamadasPorMes.containsKey(chave)) return;
@@ -701,9 +701,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           .where('turma_id', isEqualTo: widget.turmaId)
           .where('academia_id', isEqualTo: widget.academiaId)
           .where(
-            'data_chamada',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
-          )
+        'data_chamada',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
+      )
           .where('data_chamada', isLessThan: Timestamp.fromDate(fim))
           .orderBy('data_chamada', descending: true)
           .get(const GetOptions(source: Source.server));
@@ -856,8 +856,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
     final dataBusca = dataChamada is Timestamp
         ? '${DateFormat('dd/MM/yyyy').format(dataChamada.toDate())} '
-              '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
-              '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
+        '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
+        '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
         : '';
 
     final buffer = StringBuffer()
@@ -932,8 +932,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoDia(
-    DateTime dia,
-  ) {
+      DateTime dia,
+      ) {
     final dataFmt = DateFormat('yyyy-MM-dd').format(dia);
 
     return _chamadas.where((doc) {
@@ -954,8 +954,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoMes(
-    DateTime mes,
-  ) {
+      DateTime mes,
+      ) {
     final cached = _cacheChamadasPorMes[_chaveMes(mes)];
     final origem = cached ?? _chamadas;
 
@@ -989,7 +989,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final isHoje = _mesmoDia(dia, hoje);
     final isSelecionado =
         _dataSelecionadaCalendario != null &&
-        _mesmoDia(dia, _dataSelecionadaCalendario!);
+            _mesmoDia(dia, _dataSelecionadaCalendario!);
     final temChamada = chamadasDia.isNotEmpty;
     final tipoPrincipal = temChamada
         ? chamadasDia.first.data()['tipo_aula']?.toString() ?? 'OUTRO'
@@ -1066,15 +1066,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                           height: 5,
                           child: isHoje
                               ? Center(
-                                  child: Container(
-                                    width: 5,
-                                    height: 5,
-                                    decoration: BoxDecoration(
-                                      color: context.uai.primaryDark,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                )
+                            child: Container(
+                              width: 5,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: context.uai.primaryDark,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          )
                               : null,
                         ),
                       if (chamadasDia.length > 1) ...[
@@ -1308,8 +1308,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildResumoCalendarioMes(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
+      ) {
     final porTipo = <String, int>{};
 
     for (final chamada in chamadasDoMes) {
@@ -1381,8 +1381,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _confirmarExcluirChamadaLista(
-    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+      ) async {
     if (!_podeExcluirChamada || _excluindoChamadaId != null) return;
 
     final data = chamada.data();
@@ -1391,8 +1391,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final totalAlunos = _intFromDynamic(data['total_alunos']);
     final dataLabel =
         _formatarDataChamada(data['data_chamada']) ??
-        data['data_formatada']?.toString() ??
-        'Não informada';
+            data['data_formatada']?.toString() ??
+            'Não informada';
     final turmaLabel = data['turma_nome']?.toString().trim().isNotEmpty == true
         ? data['turma_nome'].toString()
         : widget.turmaNome;
@@ -1492,8 +1492,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _excluirChamadaLista(
-    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+      ) async {
     final data = chamada.data();
     final turmaId = data['turma_id']?.toString().trim().isNotEmpty == true
         ? data['turma_id'].toString()
@@ -1548,8 +1548,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _editarChamada(
-    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+      ) async {
     if (!_podeEditarChamada) {
       _mostrarSnackBarSemPermissao();
       return;
@@ -1658,11 +1658,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final totalChamadas = chamadas.length;
     final totalAlunosSomados = chamadas.fold<int>(
       0,
-      (s, d) => s + _parseInt(d.data()['total_alunos']),
+          (s, d) => s + _parseInt(d.data()['total_alunos']),
     );
     final totalPresentes = chamadas.fold<int>(
       0,
-      (s, d) => s + _parseInt(d.data()['presentes']),
+          (s, d) => s + _parseInt(d.data()['presentes']),
     );
     final media = totalAlunosSomados > 0
         ? (totalPresentes / totalAlunosSomados)
@@ -1794,12 +1794,12 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildResumoMini(
-    String label,
-    String value,
-    IconData icon,
-    Color headerFg,
-    Color headerBg,
-  ) {
+      String label,
+      String value,
+      IconData icon,
+      Color headerFg,
+      Color headerBg,
+      ) {
     final accent = _ensureVisible(headerFg, headerBg);
     return Expanded(
       child: Container(
@@ -1956,7 +1956,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             child: Row(
               children: [
                 ..._tiposAula.map(
-                  (tipo) => _buildFiltroChip(
+                      (tipo) => _buildFiltroChip(
                     label: tipo == 'TODOS' ? 'Todos tipos' : tipo,
                     selected: _filtroTipo == tipo,
                     icon: tipo == 'TODOS'
@@ -1974,7 +1974,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.warning_amber_rounded,
                   color: context.uai.warning,
                   onTap: () => setState(
-                    () => _filtroStatus = _filtroStatus == 'COM_FALTA'
+                        () => _filtroStatus = _filtroStatus == 'COM_FALTA'
                         ? 'TODOS'
                         : 'COM_FALTA',
                   ),
@@ -1985,7 +1985,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.verified_rounded,
                   color: context.uai.success,
                   onTap: () => setState(
-                    () => _filtroStatus = _filtroStatus == '100'
+                        () => _filtroStatus = _filtroStatus == '100'
                         ? 'TODOS'
                         : '100',
                   ),
@@ -1996,7 +1996,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.person_off_rounded,
                   color: context.uai.primaryDark,
                   onTap: () => setState(
-                    () => _filtroStatus = _filtroStatus == 'VAZIA'
+                        () => _filtroStatus = _filtroStatus == 'VAZIA'
                         ? 'TODOS'
                         : 'VAZIA',
                   ),
@@ -2040,9 +2040,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 color: selected
                     ? _readableOn(context.uai.primary)
                     : _ensureVisible(
-                        context.uai.textSecondary,
-                        context.uai.card,
-                      ),
+                  context.uai.textSecondary,
+                  context.uai.card,
+                ),
               ),
               SizedBox(width: 6),
               Text(
@@ -2053,9 +2053,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   color: selected
                       ? _readableOn(context.uai.primary)
                       : _ensureVisible(
-                          context.uai.textSecondary,
-                          context.uai.card,
-                        ),
+                    context.uai.textSecondary,
+                    context.uai.card,
+                  ),
                 ),
               ),
             ],
@@ -2066,9 +2066,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildCardChamada(
-    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-    int index,
-  ) {
+      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+      int index,
+      ) {
     final data = chamada.data();
     final dataChamada = data['data_chamada'] as Timestamp?;
     final presentes = _parseInt(data['presentes']);
@@ -2089,15 +2089,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final tipoColor = _getTipoAulaColor(tipoAula);
     final chamadaEditada =
         data['chamada_editada'] == true ||
-        data['editado_em'] != null ||
-        data['edicao_origem'] != null;
+            data['editado_em'] != null ||
+            data['edicao_origem'] != null;
     final editadoPor =
-        (data['editado_por_nome'] ??
-                data['editado_por_email'] ??
-                data['editado_por_uid'] ??
-                '')
-            .toString()
-            .trim();
+    (data['editado_por_nome'] ??
+        data['editado_por_email'] ??
+        data['editado_por_uid'] ??
+        '')
+        .toString()
+        .trim();
     final editadoEm = data['editado_em'] as Timestamp?;
 
     return Container(
@@ -2243,18 +2243,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     child: IconButton(
                       icon: excluindoEstaChamada
                           ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: context.uai.error,
-                              ),
-                            )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: context.uai.error,
+                        ),
+                      )
                           : Icon(
-                              Icons.delete_rounded,
-                              size: 19,
-                              color: context.uai.error,
-                            ),
+                        Icons.delete_rounded,
+                        size: 19,
+                        color: context.uai.error,
+                      ),
                       onPressed: _excluindoChamadaId == null
                           ? () => _confirmarExcluirChamadaLista(chamada)
                           : null,
@@ -2384,15 +2384,19 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: accent),
-          SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: accent,
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: accent,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
             ),
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -2450,10 +2454,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
     final value =
         alunoMap['foto_perfil_aluno'] ??
-        alunoMap['foto_url'] ??
-        alunoMap['foto'] ??
-        alunoMap['imagem_url'] ??
-        alunoMap['avatar_url'];
+            alunoMap['foto_url'] ??
+            alunoMap['foto'] ??
+            alunoMap['imagem_url'] ??
+            alunoMap['avatar_url'];
 
     final foto = value?.toString().trim();
     if (foto == null || foto.isEmpty) return null;
@@ -2519,8 +2523,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarFotosFallbackDasChamadas(
-    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chamadas,
-  ) async {
+      Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chamadas,
+      ) async {
     final ids = <String>{};
 
     for (final chamada in chamadas) {
@@ -2572,39 +2576,39 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       clipBehavior: Clip.antiAlias,
       child: fotoUrl != null && fotoUrl.isNotEmpty
           ? CachedNetworkImage(
-              imageUrl: fotoUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Center(
-                child: Text(
-                  _iniciaisAluno(nome),
-                  style: TextStyle(
-                    color: avatarFg,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-              errorWidget: (context, url, error) => Center(
-                child: Text(
-                  _iniciaisAluno(nome),
-                  style: TextStyle(
-                    color: avatarFg,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            )
-          : Center(
-              child: Text(
-                _iniciaisAluno(nome),
-                style: TextStyle(
-                  color: avatarFg,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 11,
-                ),
-              ),
+        imageUrl: fotoUrl,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Center(
+          child: Text(
+            _iniciaisAluno(nome),
+            style: TextStyle(
+              color: avatarFg,
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
             ),
+          ),
+        ),
+        errorWidget: (context, url, error) => Center(
+          child: Text(
+            _iniciaisAluno(nome),
+            style: TextStyle(
+              color: avatarFg,
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
+            ),
+          ),
+        ),
+      )
+          : Center(
+        child: Text(
+          _iniciaisAluno(nome),
+          style: TextStyle(
+            color: avatarFg,
+            fontWeight: FontWeight.w900,
+            fontSize: 11,
+          ),
+        ),
+      ),
     );
   }
 
@@ -2844,21 +2848,21 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color:
-                    (Theme.of(context).appBarTheme.foregroundColor ??
-                            _readableOn(
-                              Theme.of(context).appBarTheme.backgroundColor ??
-                                  context.uai.primary,
-                            ))
-                        .withOpacity(0.72),
+                (Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ))
+                    .withOpacity(0.72),
               ),
             ),
           ],
         ),
         backgroundColor:
-            Theme.of(context).appBarTheme.backgroundColor ??
+        Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-            Theme.of(context).appBarTheme.foregroundColor ??
+        Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
@@ -2887,99 +2891,99 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           : _chamadas.isEmpty
           ? _buildEmptyScreen()
           : RefreshIndicator(
-              onRefresh: _carregarPrimeirasChamadas,
-              color: context.uai.primary,
-              backgroundColor: context.uai.surface,
-              displacement: 40,
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                slivers: [
-                  SliverToBoxAdapter(child: _buildHeaderResumo()),
-                  SliverToBoxAdapter(child: _buildFiltros()),
-                  if (chamadasFiltradas.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(30),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off_rounded,
-                                size: 70,
-                                color: context.uai.textMuted,
-                              ),
-                              SizedBox(height: 12),
-                              Text(
-                                'Nenhuma chamada nesse filtro',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: context.uai.textSecondary,
-                                ),
-                              ),
-                              SizedBox(height: 6),
-                              Text(
-                                'Limpe a busca ou altere os filtros.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: context.uai.textMuted),
-                              ),
-                            ],
+        onRefresh: _carregarPrimeirasChamadas,
+        color: context.uai.primary,
+        backgroundColor: context.uai.surface,
+        displacement: 40,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(child: _buildHeaderResumo()),
+            SliverToBoxAdapter(child: _buildFiltros()),
+            if (chamadasFiltradas.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(30),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 70,
+                          color: context.uai.textMuted,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Nenhuma chamada nesse filtro',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: context.uai.textSecondary,
                           ),
                         ),
-                      ),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          if (index == chamadasFiltradas.length)
-                            return _buildLoadingMaisItem();
-                          return _buildCardChamada(
-                            chamadasFiltradas[index],
-                            index,
-                          );
-                        },
-                        childCount:
-                            chamadasFiltradas.length +
-                            (_temMaisChamadas ? 1 : 0),
-                      ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Limpe a busca ou altere os filtros.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.uai.textMuted),
+                        ),
+                      ],
                     ),
-                  SliverToBoxAdapter(child: SizedBox(height: 90)),
-                ],
+                  ),
+                ),
+              )
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    if (index == chamadasFiltradas.length)
+                      return _buildLoadingMaisItem();
+                    return _buildCardChamada(
+                      chamadasFiltradas[index],
+                      index,
+                    );
+                  },
+                  childCount:
+                  chamadasFiltradas.length +
+                      (_temMaisChamadas ? 1 : 0),
+                ),
               ),
-            ),
+            SliverToBoxAdapter(child: SizedBox(height: 90)),
+          ],
+        ),
+      ),
       floatingActionButton: _chamadas.isNotEmpty
           ? FloatingActionButton.extended(
-              onPressed: () {
-                if (_scrollController.hasClients) {
-                  _scrollController.animateTo(
-                    0,
-                    duration: Duration(milliseconds: 450),
-                    curve: Curves.easeInOut,
-                  );
-                }
-              },
-              backgroundColor:
-                  Theme.of(context).appBarTheme.backgroundColor ??
+        onPressed: () {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0,
+              duration: Duration(milliseconds: 450),
+              curve: Curves.easeInOut,
+            );
+          }
+        },
+        backgroundColor:
+        Theme.of(context).appBarTheme.backgroundColor ??
+            context.uai.primary,
+        foregroundColor:
+        Theme.of(context).appBarTheme.foregroundColor ??
+            _readableOn(
+              Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
-              foregroundColor:
-                  Theme.of(context).appBarTheme.foregroundColor ??
-                  _readableOn(
-                    Theme.of(context).appBarTheme.backgroundColor ??
-                        context.uai.primary,
-                  ),
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              icon: Icon(Icons.arrow_upward_rounded),
-              label: Text('Topo'),
-            )
+            ),
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        icon: Icon(Icons.arrow_upward_rounded),
+        label: Text('Topo'),
+      )
           : null,
     );
   }
@@ -2990,35 +2994,35 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       child: Center(
         child: _isLoadingMais
             ? Column(
-                children: [
-                  CircularProgressIndicator(color: context.uai.primary),
-                  SizedBox(height: 8),
-                  Text(
-                    'Carregando mais chamadas...',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.uai.textSecondary,
-                    ),
-                  ),
-                ],
-              )
-            : ElevatedButton.icon(
-                onPressed: _carregarMaisChamadas,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.uai.surface,
-                  foregroundColor: context.uai.primary,
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                ),
-                icon: Icon(Icons.history_rounded, size: 16),
-                label: Text('Carregar mais chamadas'),
+          children: [
+            CircularProgressIndicator(color: context.uai.primary),
+            SizedBox(height: 8),
+            Text(
+              'Carregando mais chamadas...',
+              style: TextStyle(
+                fontSize: 12,
+                color: context.uai.textSecondary,
               ),
+            ),
+          ],
+        )
+            : ElevatedButton.icon(
+          onPressed: _carregarMaisChamadas,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: context.uai.surface,
+            foregroundColor: context.uai.primary,
+            elevation: 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 12,
+            ),
+          ),
+          icon: Icon(Icons.history_rounded, size: 16),
+          label: Text('Carregar mais chamadas'),
+        ),
       ),
     );
   }
@@ -3117,10 +3121,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               onPressed: _carregarPrimeirasChamadas,
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                    Theme.of(context).appBarTheme.backgroundColor ??
+                Theme.of(context).appBarTheme.backgroundColor ??
                     context.uai.primary,
                 foregroundColor:
-                    Theme.of(context).appBarTheme.foregroundColor ??
+                Theme.of(context).appBarTheme.foregroundColor ??
                     _readableOn(
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
@@ -3183,10 +3187,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                    Theme.of(context).appBarTheme.backgroundColor ??
+                Theme.of(context).appBarTheme.backgroundColor ??
                     context.uai.primary,
                 foregroundColor:
-                    Theme.of(context).appBarTheme.foregroundColor ??
+                Theme.of(context).appBarTheme.foregroundColor ??
                     _readableOn(
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
@@ -3324,8 +3328,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       aluno['aluno_id'] = alunoId;
       aluno['aluno_nome'] =
           aluno['aluno_nome']?.toString() ??
-          aluno['nome']?.toString() ??
-          'Sem nome';
+              aluno['nome']?.toString() ??
+              'Sem nome';
       aluno['presente'] = aluno['presente'] == true;
       _observacaoControllers[alunoId] = TextEditingController(
         text: aluno['observacao']?.toString() ?? '',
@@ -3334,7 +3338,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
 
     _dataChamadaOriginal =
         (widget.chamadaData['data_chamada'] as Timestamp?)?.toDate() ??
-        DateTime.now();
+            DateTime.now();
     _dataChamadaEdit = _dataChamadaOriginal;
     _tipoAulaOriginal =
         widget.chamadaData['tipo_aula']?.toString() ?? 'OBJETIVA';
@@ -3458,7 +3462,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
 
   Color _appButtonFg() =>
       Theme.of(context).appBarTheme.foregroundColor ??
-      _readableOn(_appButtonBg());
+          _readableOn(_appButtonBg());
 
   bool _temaPrimarioMuitoClaroEmFundoEscuro() {
     final primary = context.uai.primary;
@@ -3488,10 +3492,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-          bgIsDark
-              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-        )
+      bgIsDark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+    )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -3513,9 +3517,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Map<String, dynamic> _materializarIncrements(
-    Map<String, dynamic> raw, {
-    bool incrementContext = false,
-  }) {
+      Map<String, dynamic> raw, {
+        bool incrementContext = false,
+      }) {
     final result = <String, dynamic>{};
 
     raw.forEach((key, value) {
@@ -3524,10 +3528,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
 
       final childIncrementContext =
           incrementContext ||
-          key == 'porAno' ||
-          key == 'porMes' ||
-          key == 'porSemana' ||
-          key == 'contadores';
+              key == 'porAno' ||
+              key == 'porMes' ||
+              key == 'porSemana' ||
+              key == 'contadores';
 
       if (value is int) {
         if (shouldIncrementThisInt) {
@@ -3568,10 +3572,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   void _aplicarDeltaContador(
-    Map<String, dynamic> contador,
-    DateTime data,
-    int delta,
-  ) {
+      Map<String, dynamic> contador,
+      DateTime data,
+      int delta,
+      ) {
     if (delta == 0) return;
     final ano = data.year.toString();
     final mes = _mesKey(data);
@@ -3587,14 +3591,14 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Map<String, dynamic> _montarLogData(
-    Map<String, dynamic> aluno,
-    DateTime dataChamada,
-    String chamadaId,
-  ) {
+      Map<String, dynamic> aluno,
+      DateTime dataChamada,
+      String chamadaId,
+      ) {
     final alunoId = aluno['aluno_id']?.toString() ?? '';
     return {
       'log_id':
-          'log_${widget.chamadaData['turma_id']}_${alunoId}_${_dataFormatada(dataChamada)}',
+      'log_${widget.chamadaData['turma_id']}_${alunoId}_${_dataFormatada(dataChamada)}',
       'chamada_id': chamadaId,
       'aluno_id': alunoId,
       'aluno_nome': aluno['aluno_nome']?.toString() ?? 'Sem nome',
@@ -3662,7 +3666,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   Future<bool> _confirmarAlteracoesImportantes() async {
     final mudouData =
         _dataFormatada(_dataChamadaEdit) !=
-        _dataFormatada(_dataChamadaOriginal);
+            _dataFormatada(_dataChamadaOriginal);
     final mudouTipo = _tipoAulaEdit != _tipoAulaOriginal.toUpperCase();
     final mudouProfessor =
         _professorController.text.trim() != _professorNomeOriginal;
@@ -3683,57 +3687,57 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     }
 
     return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Confirmar edição da chamada'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Serão atualizados:'),
-                SizedBox(height: 12),
-                if (mudouData) _buildBulletPoint('Data/hora da chamada'),
-                if (mudouTipo) _buildBulletPoint('Tipo da aula'),
-                if (mudouProfessor) _buildBulletPoint('Professor registrado'),
-                _buildBulletPoint(
-                  '$mudancasAlunos aluno(s) com presença/observação alterada',
-                ),
-                SizedBox(height: 12),
-                Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: context.uai.warning.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: context.uai.warning.withOpacity(0.28),
-                    ),
-                  ),
-                  child: Text(
-                    'Os logs e contadores de frequência serão ajustados automaticamente.',
-                    style: TextStyle(
-                      color: context.uai.warning,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirmar edição da chamada'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Serão atualizados:'),
+            SizedBox(height: 12),
+            if (mudouData) _buildBulletPoint('Data/hora da chamada'),
+            if (mudouTipo) _buildBulletPoint('Tipo da aula'),
+            if (mudouProfessor) _buildBulletPoint('Professor registrado'),
+            _buildBulletPoint(
+              '$mudancasAlunos aluno(s) com presença/observação alterada',
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _appButtonBg(),
-                  foregroundColor: _appButtonFg(),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.uai.warning.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: context.uai.warning.withOpacity(0.28),
                 ),
-                child: const Text('Salvar edição'),
               ),
-            ],
+              child: Text(
+                'Os logs e contadores de frequência serão ajustados automaticamente.',
+                style: TextStyle(
+                  color: context.uai.warning,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar'),
           ),
-        ) ??
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _appButtonBg(),
+              foregroundColor: _appButtonFg(),
+            ),
+            child: const Text('Salvar edição'),
+          ),
+        ],
+      ),
+    ) ??
         false;
   }
 
@@ -3753,10 +3757,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   String? _fotoAlunoFromMap(Map<String, dynamic> alunoMap) {
     final value =
         alunoMap['foto_perfil_aluno'] ??
-        alunoMap['foto_url'] ??
-        alunoMap['foto'] ??
-        alunoMap['imagem_url'] ??
-        alunoMap['avatar_url'];
+            alunoMap['foto_url'] ??
+            alunoMap['foto'] ??
+            alunoMap['imagem_url'] ??
+            alunoMap['avatar_url'];
 
     final foto = value?.toString().trim();
     if (foto == null || foto.isEmpty) return null;
@@ -3764,8 +3768,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Future<Map<String, String>> _buscarFotosAlunosCadastroEmLote(
-    List<String> alunoIds,
-  ) async {
+      List<String> alunoIds,
+      ) async {
     final resultado = <String, String>{};
     final pendentes = alunoIds
         .where((id) => id.trim().isNotEmpty)
@@ -4366,12 +4370,12 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       ),
       child: _mostrarProgresso
           ? FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: _buildProgressScreen(),
-              ),
-            )
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: _buildProgressScreen(),
+        ),
+      )
           : _buildEditScreen(presentes, ausentes),
     );
   }
@@ -4449,7 +4453,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     IconButton(
                       icon: Icon(Icons.delete_rounded, color: headerFg),
                       onPressed:
-                          _isSaving || _isDeleting || !widget.podeExcluirChamada
+                      _isSaving || _isDeleting || !widget.podeExcluirChamada
                           ? null
                           : _mostrarPreviewExclusao,
                       tooltip: 'Excluir chamada',
@@ -4537,13 +4541,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Widget _buildHeaderStat(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-    Color headerFg,
-    Color headerBg,
-  ) {
+      String label,
+      String value,
+      IconData icon,
+      Color color,
+      Color headerFg,
+      Color headerBg,
+      ) {
     final accent = _ensureVisible(color, headerBg);
 
     return Expanded(
@@ -4680,10 +4684,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             items: _tiposAula
                 .map(
                   (e) => DropdownMenuItem(
-                    value: e,
-                    child: Text(e, style: TextStyle(color: fieldFg)),
-                  ),
-                )
+                value: e,
+                child: Text(e, style: TextStyle(color: fieldFg)),
+              ),
+            )
                 .toList(),
             onChanged: _isSaving || _isDeleting
                 ? null
@@ -4713,13 +4717,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           'Marcar filtrados',
           Icons.check_circle_rounded,
           context.uai.success,
-          () => _marcarTodos(true),
+              () => _marcarTodos(true),
         ),
         _buildActionChip(
           'Desmarcar filtrados',
           Icons.cancel_rounded,
           context.uai.error,
-          () => _marcarTodos(false),
+              () => _marcarTodos(false),
         ),
         _buildActionChip(
           'Inverter filtrados',
@@ -4732,11 +4736,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Widget _buildActionChip(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
+      String label,
+      IconData icon,
+      Color color,
+      VoidCallback onTap,
+      ) {
     final base = context.uai.card;
     final accent = _ensureVisible(color, base);
     final fill = Color.alphaBlend(accent.withOpacity(0.10), base);
@@ -4788,9 +4792,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             suffixIcon: _buscaAluno.isEmpty
                 ? null
                 : IconButton(
-                    icon: Icon(Icons.close, color: fieldFg.withOpacity(0.72)),
-                    onPressed: () => _buscaController.clear(),
-                  ),
+              icon: Icon(Icons.close, color: fieldFg.withOpacity(0.72)),
+              onPressed: () => _buscaController.clear(),
+            ),
             filled: true,
             fillColor: fieldBg,
             border: OutlineInputBorder(
@@ -4924,13 +4928,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                   onPressed: _isSaving || _isDeleting
                       ? null
                       : () {
-                          setState(() {
-                            final atual =
-                                _observacaoControllers[alunoId]?.text ?? '';
-                            if (atual.isEmpty)
-                              _observacaoControllers[alunoId]?.text = '';
-                          });
-                        },
+                    setState(() {
+                      final atual =
+                          _observacaoControllers[alunoId]?.text ?? '';
+                      if (atual.isEmpty)
+                        _observacaoControllers[alunoId]?.text = '';
+                    });
+                  },
                 ),
               ],
             ),
@@ -5035,13 +5039,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
               ),
               icon: _isSaving
                   ? SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: buttonFg,
-                      ),
-                    )
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: buttonFg,
+                ),
+              )
                   : Icon(Icons.save_rounded),
               label: Text(
                 _isSaving ? 'Salvando...' : 'Salvar tudo',
@@ -5180,13 +5184,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                           : Icons.cloud_sync_rounded,
                       color: _operacaoAtual.startsWith('✅')
                           ? _ensureVisible(
-                              context.uai.success,
-                              context.uai.card,
-                            )
+                        context.uai.success,
+                        context.uai.card,
+                      )
                           : _ensureVisible(
-                              context.uai.primary,
-                              context.uai.card,
-                            ),
+                        context.uai.primary,
+                        context.uai.card,
+                      ),
                       size: 72,
                     ),
                   ),
@@ -5324,10 +5328,10 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-          bgIsDark
-              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-        )
+      bgIsDark
+          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+    )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -5370,10 +5374,10 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
     final value =
         alunoMap['foto_perfil_aluno'] ??
-        alunoMap['foto_url'] ??
-        alunoMap['foto'] ??
-        alunoMap['imagem_url'] ??
-        alunoMap['avatar_url'];
+            alunoMap['foto_url'] ??
+            alunoMap['foto'] ??
+            alunoMap['imagem_url'] ??
+            alunoMap['avatar_url'];
 
     final foto = value?.toString().trim();
     if (foto == null || foto.isEmpty) return null;
@@ -5445,8 +5449,8 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   List<Map<String, dynamic>> _alunosFiltrados(
-    List<Map<String, dynamic>> alunos,
-  ) {
+      List<Map<String, dynamic>> alunos,
+      ) {
     final termo = _normalizar(_busca);
 
     return alunos.where((aluno) {
@@ -5566,21 +5570,21 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color:
-                    (Theme.of(context).appBarTheme.foregroundColor ??
-                            _readableOn(
-                              Theme.of(context).appBarTheme.backgroundColor ??
-                                  context.uai.primary,
-                            ))
-                        .withOpacity(0.72),
+                (Theme.of(context).appBarTheme.foregroundColor ??
+                    _readableOn(
+                      Theme.of(context).appBarTheme.backgroundColor ??
+                          context.uai.primary,
+                    ))
+                    .withOpacity(0.72),
               ),
             ),
           ],
         ),
         backgroundColor:
-            Theme.of(context).appBarTheme.backgroundColor ??
+        Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-            Theme.of(context).appBarTheme.foregroundColor ??
+        Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
@@ -5896,12 +5900,12 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
               suffixIcon: _busca.isEmpty
                   ? null
                   : IconButton(
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: fieldFg.withOpacity(0.72),
-                      ),
-                      onPressed: () => _buscaController.clear(),
-                    ),
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: fieldFg.withOpacity(0.72),
+                ),
+                onPressed: () => _buscaController.clear(),
+              ),
               filled: true,
               fillColor: fieldBg,
               border: OutlineInputBorder(
@@ -5964,12 +5968,12 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildFiltroDetalhes(
-    String value,
-    String label,
-    int count,
-    IconData icon,
-    Color color,
-  ) {
+      String value,
+      String label,
+      int count,
+      IconData icon,
+      Color color,
+      ) {
     final selected = _filtro == value;
     final bg = selected ? color : context.uai.card;
     final fg = selected
@@ -6012,11 +6016,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildInfoPill(
-    BuildContext context,
-    IconData icon,
-    String text,
-    Color color,
-  ) {
+      BuildContext context,
+      IconData icon,
+      String text,
+      Color color,
+      ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
@@ -6045,11 +6049,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildSectionTitle(
-    BuildContext context,
-    String title,
-    int total,
-    Color color,
-  ) {
+      BuildContext context,
+      String title,
+      int total,
+      Color color,
+      ) {
     final accent = _ensureVisible(color, context.uai.background);
     return Row(
       children: [
@@ -6323,39 +6327,39 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
           clipBehavior: Clip.antiAlias,
           child: fotoUrl != null && fotoUrl.isNotEmpty
               ? CachedNetworkImage(
-                  imageUrl: fotoUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Center(
-                    child: Text(
-                      _iniciaisAluno(nome),
-                      style: TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Center(
-                    child: Text(
-                      _iniciaisAluno(nome),
-                      style: TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                )
-              : Center(
-                  child: Text(
-                    _iniciaisAluno(nome),
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12,
-                    ),
-                  ),
+            imageUrl: fotoUrl,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Center(
+              child: Text(
+                _iniciaisAluno(nome),
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
                 ),
+              ),
+            ),
+            errorWidget: (context, url, error) => Center(
+              child: Text(
+                _iniciaisAluno(nome),
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          )
+              : Center(
+            child: Text(
+              _iniciaisAluno(nome),
+              style: TextStyle(
+                color: fg,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+          ),
         ),
         Positioned(
           right: -2,
