@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/services/exclusao_estudos_admin_service.dart';
 
 enum _CiclosSortOption { ordem, numero, titulo, atualizadoEm }
 
@@ -20,6 +21,8 @@ class GerenciarCiclosEstudosScreen extends StatefulWidget {
 class _GerenciarCiclosEstudosScreenState
     extends State<GerenciarCiclosEstudosScreen> {
   final EstudosCiclosRepository _repository = EstudosCiclosRepository();
+  final ExclusaoEstudosAdminService _exclusaoService =
+      ExclusaoEstudosAdminService();
   final TextEditingController _buscaController = TextEditingController();
 
   String _statusFiltro = 'todos';
@@ -90,7 +93,8 @@ class _GerenciarCiclosEstudosScreenState
   Future<void> _alterarStatus(EstudoCicloModel ciclo, String status) async {
     if (ciclo.id.isEmpty || ciclo.status == status) return;
 
-    final precisaConfirmar = status == EstudoCicloStatus.arquivado ||
+    final precisaConfirmar =
+        status == EstudoCicloStatus.arquivado ||
         status == EstudoCicloStatus.oculto ||
         (status == EstudoCicloStatus.rascunho &&
             ciclo.status == EstudoCicloStatus.publicado) ||
@@ -105,7 +109,9 @@ class _GerenciarCiclosEstudosScreenState
     try {
       await _repository.alterarStatus(ciclo.id, status);
       if (mounted) {
-        _mostrarMensagem('Status alterado para ${EstudoCicloStatus.label(status)}.');
+        _mostrarMensagem(
+          'Status alterado para ${EstudoCicloStatus.label(status)}.',
+        );
       }
     } catch (e, stack) {
       _logErro(e, stack);
@@ -121,6 +127,7 @@ class _GerenciarCiclosEstudosScreenState
         ciclo.ordem <= 0 ||
         ciclo.descricao.trim().isEmpty;
   }
+
   Future<bool?> _confirmarStatus(EstudoCicloModel ciclo, String status) {
     var titulo = 'Alterar status?';
     var mensagem = 'Confirme a alteracao de status deste ciclo.';
@@ -138,7 +145,8 @@ class _GerenciarCiclosEstudosScreenState
       acao = 'Ocultar';
     } else if (status == EstudoCicloStatus.arquivado) {
       titulo = 'Arquivar ciclo?';
-      mensagem = 'O ciclo ficara guardado no admin e nao aparecera para alunos futuramente.';
+      mensagem =
+          'O ciclo ficara guardado no admin e nao aparecera para alunos futuramente.';
       acao = 'Arquivar';
     } else if (status == EstudoCicloStatus.rascunho) {
       titulo = 'Voltar para rascunho?';
@@ -157,6 +165,30 @@ class _GerenciarCiclosEstudosScreenState
     } catch (e, stack) {
       _logErro(e, stack);
       if (mounted) _mostrarMensagem('Nao foi possivel duplicar o ciclo.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _apagarCicloCompleto(EstudoCicloModel ciclo) async {
+    final ok = await _confirmarExclusaoForte(
+      titulo: 'Apagar ciclo?',
+      mensagem:
+          'Esta ação é irreversível. O ciclo, estudos, perguntas, gabaritos, tentativas, resultados e progressos relacionados serão apagados.',
+    );
+    if (!ok) return;
+    setState(() => _salvando = true);
+    try {
+      final resumo = await _exclusaoService.excluir(
+        tipo: 'ciclo',
+        id: ciclo.id,
+      );
+      if (mounted) {
+        _mostrarMensagem('Exclusão concluída: ${resumo.textoResumo}');
+      }
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Não foi possível apagar o ciclo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -220,6 +252,54 @@ class _GerenciarCiclosEstudosScreenState
         ],
       ),
     );
+  }
+
+  Future<bool> _confirmarExclusaoForte({
+    required String titulo,
+    required String mensagem,
+  }) async {
+    final t = context.uai;
+    final controller = TextEditingController();
+    final resultado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text(titulo, style: TextStyle(color: t.error)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(mensagem, style: TextStyle(color: t.textSecondary)),
+            const SizedBox(height: 12),
+            const Text('Digite APAGAR para confirmar.'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Confirmação'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: t.error),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              controller.text.trim().toUpperCase() == 'APAGAR',
+            ),
+            icon: const Icon(Icons.delete_forever_rounded),
+            label: const Text('Apagar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return resultado == true;
   }
 
   @override
@@ -341,8 +421,10 @@ class _GerenciarCiclosEstudosScreenState
         case _CiclosSortOption.titulo:
           return a.titulo.toLowerCase().compareTo(b.titulo.toLowerCase());
         case _CiclosSortOption.atualizadoEm:
-          final aDate = a.atualizadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bDate = b.atualizadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final aDate =
+              a.atualizadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bDate =
+              b.atualizadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
           return bDate.compareTo(aDate);
         case _CiclosSortOption.ordem:
           final ordem = a.ordem.compareTo(b.ordem);
@@ -413,17 +495,30 @@ class _GerenciarCiclosEstudosScreenState
             runSpacing: 8,
             children: [
               _headerMetric('Total', resumo.total.toString(), onPrimary),
-              _headerMetric('Publicados', resumo.publicados.toString(), onPrimary),
-              _headerMetric('Rascunhos', resumo.rascunhos.toString(), onPrimary),
+              _headerMetric(
+                'Publicados',
+                resumo.publicados.toString(),
+                onPrimary,
+              ),
+              _headerMetric(
+                'Rascunhos',
+                resumo.rascunhos.toString(),
+                onPrimary,
+              ),
               _headerMetric('Em breve', resumo.emBreve.toString(), onPrimary),
               _headerMetric('Ocultos', resumo.ocultos.toString(), onPrimary),
-              _headerMetric('Arquivados', resumo.arquivados.toString(), onPrimary),
+              _headerMetric(
+                'Arquivados',
+                resumo.arquivados.toString(),
+                onPrimary,
+              ),
             ],
           ),
         ],
       ),
     );
   }
+
   Widget _headerMetric(String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -434,7 +529,11 @@ class _GerenciarCiclosEstudosScreenState
       ),
       child: Text(
         '$value $label',
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w900),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -494,7 +593,10 @@ class _GerenciarCiclosEstudosScreenState
     return FilterChip(
       selected: selected,
       label: Text(label),
-      selectedColor: Color.alphaBlend(t.primary.withValues(alpha: 0.16), t.card),
+      selectedColor: Color.alphaBlend(
+        t.primary.withValues(alpha: 0.16),
+        t.card,
+      ),
       checkmarkColor: t.primary,
       onSelected: (_) => setState(() => _statusFiltro = value),
     );
@@ -505,10 +607,22 @@ class _GerenciarCiclosEstudosScreenState
     return PopupMenuButton<_CiclosSortOption>(
       onSelected: (value) => setState(() => _sort = value),
       itemBuilder: (_) => const [
-        PopupMenuItem(value: _CiclosSortOption.ordem, child: Text('Ordenar por ordem')),
-        PopupMenuItem(value: _CiclosSortOption.numero, child: Text('Ordenar por numero')),
-        PopupMenuItem(value: _CiclosSortOption.titulo, child: Text('Ordenar por titulo')),
-        PopupMenuItem(value: _CiclosSortOption.atualizadoEm, child: Text('Ordenar por atualizado')),
+        PopupMenuItem(
+          value: _CiclosSortOption.ordem,
+          child: Text('Ordenar por ordem'),
+        ),
+        PopupMenuItem(
+          value: _CiclosSortOption.numero,
+          child: Text('Ordenar por numero'),
+        ),
+        PopupMenuItem(
+          value: _CiclosSortOption.titulo,
+          child: Text('Ordenar por titulo'),
+        ),
+        PopupMenuItem(
+          value: _CiclosSortOption.atualizadoEm,
+          child: Text('Ordenar por atualizado'),
+        ),
       ],
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
@@ -522,7 +636,10 @@ class _GerenciarCiclosEstudosScreenState
           children: [
             Icon(Icons.sort_rounded, color: t.primary, size: 17),
             const SizedBox(width: 6),
-            Text('Ordenacao', style: TextStyle(color: t.primary, fontWeight: FontWeight.w900)),
+            Text(
+              'Ordenacao',
+              style: TextStyle(color: t.primary, fontWeight: FontWeight.w900),
+            ),
           ],
         ),
       ),
@@ -555,13 +672,20 @@ class _GerenciarCiclosEstudosScreenState
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(statusColor.withValues(alpha: 0.12), t.cardAlt),
+                  color: Color.alphaBlend(
+                    statusColor.withValues(alpha: 0.12),
+                    t.cardAlt,
+                  ),
                   borderRadius: BorderRadius.circular(t.cardRadius - 4),
                 ),
                 child: Center(
                   child: Text(
                     ciclo.numero.toString(),
-                    style: TextStyle(color: statusColor, fontSize: 18, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
@@ -574,7 +698,12 @@ class _GerenciarCiclosEstudosScreenState
                       ciclo.titulo.isEmpty ? 'Ciclo sem titulo' : ciclo.titulo,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: t.textPrimary, fontSize: 17, height: 1.1, fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 17,
+                        height: 1.1,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     if (ciclo.subtitulo.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -582,7 +711,10 @@ class _GerenciarCiclosEstudosScreenState
                         ciclo.subtitulo,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 6),
@@ -591,12 +723,22 @@ class _GerenciarCiclosEstudosScreenState
                       runSpacing: 7,
                       children: [
                         _statusChip(ciclo.status),
-                        _miniChip(Icons.swap_vert_rounded, 'Ordem ${ciclo.ordem}'),
-                        if (ciclo.periodoHistorico.isNotEmpty)
-                          _miniChip(Icons.history_rounded, ciclo.periodoHistorico),
                         _miniChip(
-                          ciclo.mostrarNaLinhaDoTempo ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                          ciclo.mostrarNaLinhaDoTempo ? 'Na linha do tempo' : 'Fora da linha do tempo',
+                          Icons.swap_vert_rounded,
+                          'Ordem ${ciclo.ordem}',
+                        ),
+                        if (ciclo.periodoHistorico.isNotEmpty)
+                          _miniChip(
+                            Icons.history_rounded,
+                            ciclo.periodoHistorico,
+                          ),
+                        _miniChip(
+                          ciclo.mostrarNaLinhaDoTempo
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                          ciclo.mostrarNaLinhaDoTempo
+                              ? 'Na linha do tempo'
+                              : 'Fora da linha do tempo',
                         ),
                         if (ciclo.mostrarComoEmBreve)
                           _miniChip(Icons.schedule_rounded, 'Em breve'),
@@ -615,7 +757,11 @@ class _GerenciarCiclosEstudosScreenState
               ciclo.descricao,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: t.textSecondary, height: 1.32, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: t.textSecondary,
+                height: 1.32,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
           const SizedBox(height: 12),
@@ -623,17 +769,70 @@ class _GerenciarCiclosEstudosScreenState
             spacing: 8,
             runSpacing: 8,
             children: [
-              _smallButton(icon: Icons.edit_rounded, label: 'Editar', onTap: _salvando ? null : () => _abrirFormulario(ciclo)),
-              _smallButton(icon: Icons.copy_rounded, label: 'Duplicar', onTap: _salvando ? null : () => _duplicar(ciclo)),
-              _smallButton(icon: Icons.arrow_upward_rounded, label: 'Subir', onTap: _salvando ? null : () => _moverOrdem(ciclo, -1)),
-              _smallButton(icon: Icons.arrow_downward_rounded, label: 'Descer', onTap: _salvando ? null : () => _moverOrdem(ciclo, 1)),
-              _acaoStatus(ciclo, EstudoCicloStatus.publicado, Icons.publish_rounded, 'Publicar'),
-              _acaoStatus(ciclo, EstudoCicloStatus.rascunho, Icons.edit_note_rounded, 'Rascunho'),
-              _acaoStatus(ciclo, EstudoCicloStatus.emBreve, Icons.schedule_rounded, 'Em breve'),
-              _acaoStatus(ciclo, EstudoCicloStatus.oculto, Icons.visibility_off_rounded, 'Ocultar'),
-              _acaoStatus(ciclo, EstudoCicloStatus.arquivado, Icons.archive_rounded, 'Arquivar', danger: true),
+              _smallButton(
+                icon: Icons.edit_rounded,
+                label: 'Editar',
+                onTap: _salvando ? null : () => _abrirFormulario(ciclo),
+              ),
+              _smallButton(
+                icon: Icons.copy_rounded,
+                label: 'Duplicar',
+                onTap: _salvando ? null : () => _duplicar(ciclo),
+              ),
+              _smallButton(
+                icon: Icons.arrow_upward_rounded,
+                label: 'Subir',
+                onTap: _salvando ? null : () => _moverOrdem(ciclo, -1),
+              ),
+              _smallButton(
+                icon: Icons.arrow_downward_rounded,
+                label: 'Descer',
+                onTap: _salvando ? null : () => _moverOrdem(ciclo, 1),
+              ),
+              _acaoStatus(
+                ciclo,
+                EstudoCicloStatus.publicado,
+                Icons.publish_rounded,
+                'Publicar',
+              ),
+              _acaoStatus(
+                ciclo,
+                EstudoCicloStatus.rascunho,
+                Icons.edit_note_rounded,
+                'Rascunho',
+              ),
+              _acaoStatus(
+                ciclo,
+                EstudoCicloStatus.emBreve,
+                Icons.schedule_rounded,
+                'Em breve',
+              ),
+              _acaoStatus(
+                ciclo,
+                EstudoCicloStatus.oculto,
+                Icons.visibility_off_rounded,
+                'Ocultar',
+              ),
+              _acaoStatus(
+                ciclo,
+                EstudoCicloStatus.arquivado,
+                Icons.archive_rounded,
+                'Arquivar',
+                danger: true,
+              ),
+              _smallButton(
+                icon: Icons.delete_forever_rounded,
+                label: 'Apagar',
+                danger: true,
+                onTap: _salvando ? null : () => _apagarCicloCompleto(ciclo),
+              ),
               if (ciclo.status == EstudoCicloStatus.arquivado)
-                _acaoStatus(ciclo, EstudoCicloStatus.rascunho, Icons.restore_rounded, 'Restaurar'),
+                _acaoStatus(
+                  ciclo,
+                  EstudoCicloStatus.rascunho,
+                  Icons.restore_rounded,
+                  'Restaurar',
+                ),
             ],
           ),
         ],
@@ -641,7 +840,13 @@ class _GerenciarCiclosEstudosScreenState
     );
   }
 
-  Widget _acaoStatus(EstudoCicloModel ciclo, String status, IconData icon, String label, {bool danger = false}) {
+  Widget _acaoStatus(
+    EstudoCicloModel ciclo,
+    String status,
+    IconData icon,
+    String label, {
+    bool danger = false,
+  }) {
     if (ciclo.status == status && status != EstudoCicloStatus.rascunho) {
       return const SizedBox.shrink();
     }
@@ -667,13 +872,25 @@ class _GerenciarCiclosEstudosScreenState
         children: [
           Icon(icon, size: 13, color: t.textSecondary),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w800)),
+          Text(
+            label,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _smallButton({required IconData icon, required String label, required VoidCallback? onTap, bool danger = false}) {
+  Widget _smallButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    bool danger = false,
+  }) {
     final t = context.uai;
     final color = danger ? t.error : t.primary;
 
@@ -694,7 +911,13 @@ class _GerenciarCiclosEstudosScreenState
             children: [
               Icon(icon, color: onTap == null ? t.textMuted : color, size: 16),
               const SizedBox(width: 5),
-              Text(label, style: TextStyle(color: onTap == null ? t.textMuted : color, fontWeight: FontWeight.w900)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: onTap == null ? t.textMuted : color,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ],
           ),
         ),
@@ -714,7 +937,11 @@ class _GerenciarCiclosEstudosScreenState
       ),
       child: Text(
         EstudoCicloStatus.label(status),
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -735,6 +962,7 @@ class _GerenciarCiclosEstudosScreenState
         return t.warning;
     }
   }
+
   Widget _buildErro(Object? error) {
     var detalhe = '';
     if (kDebugMode && error is FirebaseException) {
@@ -753,7 +981,12 @@ class _GerenciarCiclosEstudosScreenState
     );
   }
 
-  Widget _buildMensagemCard({required IconData icon, required String titulo, required String texto, Widget? action}) {
+  Widget _buildMensagemCard({
+    required IconData icon,
+    required String titulo,
+    required String texto,
+    Widget? action,
+  }) {
     final t = context.uai;
     return Container(
       padding: const EdgeInsets.all(18),
@@ -767,21 +1000,46 @@ class _GerenciarCiclosEstudosScreenState
         children: [
           Icon(icon, color: t.primary, size: 48),
           const SizedBox(height: 10),
-          Text(titulo, textAlign: TextAlign.center, style: TextStyle(color: t.textPrimary, fontSize: 18, fontWeight: FontWeight.w900)),
+          Text(
+            titulo,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(height: 5),
-          Text(texto, textAlign: TextAlign.center, style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w600)),
+          Text(
+            texto,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           if (action != null) ...[const SizedBox(height: 14), action],
         ],
       ),
     );
   }
 
-  Widget _buildMensagemCentral({required IconData icon, required String titulo, required String texto, Widget? action}) {
+  Widget _buildMensagemCentral({
+    required IconData icon,
+    required String titulo,
+    required String texto,
+    Widget? action,
+  }) {
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
         margin: const EdgeInsets.all(18),
-        child: _buildMensagemCard(icon: icon, titulo: titulo, texto: texto, action: action),
+        child: _buildMensagemCard(
+          icon: icon,
+          titulo: titulo,
+          texto: texto,
+          action: action,
+        ),
       ),
     );
   }
@@ -814,8 +1072,12 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
   void initState() {
     super.initState();
     final ciclo = widget.ciclo ?? EstudoCicloModel.empty();
-    _numeroController = TextEditingController(text: ciclo.numero <= 0 ? '' : ciclo.numero.toString());
-    _ordemController = TextEditingController(text: ciclo.ordem <= 0 ? '' : ciclo.ordem.toString());
+    _numeroController = TextEditingController(
+      text: ciclo.numero <= 0 ? '' : ciclo.numero.toString(),
+    );
+    _ordemController = TextEditingController(
+      text: ciclo.ordem <= 0 ? '' : ciclo.ordem.toString(),
+    );
     _tituloController = TextEditingController(text: ciclo.titulo);
     _subtituloController = TextEditingController(text: ciclo.subtitulo);
     _descricaoController = TextEditingController(text: ciclo.descricao);
@@ -842,7 +1104,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
     final novoStatus = statusForcado ?? _status;
     if (!_formKey.currentState!.validate()) return;
 
-    if (novoStatus == EstudoCicloStatus.publicado && _descricaoController.text.trim().isEmpty) {
+    if (novoStatus == EstudoCicloStatus.publicado &&
+        _descricaoController.text.trim().isEmpty) {
       final confirmar = await _confirmarPublicacaoIncompleta();
       if (confirmar != true) return;
     }
@@ -863,20 +1126,30 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
 
     if (mounted) Navigator.pop(context, ciclo);
   }
+
   Future<bool?> _confirmarPublicacaoIncompleta() {
     final t = context.uai;
     return showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: t.surface,
-        title: Text('Publicar sem descricao?', style: TextStyle(color: t.textPrimary)),
+        title: Text(
+          'Publicar sem descricao?',
+          style: TextStyle(color: t.textPrimary),
+        ),
         content: Text(
           'A descricao esta vazia. O ciclo pode ser salvo como publicado, mas revise antes de liberar aos alunos futuramente.',
           style: TextStyle(color: t.textSecondary),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Publicar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Publicar'),
+          ),
         ],
       ),
     );
@@ -918,88 +1191,140 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                         Expanded(
                           child: Text(
                             editando ? 'Editar ciclo' : 'Novo ciclo',
-                            style: TextStyle(color: t.textPrimary, fontSize: 20, fontWeight: FontWeight.w900),
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: Icon(Icons.close_rounded, color: t.textSecondary),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: t.textSecondary,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _formSection(
-                      'Identificacao',
-                      [
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            if (constraints.maxWidth < 560) {
-                              return Column(
-                                children: [
-                                  _numberField(_numeroController, 'Numero do ciclo'),
-                                  const SizedBox(height: 10),
-                                  _numberField(_ordemController, 'Ordem'),
-                                ],
-                              );
-                            }
-                            return Row(
+                    _formSection('Identificacao', [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth < 560) {
+                            return Column(
                               children: [
-                                Expanded(child: _numberField(_numeroController, 'Numero do ciclo')),
-                                const SizedBox(width: 10),
-                                Expanded(child: _numberField(_ordemController, 'Ordem')),
+                                _numberField(
+                                  _numeroController,
+                                  'Numero do ciclo',
+                                ),
+                                const SizedBox(height: 10),
+                                _numberField(_ordemController, 'Ordem'),
                               ],
                             );
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        _textField(controller: _tituloController, label: 'Titulo', requiredField: true),
-                        const SizedBox(height: 10),
-                        _textField(controller: _subtituloController, label: 'Subtitulo'),
-                      ],
-                    ),
+                          }
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: _numberField(
+                                  _numeroController,
+                                  'Numero do ciclo',
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _numberField(_ordemController, 'Ordem'),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      _textField(
+                        controller: _tituloController,
+                        label: 'Titulo',
+                        requiredField: true,
+                      ),
+                      const SizedBox(height: 10),
+                      _textField(
+                        controller: _subtituloController,
+                        label: 'Subtitulo',
+                      ),
+                    ]),
                     const SizedBox(height: 12),
-                    _formSection(
-                      'Conteudo',
-                      [
-                        _textField(controller: _descricaoController, label: 'Descricao', maxLines: 4),
-                        const SizedBox(height: 10),
-                        _textField(controller: _periodoController, label: 'Periodo historico'),
-                        const SizedBox(height: 10),
-                        _textField(controller: _capaController, label: 'Capa URL opcional'),
-                      ],
-                    ),
+                    _formSection('Conteudo', [
+                      _textField(
+                        controller: _descricaoController,
+                        label: 'Descricao',
+                        maxLines: 4,
+                      ),
+                      const SizedBox(height: 10),
+                      _textField(
+                        controller: _periodoController,
+                        label: 'Periodo historico',
+                      ),
+                      const SizedBox(height: 10),
+                      _textField(
+                        controller: _capaController,
+                        label: 'Capa URL opcional',
+                      ),
+                    ]),
                     const SizedBox(height: 12),
-                    _formSection(
-                      'Publicacao e visibilidade',
-                      [
-                        DropdownButtonFormField<String>(
-                          initialValue: _status,
-                          decoration: const InputDecoration(labelText: 'Status'),
-                          items: EstudoCicloStatus.values
-                              .map((status) => DropdownMenuItem<String>(value: status, child: Text(EstudoCicloStatus.label(status))))
-                              .toList(),
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _status = value);
-                          },
+                    _formSection('Publicacao e visibilidade', [
+                      DropdownButtonFormField<String>(
+                        initialValue: _status,
+                        decoration: const InputDecoration(labelText: 'Status'),
+                        items: EstudoCicloStatus.values
+                            .map(
+                              (status) => DropdownMenuItem<String>(
+                                value: status,
+                                child: Text(EstudoCicloStatus.label(status)),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _status = value);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _statusHelp(_status),
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
-                        const SizedBox(height: 8),
-                        Text(_statusHelp(_status), style: TextStyle(color: t.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 12),
-                        _switchRow(title: 'Mostrar na linha do tempo', value: _mostrarNaLinhaDoTempo, onChanged: (value) => setState(() => _mostrarNaLinhaDoTempo = value)),
-                        const SizedBox(height: 8),
-                        _switchRow(title: 'Mostrar como em breve', value: _mostrarComoEmBreve, onChanged: (value) => setState(() => _mostrarComoEmBreve = value)),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      _switchRow(
+                        title: 'Mostrar na linha do tempo',
+                        value: _mostrarNaLinhaDoTempo,
+                        onChanged: (value) =>
+                            setState(() => _mostrarNaLinhaDoTempo = value),
+                      ),
+                      const SizedBox(height: 8),
+                      _switchRow(
+                        title: 'Mostrar como em breve',
+                        value: _mostrarComoEmBreve,
+                        onChanged: (value) =>
+                            setState(() => _mostrarComoEmBreve = value),
+                      ),
+                    ]),
                     const SizedBox(height: 16),
                     Wrap(
                       alignment: WrapAlignment.end,
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancelar'),
+                        ),
                         OutlinedButton.icon(
-                          onPressed: () => _salvar(statusForcado: EstudoCicloStatus.rascunho),
+                          onPressed: () => _salvar(
+                            statusForcado: EstudoCicloStatus.rascunho,
+                          ),
                           icon: const Icon(Icons.edit_note_rounded),
                           label: const Text('Salvar rascunho'),
                         ),
@@ -1032,7 +1357,10 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900)),
+          Text(
+            title,
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 10),
           ...children,
         ],
@@ -1069,19 +1397,30 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
     );
   }
 
-  Widget _textField({required TextEditingController controller, required String label, bool requiredField = false, int maxLines = 1}) {
+  Widget _textField({
+    required TextEditingController controller,
+    required String label,
+    bool requiredField = false,
+    int maxLines = 1,
+  }) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
       decoration: InputDecoration(labelText: label),
       validator: (value) {
-        if (requiredField && (value?.trim().isEmpty ?? true)) return 'Campo obrigatorio';
+        if (requiredField && (value?.trim().isEmpty ?? true)) {
+          return 'Campo obrigatorio';
+        }
         return null;
       },
     );
   }
 
-  Widget _switchRow({required String title, required bool value, required ValueChanged<bool> onChanged}) {
+  Widget _switchRow({
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
     final t = context.uai;
     return Material(
       color: t.surface,
@@ -1097,8 +1436,20 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
           ),
           child: Row(
             children: [
-              Expanded(child: Text(title, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800))),
-              Switch(value: value, activeThumbColor: t.primary, onChanged: onChanged),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Switch(
+                value: value,
+                activeThumbColor: t.primary,
+                onChanged: onChanged,
+              ),
             ],
           ),
         ),

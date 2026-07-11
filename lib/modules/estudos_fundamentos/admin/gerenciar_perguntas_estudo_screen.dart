@@ -11,6 +11,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_repository.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/perguntas_estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/services/exclusao_estudos_admin_service.dart';
 
 enum _PerguntasSortOption { vinculoOrdem, atualizado, dificuldade }
 
@@ -25,6 +26,8 @@ class GerenciarPerguntasEstudoScreen extends StatefulWidget {
 class _GerenciarPerguntasEstudoScreenState
     extends State<GerenciarPerguntasEstudoScreen> {
   final PerguntasEstudosRepository _repository = PerguntasEstudosRepository();
+  final ExclusaoEstudosAdminService _exclusaoService =
+      ExclusaoEstudosAdminService();
   final EstudosCiclosRepository _ciclosRepository = EstudosCiclosRepository();
   final EstudosRepository _estudosRepository = EstudosRepository();
   final TextEditingController _buscaController = TextEditingController();
@@ -162,6 +165,30 @@ class _GerenciarPerguntasEstudoScreenState
     }
   }
 
+  Future<void> _apagarPergunta(PerguntaEstudoModel pergunta) async {
+    final ok = await _confirmarExclusaoForte(
+      titulo: 'Apagar pergunta?',
+      mensagem:
+          'Esta ação é irreversível. A pergunta e o gabarito vinculado serão apagados. Tentativas históricas não são apagadas ao apagar somente a pergunta.',
+    );
+    if (!ok) return;
+    setState(() => _salvando = true);
+    try {
+      final resumo = await _exclusaoService.excluir(
+        tipo: 'pergunta',
+        id: pergunta.id,
+      );
+      if (mounted) {
+        _mostrarMensagem('Exclusão concluída: ${resumo.textoResumo}');
+      }
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) _mostrarMensagem('Não foi possível apagar a pergunta.');
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
   void _abrirGabarito(PerguntaEstudoModel pergunta) {
     if (pergunta.id.trim().isEmpty) {
       _mostrarMensagem(
@@ -216,6 +243,54 @@ class _GerenciarPerguntasEstudoScreenState
         ],
       ),
     );
+  }
+
+  Future<bool> _confirmarExclusaoForte({
+    required String titulo,
+    required String mensagem,
+  }) async {
+    final t = context.uai;
+    final controller = TextEditingController();
+    final resultado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text(titulo, style: TextStyle(color: t.error)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(mensagem, style: TextStyle(color: t.textSecondary)),
+            const SizedBox(height: 12),
+            const Text('Digite APAGAR para confirmar.'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Confirmação'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: t.error),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              controller.text.trim().toUpperCase() == 'APAGAR',
+            ),
+            icon: const Icon(Icons.delete_forever_rounded),
+            label: const Text('Apagar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return resultado == true;
   }
 
   @override
@@ -726,6 +801,12 @@ class _GerenciarPerguntasEstudoScreenState
                 icon: Icons.copy_rounded,
                 label: 'Duplicar',
                 onTap: _salvando ? null : () => _duplicar(pergunta),
+              ),
+              _smallButton(
+                icon: Icons.delete_forever_rounded,
+                label: 'Apagar',
+                danger: true,
+                onTap: _salvando ? null : () => _apagarPergunta(pergunta),
               ),
               _smallButton(
                 icon: Icons.key_rounded,

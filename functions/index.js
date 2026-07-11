@@ -338,6 +338,236 @@ exports.buscarPerguntasEstudo = onCall(async (request) => {
     };
 });
 
+
+async function validarAdminEstudosFundamentos(request) {
+    if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+    }
+
+    const userDoc = await db.collection('usuarios').doc(request.auth.uid).get();
+    const data = userDoc.exists ? (userDoc.data() || {}) : {};
+    const tipo = String(data.tipo || '').trim().toLowerCase();
+    const peso = Number(data.peso_permissao || 0);
+    const status = String(data.status_conta || '').trim().toLowerCase();
+    const ativo = !['bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'].includes(status);
+    const adminReal = ativo && (peso >= 90 || ['admin', 'administrador', 'super_admin', 'superadmin'].includes(tipo));
+
+    if (!adminReal) {
+        throw new HttpsError('permission-denied', 'Apenas administradores podem excluir conteudo de estudos.');
+    }
+
+    return {
+        uid: request.auth.uid,
+        nome: data.nome_completo || data.nome || request.auth.token?.email || 'Administrador'
+    };
+}
+
+function estudosFundamentosResumoExclusao() {
+    return {
+        ciclosApagados: 0,
+        estudosApagados: 0,
+        perguntasApagadas: 0,
+        gabaritosApagados: 0,
+        tentativasApagadas: 0,
+        resultadosApagados: 0,
+        progressosApagados: 0
+    };
+}
+
+function estudosFundamentosSomarResumo(destino, origem) {
+    for (const key of Object.keys(destino)) {
+        destino[key] += Number(origem[key] || 0);
+    }
+    return destino;
+}
+
+async function estudosFundamentosCommitDeletes(refs) {
+    let total = 0;
+    for (let i = 0; i < refs.length; i += 450) {
+        const batch = db.batch();
+        for (const ref of refs.slice(i, i + 450)) {
+            batch.delete(ref);
+            total += 1;
+        }
+        await batch.commit();
+    }
+    return total;
+}
+
+async function estudosFundamentosDeletePerguntas(perguntaDocs) {
+    const resumo = estudosFundamentosResumoExclusao();
+    const refs = [];
+    const gabaritoRefs = perguntaDocs.map((perguntaDoc) => db.collection('estudos_gabaritos').doc(perguntaDoc.id));
+    const gabaritoDocs = gabaritoRefs.length > 0 ? await db.getAll(...gabaritoRefs) : [];
+    const gabaritosExistentes = new Set(gabaritoDocs.filter((doc) => doc.exists).map((doc) => doc.id));
+
+    for (const perguntaDoc of perguntaDocs) {
+        refs.push(perguntaDoc.ref);
+        resumo.perguntasApagadas += 1;
+        if (gabaritosExistentes.has(perguntaDoc.id)) {
+            refs.push(db.collection('estudos_gabaritos').doc(perguntaDoc.id));
+            resumo.gabaritosApagados += 1;
+        }
+    }
+    await estudosFundamentosCommitDeletes(refs);
+    return resumo;
+}
+
+function estudosFundamentosPathAlunoEstudoValido(ref, raizEsperada) {
+    const parts = String(ref.path || '').split('/');
+    return (
+        parts.length === 4 &&
+        parts[0] === raizEsperada &&
+        Boolean(parts[1]) &&
+        parts[2] === 'estudos' &&
+        Boolean(parts[3])
+    );
+}
+
+async function estudosFundamentosDeleteAlunoDocsPorEstudo(estudoId) {
+    const resumo = estudosFundamentosResumoExclusao();
+    const [resultadosSnap, progressosSnap] = await Promise.all([
+        db.collectionGroup('estudos').where('estudoId', '==', estudoId).get(),
+        db.collectionGroup('estudos').where('estudoId', '==', estudoId).get()
+    ]);
+
+    const resultadoRefs = new Map();
+    const progressoRefs = new Map();
+    resultadosSnap.docs.forEach((doc) => {
+        if (estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_resultados') && doc.data()?.estudoId === estudoId) {
+            resultadoRefs.set(doc.ref.path, doc.ref);
+        }
+    });
+    progressosSnap.docs.forEach((doc) => {
+        if (estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_progresso') && doc.data()?.estudoId === estudoId) {
+            progressoRefs.set(doc.ref.path, doc.ref);
+        }
+    });
+
+    const [alunosResultadosSnap, alunosProgressosSnap] = await Promise.all([
+        db.collection('alunos_estudos_resultados').get(),
+        db.collection('alunos_estudos_progresso').get()
+    ]);
+
+    const resultadoDiretoRefs = alunosResultadosSnap.docs.map((alunoDoc) =>
+        db.collection('alunos_estudos_resultados').doc(alunoDoc.id).collection('estudos').doc(estudoId)
+    );
+    const progressoDiretoRefs = alunosProgressosSnap.docs.map((alunoDoc) =>
+        db.collection('alunos_estudos_progresso').doc(alunoDoc.id).collection('estudos').doc(estudoId)
+    );
+
+    const [resultadoDiretoDocs, progressoDiretoDocs] = await Promise.all([
+        resultadoDiretoRefs.length > 0 ? db.getAll(...resultadoDiretoRefs) : [],
+        progressoDiretoRefs.length > 0 ? db.getAll(...progressoDiretoRefs) : []
+    ]);
+
+    resultadoDiretoDocs.forEach((doc) => {
+        if (doc.exists && doc.id === estudoId && estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_resultados')) {
+            resultadoRefs.set(doc.ref.path, doc.ref);
+        }
+    });
+    progressoDiretoDocs.forEach((doc) => {
+        if (doc.exists && doc.id === estudoId && estudosFundamentosPathAlunoEstudoValido(doc.ref, 'alunos_estudos_progresso')) {
+            progressoRefs.set(doc.ref.path, doc.ref);
+        }
+    });
+
+    resumo.resultadosApagados = await estudosFundamentosCommitDeletes(Array.from(resultadoRefs.values()));
+    resumo.progressosApagados = await estudosFundamentosCommitDeletes(Array.from(progressoRefs.values()));
+    return resumo;
+}
+async function estudosFundamentosDeleteTentativasPorEstudo(estudoId) {
+    const snap = await db.collection('estudos_tentativas').where('estudoId', '==', estudoId).get();
+    return estudosFundamentosCommitDeletes(snap.docs.map((doc) => doc.ref));
+}
+
+async function estudosFundamentosApagarPergunta(perguntaId) {
+    const id = validarTextoObrigatorioEstudo(perguntaId, 'perguntaId');
+    const perguntaDoc = await db.collection('estudos_perguntas').doc(id).get();
+    if (!perguntaDoc.exists) {
+        throw new HttpsError('not-found', 'Pergunta nao encontrada.');
+    }
+    return estudosFundamentosDeletePerguntas([perguntaDoc]);
+}
+
+async function estudosFundamentosApagarEstudo(estudoId) {
+    const id = validarTextoObrigatorioEstudo(estudoId, 'estudoId');
+    const estudoRef = db.collection('estudos').doc(id);
+    const estudoDoc = await estudoRef.get();
+    if (!estudoDoc.exists) {
+        throw new HttpsError('not-found', 'Estudo nao encontrado.');
+    }
+
+    const resumo = estudosFundamentosResumoExclusao();
+    const perguntasSnap = await db.collection('estudos_perguntas').where('estudoId', '==', id).get();
+    estudosFundamentosSomarResumo(resumo, await estudosFundamentosDeletePerguntas(perguntasSnap.docs));
+    resumo.tentativasApagadas = await estudosFundamentosDeleteTentativasPorEstudo(id);
+    estudosFundamentosSomarResumo(resumo, await estudosFundamentosDeleteAlunoDocsPorEstudo(id));
+    await estudosFundamentosCommitDeletes([estudoRef]);
+    resumo.estudosApagados = 1;
+    return resumo;
+}
+
+async function estudosFundamentosApagarCiclo(cicloId) {
+    const id = validarTextoObrigatorioEstudo(cicloId, 'cicloId');
+    const cicloRef = db.collection('estudos_ciclos').doc(id);
+    const cicloDoc = await cicloRef.get();
+    if (!cicloDoc.exists) {
+        throw new HttpsError('not-found', 'Ciclo nao encontrado.');
+    }
+
+    const resumo = estudosFundamentosResumoExclusao();
+    const estudosSnap = await db.collection('estudos').where('cicloId', '==', id).get();
+    const estudoIds = new Set();
+    for (const estudoDoc of estudosSnap.docs) {
+        estudoIds.add(estudoDoc.id);
+        estudosFundamentosSomarResumo(resumo, await estudosFundamentosApagarEstudo(estudoDoc.id));
+    }
+
+    const perguntasOrfasSnap = await db.collection('estudos_perguntas').where('cicloId', '==', id).get();
+    const perguntasOrfas = perguntasOrfasSnap.docs.filter((doc) => !estudoIds.has(String(doc.data()?.estudoId || '')));
+    estudosFundamentosSomarResumo(resumo, await estudosFundamentosDeletePerguntas(perguntasOrfas));
+    await estudosFundamentosCommitDeletes([cicloRef]);
+    resumo.ciclosApagados = 1;
+    return resumo;
+}
+
+exports.excluirConteudoEstudosFundamentos = onCall(async (request) => {
+    const adminAtual = await validarAdminEstudosFundamentos(request);
+    const payload = request.data || {};
+    const tipo = estudosTextoSeguro(payload.tipo).toLowerCase();
+    const id = validarTextoObrigatorioEstudo(payload.id, 'id');
+
+    if (payload.confirmar !== true) {
+        throw new HttpsError('failed-precondition', 'Confirmacao obrigatoria para excluir conteudo.');
+    }
+
+    let resumo;
+    if (tipo === 'pergunta') {
+        resumo = await estudosFundamentosApagarPergunta(id);
+    } else if (tipo === 'estudo') {
+        resumo = await estudosFundamentosApagarEstudo(id);
+    } else if (tipo === 'ciclo') {
+        resumo = await estudosFundamentosApagarCiclo(id);
+    } else {
+        throw new HttpsError('invalid-argument', 'Tipo de exclusao invalido.');
+    }
+
+    console.log('excluirConteudoEstudosFundamentos concluida', {
+        tipo,
+        id,
+        adminUid: adminAtual.uid,
+        resumo
+    });
+
+    return {
+        success: true,
+        tipo,
+        id,
+        ...resumo
+    };
+});
+
 exports.finalizarTentativaEstudo = onCall(async (request) => {
     if (!request.auth?.uid) {
         throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
