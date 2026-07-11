@@ -370,7 +370,11 @@ function estudosFundamentosResumoExclusao() {
         gabaritosApagados: 0,
         tentativasApagadas: 0,
         resultadosApagados: 0,
-        progressosApagados: 0
+        progressosApagados: 0,
+        arquivosStorageApagados: 0,
+        arquivosStorageNaoEncontrados: 0,
+        arquivosStorageIgnorados: 0,
+        errosStorage: 0
     };
 }
 
@@ -394,6 +398,65 @@ async function estudosFundamentosCommitDeletes(refs) {
     return total;
 }
 
+function estudosFundamentosStoragePathBasicoSeguro(path) {
+    const value = estudosTextoSeguro(path);
+    return Boolean(value) &&
+        value.startsWith('estudos_fundamentos/') &&
+        !value.startsWith('/') &&
+        !value.includes('..') &&
+        !value.includes('//');
+}
+
+function estudosFundamentosStoragePathDoEstudo(path, cicloId, estudoId) {
+    const value = estudosTextoSeguro(path);
+    const prefix = `estudos_fundamentos/ciclos/${cicloId}/estudos/${estudoId}/`;
+    return estudosFundamentosStoragePathBasicoSeguro(value) && value.startsWith(prefix);
+}
+
+function estudosFundamentosStoragePathDoCiclo(path, cicloId) {
+    const value = estudosTextoSeguro(path);
+    const prefix = `estudos_fundamentos/ciclos/${cicloId}/`;
+    return estudosFundamentosStoragePathBasicoSeguro(value) && value.startsWith(prefix);
+}
+
+function estudosFundamentosColetarStoragePathsDoEstudo(estudoData) {
+    const paths = [];
+    const capa = estudosTextoSeguro(estudoData?.capaStoragePath);
+    if (capa) paths.push(capa);
+    const imagens = Array.isArray(estudoData?.imagensStoragePaths) ? estudoData.imagensStoragePaths : [];
+    for (const path of imagens) {
+        const value = estudosTextoSeguro(path);
+        if (value) paths.push(value);
+    }
+    return paths;
+}
+
+async function estudosFundamentosApagarStoragePaths(paths, isPermitido) {
+    const resumo = estudosFundamentosResumoExclusao();
+    const unicos = Array.from(new Set(paths.map((path) => estudosTextoSeguro(path)).filter(Boolean)));
+    for (const path of unicos) {
+        if (!isPermitido(path)) {
+            resumo.arquivosStorageIgnorados += 1;
+            continue;
+        }
+        try {
+            await storage.bucket(bucketName).file(path).delete();
+            resumo.arquivosStorageApagados += 1;
+        } catch (error) {
+            const code = error?.code || error?.errors?.[0]?.reason;
+            if (code === 404 || code === 'notFound' || code === 'not_found') {
+                resumo.arquivosStorageNaoEncontrados += 1;
+            } else {
+                resumo.errosStorage += 1;
+                console.error('Erro ao apagar arquivo de Storage de estudos', {
+                    path,
+                    message: error?.message
+                });
+            }
+        }
+    }
+    return resumo;
+}
 async function estudosFundamentosDeletePerguntas(perguntaDocs) {
     const resumo = estudosFundamentosResumoExclusao();
     const refs = [];
@@ -482,7 +545,16 @@ async function estudosFundamentosApagarEstudo(estudoId) {
         throw new HttpsError('not-found', 'Estudo nao encontrado.');
     }
 
+    const estudoData = estudoDoc.data() || {};
+    const cicloId = estudosTextoSeguro(estudoData.cicloId);
     const resumo = estudosFundamentosResumoExclusao();
+    estudosFundamentosSomarResumo(
+        resumo,
+        await estudosFundamentosApagarStoragePaths(
+            estudosFundamentosColetarStoragePathsDoEstudo(estudoData),
+            (path) => estudosFundamentosStoragePathDoEstudo(path, cicloId, id)
+        )
+    );
     const perguntasSnap = await db.collection('estudos_perguntas').where('estudoId', '==', id).get();
     estudosFundamentosSomarResumo(resumo, await estudosFundamentosDeletePerguntas(perguntasSnap.docs));
     resumo.tentativasApagadas = await estudosFundamentosDeleteTentativasPorEstudo(id);
@@ -500,7 +572,16 @@ async function estudosFundamentosApagarCiclo(cicloId) {
         throw new HttpsError('not-found', 'Ciclo nao encontrado.');
     }
 
+    const cicloData = cicloDoc.data() || {};
     const resumo = estudosFundamentosResumoExclusao();
+    const cicloCapaPath = estudosTextoSeguro(cicloData.capaStoragePath);
+    estudosFundamentosSomarResumo(
+        resumo,
+        await estudosFundamentosApagarStoragePaths(
+            cicloCapaPath ? [cicloCapaPath] : [],
+            (path) => estudosFundamentosStoragePathDoCiclo(path, id)
+        )
+    );
     const estudosSnap = await db.collection('estudos').where('cicloId', '==', id).get();
     const estudoIds = new Set();
     for (const estudoDoc of estudosSnap.docs) {

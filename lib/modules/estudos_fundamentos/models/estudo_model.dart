@@ -21,7 +21,9 @@ class EstudoModel {
   final String videoYoutubeUrl;
   final String linkExterno;
   final String capaUrl;
+  final String capaStoragePath;
   final List<String> imagensUrls;
+  final List<String> imagensStoragePaths;
   final String status;
   final bool mostrarNaLinhaDoTempo;
   final bool mostrarComoEmBreve;
@@ -52,7 +54,9 @@ class EstudoModel {
     required this.videoYoutubeUrl,
     required this.linkExterno,
     required this.capaUrl,
+    required this.capaStoragePath,
     required this.imagensUrls,
+    required this.imagensStoragePaths,
     required this.status,
     required this.mostrarNaLinhaDoTempo,
     required this.mostrarComoEmBreve,
@@ -85,7 +89,9 @@ class EstudoModel {
       videoYoutubeUrl: '',
       linkExterno: '',
       capaUrl: '',
+      capaStoragePath: '',
       imagensUrls: <String>[],
+      imagensStoragePaths: <String>[],
       status: EstudoCicloStatus.rascunho,
       mostrarNaLinhaDoTempo: true,
       mostrarComoEmBreve: false,
@@ -123,7 +129,11 @@ class EstudoModel {
       videoYoutubeUrl: _text(map['videoYoutubeUrl']),
       linkExterno: _text(map['linkExterno']),
       capaUrl: normalizarImagemUrl(_text(map['capaUrl'])),
+      capaStoragePath: _text(map['capaStoragePath']),
       imagensUrls: normalizarListaUrls(map['imagensUrls']),
+      imagensStoragePaths: normalizarListaStoragePaths(
+        map['imagensStoragePaths'],
+      ),
       status: EstudoCicloStatus.isValid(status)
           ? status
           : EstudoCicloStatus.rascunho,
@@ -168,7 +178,9 @@ class EstudoModel {
       'videoYoutubeUrl': videoYoutubeUrl.trim(),
       'linkExterno': linkExterno.trim(),
       'capaUrl': normalizarImagemUrl(capaUrl),
+      'capaStoragePath': capaStoragePath.trim(),
       'imagensUrls': normalizarListaUrls(imagensUrls),
+      'imagensStoragePaths': normalizarListaStoragePaths(imagensStoragePaths),
       'status': status,
       'mostrarNaLinhaDoTempo': mostrarNaLinhaDoTempo,
       'mostrarComoEmBreve': mostrarComoEmBreve,
@@ -202,7 +214,9 @@ class EstudoModel {
     String? videoYoutubeUrl,
     String? linkExterno,
     String? capaUrl,
+    String? capaStoragePath,
     List<String>? imagensUrls,
+    List<String>? imagensStoragePaths,
     String? status,
     bool? mostrarNaLinhaDoTempo,
     bool? mostrarComoEmBreve,
@@ -233,7 +247,9 @@ class EstudoModel {
       videoYoutubeUrl: videoYoutubeUrl ?? this.videoYoutubeUrl,
       linkExterno: linkExterno ?? this.linkExterno,
       capaUrl: capaUrl ?? this.capaUrl,
+      capaStoragePath: capaStoragePath ?? this.capaStoragePath,
       imagensUrls: imagensUrls ?? this.imagensUrls,
+      imagensStoragePaths: imagensStoragePaths ?? this.imagensStoragePaths,
       status: status ?? this.status,
       mostrarNaLinhaDoTempo:
           mostrarNaLinhaDoTempo ?? this.mostrarNaLinhaDoTempo,
@@ -267,6 +283,25 @@ class EstudoModel {
     return List.unmodifiable(urls);
   }
 
+  static List<String> normalizarListaStoragePaths(dynamic value) {
+    final rawItems = <String>[];
+    if (value is Iterable) {
+      rawItems.addAll(value.map((item) => item?.toString() ?? ''));
+    } else if (value is String) {
+      rawItems.addAll(value.split(RegExp(r'\r?\n')));
+    }
+
+    final seen = <String>{};
+    final paths = <String>[];
+    for (final item in rawItems) {
+      final path = item.trim();
+      if (path.isEmpty || seen.contains(path)) continue;
+      seen.add(path);
+      paths.add(path);
+    }
+    return List.unmodifiable(paths);
+  }
+
   static String normalizarImagemUrl(String value) {
     final text = value.trim();
     if (text.isEmpty) return '';
@@ -283,12 +318,12 @@ class EstudoModel {
       if (fileIndex >= 0 && fileIndex + 1 < segments.length) {
         final fileId = segments[fileIndex + 1].trim();
         if (fileId.isNotEmpty) {
-          return 'https://drive.google.com/uc?export=view&id=$fileId';
+          return 'https://drive.google.com/thumbnail?id=$fileId&sz=w1600';
         }
       }
       final id = uri.queryParameters['id']?.trim() ?? '';
       if (id.isNotEmpty) {
-        return 'https://drive.google.com/uc?export=view&id=$id';
+        return 'https://drive.google.com/thumbnail?id=$id&sz=w1600';
       }
     }
     return text;

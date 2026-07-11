@@ -53,10 +53,10 @@ https://drive.google.com/file/d/FILE_ID/view?usp=sharing
 podem ser convertidos para:
 
 ```text
-https://drive.google.com/uc?export=view&id=FILE_ID
+https://drive.google.com/thumbnail?id=FILE_ID&sz=w1600
 ```
 
-O arquivo precisa estar público. A conversão automática só acontece para `drive.google.com`, `www.drive.google.com` ou subdomínios que terminem em `.drive.google.com`. Se o ID não puder ser extraído, a URL original é mantida.
+O arquivo precisa estar público. A conversão automática só acontece para `drive.google.com`, `www.drive.google.com` ou subdomínios que terminem em `.drive.google.com`, gerando uma URL de thumbnail (`https://drive.google.com/thumbnail?id=FILE_ID&sz=w1600`). Se o ID não puder ser extraído, a URL original é mantida. Se a imagem não carregar no Flutter Web, use uma URL direta de imagem ou confira a permissão pública do arquivo.
 
 ## Seguranca
 

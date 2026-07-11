@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_midias_storage_service.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/exclusao_estudos_admin_service.dart';
 
 enum _CiclosSortOption { ordem, numero, titulo, atualizadoEm }
@@ -1063,6 +1064,13 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
   late final TextEditingController _descricaoController;
   late final TextEditingController _periodoController;
   late final TextEditingController _capaController;
+  final EstudosMidiasStorageService _midiasService =
+      EstudosMidiasStorageService();
+
+  late String _capaStoragePath;
+  int _compressaoMidia = 15;
+  bool _enviandoMidia = false;
+  String _ultimoUploadResumo = '';
 
   late String _status;
   late bool _mostrarNaLinhaDoTempo;
@@ -1083,6 +1091,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
     _descricaoController = TextEditingController(text: ciclo.descricao);
     _periodoController = TextEditingController(text: ciclo.periodoHistorico);
     _capaController = TextEditingController(text: ciclo.capaUrl);
+    _capaStoragePath = ciclo.capaStoragePath;
     _status = ciclo.status;
     _mostrarNaLinhaDoTempo = ciclo.mostrarNaLinhaDoTempo;
     _mostrarComoEmBreve = ciclo.mostrarComoEmBreve;
@@ -1119,12 +1128,50 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       descricao: _descricaoController.text.trim(),
       periodoHistorico: _periodoController.text.trim(),
       capaUrl: _capaController.text.trim(),
+      capaStoragePath: _capaStoragePath,
       status: novoStatus,
       mostrarNaLinhaDoTempo: _mostrarNaLinhaDoTempo,
       mostrarComoEmBreve: _mostrarComoEmBreve,
     );
 
     if (mounted) Navigator.pop(context, ciclo);
+  }
+
+  Future<void> _enviarCapa() async {
+    final cicloId = widget.ciclo?.id ?? '';
+    if (cicloId.isEmpty) {
+      _mostrarMensagemLocal('Salve o ciclo antes de enviar a capa.');
+      return;
+    }
+    setState(() => _enviandoMidia = true);
+    try {
+      final resultado = await _midiasService.enviarCapaCiclo(
+        cicloId: cicloId,
+        compressaoPercentual: _compressaoMidia,
+      );
+      if (resultado == null) return;
+      setState(() {
+        _capaController.text = resultado.downloadUrl;
+        _capaStoragePath = resultado.storagePath;
+        _ultimoUploadResumo = resultado.resumoTamanho;
+      });
+      _mostrarMensagemLocal('Capa enviada: ${resultado.resumoTamanho}');
+    } on EstudosMidiasUploadException catch (e) {
+      _mostrarMensagemLocal(e.message);
+    } on FirebaseException catch (e) {
+      final mensagem = e.code == 'permission-denied'
+          ? 'Sem permissão para enviar imagem. Será necessário revisar Storage Rules.'
+          : 'Não foi possível enviar a imagem.';
+      _mostrarMensagemLocal(mensagem);
+    } finally {
+      if (mounted) setState(() => _enviandoMidia = false);
+    }
+  }
+
+  void _mostrarMensagemLocal(String mensagem) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
+    );
   }
 
   Future<bool?> _confirmarPublicacaoIncompleta() {
@@ -1268,6 +1315,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                         controller: _capaController,
                         label: 'Capa URL opcional',
                       ),
+                      const SizedBox(height: 10),
+                      _midiaControls(),
                     ]),
                     const SizedBox(height: 12),
                     _formSection('Publicacao e visibilidade', [
@@ -1413,6 +1462,74 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
         }
         return null;
       },
+    );
+  }
+
+  Widget _midiaControls() {
+    final t = context.uai;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<int>(
+          initialValue: _compressaoMidia,
+          decoration: const InputDecoration(labelText: 'Compressão'),
+          items: EstudosMidiasStorageService.compressoesPermitidas
+              .map(
+                (valor) => DropdownMenuItem<int>(
+                  value: valor,
+                  child: Text('$valor% compressão'),
+                ),
+              )
+              .toList(),
+          onChanged: _enviandoMidia
+              ? null
+              : (value) => setState(() => _compressaoMidia = value ?? 15),
+        ),
+        const SizedBox(height: 10),
+        if (_capaController.text.trim().isNotEmpty) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(t.cardRadius - 4),
+            child: AspectRatio(
+              aspectRatio: 16 / 7,
+              child: Image.network(
+                _capaController.text.trim(),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: t.cardAlt,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Imagem não carregada',
+                    style: TextStyle(color: t.textMuted),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        OutlinedButton.icon(
+          onPressed: _enviandoMidia ? null : _enviarCapa,
+          icon: _enviandoMidia
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cloud_upload_rounded),
+          label: Text(_enviandoMidia ? 'Enviando...' : 'Enviar capa'),
+        ),
+        if (_ultimoUploadResumo.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            _ultimoUploadResumo,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ],
     );
   }
 

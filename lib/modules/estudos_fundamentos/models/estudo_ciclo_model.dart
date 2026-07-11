@@ -42,6 +42,7 @@ class EstudoCicloModel {
   final String descricao;
   final String periodoHistorico;
   final String capaUrl;
+  final String capaStoragePath;
   final int ordem;
   final String status;
   final bool mostrarNaLinhaDoTempo;
@@ -59,6 +60,7 @@ class EstudoCicloModel {
     required this.descricao,
     required this.periodoHistorico,
     required this.capaUrl,
+    required this.capaStoragePath,
     required this.ordem,
     required this.status,
     required this.mostrarNaLinhaDoTempo,
@@ -78,6 +80,7 @@ class EstudoCicloModel {
       descricao: '',
       periodoHistorico: '',
       capaUrl: '',
+      capaStoragePath: '',
       ordem: 1,
       status: EstudoCicloStatus.rascunho,
       mostrarNaLinhaDoTempo: true,
@@ -103,6 +106,7 @@ class EstudoCicloModel {
       descricao: _text(map['descricao']),
       periodoHistorico: _text(map['periodoHistorico']),
       capaUrl: _text(map['capaUrl']),
+      capaStoragePath: _text(map['capaStoragePath']),
       ordem: _intValue(map['ordem'], fallback: 0),
       status: EstudoCicloStatus.isValid(status)
           ? status
@@ -127,6 +131,7 @@ class EstudoCicloModel {
       'descricao': descricao.trim(),
       'periodoHistorico': periodoHistorico.trim(),
       'capaUrl': capaUrl.trim(),
+      'capaStoragePath': capaStoragePath.trim(),
       'ordem': ordem,
       'status': status,
       'mostrarNaLinhaDoTempo': mostrarNaLinhaDoTempo,
@@ -134,7 +139,8 @@ class EstudoCicloModel {
       'criadoPor': criadoPor,
       'atualizadoPor': atualizadoPor,
       if (criadoEm != null) 'criadoEm': Timestamp.fromDate(criadoEm!),
-      if (atualizadoEm != null) 'atualizadoEm': Timestamp.fromDate(atualizadoEm!),
+      if (atualizadoEm != null)
+        'atualizadoEm': Timestamp.fromDate(atualizadoEm!),
     };
   }
 
@@ -146,6 +152,7 @@ class EstudoCicloModel {
     String? descricao,
     String? periodoHistorico,
     String? capaUrl,
+    String? capaStoragePath,
     int? ordem,
     String? status,
     bool? mostrarNaLinhaDoTempo,
@@ -163,9 +170,11 @@ class EstudoCicloModel {
       descricao: descricao ?? this.descricao,
       periodoHistorico: periodoHistorico ?? this.periodoHistorico,
       capaUrl: capaUrl ?? this.capaUrl,
+      capaStoragePath: capaStoragePath ?? this.capaStoragePath,
       ordem: ordem ?? this.ordem,
       status: status ?? this.status,
-      mostrarNaLinhaDoTempo: mostrarNaLinhaDoTempo ?? this.mostrarNaLinhaDoTempo,
+      mostrarNaLinhaDoTempo:
+          mostrarNaLinhaDoTempo ?? this.mostrarNaLinhaDoTempo,
       mostrarComoEmBreve: mostrarComoEmBreve ?? this.mostrarComoEmBreve,
       criadoEm: criadoEm ?? this.criadoEm,
       atualizadoEm: atualizadoEm ?? this.atualizadoEm,

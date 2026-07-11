@@ -8,6 +8,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_mod
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_midias_storage_service.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/detalhe_admin_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/preview_estudo_screen.dart';
@@ -1086,6 +1087,14 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
   late final TextEditingController _imagens;
   late final TextEditingController _youtube;
   late final TextEditingController _link;
+  final EstudosMidiasStorageService _midiasService =
+      EstudosMidiasStorageService();
+
+  late String _capaStoragePath;
+  late List<String> _imagensStoragePaths;
+  int _compressaoMidia = 15;
+  bool _enviandoMidia = false;
+  String _ultimoUploadResumo = '';
 
   late String _cicloId;
   late String _status;
@@ -1117,6 +1126,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     _reflexao = TextEditingController(text: e.reflexaoFinal);
     _fontes = TextEditingController(text: e.fontes);
     _capa = TextEditingController(text: e.capaUrl);
+    _capaStoragePath = e.capaStoragePath.trim();
+    _imagensStoragePaths = List<String>.from(e.imagensStoragePaths);
     _imagens = TextEditingController(text: e.imagensUrls.join('\n'));
     _youtube = TextEditingController(text: e.videoYoutubeUrl);
     _link = TextEditingController(text: e.linkExterno);
@@ -1183,7 +1194,11 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       reflexaoFinal: _reflexao.text.trim(),
       fontes: _fontes.text.trim(),
       capaUrl: EstudoModel.normalizarImagemUrl(_capa.text),
+      capaStoragePath: _capaStoragePath,
       imagensUrls: EstudoModel.normalizarListaUrls(_imagens.text),
+      imagensStoragePaths: EstudoModel.normalizarListaStoragePaths(
+        _imagensStoragePaths,
+      ),
       videoYoutubeUrl: _youtube.text.trim(),
       linkExterno: _link.text.trim(),
       status: novoStatus,
@@ -1191,6 +1206,78 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       mostrarComoEmBreve: _mostrarComoEmBreve,
     );
     if (mounted) Navigator.pop(context, estudo);
+  }
+
+  Future<void> _enviarCapaEstudo() async {
+    final estudoId = widget.estudo?.id ?? '';
+    if (estudoId.isEmpty) {
+      _mostrarMensagemLocal('Salve o estudo antes de enviar a capa.');
+      return;
+    }
+    setState(() => _enviandoMidia = true);
+    try {
+      final resultado = await _midiasService.enviarCapaEstudo(
+        cicloId: _cicloId,
+        estudoId: estudoId,
+        compressaoPercentual: _compressaoMidia,
+      );
+      if (resultado == null) return;
+      setState(() {
+        _capa.text = resultado.downloadUrl;
+        _capaStoragePath = resultado.storagePath;
+        _ultimoUploadResumo = resultado.resumoTamanho;
+      });
+      _mostrarMensagemLocal('Capa enviada: ${resultado.resumoTamanho}');
+    } on EstudosMidiasUploadException catch (e) {
+      _mostrarMensagemLocal(e.message);
+    } on FirebaseException catch (e) {
+      final mensagem = e.code == 'permission-denied'
+          ? 'Sem permissão para enviar imagem. Será necessário revisar Storage Rules.'
+          : 'Não foi possível enviar a imagem.';
+      _mostrarMensagemLocal(mensagem);
+    } finally {
+      if (mounted) setState(() => _enviandoMidia = false);
+    }
+  }
+
+  Future<void> _enviarImagemEstudo() async {
+    final estudoId = widget.estudo?.id ?? '';
+    if (estudoId.isEmpty) {
+      _mostrarMensagemLocal('Salve o estudo antes de enviar imagens internas.');
+      return;
+    }
+    setState(() => _enviandoMidia = true);
+    try {
+      final resultado = await _midiasService.enviarImagemEstudo(
+        cicloId: _cicloId,
+        estudoId: estudoId,
+        compressaoPercentual: _compressaoMidia,
+      );
+      if (resultado == null) return;
+      final urls = EstudoModel.normalizarListaUrls(_imagens.text).toList();
+      urls.add(resultado.downloadUrl);
+      _imagensStoragePaths.add(resultado.storagePath);
+      setState(() {
+        _imagens.text = urls.join('\n');
+        _ultimoUploadResumo = resultado.resumoTamanho;
+      });
+      _mostrarMensagemLocal('Imagem enviada: ${resultado.resumoTamanho}');
+    } on EstudosMidiasUploadException catch (e) {
+      _mostrarMensagemLocal(e.message);
+    } on FirebaseException catch (e) {
+      final mensagem = e.code == 'permission-denied'
+          ? 'Sem permissão para enviar imagem. Será necessário revisar Storage Rules.'
+          : 'Não foi possível enviar a imagem.';
+      _mostrarMensagemLocal(mensagem);
+    } finally {
+      if (mounted) setState(() => _enviandoMidia = false);
+    }
+  }
+
+  void _mostrarMensagemLocal(String mensagem) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), behavior: SnackBarBehavior.floating),
+    );
   }
 
   bool _publicacaoPrecisaAviso() {
@@ -1388,13 +1475,21 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                         validator: _validarUrlGenerica,
                       ),
                       const SizedBox(height: 10),
+                      _midiaControls(),
+                      const SizedBox(height: 10),
                       _textField(
                         _imagens,
                         'Imagens do estudo',
                         maxLines: 4,
                         helperText:
-                            'Uma URL por linha. Use links públicos e diretos de imagem. Links do Google Drive precisam estar públicos.',
+                            'Uma URL por linha. Links do Google Drive precisam estar públicos; uploads usam Firebase Storage.',
                         validator: _validarUrlsImagem,
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _enviandoMidia ? null : _enviarImagemEstudo,
+                        icon: const Icon(Icons.add_photo_alternate_rounded),
+                        label: const Text('Enviar imagem'),
                       ),
                       const SizedBox(height: 10),
                       _textField(
@@ -1727,6 +1822,74 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       return 'Informe uma URL valida';
     }
     return null;
+  }
+
+  Widget _midiaControls() {
+    final t = context.uai;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<int>(
+          initialValue: _compressaoMidia,
+          decoration: const InputDecoration(labelText: 'Compressão'),
+          items: EstudosMidiasStorageService.compressoesPermitidas
+              .map(
+                (valor) => DropdownMenuItem<int>(
+                  value: valor,
+                  child: Text('$valor% compressão'),
+                ),
+              )
+              .toList(),
+          onChanged: _enviandoMidia
+              ? null
+              : (value) => setState(() => _compressaoMidia = value ?? 15),
+        ),
+        const SizedBox(height: 10),
+        if (_capa.text.trim().isNotEmpty) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(t.cardRadius - 4),
+            child: AspectRatio(
+              aspectRatio: 16 / 7,
+              child: Image.network(
+                _capa.text.trim(),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: t.cardAlt,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Imagem não carregada',
+                    style: TextStyle(color: t.textMuted),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        OutlinedButton.icon(
+          onPressed: _enviandoMidia ? null : _enviarCapaEstudo,
+          icon: _enviandoMidia
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cloud_upload_rounded),
+          label: Text(_enviandoMidia ? 'Enviando...' : 'Enviar capa do estudo'),
+        ),
+        if (_ultimoUploadResumo.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            _ultimoUploadResumo,
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _switchRow(String title, bool value, ValueChanged<bool> onChanged) {
