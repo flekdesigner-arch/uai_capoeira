@@ -1,4 +1,9 @@
+import 'dart:convert';
+
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 class ExclusaoEstudosResumo {
   final bool success;
@@ -54,20 +59,94 @@ class ExclusaoEstudosResumo {
 }
 
 class ExclusaoEstudosAdminService {
-  final FirebaseFunctions _functions;
+  static const String _functionName = 'excluirConteudoEstudosFundamentos';
+  static const String _functionEndpoint =
+      'https://us-central1-uai-capoeira-52753.cloudfunctions.net/$_functionName';
 
-  ExclusaoEstudosAdminService({FirebaseFunctions? functions})
-    : _functions = functions ?? FirebaseFunctions.instance;
+  final FirebaseFunctions _functions;
+  final FirebaseAuth _auth;
+  final http.Client _httpClient;
+
+  ExclusaoEstudosAdminService({
+    FirebaseFunctions? functions,
+    FirebaseAuth? auth,
+    http.Client? httpClient,
+  }) : _functions =
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _auth = auth ?? FirebaseAuth.instance,
+       _httpClient = httpClient ?? http.Client();
 
   Future<ExclusaoEstudosResumo> excluir({
     required String tipo,
     required String id,
   }) async {
-    final result = await _functions
-        .httpsCallable('excluirConteudoEstudosFundamentos')
-        .call({'tipo': tipo, 'id': id, 'confirmar': true});
-    final data = Map<String, dynamic>.from(result.data as Map);
+    final payload = {'tipo': tipo, 'id': id, 'confirmar': true};
+    final data = _isWindowsDesktop
+        ? await _callWindowsRest(payload)
+        : await _callCallable(payload);
     return ExclusaoEstudosResumo.fromMap(data);
+  }
+
+  bool get _isWindowsDesktop =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  Future<Map<String, dynamic>> _callCallable(
+    Map<String, dynamic> payload,
+  ) async {
+    final result = await _functions.httpsCallable(_functionName).call(payload);
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  Future<Map<String, dynamic>> _callWindowsRest(
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final user = _auth.currentUser;
+      final token = await user?.getIdToken(true);
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Usuario nao autenticado para excluir conteudo.');
+      }
+
+      final response = await _httpClient.post(
+        Uri.parse(_functionEndpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'data': payload}),
+      );
+
+      final decoded = _decodeResponseBody(response.body);
+      final error = decoded['error'];
+      if (error is Map) {
+        final message = _text(error['message']);
+        final status = _text(error['status']);
+        throw Exception(
+          message.isNotEmpty
+              ? message
+              : 'Cloud Function retornou erro${status.isEmpty ? '' : ' ($status)'}.',
+        );
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Cloud Function retornou HTTP ${response.statusCode}.');
+      }
+
+      final result = decoded['result'];
+      if (result is Map) return Map<String, dynamic>.from(result);
+      throw Exception('Resposta invalida da Cloud Function.');
+    } catch (error) {
+      throw Exception(
+        'Falha ao chamar a Cloud Function no Windows Desktop: $error',
+      );
+    }
+  }
+
+  Map<String, dynamic> _decodeResponseBody(String body) {
+    if (body.trim().isEmpty) return <String, dynamic>{};
+    final decoded = jsonDecode(body);
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception('Resposta invalida da Cloud Function.');
   }
 }
 
