@@ -633,6 +633,59 @@ exports.excluirConteudoEstudosFundamentos = onCall(async (request) => {
     };
 });
 
+async function estudosFundamentosDeleteAlunoSubcolecao(raiz, alunoId) {
+    const snap = await db.collection(raiz).doc(alunoId).collection('estudos').get();
+    return estudosFundamentosCommitDeletes(snap.docs.map((doc) => doc.ref));
+}
+
+async function estudosFundamentosDeleteTentativasPorAluno(alunoId) {
+    const snap = await db.collection('estudos_tentativas').where('alunoId', '==', alunoId).get();
+    return estudosFundamentosCommitDeletes(snap.docs.map((doc) => doc.ref));
+}
+
+exports.resetarProgressoEstudosAluno = onCall(async (request) => {
+    const adminAtual = await validarAdminEstudosFundamentos(request);
+    const payload = request.data || {};
+    const alunoId = validarTextoObrigatorioEstudo(payload.alunoId, 'alunoId');
+
+    if (payload.confirmar !== true) {
+        throw new HttpsError('invalid-argument', 'Confirmacao obrigatoria para resetar estudos do aluno.');
+    }
+
+    try {
+        const [progressosApagados, resultadosApagados, tentativasApagadas] = await Promise.all([
+            estudosFundamentosDeleteAlunoSubcolecao('alunos_estudos_progresso', alunoId),
+            estudosFundamentosDeleteAlunoSubcolecao('alunos_estudos_resultados', alunoId),
+            estudosFundamentosDeleteTentativasPorAluno(alunoId)
+        ]);
+        const totalApagado = progressosApagados + resultadosApagados + tentativasApagadas;
+
+        console.log('resetarProgressoEstudosAluno concluida', {
+            adminUid: adminAtual.uid,
+            alunoId,
+            progressosApagados,
+            resultadosApagados,
+            tentativasApagadas,
+            totalApagado
+        });
+
+        return {
+            success: true,
+            alunoId,
+            progressoApagados: progressosApagados,
+            resultadosApagados,
+            tentativasApagadas,
+            totalApagado
+        };
+    } catch (error) {
+        console.error('Erro ao resetar progresso de estudos do aluno', {
+            adminUid: adminAtual.uid,
+            alunoId,
+            message: error?.message
+        });
+        throw new HttpsError('internal', 'Nao foi possivel resetar os estudos do aluno.');
+    }
+});
 exports.finalizarTentativaEstudo = onCall(async (request) => {
     if (!request.auth?.uid) {
         throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');

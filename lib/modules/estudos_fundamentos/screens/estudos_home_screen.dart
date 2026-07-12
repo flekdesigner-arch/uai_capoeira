@@ -673,28 +673,44 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
 
   Widget _miniChip(BuildContext context, IconData icon, String label) {
     final t = context.uai;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: t.cardAlt,
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: t.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: t.textSecondary, size: 13),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: t.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width - 48;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: t.cardAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: t.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: t.textSecondary, size: 13),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 11,
+                      height: 1.15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

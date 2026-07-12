@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/acompanhar_alunos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_perguntas_estudo_screen.dart';
@@ -99,6 +100,13 @@ class _GerenciarEstudosFundamentosScreenState
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const GerenciarPerguntasEstudoScreen()),
+    );
+  }
+
+  Future<void> _abrirAcompanharAlunos() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AcompanharAlunosEstudosScreen()),
     );
   }
 
@@ -456,6 +464,13 @@ class _GerenciarEstudosFundamentosScreenState
                 'Abrir',
               ),
               _AtalhoItem(
+                Icons.analytics_rounded,
+                'Acompanhar Alunos',
+                _abrirAcompanharAlunos,
+                'Abrir',
+                'Veja o progresso, tentativas e avaliações dos alunos nos estudos.',
+              ),
+              _AtalhoItem(
                 Icons.visibility_rounded,
                 'Pre-visualizar como aluno',
               ),
@@ -624,14 +639,35 @@ class _GerenciarEstudosFundamentosScreenState
               Icon(item.icon, color: t.textMuted),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  item.label,
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w900,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (item.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        item.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
                 item.badge,
                 style: TextStyle(
@@ -661,11 +697,13 @@ class _AtalhoItem {
   final String label;
   final VoidCallback? onTap;
   final String badge;
+  final String subtitle;
 
   const _AtalhoItem(
     this.icon,
     this.label, [
     this.onTap,
     this.badge = 'Em breve',
+    this.subtitle = '',
   ]);
 }
