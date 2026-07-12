@@ -1,0 +1,176 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isImage() {
+      return request.resource != null
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnderSize(maxSize) {
+      return request.resource != null
+        && request.resource.size <= maxSize;
+    }
+
+    function usuarioDoc() {
+      return /databases/(default)/documents/usuarios/$(request.auth.uid);
+    }
+
+    function permissoesEstudosDoc() {
+      return /databases/(default)/documents/usuarios/$(request.auth.uid)/permissoes_usuario/configuracoes;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && firestore.exists(usuarioDoc())
+        && (
+          (
+            ('peso_permissao' in firestore.get(usuarioDoc()).data)
+            && firestore.get(usuarioDoc()).data.peso_permissao >= 90
+          )
+          || firestore.get(usuarioDoc()).data.tipo in ['admin', 'administrador']
+        );
+    }
+
+    function canManageEstudosFundamentos() {
+      return isAdmin()
+        || (
+          signedIn()
+          && firestore.exists(permissoesEstudosDoc())
+          && firestore.get(permissoesEstudosDoc()).data.pode_gerenciar_estudos_fundamentos == true
+        );
+    }
+
+    match /{allPaths=**} {
+      allow read: if true;
+    }
+
+    match /assinaturas/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /assinaturas_inscricoes/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /assinaturas_campeonato/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /fotos_competidores/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /fotos_inscricoes/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /comprovantes_pagamento/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if signedIn();
+    }
+
+    match /foto_alunos/{fileName} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /apks/{fileName} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /estudos_fundamentos/ciclos/{cicloId}/capa/{fileName} {
+      allow create, update: if canManageEstudosFundamentos()
+        && isImage()
+        && isUnderSize(15 * 1024 * 1024);
+      allow delete: if false;
+    }
+
+    match /estudos_fundamentos/ciclos/{cicloId}/estudos/{estudoId}/capa/{fileName} {
+      allow create, update: if canManageEstudosFundamentos()
+        && isImage()
+        && isUnderSize(15 * 1024 * 1024);
+      allow delete: if false;
+    }
+
+    match /estudos_fundamentos/ciclos/{cicloId}/estudos/{estudoId}/imagens/{fileName} {
+      allow create, update: if canManageEstudosFundamentos()
+        && isImage()
+        && isUnderSize(15 * 1024 * 1024);
+      allow delete: if false;
+    }
+
+    // Compatibilidade temporaria com fluxos legados encontrados no app.
+    match /eventos/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /patrocinadores/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /profile_pictures/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /turmas_logos/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /uniformes/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /fotos_perfil_alunos/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /logos_dinamicas/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /timeline/{allPaths=**} {
+      allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /{allPaths=**} {
+      allow write: if false;
+    }
+  }
+}
