@@ -1,7 +1,7 @@
-name: uai_capoeira
+﻿name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.95+1
+version: 2.0.98+98
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -260,3 +260,4 @@ flutter_launcher_icons:
   adaptive_icon_background: "#B71C1C"
   adaptive_icon_foreground: "assets/images/logo_uai.png"
   min_sdk_android: 21
+
