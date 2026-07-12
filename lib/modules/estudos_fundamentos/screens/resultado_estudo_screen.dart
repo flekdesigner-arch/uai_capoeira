@@ -29,10 +29,10 @@ class ResultadoEstudoScreen extends StatelessWidget {
         ? Icons.verified_rounded
         : Icons.assignment_late_rounded;
     final titulo = resultado.possuiPendenciaManual
-        ? 'Aguardando correcao'
+        ? 'Aguardando correção'
         : resultado.aprovado
         ? 'Atividade aprovada'
-        : 'Atividade nao aprovada';
+        : 'Atividade não aprovada';
 
     return Scaffold(
       backgroundColor: t.background,
@@ -231,7 +231,7 @@ class ResultadoEstudoScreen extends StatelessWidget {
       context,
       icon: Icons.pending_rounded,
       color: t.warning,
-      text: 'Esta atividade possui questao pendente de correcao manual.',
+      text: 'Esta atividade possui questão pendente de correção manual.',
     );
   }
 

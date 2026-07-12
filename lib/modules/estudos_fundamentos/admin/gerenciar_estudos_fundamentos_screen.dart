@@ -50,7 +50,7 @@ class _GerenciarEstudosFundamentosScreenState
       setState(() => _config = config);
     } catch (e) {
       if (!mounted) return;
-      _mostrarMensagem('Nao foi possivel carregar a configuracao.');
+      _mostrarMensagem('Não foi possível carregar a configuração.');
     } finally {
       if (mounted) setState(() => _carregando = false);
     }
@@ -70,7 +70,7 @@ class _GerenciarEstudosFundamentosScreenState
       _mostrarMensagem('Configuracao salva.');
     } catch (e) {
       if (!mounted) return;
-      _mostrarMensagem('Nao foi possivel salvar a configuracao.');
+      _mostrarMensagem('Não foi possível salvar a configuração.');
       await _carregar();
     } finally {
       if (mounted) setState(() => _salvando = false);
@@ -78,7 +78,7 @@ class _GerenciarEstudosFundamentosScreenState
   }
 
   void _mostrarEmBreve() {
-    _mostrarMensagem('Recurso sera implementado na proxima fase.');
+    _mostrarMensagem('Recurso será implementado na próxima fase.');
   }
 
   Future<void> _abrirGerenciarCiclos() async {
@@ -213,7 +213,7 @@ class _GerenciarEstudosFundamentosScreenState
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Area de formacao teorica da capoeira, preparada para ciclos, estudos, artigos, videos e avaliacoes.',
+                  'Área de formação teórica da capoeira, preparada para ciclos, estudos, artigos, vídeos e avaliações.',
                   style: TextStyle(
                     color: onPrimary.withValues(alpha: 0.84),
                     fontWeight: FontWeight.w600,
@@ -267,12 +267,12 @@ class _GerenciarEstudosFundamentosScreenState
     final t = context.uai;
 
     return _section(
-      title: 'Configuracao geral',
+      title: 'Configuração geral',
       icon: Icons.tune_rounded,
       children: [
         _switchTile(
-          title: 'Ativar modulo na Area do Aluno',
-          subtitle: 'Liga a base do modulo para uso dos alunos.',
+          title: 'Ativar módulo na Área do Aluno',
+          subtitle: 'Liga a base do módulo para uso dos alunos.',
           value: _config.ativo,
           onChanged: (value) => _salvar(_config.copyWith(ativo: value)),
         ),
@@ -284,8 +284,8 @@ class _GerenciarEstudosFundamentosScreenState
               _salvar(_config.copyWith(mostrarCardAreaAluno: value)),
         ),
         _switchTile(
-          title: 'Mostrar conteudos em breve',
-          subtitle: 'Prepara exibicao futura de ciclos/estudos bloqueados.',
+          title: 'Mostrar conteúdos em breve',
+          subtitle: 'Prepara exibição futura de ciclos/estudos bloqueados.',
           value: _config.mostrarEmBreve,
           onChanged: (value) =>
               _salvar(_config.copyWith(mostrarEmBreve: value)),

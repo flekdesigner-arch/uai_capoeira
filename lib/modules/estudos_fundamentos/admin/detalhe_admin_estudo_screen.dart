@@ -150,7 +150,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       _mostrarMensagem('Estudo atualizado.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel atualizar o estudo.');
+      if (mounted) _mostrarMensagem('Não foi possível atualizar o estudo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -176,7 +176,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       if (mounted) _mostrarMensagem('Estudo duplicado como rascunho.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel duplicar o estudo.');
+      if (mounted) _mostrarMensagem('Não foi possível duplicar o estudo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -249,7 +249,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       );
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+      if (mounted) _mostrarMensagem('Não foi possível alterar o status.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -298,7 +298,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
     final cicloAtual = ciclos.where((c) => c.id == _estudo.cicloId).toList();
     if (cicloAtual.isEmpty) {
       _mostrarMensagem(
-        'Nao foi possivel carregar o ciclo deste estudo para editar perguntas.',
+        'Não foi possível carregar o ciclo deste estudo para editar perguntas.',
       );
       return;
     }
@@ -325,7 +325,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel salvar a pergunta.');
+      if (mounted) _mostrarMensagem('Não foi possível salvar a pergunta.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -344,7 +344,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       if (mounted) _mostrarMensagem('Pergunta duplicada como rascunho.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel duplicar a pergunta.');
+      if (mounted) _mostrarMensagem('Não foi possível duplicar a pergunta.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -394,7 +394,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+      if (mounted) _mostrarMensagem('Não foi possível alterar o status.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -525,7 +525,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            _estudo.titulo.isEmpty ? 'Estudo sem titulo' : _estudo.titulo,
+            _estudo.titulo.isEmpty ? 'Estudo sem título' : _estudo.titulo,
             style: TextStyle(
               color: t.textPrimary,
               fontSize: 22,
@@ -871,7 +871,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
       child: Padding(
         padding: const EdgeInsets.all(22),
         child: Text(
-          'Nao foi possivel carregar: $error',
+          'Não foi possível carregar: $error',
           style: TextStyle(color: t.error, fontWeight: FontWeight.w800),
           textAlign: TextAlign.center,
         ),

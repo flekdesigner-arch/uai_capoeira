@@ -22,6 +22,8 @@ class EstudoModel {
   final String linkExterno;
   final String capaUrl;
   final String capaStoragePath;
+  final double capaFocoX;
+  final double capaFocoY;
   final List<String> imagensUrls;
   final List<String> imagensStoragePaths;
   final String status;
@@ -55,6 +57,8 @@ class EstudoModel {
     required this.linkExterno,
     required this.capaUrl,
     required this.capaStoragePath,
+    required this.capaFocoX,
+    required this.capaFocoY,
     required this.imagensUrls,
     required this.imagensStoragePaths,
     required this.status,
@@ -90,6 +94,8 @@ class EstudoModel {
       linkExterno: '',
       capaUrl: '',
       capaStoragePath: '',
+      capaFocoX: 0.5,
+      capaFocoY: 0.5,
       imagensUrls: <String>[],
       imagensStoragePaths: <String>[],
       status: EstudoCicloStatus.rascunho,
@@ -130,6 +136,8 @@ class EstudoModel {
       linkExterno: _text(map['linkExterno']),
       capaUrl: normalizarImagemUrl(_text(map['capaUrl'])),
       capaStoragePath: _text(map['capaStoragePath']),
+      capaFocoX: _doubleClamped(map['capaFocoX'], fallback: 0.5),
+      capaFocoY: _doubleClamped(map['capaFocoY'], fallback: 0.5),
       imagensUrls: normalizarListaUrls(map['imagensUrls']),
       imagensStoragePaths: normalizarListaStoragePaths(
         map['imagensStoragePaths'],
@@ -179,6 +187,8 @@ class EstudoModel {
       'linkExterno': linkExterno.trim(),
       'capaUrl': normalizarImagemUrl(capaUrl),
       'capaStoragePath': capaStoragePath.trim(),
+      'capaFocoX': capaFocoX.clamp(0.0, 1.0),
+      'capaFocoY': capaFocoY.clamp(0.0, 1.0),
       'imagensUrls': normalizarListaUrls(imagensUrls),
       'imagensStoragePaths': normalizarListaStoragePaths(imagensStoragePaths),
       'status': status,
@@ -215,6 +225,8 @@ class EstudoModel {
     String? linkExterno,
     String? capaUrl,
     String? capaStoragePath,
+    double? capaFocoX,
+    double? capaFocoY,
     List<String>? imagensUrls,
     List<String>? imagensStoragePaths,
     String? status,
@@ -248,6 +260,8 @@ class EstudoModel {
       linkExterno: linkExterno ?? this.linkExterno,
       capaUrl: capaUrl ?? this.capaUrl,
       capaStoragePath: capaStoragePath ?? this.capaStoragePath,
+      capaFocoX: (capaFocoX ?? this.capaFocoX).clamp(0.0, 1.0),
+      capaFocoY: (capaFocoY ?? this.capaFocoY).clamp(0.0, 1.0),
       imagensUrls: imagensUrls ?? this.imagensUrls,
       imagensStoragePaths: imagensStoragePaths ?? this.imagensStoragePaths,
       status: status ?? this.status,
@@ -370,6 +384,18 @@ class EstudoModel {
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList(growable: false);
+  }
+
+  static double _doubleClamped(dynamic value, {required double fallback}) {
+    double parsed;
+    if (value is num) {
+      parsed = value.toDouble();
+    } else if (value is String) {
+      parsed = double.tryParse(value.trim()) ?? fallback;
+    } else {
+      parsed = fallback;
+    }
+    return parsed.clamp(0.0, 1.0);
   }
 
   static DateTime? _dateValue(dynamic value) {

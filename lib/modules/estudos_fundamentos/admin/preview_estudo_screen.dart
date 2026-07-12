@@ -15,7 +15,7 @@ class PreviewEstudoScreen extends StatelessWidget {
     final t = context.uai;
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('Pre-visualizacao do estudo')),
+      appBar: AppBar(title: const Text('Pré-visualização do estudo')),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -55,7 +55,7 @@ class PreviewEstudoScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Pre-visualizacao administrativa',
+                  'Pré-visualização administrativa',
                   style: TextStyle(
                     color: t.textPrimary,
                     fontWeight: FontWeight.w900,
@@ -63,7 +63,7 @@ class PreviewEstudoScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Este conteudo pode estar em rascunho e ainda nao representa uma liberacao para alunos.',
+                  'Este conteúdo pode estar em rascunho e ainda não representa uma liberação para alunos.',
                   style: TextStyle(
                     color: t.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -81,8 +81,8 @@ class PreviewEstudoScreen extends StatelessWidget {
     final t = context.uai;
     final items = <_ChecklistItem>[
       _ChecklistItem('Possui ciclo', estudo.cicloId.isNotEmpty),
-      _ChecklistItem('Possui titulo', estudo.titulo.trim().isNotEmpty),
-      _ChecklistItem('Possui numero', estudo.numero > 0),
+      _ChecklistItem('Possui título', estudo.titulo.trim().isNotEmpty),
+      _ChecklistItem('Possui número', estudo.numero > 0),
       _ChecklistItem('Possui resumo', estudo.resumo.trim().isNotEmpty),
       _ChecklistItem(
         'Possui texto aprofundado',
@@ -93,17 +93,17 @@ class PreviewEstudoScreen extends StatelessWidget {
         estudo.perguntaPrincipal.trim().isNotEmpty,
       ),
       _ChecklistItem(
-        'Possui reflexao final',
+        'Possui reflexão final',
         estudo.reflexaoFinal.trim().isNotEmpty,
       ),
       _ChecklistItem('Possui fontes', estudo.fontesLista.isNotEmpty),
       _ChecklistItem(
-        'Possui video',
+        'Possui vídeo',
         estudo.videoYoutubeUrl.trim().isNotEmpty,
         optional: true,
       ),
       _ChecklistItem(
-        'Esta publicado',
+        'Está publicado',
         estudo.status == EstudoCicloStatus.publicado,
       ),
       _ChecklistItem('Aparece na linha do tempo', estudo.mostrarNaLinhaDoTempo),

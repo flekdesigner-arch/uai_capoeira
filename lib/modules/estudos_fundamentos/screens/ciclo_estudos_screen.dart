@@ -76,7 +76,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
       body: !_cicloDisponivel
           ? _estadoCentral(
               icon: Icons.lock_outline_rounded,
-              titulo: 'Este ciclo sera liberado em breve.',
+              titulo: 'Este ciclo será liberado em breve.',
               texto: 'Volte mais tarde para acessar os estudos deste ciclo.',
             )
           : StreamBuilder<List<EstudoModel>>(
@@ -89,7 +89,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
                 if (snapshot.hasError) {
                   return _estadoCentral(
                     icon: Icons.error_outline_rounded,
-                    titulo: 'Nao foi possivel carregar os estudos.',
+                    titulo: 'Não foi possível carregar os estudos.',
                     texto: 'Verifique sua conexao e tente novamente.',
                     action: FilledButton.icon(
                       onPressed: _recarregar,
@@ -184,7 +184,13 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.ciclo.capaUrl.isNotEmpty) ...[
-            _capaImagem(context, widget.ciclo.capaUrl, aspectRatio: 16 / 6),
+            _capaImagem(
+              context,
+              widget.ciclo.capaUrl,
+              aspectRatio: 16 / 6,
+              focoX: widget.ciclo.capaFocoX,
+              focoY: widget.ciclo.capaFocoY,
+            ),
             const SizedBox(height: 12),
           ],
           Wrap(
@@ -204,7 +210,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
               _miniChip(
                 context,
                 Icons.check_circle_rounded,
-                '${resumo.concluidos} concluidos',
+                '${resumo.concluidos} concluídos',
               ),
               if (widget.ciclo.periodoHistorico.isNotEmpty)
                 _miniChip(
@@ -258,7 +264,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
           ),
           const SizedBox(height: 7),
           Text(
-            '${resumo.concluidos} de ${resumo.total} estudos concluidos (${resumo.percentual}%)',
+            '${resumo.concluidos} de ${resumo.total} estudos concluídos (${resumo.percentual}%)',
             style: TextStyle(
               color: t.textSecondary,
               fontWeight: FontWeight.w800,
@@ -294,7 +300,13 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (estudo.capaUrl.isNotEmpty) ...[
-            _capaImagem(context, estudo.capaUrl, aspectRatio: 16 / 8),
+            _capaImagem(
+              context,
+              estudo.capaUrl,
+              aspectRatio: 16 / 8,
+              focoX: estudo.capaFocoX,
+              focoY: estudo.capaFocoY,
+            ),
             const SizedBox(height: 10),
           ],
           Wrap(
@@ -334,7 +346,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            estudo.titulo.isEmpty ? 'Estudo sem titulo' : estudo.titulo,
+            estudo.titulo.isEmpty ? 'Estudo sem título' : estudo.titulo,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -400,6 +412,8 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
     BuildContext context,
     String url, {
     required double aspectRatio,
+    required double focoX,
+    required double focoY,
   }) {
     final t = context.uai;
     return Container(
@@ -414,6 +428,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
         child: Image.network(
           EstudoModel.normalizarImagemUrl(url),
           fit: BoxFit.cover,
+          alignment: Alignment((focoX * 2) - 1, (focoY * 2) - 1),
           errorBuilder: (context, error, stackTrace) => Center(
             child: Icon(Icons.image_not_supported_rounded, color: t.textMuted),
           ),

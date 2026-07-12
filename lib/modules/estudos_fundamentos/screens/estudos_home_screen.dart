@@ -77,7 +77,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
           if (configSnapshot.hasError) {
             return _buildEstadoCentral(
               icon: Icons.error_outline_rounded,
-              titulo: 'Nao foi possivel carregar os estudos.',
+              titulo: 'Não foi possível carregar os estudos.',
               texto: 'Verifique sua conexao e tente novamente.',
               action: _retryButton(),
             );
@@ -107,7 +107,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
               if (ciclosSnapshot.hasError) {
                 return _buildEstadoCentral(
                   icon: Icons.error_outline_rounded,
-                  titulo: 'Nao foi possivel carregar os estudos.',
+                  titulo: 'Não foi possível carregar os estudos.',
                   texto: 'Verifique sua conexao e tente novamente.',
                   action: _retryButton(),
                 );
@@ -190,7 +190,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                     icon: Icons.timeline_rounded,
                     titulo: 'Nenhum ciclo publicado ainda.',
                     texto:
-                        'Os conteudos aparecerao aqui quando forem liberados para alunos.',
+                        'Os conteúdos aparecerão aqui quando forem liberados para alunos.',
                   )
                 else
                   ...ciclos.asMap().entries.map(
@@ -278,7 +278,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '${resumo.concluidos} de ${resumo.total} estudos concluidos',
+            '${resumo.concluidos} de ${resumo.total} estudos concluídos',
             style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           Text(
@@ -291,7 +291,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
           if (ultimoEstudo != null) ...[
             const SizedBox(height: 6),
             Text(
-              'Ultimo acesso: Estudo ${ultimoEstudo.numero.toString().padLeft(3, '0')} - ${ultimoEstudo.titulo}',
+              '?ltimo acesso: Estudo ${ultimoEstudo.numero.toString().padLeft(3, '0')} - ${ultimoEstudo.titulo}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -364,7 +364,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Sua jornada de formacao teorica na capoeira.',
+                  'Sua jornada de formação teórica na capoeira.',
                   style: TextStyle(
                     color: onPrimary.withValues(alpha: 0.84),
                     fontWeight: FontWeight.w800,
@@ -447,7 +447,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (ciclo.capaUrl.isNotEmpty) ...[
-                _capaCiclo(context, ciclo.capaUrl),
+                _capaCiclo(context, ciclo),
                 const SizedBox(height: 12),
               ],
               Row(
@@ -504,7 +504,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                               _miniChip(
                                 context,
                                 Icons.check_circle_rounded,
-                                '${resumo.concluidos}/${resumo.total} concluidos',
+                                '${resumo.concluidos}/${resumo.total} concluídos',
                               ),
                             if (ciclo.periodoHistorico.isNotEmpty)
                               _miniChip(
@@ -517,7 +517,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                         const SizedBox(height: 8),
                         Text(
                           ciclo.titulo.isEmpty
-                              ? 'Ciclo sem titulo'
+                              ? 'Ciclo sem título'
                               : ciclo.titulo,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -606,7 +606,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
     );
   }
 
-  Widget _capaCiclo(BuildContext context, String url) {
+  Widget _capaCiclo(BuildContext context, EstudoCicloModel ciclo) {
     final t = context.uai;
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -618,8 +618,12 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
       child: AspectRatio(
         aspectRatio: 16 / 7,
         child: Image.network(
-          EstudoModel.normalizarImagemUrl(url),
+          EstudoModel.normalizarImagemUrl(ciclo.capaUrl),
           fit: BoxFit.cover,
+          alignment: Alignment(
+            (ciclo.capaFocoX * 2) - 1,
+            (ciclo.capaFocoY * 2) - 1,
+          ),
           errorBuilder: (context, error, stackTrace) => Center(
             child: Icon(Icons.image_not_supported_rounded, color: t.textMuted),
           ),

@@ -59,7 +59,7 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nao foi possivel registrar o inicio da leitura.'),
+          content: Text('Não foi possível registrar o início da leitura.'),
         ),
       );
     }
@@ -76,13 +76,13 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Estudo marcado como concluido.')),
+          const SnackBar(content: Text('Estudo marcado como concluído.')),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nao foi possivel salvar o progresso.')),
+          const SnackBar(content: Text('Não foi possível salvar o progresso.')),
         );
       }
     } finally {
@@ -132,7 +132,7 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
     if (widget.alunoId.isEmpty) {
       return _estadoBloqueado(
         context,
-        'Nao foi possivel identificar o aluno selecionado.',
+        'Não foi possível identificar o aluno selecionado.',
         'Volte para a Area do Aluno e acesse novamente.',
       );
     }
@@ -146,8 +146,8 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
     if (_estudoEmBreve) {
       return _estadoBloqueado(
         context,
-        'Este estudo sera liberado em breve.',
-        'Volte mais tarde para acessar este conteudo.',
+        'Este estudo será liberado em breve.',
+        'Volte mais tarde para acessar este conteúdo.',
       );
     }
 
@@ -235,8 +235,8 @@ class _DetalheEstudoScreenState extends State<DetalheEstudoScreen> {
           Expanded(
             child: Text(
               concluido
-                  ? 'Estudo concluido. Este registro representa leitura, nao aprovacao em avaliacao.'
-                  : 'Leitura iniciada. Concluir leitura nao equivale a aprovacao em avaliacao.',
+                  ? 'Estudo concluído. Este registro representa leitura, não aprovação em avaliação.'
+                  : 'Leitura iniciada. Concluir leitura não equivale a aprovação em avaliação.',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w800,

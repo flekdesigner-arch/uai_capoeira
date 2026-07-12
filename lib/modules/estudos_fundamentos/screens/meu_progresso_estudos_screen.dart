@@ -123,11 +123,11 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '${resumo.concluidos} de ${resumo.total} estudos concluidos',
+            '${resumo.concluidos} de ${resumo.total} estudos concluídos',
             style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           Text(
-            '${resumo.percentual}% da jornada concluida',
+            '${resumo.percentual}% da jornada concluída',
             style: TextStyle(
               color: t.textSecondary,
               fontWeight: FontWeight.w700,
@@ -154,7 +154,7 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Este progresso representa leitura dos estudos. Avaliacoes e certificados serao implementados futuramente.',
+              'Este progresso representa leitura dos estudos. Avaliações e certificados serão implementados futuramente.',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w800,
@@ -206,7 +206,7 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${resumo.concluidos} de ${resumo.total} estudos concluidos (${resumo.percentual}%)',
+            '${resumo.concluidos} de ${resumo.total} estudos concluídos (${resumo.percentual}%)',
             style: TextStyle(
               color: t.textSecondary,
               fontWeight: FontWeight.w700,
@@ -223,8 +223,8 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
     final iniciado = progresso?.iniciado == true;
     final t = context.uai;
     final label = concluido
-        ? 'Concluido'
-        : (iniciado ? 'Em andamento' : 'Nao iniciado');
+        ? 'Concluído'
+        : (iniciado ? 'Em andamento' : 'Não iniciado');
     final color = concluido ? t.success : (iniciado ? t.info : t.textMuted);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

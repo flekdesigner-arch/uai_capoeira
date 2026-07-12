@@ -70,7 +70,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
 
     if (naoSuportadas.isNotEmpty) {
       _mostrarMensagem(
-        'Esta atividade tem um tipo de pergunta que ainda nao e suportado no app.',
+        'Esta atividade tem um tipo de pergunta que ainda não é suportado no app.',
       );
       return;
     }
@@ -104,7 +104,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
       debugPrint('finalizarTentativaEstudo erro inesperado: $e');
       debugPrint('finalizarTentativaEstudo stack: $stack');
       if (!mounted) return;
-      _mostrarMensagem('Nao foi possivel enviar a atividade. Tente novamente.');
+      _mostrarMensagem('Não foi possível enviar a atividade. Tente novamente.');
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
@@ -166,18 +166,18 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
       case 'unauthenticated':
         return 'Entre novamente com Google para enviar a atividade.';
       case 'permission-denied':
-        return 'Seu acesso de aluno nao foi confirmado para esta atividade.';
+        return 'Seu acesso de aluno não foi confirmado para esta atividade.';
       case 'failed-precondition':
-        return 'Esta atividade ainda nao esta pronta para correcao. Confira se todas as perguntas tem gabarito ativo.';
+        return 'Esta atividade ainda não está pronta para correção. Confira se todas as perguntas têm gabarito ativo.';
       case 'invalid-argument':
-        return 'Alguma resposta esta invalida. Recarregue a atividade e tente novamente.';
+        return 'Alguma resposta está inválida. Recarregue a atividade e tente novamente.';
       case 'unavailable':
       case 'deadline-exceeded':
         return 'Falha de conexao com o servidor. Tente novamente.';
       case 'not-found':
-        return 'Nao encontramos este estudo ou aluno.';
+        return 'Não encontramos este estudo ou aluno.';
       default:
-        return 'Nao foi possivel concluir a atividade. Tente novamente.';
+        return 'Não foi possível concluir a atividade. Tente novamente.';
     }
   }
 
@@ -210,7 +210,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
           if (snapshot.hasError) {
             return _estadoCentral(
               icon: Icons.error_outline_rounded,
-              titulo: 'Nao foi possivel carregar as perguntas.',
+              titulo: 'Não foi possível carregar as perguntas.',
               texto: snapshot.error is FirebaseFunctionsException
                   ? _mensagemFunction(
                       snapshot.error! as FirebaseFunctionsException,
@@ -230,9 +230,9 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
           if (perguntas.isEmpty) {
             return _estadoCentral(
               icon: Icons.assignment_outlined,
-              titulo: 'Nenhuma pergunta disponivel.',
+              titulo: 'Nenhuma pergunta disponível.',
               texto:
-                  'Este estudo ainda nao possui perguntas liberadas para resposta.',
+                  'Este estudo ainda não possui perguntas liberadas para resposta.',
               action: OutlinedButton.icon(
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back_rounded),
@@ -285,7 +285,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'A correcao oficial sera feita no servidor.',
+                'A correção oficial será feita no servidor.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: t.textSecondary,

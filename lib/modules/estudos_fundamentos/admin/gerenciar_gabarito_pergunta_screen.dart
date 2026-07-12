@@ -80,7 +80,7 @@ class _GerenciarGabaritoPerguntaScreenState
       _logErro(e, stack);
       if (!mounted) return;
       setState(() => _carregando = false);
-      _mostrarMensagem('Nao foi possivel carregar o gabarito.');
+      _mostrarMensagem('Não foi possível carregar o gabarito.');
     }
   }
 
@@ -155,7 +155,7 @@ class _GerenciarGabaritoPerguntaScreenState
       _mostrarMensagem('Gabarito salvo em estudos_gabaritos.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel salvar o gabarito.');
+      if (mounted) _mostrarMensagem('Não foi possível salvar o gabarito.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -164,7 +164,7 @@ class _GerenciarGabaritoPerguntaScreenState
   Future<void> _excluir() async {
     final ok = await _confirmar(
       titulo: 'Excluir gabarito?',
-      mensagem: 'O gabarito protegido desta pergunta sera removido.',
+      mensagem: 'O gabarito protegido desta pergunta será removido.',
       acao: 'Excluir',
     );
     if (ok != true) return;
@@ -179,10 +179,10 @@ class _GerenciarGabaritoPerguntaScreenState
         _justificativa.clear();
         _ativo = true;
       });
-      _mostrarMensagem('Gabarito excluido.');
+      _mostrarMensagem('Gabarito excluído.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel excluir o gabarito.');
+      if (mounted) _mostrarMensagem('Não foi possível excluir o gabarito.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -192,8 +192,8 @@ class _GerenciarGabaritoPerguntaScreenState
     final ok = await _confirmar(
       titulo: novoValor ? 'Ativar gabarito?' : 'Desativar gabarito?',
       mensagem: novoValor
-          ? 'O gabarito ficara ativo para correcoes futuras protegidas.'
-          : 'O gabarito continuara salvo, mas ficara inativo para correcoes futuras.',
+          ? 'O gabarito ficará ativo para correções futuras protegidas.'
+          : 'O gabarito continuará salvo, mas ficará inativo para correções futuras.',
       acao: 'Confirmar',
     );
     return ok == true;
@@ -318,7 +318,7 @@ class _GerenciarGabaritoPerguntaScreenState
                             ),
                           ]),
                           const SizedBox(height: 12),
-                          _section('Configuracao', [
+                          _section('Configuração', [
                             Row(
                               children: [
                                 Expanded(child: _numberField(_peso, 'Peso')),
@@ -412,7 +412,7 @@ class _GerenciarGabaritoPerguntaScreenState
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Gabarito protegido. Nao aparece para alunos. Nao e salvo na pergunta publica.',
+              'Gabarito protegido. Não aparece para alunos. Não é salvo na pergunta pública.',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w900,
@@ -429,7 +429,7 @@ class _GerenciarGabaritoPerguntaScreenState
         .where((a) => a.id.trim().isNotEmpty && a.texto.trim().isNotEmpty)
         .toList();
     if (alternativas.isEmpty) {
-      return const Text('Esta pergunta nao possui alternativas publicas.');
+      return const Text('Esta pergunta não possui alternativas públicas.');
     }
     return Column(children: alternativas.map(_alternativaTile).toList());
   }
@@ -477,7 +477,7 @@ class _GerenciarGabaritoPerguntaScreenState
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'ID publico: ${alternativa.id}',
+                        'ID público: ${alternativa.id}',
                         style: TextStyle(
                           color: t.textSecondary,
                           fontSize: 12,
@@ -622,4 +622,3 @@ class _GerenciarGabaritoPerguntaScreenState
     );
   }
 }
-

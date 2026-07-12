@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_midias_storage_service.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/exclusao_estudos_admin_service.dart';
 
@@ -30,6 +31,7 @@ class _GerenciarCiclosEstudosScreenState
   _CiclosSortOption _sort = _CiclosSortOption.ordem;
   bool _salvando = false;
   int _reloadKey = 0;
+  List<EstudoCicloModel> _ciclosAtuais = const [];
 
   @override
   void dispose() {
@@ -69,7 +71,7 @@ class _GerenciarCiclosEstudosScreenState
     final resultado = await showDialog<EstudoCicloModel>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CicloFormDialog(ciclo: ciclo),
+      builder: (_) => _CicloFormDialog(ciclo: ciclo, ciclos: _ciclosAtuais),
     );
 
     if (resultado == null) return;
@@ -85,10 +87,19 @@ class _GerenciarCiclosEstudosScreenState
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel salvar o ciclo.');
+      if (mounted) _mostrarMensagem('Não foi possível salvar o ciclo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
+  }
+
+  void _abrirEstudosDoCiclo(EstudoCicloModel ciclo) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GerenciarEstudosScreen(cicloInicialId: ciclo.id),
+      ),
+    );
   }
 
   Future<void> _alterarStatus(EstudoCicloModel ciclo, String status) async {
@@ -116,7 +127,7 @@ class _GerenciarCiclosEstudosScreenState
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+      if (mounted) _mostrarMensagem('Não foi possível alterar o status.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -131,27 +142,27 @@ class _GerenciarCiclosEstudosScreenState
 
   Future<bool?> _confirmarStatus(EstudoCicloModel ciclo, String status) {
     var titulo = 'Alterar status?';
-    var mensagem = 'Confirme a alteracao de status deste ciclo.';
+    var mensagem = 'Confirme a alteração de status deste ciclo.';
     var acao = 'Confirmar';
 
     if (status == EstudoCicloStatus.publicado) {
       titulo = 'Publicar ciclo?';
       mensagem = _cicloIncompleto(ciclo)
           ? 'Este ciclo tem dados incompletos. Ele pode ser publicado, mas revise antes de liberar aos alunos futuramente.'
-          : 'O ciclo ficara marcado como publicado.';
+          : 'O ciclo ficará marcado como publicado.';
       acao = 'Publicar';
     } else if (status == EstudoCicloStatus.oculto) {
       titulo = 'Ocultar ciclo?';
-      mensagem = 'O ciclo nao sera exibido para alunos futuramente.';
+      mensagem = 'O ciclo não será exibido para alunos futuramente.';
       acao = 'Ocultar';
     } else if (status == EstudoCicloStatus.arquivado) {
       titulo = 'Arquivar ciclo?';
       mensagem =
-          'O ciclo ficara guardado no admin e nao aparecera para alunos futuramente.';
+          'O ciclo ficará guardado no admin e não aparecerá para alunos futuramente.';
       acao = 'Arquivar';
     } else if (status == EstudoCicloStatus.rascunho) {
       titulo = 'Voltar para rascunho?';
-      mensagem = 'O ciclo deixara de ser considerado publicado.';
+      mensagem = 'O ciclo deixará de ser considerado publicado.';
       acao = 'Voltar';
     }
 
@@ -165,7 +176,7 @@ class _GerenciarCiclosEstudosScreenState
       if (mounted) _mostrarMensagem('Ciclo duplicado como rascunho.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel duplicar o ciclo.');
+      if (mounted) _mostrarMensagem('Não foi possível duplicar o ciclo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -201,7 +212,7 @@ class _GerenciarCiclosEstudosScreenState
       await _repository.atualizarOrdem(ciclo, ciclo.ordem + delta);
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel alterar a ordem.');
+      if (mounted) _mostrarMensagem('Não foi possível alterar a ordem.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -209,9 +220,9 @@ class _GerenciarCiclosEstudosScreenState
 
   Future<void> _criarCiclosPadrao() async {
     final confirmar = await _confirmar(
-      titulo: 'Criar ciclos padrao?',
+      titulo: 'Criar ciclos padrão?',
       mensagem:
-          'Serao criados 10 ciclos base como rascunho. Nenhum ciclo sera publicado automaticamente.',
+          'Serão criados 10 ciclos base como rascunho. Nenhum ciclo será publicado automaticamente.',
       acao: 'Criar',
     );
     if (confirmar != true) return;
@@ -219,10 +230,10 @@ class _GerenciarCiclosEstudosScreenState
     setState(() => _salvando = true);
     try {
       await _repository.criarCiclosPadrao();
-      if (mounted) _mostrarMensagem('Ciclos padrao criados.');
+      if (mounted) _mostrarMensagem('Ciclos padrão criados.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel criar os ciclos padrao.');
+      if (mounted) _mostrarMensagem('Não foi possível criar os ciclos padrão.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -347,6 +358,7 @@ class _GerenciarCiclosEstudosScreenState
           }
 
           final ciclos = snapshot.data ?? const <EstudoCicloModel>[];
+          _ciclosAtuais = ciclos;
           final filtrados = _filtrarOrdenar(ciclos);
           return ListView(
             padding: EdgeInsets.fromLTRB(
@@ -479,7 +491,7 @@ class _GerenciarCiclosEstudosScreenState
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Organize a linha do tempo da formacao teorica da capoeira.',
+                      'Organize a linha do tempo da formação teórica da capoeira.',
                       style: TextStyle(
                         color: onPrimary.withValues(alpha: 0.84),
                         fontWeight: FontWeight.w700,
@@ -558,7 +570,7 @@ class _GerenciarCiclosEstudosScreenState
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search_rounded),
-              labelText: 'Buscar por titulo, descricao, periodo ou numero',
+              labelText: 'Buscar por título, descrição, período ou número',
             ),
           ),
           const SizedBox(height: 12),
@@ -618,7 +630,7 @@ class _GerenciarCiclosEstudosScreenState
         ),
         PopupMenuItem(
           value: _CiclosSortOption.titulo,
-          child: Text('Ordenar por titulo'),
+          child: Text('Ordenar por título'),
         ),
         PopupMenuItem(
           value: _CiclosSortOption.atualizadoEm,
@@ -638,7 +650,7 @@ class _GerenciarCiclosEstudosScreenState
             Icon(Icons.sort_rounded, color: t.primary, size: 17),
             const SizedBox(width: 6),
             Text(
-              'Ordenacao',
+              'Ordenação',
               style: TextStyle(color: t.primary, fontWeight: FontWeight.w900),
             ),
           ],
@@ -654,189 +666,198 @@ class _GerenciarCiclosEstudosScreenState
         ? ''
         : DateFormat('dd/MM/yyyy HH:mm').format(ciclo.atualizadoEm!);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.card,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
-        boxShadow: t.softShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        onTap: _salvando ? null : () => _abrirEstudosDoCiclo(ciclo),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Color.alphaBlend(
-                    statusColor.withValues(alpha: 0.12),
-                    t.cardAlt,
-                  ),
-                  borderRadius: BorderRadius.circular(t.cardRadius - 4),
-                ),
-                child: Center(
-                  child: Text(
-                    ciclo.numero.toString(),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ciclo.titulo.isEmpty ? 'Ciclo sem titulo' : ciclo.titulo,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 17,
-                        height: 1.1,
-                        fontWeight: FontWeight.w900,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        statusColor.withValues(alpha: 0.12),
+                        t.cardAlt,
                       ),
+                      borderRadius: BorderRadius.circular(t.cardRadius - 4),
                     ),
-                    if (ciclo.subtitulo.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        ciclo.subtitulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    child: Center(
+                      child: Text(
+                        ciclo.numero.toString(),
                         style: TextStyle(
-                          color: t.textSecondary,
-                          fontWeight: FontWeight.w800,
+                          color: statusColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _statusChip(ciclo.status),
-                        _miniChip(
-                          Icons.swap_vert_rounded,
-                          'Ordem ${ciclo.ordem}',
-                        ),
-                        if (ciclo.periodoHistorico.isNotEmpty)
-                          _miniChip(
-                            Icons.history_rounded,
-                            ciclo.periodoHistorico,
+                        Text(
+                          ciclo.titulo.isEmpty
+                              ? 'Ciclo sem título'
+                              : ciclo.titulo,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 17,
+                            height: 1.1,
+                            fontWeight: FontWeight.w900,
                           ),
-                        _miniChip(
-                          ciclo.mostrarNaLinhaDoTempo
-                              ? Icons.visibility_rounded
-                              : Icons.visibility_off_rounded,
-                          ciclo.mostrarNaLinhaDoTempo
-                              ? 'Na linha do tempo'
-                              : 'Fora da linha do tempo',
                         ),
-                        if (ciclo.mostrarComoEmBreve)
-                          _miniChip(Icons.schedule_rounded, 'Em breve'),
-                        if (updated.isNotEmpty)
-                          _miniChip(Icons.update_rounded, updated),
+                        if (ciclo.subtitulo.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            ciclo.subtitulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 7,
+                          runSpacing: 7,
+                          children: [
+                            _statusChip(ciclo.status),
+                            _miniChip(
+                              Icons.swap_vert_rounded,
+                              'Ordem ${ciclo.ordem}',
+                            ),
+                            if (ciclo.periodoHistorico.isNotEmpty)
+                              _miniChip(
+                                Icons.history_rounded,
+                                ciclo.periodoHistorico,
+                              ),
+                            _miniChip(
+                              ciclo.mostrarNaLinhaDoTempo
+                                  ? Icons.visibility_rounded
+                                  : Icons.visibility_off_rounded,
+                              ciclo.mostrarNaLinhaDoTempo
+                                  ? 'Na linha do tempo'
+                                  : 'Fora da linha do tempo',
+                            ),
+                            if (ciclo.mostrarComoEmBreve)
+                              _miniChip(Icons.schedule_rounded, 'Em breve'),
+                            if (updated.isNotEmpty)
+                              _miniChip(Icons.update_rounded, updated),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              if (ciclo.descricao.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  ciclo.descricao,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    height: 1.32,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _smallButton(
+                    icon: Icons.edit_rounded,
+                    label: 'Editar',
+                    onTap: _salvando ? null : () => _abrirFormulario(ciclo),
+                  ),
+                  _smallButton(
+                    icon: Icons.copy_rounded,
+                    label: 'Duplicar',
+                    onTap: _salvando ? null : () => _duplicar(ciclo),
+                  ),
+                  _smallButton(
+                    icon: Icons.arrow_upward_rounded,
+                    label: 'Subir',
+                    onTap: _salvando ? null : () => _moverOrdem(ciclo, -1),
+                  ),
+                  _smallButton(
+                    icon: Icons.arrow_downward_rounded,
+                    label: 'Descer',
+                    onTap: _salvando ? null : () => _moverOrdem(ciclo, 1),
+                  ),
+                  _acaoStatus(
+                    ciclo,
+                    EstudoCicloStatus.publicado,
+                    Icons.publish_rounded,
+                    'Publicar',
+                  ),
+                  _acaoStatus(
+                    ciclo,
+                    EstudoCicloStatus.rascunho,
+                    Icons.edit_note_rounded,
+                    'Rascunho',
+                  ),
+                  _acaoStatus(
+                    ciclo,
+                    EstudoCicloStatus.emBreve,
+                    Icons.schedule_rounded,
+                    'Em breve',
+                  ),
+                  _acaoStatus(
+                    ciclo,
+                    EstudoCicloStatus.oculto,
+                    Icons.visibility_off_rounded,
+                    'Ocultar',
+                  ),
+                  _acaoStatus(
+                    ciclo,
+                    EstudoCicloStatus.arquivado,
+                    Icons.archive_rounded,
+                    'Arquivar',
+                    danger: true,
+                  ),
+                  _smallButton(
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Apagar',
+                    danger: true,
+                    onTap: _salvando ? null : () => _apagarCicloCompleto(ciclo),
+                  ),
+                  if (ciclo.status == EstudoCicloStatus.arquivado)
+                    _acaoStatus(
+                      ciclo,
+                      EstudoCicloStatus.rascunho,
+                      Icons.restore_rounded,
+                      'Restaurar',
+                    ),
+                ],
               ),
             ],
           ),
-          if (ciclo.descricao.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              ciclo.descricao,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: t.textSecondary,
-                height: 1.32,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _smallButton(
-                icon: Icons.edit_rounded,
-                label: 'Editar',
-                onTap: _salvando ? null : () => _abrirFormulario(ciclo),
-              ),
-              _smallButton(
-                icon: Icons.copy_rounded,
-                label: 'Duplicar',
-                onTap: _salvando ? null : () => _duplicar(ciclo),
-              ),
-              _smallButton(
-                icon: Icons.arrow_upward_rounded,
-                label: 'Subir',
-                onTap: _salvando ? null : () => _moverOrdem(ciclo, -1),
-              ),
-              _smallButton(
-                icon: Icons.arrow_downward_rounded,
-                label: 'Descer',
-                onTap: _salvando ? null : () => _moverOrdem(ciclo, 1),
-              ),
-              _acaoStatus(
-                ciclo,
-                EstudoCicloStatus.publicado,
-                Icons.publish_rounded,
-                'Publicar',
-              ),
-              _acaoStatus(
-                ciclo,
-                EstudoCicloStatus.rascunho,
-                Icons.edit_note_rounded,
-                'Rascunho',
-              ),
-              _acaoStatus(
-                ciclo,
-                EstudoCicloStatus.emBreve,
-                Icons.schedule_rounded,
-                'Em breve',
-              ),
-              _acaoStatus(
-                ciclo,
-                EstudoCicloStatus.oculto,
-                Icons.visibility_off_rounded,
-                'Ocultar',
-              ),
-              _acaoStatus(
-                ciclo,
-                EstudoCicloStatus.arquivado,
-                Icons.archive_rounded,
-                'Arquivar',
-                danger: true,
-              ),
-              _smallButton(
-                icon: Icons.delete_forever_rounded,
-                label: 'Apagar',
-                danger: true,
-                onTap: _salvando ? null : () => _apagarCicloCompleto(ciclo),
-              ),
-              if (ciclo.status == EstudoCicloStatus.arquivado)
-                _acaoStatus(
-                  ciclo,
-                  EstudoCicloStatus.rascunho,
-                  Icons.restore_rounded,
-                  'Restaurar',
-                ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -972,7 +993,7 @@ class _GerenciarCiclosEstudosScreenState
 
     return _buildMensagemCentral(
       icon: Icons.error_outline_rounded,
-      titulo: 'Nao foi possivel carregar os ciclos.',
+      titulo: 'Não foi possível carregar os ciclos.',
       texto: 'Verifique sua conexao e tente novamente.$detalhe',
       action: FilledButton.icon(
         onPressed: _recarregar,
@@ -1048,8 +1069,9 @@ class _GerenciarCiclosEstudosScreenState
 
 class _CicloFormDialog extends StatefulWidget {
   final EstudoCicloModel? ciclo;
+  final List<EstudoCicloModel> ciclos;
 
-  const _CicloFormDialog({this.ciclo});
+  const _CicloFormDialog({this.ciclo, required this.ciclos});
 
   @override
   State<_CicloFormDialog> createState() => _CicloFormDialogState();
@@ -1068,6 +1090,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       EstudosMidiasStorageService();
 
   late String _capaStoragePath;
+  late double _capaFocoX;
+  late double _capaFocoY;
   int _compressaoMidia = 15;
   bool _enviandoMidia = false;
   String _ultimoUploadResumo = '';
@@ -1080,11 +1104,20 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
   void initState() {
     super.initState();
     final ciclo = widget.ciclo ?? EstudoCicloModel.empty();
+    final proximoNumero = widget.ciclos.isEmpty
+        ? 1
+        : widget.ciclos.map((c) => c.numero).reduce((a, b) => a > b ? a : b) +
+              1;
+    final proximaOrdem = widget.ciclos.isEmpty
+        ? 1
+        : widget.ciclos.map((c) => c.ordem).reduce((a, b) => a > b ? a : b) + 1;
     _numeroController = TextEditingController(
-      text: ciclo.numero <= 0 ? '' : ciclo.numero.toString(),
+      text: ciclo.numero <= 0
+          ? proximoNumero.toString()
+          : ciclo.numero.toString(),
     );
     _ordemController = TextEditingController(
-      text: ciclo.ordem <= 0 ? '' : ciclo.ordem.toString(),
+      text: ciclo.ordem <= 0 ? proximaOrdem.toString() : ciclo.ordem.toString(),
     );
     _tituloController = TextEditingController(text: ciclo.titulo);
     _subtituloController = TextEditingController(text: ciclo.subtitulo);
@@ -1092,6 +1125,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
     _periodoController = TextEditingController(text: ciclo.periodoHistorico);
     _capaController = TextEditingController(text: ciclo.capaUrl);
     _capaStoragePath = ciclo.capaStoragePath;
+    _capaFocoX = ciclo.capaFocoX;
+    _capaFocoY = ciclo.capaFocoY;
     _status = ciclo.status;
     _mostrarNaLinhaDoTempo = ciclo.mostrarNaLinhaDoTempo;
     _mostrarComoEmBreve = ciclo.mostrarComoEmBreve;
@@ -1129,6 +1164,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       periodoHistorico: _periodoController.text.trim(),
       capaUrl: _capaController.text.trim(),
       capaStoragePath: _capaStoragePath,
+      capaFocoX: _capaFocoX,
+      capaFocoY: _capaFocoY,
       status: novoStatus,
       mostrarNaLinhaDoTempo: _mostrarNaLinhaDoTempo,
       mostrarComoEmBreve: _mostrarComoEmBreve,
@@ -1181,11 +1218,11 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       builder: (_) => AlertDialog(
         backgroundColor: t.surface,
         title: Text(
-          'Publicar sem descricao?',
+          'Publicar sem descrição?',
           style: TextStyle(color: t.textPrimary),
         ),
         content: Text(
-          'A descricao esta vazia. O ciclo pode ser salvo como publicado, mas revise antes de liberar aos alunos futuramente.',
+          'A descrição está vazia. O ciclo pode ser salvo como publicado, mas revise antes de liberar aos alunos futuramente.',
           style: TextStyle(color: t.textSecondary),
         ),
         actions: [
@@ -1255,7 +1292,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _formSection('Identificacao', [
+                    _formSection('Identificação', [
                       LayoutBuilder(
                         builder: (context, constraints) {
                           if (constraints.maxWidth < 560) {
@@ -1263,7 +1300,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                               children: [
                                 _numberField(
                                   _numeroController,
-                                  'Numero do ciclo',
+                                  'Número do ciclo',
                                 ),
                                 const SizedBox(height: 10),
                                 _numberField(_ordemController, 'Ordem'),
@@ -1275,7 +1312,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                               Expanded(
                                 child: _numberField(
                                   _numeroController,
-                                  'Numero do ciclo',
+                                  'Número do ciclo',
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -1289,26 +1326,26 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                       const SizedBox(height: 10),
                       _textField(
                         controller: _tituloController,
-                        label: 'Titulo',
+                        label: 'Título',
                         requiredField: true,
                       ),
                       const SizedBox(height: 10),
                       _textField(
                         controller: _subtituloController,
-                        label: 'Subtitulo',
+                        label: 'Subtítulo',
                       ),
                     ]),
                     const SizedBox(height: 12),
-                    _formSection('Conteudo', [
+                    _formSection('Conteúdo', [
                       _textField(
                         controller: _descricaoController,
-                        label: 'Descricao',
+                        label: 'Descrição',
                         maxLines: 4,
                       ),
                       const SizedBox(height: 10),
                       _textField(
                         controller: _periodoController,
-                        label: 'Periodo historico',
+                        label: 'Período histórico',
                       ),
                       const SizedBox(height: 10),
                       _textField(
@@ -1319,7 +1356,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
                       _midiaControls(),
                     ]),
                     const SizedBox(height: 12),
-                    _formSection('Publicacao e visibilidade', [
+                    _formSection('Publicação e visibilidade', [
                       DropdownButtonFormField<String>(
                         initialValue: _status,
                         decoration: const InputDecoration(labelText: 'Status'),
@@ -1467,6 +1504,8 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
 
   Widget _midiaControls() {
     final t = context.uai;
+    final cicloId = widget.ciclo?.id.trim() ?? '';
+    final podeEnviarCapa = cicloId.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1494,6 +1533,10 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
               child: Image.network(
                 _capaController.text.trim(),
                 fit: BoxFit.cover,
+                alignment: Alignment(
+                  (_capaFocoX * 2) - 1,
+                  (_capaFocoY * 2) - 1,
+                ),
                 errorBuilder: (context, error, stackTrace) => Container(
                   color: t.cardAlt,
                   alignment: Alignment.center,
@@ -1508,7 +1551,7 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
           const SizedBox(height: 10),
         ],
         OutlinedButton.icon(
-          onPressed: _enviandoMidia ? null : _enviarCapa,
+          onPressed: _enviandoMidia || !podeEnviarCapa ? null : _enviarCapa,
           icon: _enviandoMidia
               ? const SizedBox(
                   width: 16,
@@ -1518,6 +1561,19 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
               : const Icon(Icons.cloud_upload_rounded),
           label: Text(_enviandoMidia ? 'Enviando...' : 'Enviar capa'),
         ),
+        if (!podeEnviarCapa) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Salve o ciclo primeiro para enviar a capa.',
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        _focoCapaControls(),
         if (_ultimoUploadResumo.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
@@ -1529,6 +1585,64 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _focoCapaControls() {
+    final t = context.uai;
+    const pontos = <_FocoCapaOpcao>[
+      _FocoCapaOpcao('Superior esquerda', 0, 0),
+      _FocoCapaOpcao('Superior', 0.5, 0),
+      _FocoCapaOpcao('Superior direita', 1, 0),
+      _FocoCapaOpcao('Esquerda', 0, 0.5),
+      _FocoCapaOpcao('Centro', 0.5, 0.5),
+      _FocoCapaOpcao('Direita', 1, 0.5),
+      _FocoCapaOpcao('Inferior esquerda', 0, 1),
+      _FocoCapaOpcao('Inferior', 0.5, 1),
+      _FocoCapaOpcao('Inferior direita', 1, 1),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Foco da capa',
+          style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: pontos.map((ponto) {
+            final selected =
+                (_capaFocoX - ponto.x).abs() < 0.01 &&
+                (_capaFocoY - ponto.y).abs() < 0.01;
+            return ChoiceChip(
+              label: Text(ponto.label),
+              selected: selected,
+              onSelected: (_) => setState(() {
+                _capaFocoX = ponto.x;
+                _capaFocoY = ponto.y;
+              }),
+            );
+          }).toList(),
+        ),
+        Slider(
+          value: _capaFocoX,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          label: 'X ${(_capaFocoX * 100).round()}%',
+          onChanged: (value) => setState(() => _capaFocoX = value),
+        ),
+        Slider(
+          value: _capaFocoY,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          label: 'Y ${(_capaFocoY * 100).round()}%',
+          onChanged: (value) => setState(() => _capaFocoY = value),
+        ),
       ],
     );
   }
@@ -1573,4 +1687,12 @@ class _CicloFormDialogState extends State<_CicloFormDialog> {
       ),
     );
   }
+}
+
+class _FocoCapaOpcao {
+  final String label;
+  final double x;
+  final double y;
+
+  const _FocoCapaOpcao(this.label, this.x, this.y);
 }

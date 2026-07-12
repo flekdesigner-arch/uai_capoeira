@@ -43,6 +43,8 @@ class EstudoCicloModel {
   final String periodoHistorico;
   final String capaUrl;
   final String capaStoragePath;
+  final double capaFocoX;
+  final double capaFocoY;
   final int ordem;
   final String status;
   final bool mostrarNaLinhaDoTempo;
@@ -61,6 +63,8 @@ class EstudoCicloModel {
     required this.periodoHistorico,
     required this.capaUrl,
     required this.capaStoragePath,
+    required this.capaFocoX,
+    required this.capaFocoY,
     required this.ordem,
     required this.status,
     required this.mostrarNaLinhaDoTempo,
@@ -81,6 +85,8 @@ class EstudoCicloModel {
       periodoHistorico: '',
       capaUrl: '',
       capaStoragePath: '',
+      capaFocoX: 0.5,
+      capaFocoY: 0.5,
       ordem: 1,
       status: EstudoCicloStatus.rascunho,
       mostrarNaLinhaDoTempo: true,
@@ -107,6 +113,8 @@ class EstudoCicloModel {
       periodoHistorico: _text(map['periodoHistorico']),
       capaUrl: _text(map['capaUrl']),
       capaStoragePath: _text(map['capaStoragePath']),
+      capaFocoX: _doubleClamped(map['capaFocoX'], fallback: 0.5),
+      capaFocoY: _doubleClamped(map['capaFocoY'], fallback: 0.5),
       ordem: _intValue(map['ordem'], fallback: 0),
       status: EstudoCicloStatus.isValid(status)
           ? status
@@ -132,6 +140,8 @@ class EstudoCicloModel {
       'periodoHistorico': periodoHistorico.trim(),
       'capaUrl': capaUrl.trim(),
       'capaStoragePath': capaStoragePath.trim(),
+      'capaFocoX': capaFocoX.clamp(0.0, 1.0),
+      'capaFocoY': capaFocoY.clamp(0.0, 1.0),
       'ordem': ordem,
       'status': status,
       'mostrarNaLinhaDoTempo': mostrarNaLinhaDoTempo,
@@ -153,6 +163,8 @@ class EstudoCicloModel {
     String? periodoHistorico,
     String? capaUrl,
     String? capaStoragePath,
+    double? capaFocoX,
+    double? capaFocoY,
     int? ordem,
     String? status,
     bool? mostrarNaLinhaDoTempo,
@@ -171,6 +183,8 @@ class EstudoCicloModel {
       periodoHistorico: periodoHistorico ?? this.periodoHistorico,
       capaUrl: capaUrl ?? this.capaUrl,
       capaStoragePath: capaStoragePath ?? this.capaStoragePath,
+      capaFocoX: (capaFocoX ?? this.capaFocoX).clamp(0.0, 1.0),
+      capaFocoY: (capaFocoY ?? this.capaFocoY).clamp(0.0, 1.0),
       ordem: ordem ?? this.ordem,
       status: status ?? this.status,
       mostrarNaLinhaDoTempo:
@@ -209,6 +223,18 @@ class EstudoCicloModel {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value.trim()) ?? fallback;
     return fallback;
+  }
+
+  static double _doubleClamped(dynamic value, {required double fallback}) {
+    double parsed;
+    if (value is num) {
+      parsed = value.toDouble();
+    } else if (value is String) {
+      parsed = double.tryParse(value.trim()) ?? fallback;
+    } else {
+      parsed = fallback;
+    }
+    return parsed.clamp(0.0, 1.0);
   }
 
   static DateTime? _dateValue(dynamic value) {

@@ -58,7 +58,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                estudo.titulo.isEmpty ? 'Estudo sem titulo' : estudo.titulo,
+                estudo.titulo.isEmpty ? 'Estudo sem título' : estudo.titulo,
                 style: TextStyle(
                   color: t.textPrimary,
                   fontSize: 28,
@@ -120,7 +120,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
         if (estudo.voceSabia.isNotEmpty)
           _section(
             context,
-            'Voce sabia?',
+            'Você sabia?',
             estudo.voceSabia,
             Icons.lightbulb_outline_rounded,
           ),
@@ -134,7 +134,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
         if (estudo.reflexaoFinal.isNotEmpty)
           _section(
             context,
-            'Reflexao final',
+            'Reflexão final',
             estudo.reflexaoFinal,
             Icons.psychology_rounded,
           ),
@@ -143,7 +143,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
         if (estudo.fontesLista.isNotEmpty)
           _listSection(
             context,
-            'Fontes e referencias',
+            'Fontes e referências',
             estudo.fontesLista,
             Icons.source_rounded,
           ),
@@ -167,6 +167,10 @@ class EstudoArtigoRenderer extends StatelessWidget {
         child: Image.network(
           estudo.capaUrl,
           fit: BoxFit.cover,
+          alignment: Alignment(
+            (estudo.capaFocoX * 2) - 1,
+            (estudo.capaFocoY * 2) - 1,
+          ),
           errorBuilder: (context, error, stackTrace) => Center(
             child: Icon(
               Icons.broken_image_rounded,
@@ -357,7 +361,7 @@ class EstudoArtigoRenderer extends StatelessWidget {
             _linkCard(
               context,
               Icons.smart_display_rounded,
-              'Video do YouTube',
+              'Vídeo do YouTube',
               estudo.videoYoutubeUrl,
             ),
           if (estudo.linkExterno.isNotEmpty) ...[

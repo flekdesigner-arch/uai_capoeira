@@ -25,17 +25,48 @@ class EstudosMidiasUploadResultado {
     required this.alturaFinal,
   });
 
-  String get resumoTamanho {
-    return '${_formatBytes(tamanhoOriginalBytes)} -> ${_formatBytes(tamanhoFinalBytes)} (${percentualReducao.toStringAsFixed(0)}% menor)';
-  }
+  String get resumoTamanho =>
+      '${formatBytes(tamanhoOriginalBytes)} -> ${formatBytes(tamanhoFinalBytes)} (${percentualReducao.toStringAsFixed(0)}% menor)';
 
-  static String _formatBytes(int bytes) {
+  static String formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     final kb = bytes / 1024;
     if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(2)} MB';
   }
+}
+
+class EstudosMidiasUploadLoteResultado {
+  final int totalSelecionadas;
+  final List<EstudosMidiasUploadResultado> enviados;
+  final List<String> falhas;
+
+  const EstudosMidiasUploadLoteResultado({
+    required this.totalSelecionadas,
+    required this.enviados,
+    required this.falhas,
+  });
+
+  int get totalEnviadas => enviados.length;
+  int get totalFalhas => falhas.length;
+  int get tamanhoOriginalTotal =>
+      enviados.fold(0, (sum, item) => sum + item.tamanhoOriginalBytes);
+  int get tamanhoFinalTotal =>
+      enviados.fold(0, (sum, item) => sum + item.tamanhoFinalBytes);
+  double get percentualReducaoTotal {
+    if (tamanhoOriginalTotal <= 0) return 0;
+    return max(
+      0,
+      (1 - (tamanhoFinalTotal / tamanhoOriginalTotal)) * 100,
+    ).toDouble();
+  }
+
+  String get resumo =>
+      '$totalEnviadas/$totalSelecionadas enviadas, $totalFalhas falhas. '
+      '${EstudosMidiasUploadResultado.formatBytes(tamanhoOriginalTotal)} -> '
+      '${EstudosMidiasUploadResultado.formatBytes(tamanhoFinalTotal)} '
+      '(${percentualReducaoTotal.toStringAsFixed(0)}% menor)';
 }
 
 class EstudosMidiasStorageService {
@@ -52,9 +83,12 @@ class EstudosMidiasStorageService {
   Future<EstudosMidiasUploadResultado?> enviarCapaCiclo({
     required String cicloId,
     required int compressaoPercentual,
-  }) {
+  }) async {
+    final file = await _selecionarArquivoUnico();
+    if (file == null) return null;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return _selecionarComprimirEnviar(
+    return _comprimirEnviarArquivo(
+      file: file,
       storagePath:
           'estudos_fundamentos/ciclos/$cicloId/capa/capa_$timestamp.jpg',
       compressaoPercentual: compressaoPercentual,
@@ -66,9 +100,12 @@ class EstudosMidiasStorageService {
     required String cicloId,
     required String estudoId,
     required int compressaoPercentual,
-  }) {
+  }) async {
+    final file = await _selecionarArquivoUnico();
+    if (file == null) return null;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return _selecionarComprimirEnviar(
+    return _comprimirEnviarArquivo(
+      file: file,
       storagePath:
           'estudos_fundamentos/ciclos/$cicloId/estudos/$estudoId/capa/capa_$timestamp.jpg',
       compressaoPercentual: compressaoPercentual,
@@ -80,14 +117,54 @@ class EstudosMidiasStorageService {
     required String cicloId,
     required String estudoId,
     required int compressaoPercentual,
-  }) {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = _random.nextInt(999999999).toString().padLeft(9, '0');
-    return _selecionarComprimirEnviar(
-      storagePath:
-          'estudos_fundamentos/ciclos/$cicloId/estudos/$estudoId/imagens/img_${timestamp}_$random.jpg',
+  }) async {
+    final lote = await enviarImagensEstudo(
+      cicloId: cicloId,
+      estudoId: estudoId,
       compressaoPercentual: compressaoPercentual,
-      larguraMaxima: larguraMaximaPadrao,
+      allowMultiple: false,
+    );
+    return lote == null || lote.enviados.isEmpty ? null : lote.enviados.first;
+  }
+
+  Future<EstudosMidiasUploadLoteResultado?> enviarImagensEstudo({
+    required String cicloId,
+    required String estudoId,
+    required int compressaoPercentual,
+    bool allowMultiple = true,
+  }) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+      allowMultiple: allowMultiple,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return null;
+
+    final enviados = <EstudosMidiasUploadResultado>[];
+    final falhas = <String>[];
+    for (final file in result.files) {
+      try {
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final random = _random.nextInt(999999999).toString().padLeft(9, '0');
+        enviados.add(
+          await _comprimirEnviarArquivo(
+            file: file,
+            storagePath:
+                'estudos_fundamentos/ciclos/$cicloId/estudos/$estudoId/imagens/img_${timestamp}_$random.jpg',
+            compressaoPercentual: compressaoPercentual,
+            larguraMaxima: larguraMaximaPadrao,
+          ),
+        );
+      } catch (error) {
+        falhas.add('${file.name}: $error');
+      }
+    }
+
+    return EstudosMidiasUploadLoteResultado(
+      totalSelecionadas: result.files.length,
+      enviados: enviados,
+      falhas: falhas,
     );
   }
 
@@ -110,11 +187,7 @@ class EstudosMidiasStorageService {
         !path.contains('//');
   }
 
-  Future<EstudosMidiasUploadResultado?> _selecionarComprimirEnviar({
-    required String storagePath,
-    required int compressaoPercentual,
-    required int larguraMaxima,
-  }) async {
+  Future<PlatformFile?> _selecionarArquivoUnico() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
@@ -122,8 +195,15 @@ class EstudosMidiasStorageService {
       withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
+    return result.files.single;
+  }
 
-    final file = result.files.single;
+  Future<EstudosMidiasUploadResultado> _comprimirEnviarArquivo({
+    required PlatformFile file,
+    required String storagePath,
+    required int compressaoPercentual,
+    required int larguraMaxima,
+  }) async {
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       throw const EstudosMidiasUploadException(

@@ -102,7 +102,7 @@ class _GerenciarPerguntasEstudoScreenState
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel salvar a pergunta.');
+      if (mounted) _mostrarMensagem('Não foi possível salvar a pergunta.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -140,7 +140,7 @@ class _GerenciarPerguntasEstudoScreenState
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel alterar o status.');
+      if (mounted) _mostrarMensagem('Não foi possível alterar o status.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -159,7 +159,7 @@ class _GerenciarPerguntasEstudoScreenState
       if (mounted) _mostrarMensagem('Pergunta duplicada como rascunho.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel duplicar a pergunta.');
+      if (mounted) _mostrarMensagem('Não foi possível duplicar a pergunta.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -342,7 +342,7 @@ class _GerenciarPerguntasEstudoScreenState
                   icon: Icons.quiz_rounded,
                   titulo: 'Crie ciclo e estudo antes de cadastrar perguntas.',
                   texto:
-                      'Perguntas de avaliacao precisam estar vinculadas a um estudo.',
+                      'Perguntas de avaliação precisam estar vinculadas a um estudo.',
                 );
               }
               return StreamBuilder<List<PerguntaEstudoModel>>(
@@ -382,7 +382,7 @@ class _GerenciarPerguntasEstudoScreenState
                                   icon: Icons.quiz_rounded,
                                   titulo: 'Nenhuma pergunta cadastrada.',
                                   texto:
-                                      'Crie perguntas publicas de avaliacao, ainda sem gabarito.',
+                                      'Crie perguntas públicas de avaliação, ainda sem gabarito.',
                                   action: FilledButton.icon(
                                     onPressed: _salvando
                                         ? null
@@ -778,7 +778,7 @@ class _GerenciarPerguntasEstudoScreenState
               if (pergunta.podeAparecerEmAvaliacao)
                 _miniChip(
                   Icons.check_circle_outline_rounded,
-                  'Pode aparecer em avaliacao',
+                  'Pode aparecer em avaliação',
                 ),
               ...pergunta.tags
                   .take(4)
@@ -980,7 +980,7 @@ class _GerenciarPerguntasEstudoScreenState
     }
     return _buildMensagemCentral(
       icon: Icons.error_outline_rounded,
-      titulo: 'Nao foi possivel carregar as perguntas.',
+      titulo: 'Não foi possível carregar as perguntas.',
       texto: 'Verifique sua conexao e tente novamente.$detalhe',
       action: FilledButton.icon(
         onPressed: _recarregar,
@@ -1355,7 +1355,7 @@ class PerguntaFormDialogState extends State<PerguntaFormDialog> {
                       ),
                       const SizedBox(height: 8),
                       _switchRow(
-                        'Pode aparecer em avaliacao futuramente',
+                        'Pode aparecer em avaliação futuramente',
                         _podeAparecer,
                         (v) => setState(() => _podeAparecer = v),
                       ),
@@ -1426,9 +1426,9 @@ class PerguntaFormDialogState extends State<PerguntaFormDialog> {
                       ),
                     ]),
                     const SizedBox(height: 12),
-                    _section('Alternativas publicas', [
+                    _section('Alternativas públicas', [
                       Text(
-                        'Nao marque a alternativa correta nesta fase. O gabarito sera separado futuramente.',
+                        'Não marque a alternativa correta nesta fase. O gabarito será separado futuramente.',
                         style: TextStyle(
                           color: t.textSecondary,
                           fontWeight: FontWeight.w700,
@@ -1524,7 +1524,7 @@ class PerguntaFormDialogState extends State<PerguntaFormDialog> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'O gabarito desta pergunta sera cadastrado em uma fase futura, apos protecao das regras Firestore/Cloud Functions.',
+              'O gabarito desta pergunta será cadastrado em uma fase futura, após proteção das regras Firestore/Cloud Functions.',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w800,

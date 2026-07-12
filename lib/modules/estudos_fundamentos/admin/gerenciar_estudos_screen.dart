@@ -16,7 +16,9 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/admin/preview_estudo_sc
 enum _EstudosSortOption { cicloOrdem, numero, titulo, atualizadoEm }
 
 class GerenciarEstudosScreen extends StatefulWidget {
-  const GerenciarEstudosScreen({super.key});
+  final String cicloInicialId;
+
+  const GerenciarEstudosScreen({super.key, this.cicloInicialId = ''});
 
   @override
   State<GerenciarEstudosScreen> createState() => _GerenciarEstudosScreenState();
@@ -28,10 +30,18 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
   final TextEditingController _buscaController = TextEditingController();
 
   String _statusFiltro = 'todos';
-  String _cicloFiltro = 'todos';
+  late String _cicloFiltro;
   _EstudosSortOption _sort = _EstudosSortOption.cicloOrdem;
   bool _salvando = false;
   int _reloadKey = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _cicloFiltro = widget.cicloInicialId.isEmpty
+        ? 'todos'
+        : widget.cicloInicialId;
+  }
 
   @override
   void dispose() {
@@ -91,7 +101,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
       }
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel salvar o estudo.');
+      if (mounted) _mostrarMensagem('Não foi possível salvar o estudo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -145,7 +155,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
     } catch (e, stack) {
       _logErro(e, stack);
       if (mounted) {
-        _mostrarMensagem('Nao foi possivel alterar o status.');
+        _mostrarMensagem('Não foi possível alterar o status.');
       }
     } finally {
       if (mounted) setState(() => _salvando = false);
@@ -167,21 +177,21 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
     if (status == EstudoCicloStatus.publicado) {
       titulo = 'Publicar estudo?';
       mensagem = _estudoIncompleto(estudo)
-          ? 'Este estudo tem conteudo incompleto. Ele pode ser publicado, mas revise antes de liberar aos alunos futuramente.'
-          : 'O estudo ficara marcado como publicado.';
+          ? 'Este estudo tem conteúdo incompleto. Ele pode ser publicado, mas revise antes de liberar aos alunos futuramente.'
+          : 'O estudo ficará marcado como publicado.';
       acao = 'Publicar';
     } else if (status == EstudoCicloStatus.oculto) {
       titulo = 'Ocultar estudo?';
-      mensagem = 'O estudo nao sera exibido para alunos futuramente.';
+      mensagem = 'O estudo não será exibido para alunos futuramente.';
       acao = 'Ocultar';
     } else if (status == EstudoCicloStatus.arquivado) {
       titulo = 'Arquivar estudo?';
       mensagem =
-          'O estudo ficara guardado no admin e nao aparecera para alunos futuramente.';
+          'O estudo ficará guardado no admin e não aparecerá para alunos futuramente.';
       acao = 'Arquivar';
     } else if (status == EstudoCicloStatus.rascunho) {
       titulo = 'Voltar para rascunho?';
-      mensagem = 'O estudo deixara de ser considerado publicado.';
+      mensagem = 'O estudo deixará de ser considerado publicado.';
       acao = 'Voltar';
     }
     return _confirmar(titulo: titulo, mensagem: mensagem, acao: acao);
@@ -194,7 +204,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
       if (mounted) _mostrarMensagem('Estudo duplicado como rascunho.');
     } catch (e, stack) {
       _logErro(e, stack);
-      if (mounted) _mostrarMensagem('Nao foi possivel duplicar o estudo.');
+      if (mounted) _mostrarMensagem('Não foi possível duplicar o estudo.');
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -264,7 +274,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
               icon: Icons.timeline_rounded,
               titulo: 'Crie um ciclo antes de cadastrar estudos.',
               texto:
-                  'Os estudos precisam estar vinculados a um ciclo da formacao teorica.',
+                  'Os estudos precisam estar vinculados a um ciclo da formação teórica.',
               action: FilledButton.icon(
                 onPressed: _abrirGerenciarCiclos,
                 icon: const Icon(Icons.timeline_rounded),
@@ -435,7 +445,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Monte as aulas teoricas da linha do tempo da capoeira.',
+                      'Monte as aulas teóricas da linha do tempo da capoeira.',
                       style: TextStyle(
                         color: onPrimary.withValues(alpha: 0.84),
                         fontWeight: FontWeight.w700,
@@ -534,7 +544,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search_rounded),
               labelText:
-                  'Buscar por titulo, resumo, pergunta, numero ou conteudo',
+                  'Buscar por título, resumo, pergunta, número ou conteúdo',
             ),
           ),
           const SizedBox(height: 12),
@@ -608,14 +618,14 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
         ),
         PopupMenuItem(
           value: _EstudosSortOption.titulo,
-          child: Text('Ordenar por titulo'),
+          child: Text('Ordenar por título'),
         ),
         PopupMenuItem(
           value: _EstudosSortOption.atualizadoEm,
           child: Text('Ordenar por atualizado'),
         ),
       ],
-      child: _menuChip(Icons.sort_rounded, 'Ordenacao', t.primary),
+      child: _menuChip(Icons.sort_rounded, 'Ordenação', t.primary),
     );
   }
 
@@ -648,208 +658,215 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
     final updated = estudo.atualizadoEm == null
         ? ''
         : DateFormat('dd/MM/yyyy HH:mm').format(estudo.atualizadoEm!);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.card,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
-        boxShadow: t.softShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        onTap: _salvando ? null : () => _abrirDetalhe(estudo),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Color.alphaBlend(
-                    statusColor.withValues(alpha: 0.12),
-                    t.cardAlt,
-                  ),
-                  borderRadius: BorderRadius.circular(t.cardRadius - 4),
-                ),
-                child: Center(
-                  child: Text(
-                    estudo.numero.toString().padLeft(3, '0'),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      estudo.titulo.isEmpty
-                          ? 'Estudo sem titulo'
-                          : estudo.titulo,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 17,
-                        height: 1.1,
-                        fontWeight: FontWeight.w900,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        statusColor.withValues(alpha: 0.12),
+                        t.cardAlt,
                       ),
+                      borderRadius: BorderRadius.circular(t.cardRadius - 4),
                     ),
-                    if (estudo.subtitulo.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        estudo.subtitulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    child: Center(
+                      child: Text(
+                        estudo.numero.toString().padLeft(3, '0'),
                         style: TextStyle(
-                          color: t.textSecondary,
-                          fontWeight: FontWeight.w800,
+                          color: statusColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _statusChip(estudo.status),
-                        _miniChip(
-                          Icons.timeline_rounded,
-                          estudo.cicloTituloSnapshot.isEmpty
-                              ? 'Sem ciclo'
-                              : estudo.cicloTituloSnapshot,
-                        ),
-                        _miniChip(
-                          Icons.swap_vert_rounded,
-                          'Ordem ${estudo.ordem}',
-                        ),
-                        if (estudo.duracaoEstimadaMin > 0)
-                          _miniChip(
-                            Icons.schedule_rounded,
-                            '${estudo.duracaoEstimadaMin} min',
+                        Text(
+                          estudo.titulo.isEmpty
+                              ? 'Estudo sem título'
+                              : estudo.titulo,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 17,
+                            height: 1.1,
+                            fontWeight: FontWeight.w900,
                           ),
-                        _miniChip(
-                          estudo.mostrarNaLinhaDoTempo
-                              ? Icons.visibility_rounded
-                              : Icons.visibility_off_rounded,
-                          estudo.mostrarNaLinhaDoTempo
-                              ? 'Na linha do tempo'
-                              : 'Fora da linha do tempo',
                         ),
-                        if (estudo.mostrarComoEmBreve)
-                          _miniChip(Icons.hourglass_empty_rounded, 'Em breve'),
-                        if (estudo.videoYoutubeUrl.isNotEmpty)
-                          _miniChip(Icons.smart_display_rounded, 'Video'),
-                        if (estudo.fontesLista.isNotEmpty)
-                          _miniChip(Icons.source_rounded, 'Fontes'),
-                        if (estudo.reflexaoFinal.isNotEmpty)
-                          _miniChip(Icons.psychology_rounded, 'Reflexao'),
-                        if (updated.isNotEmpty)
-                          _miniChip(Icons.update_rounded, updated),
+                        if (estudo.subtitulo.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            estudo.subtitulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 7,
+                          runSpacing: 7,
+                          children: [
+                            _statusChip(estudo.status),
+                            _miniChip(
+                              Icons.timeline_rounded,
+                              estudo.cicloTituloSnapshot.isEmpty
+                                  ? 'Sem ciclo'
+                                  : estudo.cicloTituloSnapshot,
+                            ),
+                            _miniChip(Icons.swap_vert_rounded, 'Ordem '),
+                            if (estudo.duracaoEstimadaMin > 0)
+                              _miniChip(Icons.schedule_rounded, ' min'),
+                            _miniChip(
+                              estudo.mostrarNaLinhaDoTempo
+                                  ? Icons.visibility_rounded
+                                  : Icons.visibility_off_rounded,
+                              estudo.mostrarNaLinhaDoTempo
+                                  ? 'Na linha do tempo'
+                                  : 'Fora da linha do tempo',
+                            ),
+                            if (estudo.mostrarComoEmBreve)
+                              _miniChip(
+                                Icons.hourglass_empty_rounded,
+                                'Em breve',
+                              ),
+                            if (estudo.videoYoutubeUrl.isNotEmpty)
+                              _miniChip(Icons.smart_display_rounded, 'Vídeo'),
+                            if (estudo.fontesLista.isNotEmpty)
+                              _miniChip(Icons.source_rounded, 'Fontes'),
+                            if (estudo.reflexaoFinal.isNotEmpty)
+                              _miniChip(Icons.psychology_rounded, 'Reflexão'),
+                            if (updated.isNotEmpty)
+                              _miniChip(Icons.update_rounded, updated),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              if (estudo.perguntaPrincipal.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  estudo.perguntaPrincipal,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
+              ],
+              if (estudo.resumo.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  estudo.resumo,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    height: 1.32,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _smallButton(
+                    icon: Icons.open_in_new_rounded,
+                    label: 'Abrir',
+                    onTap: _salvando ? null : () => _abrirDetalhe(estudo),
+                  ),
+                  _smallButton(
+                    icon: Icons.edit_rounded,
+                    label: 'Editar',
+                    onTap: _salvando
+                        ? null
+                        : () => _abrirFormulario(ciclos, estudo),
+                  ),
+                  _smallButton(
+                    icon: Icons.visibility_rounded,
+                    label: 'Pre-visualizar',
+                    onTap: _salvando ? null : () => _abrirPreview(estudo),
+                  ),
+                  _smallButton(
+                    icon: Icons.copy_rounded,
+                    label: 'Duplicar',
+                    onTap: _salvando ? null : () => _duplicar(estudo),
+                  ),
+                  _acaoStatus(
+                    estudo,
+                    EstudoCicloStatus.publicado,
+                    Icons.publish_rounded,
+                    'Publicar',
+                  ),
+                  _acaoStatus(
+                    estudo,
+                    EstudoCicloStatus.rascunho,
+                    Icons.edit_note_rounded,
+                    'Rascunho',
+                  ),
+                  _acaoStatus(
+                    estudo,
+                    EstudoCicloStatus.emBreve,
+                    Icons.schedule_rounded,
+                    'Em breve',
+                  ),
+                  _acaoStatus(
+                    estudo,
+                    EstudoCicloStatus.oculto,
+                    Icons.visibility_off_rounded,
+                    'Ocultar',
+                  ),
+                  _acaoStatus(
+                    estudo,
+                    EstudoCicloStatus.arquivado,
+                    Icons.archive_rounded,
+                    'Arquivar',
+                    danger: true,
+                  ),
+                  if (estudo.status == EstudoCicloStatus.arquivado)
+                    _acaoStatus(
+                      estudo,
+                      EstudoCicloStatus.rascunho,
+                      Icons.restore_rounded,
+                      'Restaurar',
+                    ),
+                ],
               ),
             ],
           ),
-          if (estudo.perguntaPrincipal.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              estudo.perguntaPrincipal,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: t.primary, fontWeight: FontWeight.w900),
-            ),
-          ],
-          if (estudo.resumo.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              estudo.resumo,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: t.textSecondary,
-                height: 1.32,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _smallButton(
-                icon: Icons.open_in_new_rounded,
-                label: 'Abrir',
-                onTap: _salvando ? null : () => _abrirDetalhe(estudo),
-              ),
-              _smallButton(
-                icon: Icons.edit_rounded,
-                label: 'Editar',
-                onTap: _salvando
-                    ? null
-                    : () => _abrirFormulario(ciclos, estudo),
-              ),
-              _smallButton(
-                icon: Icons.visibility_rounded,
-                label: 'Pre-visualizar',
-                onTap: _salvando ? null : () => _abrirPreview(estudo),
-              ),
-              _smallButton(
-                icon: Icons.copy_rounded,
-                label: 'Duplicar',
-                onTap: _salvando ? null : () => _duplicar(estudo),
-              ),
-              _acaoStatus(
-                estudo,
-                EstudoCicloStatus.publicado,
-                Icons.publish_rounded,
-                'Publicar',
-              ),
-              _acaoStatus(
-                estudo,
-                EstudoCicloStatus.rascunho,
-                Icons.edit_note_rounded,
-                'Rascunho',
-              ),
-              _acaoStatus(
-                estudo,
-                EstudoCicloStatus.emBreve,
-                Icons.schedule_rounded,
-                'Em breve',
-              ),
-              _acaoStatus(
-                estudo,
-                EstudoCicloStatus.oculto,
-                Icons.visibility_off_rounded,
-                'Ocultar',
-              ),
-              _acaoStatus(
-                estudo,
-                EstudoCicloStatus.arquivado,
-                Icons.archive_rounded,
-                'Arquivar',
-                danger: true,
-              ),
-              if (estudo.status == EstudoCicloStatus.arquivado)
-                _acaoStatus(
-                  estudo,
-                  EstudoCicloStatus.rascunho,
-                  Icons.restore_rounded,
-                  'Restaurar',
-                ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -984,7 +1001,7 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
     }
     return _buildMensagemCentral(
       icon: Icons.error_outline_rounded,
-      titulo: 'Nao foi possivel carregar os estudos.',
+      titulo: 'Não foi possível carregar os estudos.',
       texto: 'Verifique sua conexao e tente novamente.$detalhe',
       action: FilledButton.icon(
         onPressed: _recarregar,
@@ -1091,6 +1108,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       EstudosMidiasStorageService();
 
   late String _capaStoragePath;
+  late double _capaFocoX;
+  late double _capaFocoY;
   late List<String> _imagensStoragePaths;
   int _compressaoMidia = 15;
   bool _enviandoMidia = false;
@@ -1127,6 +1146,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     _fontes = TextEditingController(text: e.fontes);
     _capa = TextEditingController(text: e.capaUrl);
     _capaStoragePath = e.capaStoragePath.trim();
+    _capaFocoX = e.capaFocoX;
+    _capaFocoY = e.capaFocoY;
     _imagensStoragePaths = List<String>.from(e.imagensStoragePaths);
     _imagens = TextEditingController(text: e.imagensUrls.join('\n'));
     _youtube = TextEditingController(text: e.videoYoutubeUrl);
@@ -1195,6 +1216,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       fontes: _fontes.text.trim(),
       capaUrl: EstudoModel.normalizarImagemUrl(_capa.text),
       capaStoragePath: _capaStoragePath,
+      capaFocoX: _capaFocoX,
+      capaFocoY: _capaFocoY,
       imagensUrls: EstudoModel.normalizarListaUrls(_imagens.text),
       imagensStoragePaths: EstudoModel.normalizarListaStoragePaths(
         _imagensStoragePaths,
@@ -1214,7 +1237,9 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       _mostrarMensagemLocal('Salve o estudo antes de enviar a capa.');
       return;
     }
-    setState(() => _enviandoMidia = true);
+    if (mounted) {
+      setState(() => _enviandoMidia = true);
+    }
     try {
       final resultado = await _midiasService.enviarCapaEstudo(
         cicloId: _cicloId,
@@ -1240,38 +1265,61 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     }
   }
 
-  Future<void> _enviarImagemEstudo() async {
+  Future<void> _enviarImagensEstudo() async {
     final estudoId = widget.estudo?.id ?? '';
     if (estudoId.isEmpty) {
       _mostrarMensagemLocal('Salve o estudo antes de enviar imagens internas.');
       return;
     }
-    setState(() => _enviandoMidia = true);
+    if (mounted) {
+      setState(() => _enviandoMidia = true);
+    }
     try {
-      final resultado = await _midiasService.enviarImagemEstudo(
+      final resultado = await _midiasService.enviarImagensEstudo(
         cicloId: _cicloId,
         estudoId: estudoId,
         compressaoPercentual: _compressaoMidia,
       );
       if (resultado == null) return;
       final urls = EstudoModel.normalizarListaUrls(_imagens.text).toList();
-      urls.add(resultado.downloadUrl);
-      _imagensStoragePaths.add(resultado.storagePath);
+      urls.addAll(resultado.enviados.map((item) => item.downloadUrl));
+      final storagePaths = List<String>.from(_imagensStoragePaths);
+      storagePaths.addAll(resultado.enviados.map((item) => item.storagePath));
+      final resumo = _resumoUploadLote(resultado);
       setState(() {
         _imagens.text = urls.join('\n');
-        _ultimoUploadResumo = resultado.resumoTamanho;
+        _imagensStoragePaths = storagePaths;
+        _ultimoUploadResumo = resumo;
       });
-      _mostrarMensagemLocal('Imagem enviada: ${resultado.resumoTamanho}');
+      _mostrarMensagemLocal(resumo);
     } on EstudosMidiasUploadException catch (e) {
       _mostrarMensagemLocal(e.message);
     } on FirebaseException catch (e) {
       final mensagem = e.code == 'permission-denied'
-          ? 'Sem permissão para enviar imagem. Será necessário revisar Storage Rules.'
+          ? 'Sem permiss?o para enviar imagem. Ser? necess?rio revisar Storage Rules.'
           : 'Não foi possível enviar a imagem.';
       _mostrarMensagemLocal(mensagem);
     } finally {
       if (mounted) setState(() => _enviandoMidia = false);
     }
+  }
+
+  String _resumoUploadLote(EstudosMidiasUploadLoteResultado resultado) {
+    final original = EstudosMidiasUploadResultado.formatBytes(
+      resultado.tamanhoOriginalTotal,
+    );
+    final finalBytes = EstudosMidiasUploadResultado.formatBytes(
+      resultado.tamanhoFinalTotal,
+    );
+    final reducao = resultado.percentualReducaoTotal.toStringAsFixed(0);
+    return [
+      'Selecionadas: ${resultado.totalSelecionadas}',
+      'Enviadas com sucesso: ${resultado.totalEnviadas}',
+      'Falhas: ${resultado.totalFalhas}',
+      'Tamanho original total: $original',
+      'Tamanho final total: $finalBytes',
+      'Reduáo aproximada: $reducao%',
+    ].join(' | ');
   }
 
   void _mostrarMensagemLocal(String mensagem) {
@@ -1368,7 +1416,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _section('Identificacao', [
+                    _section('Identificaáo', [
                       DropdownButtonFormField<String>(
                         initialValue: _cicloId,
                         decoration: const InputDecoration(labelText: 'Ciclo'),
@@ -1392,7 +1440,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                           if (constraints.maxWidth < 560) {
                             return Column(
                               children: [
-                                _numberField(_numero, 'Numero do estudo'),
+                                _numberField(_numero, 'Número do estudo'),
                                 const SizedBox(height: 10),
                                 _numberField(_ordem, 'Ordem'),
                                 const SizedBox(height: 10),
@@ -1409,7 +1457,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                               Expanded(
                                 child: _numberField(
                                   _numero,
-                                  'Numero do estudo',
+                                  'Número do estudo',
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -1427,14 +1475,14 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                         },
                       ),
                       const SizedBox(height: 10),
-                      _textField(_titulo, 'Titulo', requiredField: true),
+                      _textField(_titulo, 'Título', requiredField: true),
                       const SizedBox(height: 10),
-                      _textField(_subtitulo, 'Subtitulo'),
+                      _textField(_subtitulo, 'Subtítulo'),
                       const SizedBox(height: 10),
                       _textField(_pergunta, 'Pergunta principal'),
                     ]),
                     const SizedBox(height: 12),
-                    _section('Conteudo principal', [
+                    _section('Conteúdo principal', [
                       _help(
                         'Escreva o resumo e o corpo principal do artigo. Estes campos ajudam a futura leitura do aluno.',
                       ),
@@ -1461,7 +1509,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                             'Separe por virgula ou por quebra de linha.',
                       ),
                       const SizedBox(height: 10),
-                      _textField(_reflexao, 'Reflexao final', maxLines: 4),
+                      _textField(_reflexao, 'Reflexão final', maxLines: 4),
                     ]),
                     const SizedBox(height: 12),
                     _section('Midia e fontes', [
@@ -1487,14 +1535,29 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                       ),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
-                        onPressed: _enviandoMidia ? null : _enviarImagemEstudo,
+                        onPressed:
+                            _enviandoMidia ||
+                                !(widget.estudo?.id.trim().isNotEmpty ?? false)
+                            ? null
+                            : _enviarImagensEstudo,
                         icon: const Icon(Icons.add_photo_alternate_rounded),
-                        label: const Text('Enviar imagem'),
+                        label: const Text('Enviar imagens'),
                       ),
+                      if (!(widget.estudo?.id.trim().isNotEmpty ?? false)) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Salve o estudo primeiro para enviar imagens.',
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       _textField(
                         _youtube,
-                        'Video YouTube URL opcional',
+                        'Vídeo do YouTube URL opcional',
                         validator: _validarUrlVideo,
                       ),
                       const SizedBox(height: 10),
@@ -1506,13 +1569,13 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                       const SizedBox(height: 10),
                       _textField(
                         _fontes,
-                        'Fontes/referencias',
+                        'Fontes/referências',
                         maxLines: 4,
                         helperText: 'Informe uma fonte por linha.',
                       ),
                     ]),
                     const SizedBox(height: 12),
-                    _section('Publicacao e visibilidade', [
+                    _section('Publicaáo e visibilidade', [
                       DropdownButtonFormField<String>(
                         initialValue: _status,
                         decoration: const InputDecoration(labelText: 'Status'),
@@ -1631,18 +1694,18 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
   Widget _checklistEditorial() {
     final items = <_EditorChecklistItem>[
       _EditorChecklistItem('Ciclo', _cicloId.isNotEmpty),
-      _EditorChecklistItem('Titulo', _titulo.text.trim().isNotEmpty),
+      _EditorChecklistItem('Título', _titulo.text.trim().isNotEmpty),
       _EditorChecklistItem(
-        'Numero',
+        'Número',
         (int.tryParse(_numero.text.trim()) ?? 0) > 0,
       ),
       _EditorChecklistItem('Resumo', _resumo.text.trim().isNotEmpty),
       _EditorChecklistItem('Texto', _texto.text.trim().isNotEmpty),
       _EditorChecklistItem('Pergunta', _pergunta.text.trim().isNotEmpty),
-      _EditorChecklistItem('Reflexao', _reflexao.text.trim().isNotEmpty),
+      _EditorChecklistItem('Reflexão', _reflexao.text.trim().isNotEmpty),
       _EditorChecklistItem('Fontes', _fontes.text.trim().isNotEmpty),
       _EditorChecklistItem(
-        'Video',
+        'Vídeo',
         _youtube.text.trim().isNotEmpty,
         optional: true,
       ),
@@ -1826,6 +1889,8 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
 
   Widget _midiaControls() {
     final t = context.uai;
+    final estudoId = widget.estudo?.id.trim() ?? '';
+    final podeEnviarMidia = estudoId.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1853,6 +1918,10 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
               child: Image.network(
                 _capa.text.trim(),
                 fit: BoxFit.cover,
+                alignment: Alignment(
+                  (_capaFocoX * 2) - 1,
+                  (_capaFocoY * 2) - 1,
+                ),
                 errorBuilder: (context, error, stackTrace) => Container(
                   color: t.cardAlt,
                   alignment: Alignment.center,
@@ -1867,7 +1936,9 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
           const SizedBox(height: 10),
         ],
         OutlinedButton.icon(
-          onPressed: _enviandoMidia ? null : _enviarCapaEstudo,
+          onPressed: _enviandoMidia || !podeEnviarMidia
+              ? null
+              : _enviarCapaEstudo,
           icon: _enviandoMidia
               ? const SizedBox(
                   width: 16,
@@ -1877,6 +1948,19 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
               : const Icon(Icons.cloud_upload_rounded),
           label: Text(_enviandoMidia ? 'Enviando...' : 'Enviar capa do estudo'),
         ),
+        if (!podeEnviarMidia) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Salve o estudo primeiro para enviar a capa.',
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        _focoCapaControls(),
         if (_ultimoUploadResumo.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
@@ -1888,6 +1972,64 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _focoCapaControls() {
+    final t = context.uai;
+    const pontos = <_FocoCapaOpcao>[
+      _FocoCapaOpcao('Superior esquerda', 0, 0),
+      _FocoCapaOpcao('Superior', 0.5, 0),
+      _FocoCapaOpcao('Superior direita', 1, 0),
+      _FocoCapaOpcao('Esquerda', 0, 0.5),
+      _FocoCapaOpcao('Centro', 0.5, 0.5),
+      _FocoCapaOpcao('Direita', 1, 0.5),
+      _FocoCapaOpcao('Inferior esquerda', 0, 1),
+      _FocoCapaOpcao('Inferior', 0.5, 1),
+      _FocoCapaOpcao('Inferior direita', 1, 1),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Foco da capa',
+          style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: pontos.map((ponto) {
+            final selected =
+                (_capaFocoX - ponto.x).abs() < 0.01 &&
+                (_capaFocoY - ponto.y).abs() < 0.01;
+            return ChoiceChip(
+              label: Text(ponto.label),
+              selected: selected,
+              onSelected: (_) => setState(() {
+                _capaFocoX = ponto.x;
+                _capaFocoY = ponto.y;
+              }),
+            );
+          }).toList(),
+        ),
+        Slider(
+          value: _capaFocoX,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          label: 'X ${(_capaFocoX * 100).round()}%',
+          onChanged: (value) => setState(() => _capaFocoX = value),
+        ),
+        Slider(
+          value: _capaFocoY,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          label: 'Y ${(_capaFocoY * 100).round()}%',
+          onChanged: (value) => setState(() => _capaFocoY = value),
+        ),
       ],
     );
   }
@@ -1928,6 +2070,14 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       ),
     );
   }
+}
+
+class _FocoCapaOpcao {
+  final String label;
+  final double x;
+  final double y;
+
+  const _FocoCapaOpcao(this.label, this.x, this.y);
 }
 
 class _EditorChecklistItem {
