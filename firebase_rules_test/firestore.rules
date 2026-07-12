@@ -19,6 +19,41 @@ service cloud.firestore {
       return /databases/$(database)/documents/usuarios/$(uid);
     }
 
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function usuarioCamposSensiveis() {
+      return [
+        "tipo",
+        "peso_permissao",
+        "role",
+        "papel",
+        "admin",
+        "administrador",
+        "isAdmin",
+        "permissoes",
+        "permissions",
+        "uid",
+        "email",
+        "criadoEm",
+        "criadoPor",
+        "nivel",
+        "nivel_acesso",
+        "accessLevel",
+        "status_conta",
+        "statusConta",
+        "ativo",
+        "super_admin",
+        "superadmin"
+      ];
+    }
+
+    function selfUsuarioUpdateSeguro(userId) {
+      return isSelf(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(usuarioCamposSensiveis());
+    }
+
     function permissoesUsuarioDoc(uid) {
       return /databases/$(database)/documents/usuarios/$(uid)/permissoes_usuario/configuracoes;
     }
@@ -61,6 +96,16 @@ service cloud.firestore {
           && usuarioContaLiberada(request.auth.uid)
           && exists(permissoesUsuarioDoc(request.auth.uid))
           && get(permissoesUsuarioDoc(request.auth.uid)).data.pode_gerenciar_estudos_fundamentos == true
+        );
+    }
+
+    function canManageControleAtualizacoes() {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && usuarioContaLiberada(request.auth.uid)
+          && exists(permissoesUsuarioDoc(request.auth.uid))
+          && get(permissoesUsuarioDoc(request.auth.uid)).data.pode_controle_atualizacoes == true
         );
     }
 
@@ -119,8 +164,8 @@ service cloud.firestore {
     }
     /*
       Blocos legados explicitados para substituir o fallback global.
-      As permissÃƒÂµes abaixo tentam preservar o comportamento atual informado.
-      Ajuste fino ainda pode ser necessÃƒÂ¡rio quando o export real do Console
+      As permissoes abaixo tentam preservar o comportamento atual informado.
+      Ajuste fino ainda pode ser necessario quando o export real do Console
       for comparado linha a linha.
     */
 
@@ -152,12 +197,14 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isAdmin() || isSelf(userId);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || selfUsuarioUpdateSeguro(userId);
     }
 
     match /usuarios/{userId}/permissoes_usuario/{document=**} {
-      allow read, write: if isSignedIn();
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow create, update, delete: if isAdmin();
     }
 
     match /alunos/{alunoId}/contadores/{document=**} {
@@ -176,8 +223,19 @@ service cloud.firestore {
       allow update, delete: if isSignedIn();
     }
 
+    match /configuracoes/app {
+      allow read: if true;
+      allow create, update: if canManageControleAtualizacoes();
+      allow delete: if false;
+    }
+
     match /configuracoes/{document} {
-      allow read, write: if true;
+      allow read, write: if document != "app";
+    }
+
+    match /versoes_app/{versionId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if canManageControleAtualizacoes();
     }
     match /mensagens_aniversario/{document} {
       allow read: if true;
