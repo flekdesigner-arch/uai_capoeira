@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +11,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_re
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_midias_storage_service.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/detalhe_admin_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/importar_ciclo_completo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/preview_estudo_screen.dart';
 
 enum _EstudosSortOption { cicloOrdem, numero, titulo, atualizadoEm }
@@ -127,6 +128,32 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => PreviewEstudoScreen(estudo: estudo)),
+    );
+  }
+
+  void _abrirImportarEstudosNesteCiclo(List<EstudoCicloModel> ciclos) {
+    if (_cicloFiltro == 'todos') {
+      _mostrarMensagem(
+        'Selecione um ciclo no filtro antes de importar estudos.',
+      );
+      return;
+    }
+    final ciclo = ciclos.where((c) => c.id == _cicloFiltro).toList();
+    if (ciclo.isEmpty) {
+      _mostrarMensagem('Ciclo selecionado nao encontrado.');
+      return;
+    }
+    final c = ciclo.first;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImportarCicloCompletoScreen(
+          modoInicial: 'ciclo_existente',
+          cicloId: c.id,
+          cicloNumero: c.numero,
+          cicloTitulo: c.titulo,
+        ),
+      ),
     );
   }
 
@@ -534,6 +561,13 @@ class _GerenciarEstudosScreenState extends State<GerenciarEstudosScreen> {
                     : () => _abrirFormulario(ciclos),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Novo estudo'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _salvando
+                    ? null
+                    : () => _abrirImportarEstudosNesteCiclo(ciclos),
+                icon: const Icon(Icons.upload_file_rounded),
+                label: const Text('Importar estudos neste ciclo'),
               ),
             ],
           ),
@@ -1318,7 +1352,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       'Falhas: ${resultado.totalFalhas}',
       'Tamanho original total: $original',
       'Tamanho final total: $finalBytes',
-      'Reduáo aproximada: $reducao%',
+      'Redução aproximada: $reducao%',
     ].join(' | ');
   }
 
@@ -1416,7 +1450,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _section('Identificaáo', [
+                    _section('Identificação', [
                       DropdownButtonFormField<String>(
                         initialValue: _cicloId,
                         decoration: const InputDecoration(labelText: 'Ciclo'),
@@ -1575,7 +1609,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                       ),
                     ]),
                     const SizedBox(height: 12),
-                    _section('Publicaáo e visibilidade', [
+                    _section('Publicação e visibilidade', [
                       DropdownButtonFormField<String>(
                         initialValue: _status,
                         decoration: const InputDecoration(labelText: 'Status'),

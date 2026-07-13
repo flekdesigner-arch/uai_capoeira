@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_gabarito_pergunta_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/importar_ciclo_completo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_model.dart';
@@ -187,6 +188,40 @@ class _GerenciarPerguntasEstudoScreenState
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
+  }
+
+  void _abrirImportarPerguntasNesteEstudo(
+    List<EstudoCicloModel> ciclos,
+    List<EstudoModel> estudos,
+  ) {
+    if (_cicloFiltro == 'todos' || _estudoFiltro == 'todos') {
+      _mostrarMensagem(
+        'Selecione ciclo e estudo nos filtros antes de importar perguntas.',
+      );
+      return;
+    }
+    final ciclo = ciclos.where((c) => c.id == _cicloFiltro).toList();
+    final estudo = estudos.where((e) => e.id == _estudoFiltro).toList();
+    if (ciclo.isEmpty || estudo.isEmpty) {
+      _mostrarMensagem('Ciclo ou estudo selecionado nao encontrado.');
+      return;
+    }
+    final c = ciclo.first;
+    final e = estudo.first;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImportarCicloCompletoScreen(
+          modoInicial: 'estudo_existente',
+          cicloId: c.id,
+          cicloNumero: c.numero,
+          cicloTitulo: c.titulo,
+          estudoId: e.id,
+          estudoNumero: e.numero,
+          estudoTitulo: e.titulo,
+        ),
+      ),
+    );
   }
 
   void _abrirGabarito(PerguntaEstudoModel pergunta) {
@@ -575,6 +610,13 @@ class _GerenciarPerguntasEstudoScreenState
                     : () => _abrirFormulario(ciclos, estudos),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Nova pergunta'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _salvando
+                    ? null
+                    : () => _abrirImportarPerguntasNesteEstudo(ciclos, estudos),
+                icon: const Icon(Icons.upload_file_rounded),
+                label: const Text('Importar perguntas neste estudo'),
               ),
             ],
           ),

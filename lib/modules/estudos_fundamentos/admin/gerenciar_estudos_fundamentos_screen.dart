@@ -4,6 +4,7 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/acompanhar_alunos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/admin/importar_ciclo_completo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_perguntas_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_ciclos_repository.dart';
@@ -107,6 +108,13 @@ class _GerenciarEstudosFundamentosScreenState
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AcompanharAlunosEstudosScreen()),
+    );
+  }
+
+  Future<void> _abrirImportarCicloCompleto() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ImportarCicloCompletoScreen()),
     );
   }
 
@@ -469,6 +477,13 @@ class _GerenciarEstudosFundamentosScreenState
                 _abrirAcompanharAlunos,
                 'Abrir',
                 'Veja o progresso, tentativas e avaliações dos alunos nos estudos.',
+              ),
+              _AtalhoItem(
+                Icons.upload_file_rounded,
+                'Importar ciclo completo',
+                _abrirImportarCicloCompleto,
+                'Abrir',
+                'Crie ciclo, estudos, perguntas e gabaritos de uma vez a partir de um JSON validado.',
               ),
               _AtalhoItem(
                 Icons.visibility_rounded,

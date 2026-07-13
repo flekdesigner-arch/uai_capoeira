@@ -686,6 +686,421 @@ exports.resetarProgressoEstudosAluno = onCall(async (request) => {
         throw new HttpsError('internal', 'Nao foi possivel resetar os estudos do aluno.');
     }
 });
+function estudosFundamentosImportTexto(value, max = 4000) {
+    const text = String(value ?? '').trim();
+    return text.length > max ? text.slice(0, max) : text;
+}
+
+function estudosFundamentosImportInt(value, field, min = 0, max = 9999) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < min || number > max) {
+        throw new HttpsError('invalid-argument', `${field} invalido.`);
+    }
+    return Math.trunc(number);
+}
+
+function estudosFundamentosImportListaTexto(value, maxItems = 30) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, maxItems).map((item) => estudosFundamentosImportTexto(item, 1000)).filter(Boolean);
+}
+
+function estudosFundamentosImportPalavras(value) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 40).map((item) => {
+        const data = item && typeof item === 'object' ? item : {};
+        return {
+            termo: estudosFundamentosImportTexto(data.termo, 120),
+            definicao: estudosFundamentosImportTexto(data.definicao, 1000)
+        };
+    }).filter((item) => item.termo || item.definicao);
+}
+
+function estudosFundamentosImportObrigatorio(obj, field, label, max = 4000) {
+    const value = estudosFundamentosImportTexto(obj?.[field], max);
+    if (!value) throw new HttpsError('invalid-argument', `${label} e obrigatorio.`);
+    return value;
+}
+
+function estudosFundamentosNormalizarDificuldade(value) {
+    const raw = estudosFundamentosImportTexto(value, 40).toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+    if (raw === 'facil' || raw === 'muito_facil') return 'facil';
+    if (raw === 'media' || raw === 'medio' || raw === 'intermediaria') return 'media';
+    if (raw === 'dificil' || raw === 'media_dificil' || raw === 'desafio') return 'dificil';
+    return 'facil';
+}
+
+function estudosFundamentosValidarPerguntaImport(perguntaRaw, perguntaIndex, contexto) {
+    if (!perguntaRaw || typeof perguntaRaw !== 'object' || Array.isArray(perguntaRaw)) {
+        throw new HttpsError('invalid-argument', `${contexto}[${perguntaIndex}] invalida.`);
+    }
+    const enunciado = estudosFundamentosImportObrigatorio(perguntaRaw, 'enunciado', `${contexto}[${perguntaIndex}].enunciado`, 3000);
+    const justificativa = estudosFundamentosImportObrigatorio(perguntaRaw, 'justificativa', `${contexto}[${perguntaIndex}].justificativa`, 3000);
+    const alternativasRaw = Array.isArray(perguntaRaw.alternativas) ? perguntaRaw.alternativas : [];
+    if (alternativasRaw.length !== 4) {
+        throw new HttpsError('invalid-argument', `${contexto}[${perguntaIndex}] precisa ter alternativas A/B/C/D.`);
+    }
+    const alternativasPublicas = alternativasRaw.map((alternativaRaw) => {
+        const alternativa = alternativaRaw && typeof alternativaRaw === 'object' ? alternativaRaw : {};
+        const id = estudosFundamentosImportTexto(alternativa.id, 8).toUpperCase();
+        const ordem = { A: 1, B: 2, C: 3, D: 4 }[id] || 0;
+        return {
+            id,
+            letra: id,
+            label: id,
+            valor: id,
+            texto: estudosFundamentosImportTexto(alternativa.texto, 1000),
+            ordem
+        };
+    });
+    const ids = new Set(alternativasPublicas.map((item) => item.id));
+    for (const id of ['A', 'B', 'C', 'D']) {
+        if (!ids.has(id)) throw new HttpsError('invalid-argument', `Alternativa ${id} ausente em ${contexto}[${perguntaIndex}].`);
+    }
+    if (alternativasPublicas.some((item) => !item.texto)) {
+        throw new HttpsError('invalid-argument', `Todas as alternativas precisam ter texto em ${contexto}[${perguntaIndex}].`);
+    }
+    const respostaCorreta = estudosFundamentosImportTexto(perguntaRaw.respostaCorreta, 8).toUpperCase();
+    if (!ids.has(respostaCorreta)) {
+        throw new HttpsError('invalid-argument', `respostaCorreta invalida em ${contexto}[${perguntaIndex}].`);
+    }
+    return {
+        enunciado,
+        justificativa,
+        alternativasPublicas,
+        respostaCorreta,
+        ordem: estudosFundamentosImportInt(perguntaRaw.ordem ?? perguntaIndex + 1, 'ordem da pergunta', 1, 999),
+        dificuldade: estudosFundamentosNormalizarDificuldade(perguntaRaw.dificuldade || 'facil'),
+        peso: estudosFundamentosImportInt(perguntaRaw.peso ?? 1, 'peso da pergunta', 1, 100),
+        status: 'rascunho',
+        tags: estudosFundamentosImportListaTexto(perguntaRaw.tags, 20)
+    };
+}
+
+function estudosFundamentosValidarPerguntasImport(perguntasRaw, contexto, max = 10) {
+    if (!Array.isArray(perguntasRaw) || perguntasRaw.length === 0) {
+        throw new HttpsError('invalid-argument', `${contexto} e obrigatorio e nao pode ser vazio.`);
+    }
+    if (perguntasRaw.length > max) {
+        throw new HttpsError('invalid-argument', `Limite de ${max} perguntas por estudo.`);
+    }
+    const ordens = new Set();
+    return perguntasRaw.map((perguntaRaw, index) => {
+        const pergunta = estudosFundamentosValidarPerguntaImport(perguntaRaw, index, contexto);
+        if (ordens.has(pergunta.ordem)) {
+            throw new HttpsError('invalid-argument', `Ha duas perguntas com ordem ${pergunta.ordem} no pacote.`);
+        }
+        ordens.add(pergunta.ordem);
+        return pergunta;
+    });
+}
+
+function estudosFundamentosValidarEstudosImport(estudosRaw) {
+    if (!Array.isArray(estudosRaw) || estudosRaw.length === 0) {
+        throw new HttpsError('invalid-argument', 'estudos e obrigatorio e nao pode ser vazio.');
+    }
+    if (estudosRaw.length > 20) throw new HttpsError('invalid-argument', 'Limite de 20 estudos por importacao.');
+    const numeros = new Set();
+    const ordens = new Set();
+    return estudosRaw.map((estudoRaw, estudoIndex) => {
+        if (!estudoRaw || typeof estudoRaw !== 'object' || Array.isArray(estudoRaw)) {
+            throw new HttpsError('invalid-argument', `estudos[${estudoIndex}] invalido.`);
+        }
+        const numero = estudosFundamentosImportInt(estudoRaw.numero, `estudos[${estudoIndex}].numero`, 1, 999);
+        const ordem = estudosFundamentosImportInt(estudoRaw.ordem, `estudos[${estudoIndex}].ordem`, 1, 999);
+        if (numeros.has(numero)) throw new HttpsError('invalid-argument', `Ha dois estudos com numero ${numero} no pacote.`);
+        if (ordens.has(ordem)) throw new HttpsError('invalid-argument', `Ha dois estudos com ordem ${ordem} no pacote.`);
+        numeros.add(numero);
+        ordens.add(ordem);
+        const resumo = estudosFundamentosImportTexto(estudoRaw.resumo, 5000);
+        const textoAprofundado = estudosFundamentosImportTexto(estudoRaw.textoAprofundado, 30000);
+        if (!resumo && !textoAprofundado) {
+            throw new HttpsError('invalid-argument', `estudos[${estudoIndex}] precisa ter resumo ou textoAprofundado.`);
+        }
+        const perguntasRaw = Array.isArray(estudoRaw.perguntas) ? estudoRaw.perguntas : [];
+        const perguntas = perguntasRaw.length > 0
+            ? estudosFundamentosValidarPerguntasImport(perguntasRaw, `estudos[${estudoIndex}].perguntas`, 10)
+            : [];
+        return {
+            numero,
+            ordem,
+            duracaoEstimadaMin: estudosFundamentosImportInt(estudoRaw.duracaoEstimadaMin ?? 0, 'duracaoEstimadaMin', 0, 999),
+            titulo: estudosFundamentosImportObrigatorio(estudoRaw, 'titulo', `estudos[${estudoIndex}].titulo`, 300),
+            subtitulo: estudosFundamentosImportTexto(estudoRaw.subtitulo, 500),
+            perguntaPrincipal: estudosFundamentosImportTexto(estudoRaw.perguntaPrincipal, 1000),
+            resumo,
+            textoAprofundado,
+            mitoOuFato: estudosFundamentosImportTexto(estudoRaw.mitoOuFato, 3000),
+            voceSabia: estudosFundamentosImportTexto(estudoRaw.voceSabia, 3000),
+            palavrasImportantes: estudosFundamentosImportPalavras(estudoRaw.palavrasImportantes),
+            reflexaoFinal: estudosFundamentosImportTexto(estudoRaw.reflexaoFinal, 3000),
+            sugestaoImagemTexto: estudosFundamentosImportTexto(estudoRaw.sugestaoImagem, 1000),
+            fontes: estudosFundamentosImportListaTexto(estudoRaw.fontes, 30),
+            status: 'rascunho',
+            perguntas
+        };
+    });
+}
+
+async function estudosFundamentosValidarDuplicidadeEstudos(cicloId, estudos) {
+    const snap = await db.collection('estudos').where('cicloId', '==', cicloId).get();
+    const numeros = new Set();
+    const ordens = new Set();
+    snap.docs.forEach((doc) => {
+        const data = doc.data() || {};
+        numeros.add(Number(data.numero || 0));
+        ordens.add(Number(data.ordem || 0));
+    });
+    for (const estudo of estudos) {
+        if (numeros.has(estudo.numero)) throw new HttpsError('invalid-argument', `Ja existe um estudo com numero ${estudo.numero} neste ciclo.`);
+        if (ordens.has(estudo.ordem)) throw new HttpsError('invalid-argument', `Ja existe um estudo com ordem ${estudo.ordem} neste ciclo.`);
+    }
+}
+
+async function estudosFundamentosValidarDuplicidadePerguntas(estudoId, perguntas) {
+    const snap = await db.collection('estudos_perguntas').where('estudoId', '==', estudoId).get();
+    const ordens = new Set(snap.docs.map((doc) => Number((doc.data() || {}).ordem || 0)));
+    for (const pergunta of perguntas) {
+        if (ordens.has(pergunta.ordem)) throw new HttpsError('invalid-argument', `Ja existe uma pergunta com ordem ${pergunta.ordem} neste estudo.`);
+    }
+}
+
+function estudosFundamentosExtrairPerguntasModoEstudo(payload) {
+    if (Array.isArray(payload.perguntas)) return payload.perguntas;
+    if (Array.isArray(payload.estudos)) {
+        if (payload.estudos.length !== 1) {
+            throw new HttpsError('invalid-argument', 'Para importar perguntas em estudo existente, envie apenas uma lista perguntas ou um unico estudo com perguntas.');
+        }
+        const estudo = payload.estudos[0];
+        if (estudo && typeof estudo === 'object' && Array.isArray(estudo.perguntas)) return estudo.perguntas;
+    }
+    return [];
+}
+
+function estudosFundamentosMontarEstudoData(estudo, cicloInfo, estudoAnteriorId, proximoEstudoId, adminUid, now) {
+    return {
+        cicloId: cicloInfo.id,
+        cicloNumero: cicloInfo.numero,
+        cicloTitulo: cicloInfo.titulo,
+        cicloTituloSnapshot: cicloInfo.titulo,
+        numero: estudo.numero,
+        ordem: estudo.ordem,
+        titulo: estudo.titulo,
+        subtitulo: estudo.subtitulo,
+        perguntaPrincipal: estudo.perguntaPrincipal,
+        resumo: estudo.resumo,
+        textoAprofundado: estudo.textoAprofundado,
+        mitoOuFato: estudo.mitoOuFato,
+        voceSabia: estudo.voceSabia,
+        palavrasImportantes: estudo.palavrasImportantes,
+        reflexaoFinal: estudo.reflexaoFinal,
+        fontes: estudo.fontes,
+        sugestaoImagemTexto: estudo.sugestaoImagemTexto,
+        videoYoutubeUrl: '',
+        linkExterno: '',
+        capaUrl: '',
+        capaStoragePath: '',
+        capaFocoX: 0.5,
+        capaFocoY: 0.5,
+        imagensUrls: [],
+        imagensStoragePaths: [],
+        status: 'rascunho',
+        mostrarNaLinhaDoTempo: false,
+        mostrarComoEmBreve: false,
+        duracaoEstimadaMin: estudo.duracaoEstimadaMin,
+        estudoAnteriorId,
+        proximoEstudoId,
+        criadoEm: now,
+        atualizadoEm: now,
+        criadoPor: adminUid,
+        atualizadoPor: adminUid
+    };
+}
+
+function estudosFundamentosAdicionarPerguntaBatch(batch, pergunta, cicloInfo, estudoInfo, adminUid, now) {
+    const perguntaRef = db.collection('estudos_perguntas').doc();
+    batch.set(perguntaRef, {
+        cicloId: cicloInfo.id,
+        cicloNumero: cicloInfo.numero,
+        cicloTitulo: cicloInfo.titulo,
+        estudoId: estudoInfo.id,
+        estudoNumero: estudoInfo.numero,
+        estudoTitulo: estudoInfo.titulo,
+        enunciado: pergunta.enunciado,
+        tipo: 'multipla_escolha',
+        alternativasPublicas: pergunta.alternativasPublicas,
+        dificuldade: pergunta.dificuldade,
+        peso: pergunta.peso,
+        ordem: pergunta.ordem,
+        status: 'rascunho',
+        tags: pergunta.tags,
+        podeAparecerEmAvaliacao: false,
+        criadoEm: now,
+        atualizadoEm: now,
+        criadoPor: adminUid,
+        atualizadoPor: adminUid
+    });
+    batch.set(db.collection('estudos_gabaritos').doc(perguntaRef.id), {
+        alternativaCorretaId: pergunta.respostaCorreta,
+        alternativasCorretasIds: [pergunta.respostaCorreta],
+        respostaEsperadaTexto: '',
+        justificativaCorreta: pergunta.justificativa,
+        peso: pergunta.peso,
+        ativo: false,
+        criadoEm: now,
+        atualizadoEm: now,
+        criadoPor: adminUid,
+        atualizadoPor: adminUid
+    });
+}
+
+exports.importarCicloCompletoEstudosFundamentos = onCall(
+    { region: 'us-central1' },
+    async (request) => {
+        const adminAtual = await validarAdminEstudosFundamentos(request);
+        const payload = request.data || {};
+        const tamanhoPayload = Buffer.byteLength(JSON.stringify(payload || {}), 'utf8');
+        if (tamanhoPayload > 900000) throw new HttpsError('invalid-argument', 'Payload de importacao grande demais.');
+        if (payload.confirmar !== true) throw new HttpsError('invalid-argument', 'Confirmacao obrigatoria para importar conteudo.');
+        const modo = estudosFundamentosImportTexto(payload.modo, 40);
+        if (!['novo_ciclo', 'ciclo_existente', 'estudo_existente'].includes(modo)) {
+            throw new HttpsError('invalid-argument', 'Modo de importacao obrigatorio.');
+        }
+
+        try {
+            const now = admin.firestore.FieldValue.serverTimestamp();
+            const batch = db.batch();
+            let cicloInfo;
+            let estudoInfo = null;
+            let ciclosCriados = 0;
+            let estudosCriados = 0;
+            let perguntasCriadas = 0;
+            let gabaritosCriados = 0;
+
+            if (modo === 'novo_ciclo') {
+                const cicloRaw = payload.ciclo;
+                if (!cicloRaw || typeof cicloRaw !== 'object' || Array.isArray(cicloRaw)) throw new HttpsError('invalid-argument', 'ciclo e obrigatorio.');
+                const ciclo = {
+                    numero: estudosFundamentosImportInt(cicloRaw.numero, 'ciclo.numero', 1, 999),
+                    ordem: estudosFundamentosImportInt(cicloRaw.ordem ?? cicloRaw.numero, 'ciclo.ordem', 1, 999),
+                    titulo: estudosFundamentosImportObrigatorio(cicloRaw, 'titulo', 'ciclo.titulo', 300),
+                    subtitulo: estudosFundamentosImportTexto(cicloRaw.subtitulo, 500),
+                    descricao: estudosFundamentosImportTexto(cicloRaw.descricao, 4000),
+                    periodoHistorico: estudosFundamentosImportTexto(cicloRaw.periodoHistorico, 300)
+                };
+                const existente = await db.collection('estudos_ciclos').where('numero', '==', ciclo.numero).limit(1).get();
+                if (!existente.empty) throw new HttpsError('invalid-argument', `Ja existe um ciclo com numero ${ciclo.numero}. Use o modo Importar em ciclo existente ou altere o numero.`);
+                const estudos = estudosFundamentosValidarEstudosImport(payload.estudos);
+                const cicloRef = db.collection('estudos_ciclos').doc();
+                cicloInfo = { id: cicloRef.id, numero: ciclo.numero, titulo: ciclo.titulo };
+                batch.set(cicloRef, {
+                    numero: ciclo.numero,
+                    ordem: ciclo.ordem,
+                    titulo: ciclo.titulo,
+                    subtitulo: ciclo.subtitulo,
+                    descricao: ciclo.descricao,
+                    periodoHistorico: ciclo.periodoHistorico,
+                    status: 'rascunho',
+                    mostrarNaLinhaDoTempo: false,
+                    mostrarComoEmBreve: false,
+                    capaUrl: '',
+                    capaStoragePath: '',
+                    capaFocoX: 0.5,
+                    capaFocoY: 0.5,
+                    criadoEm: now,
+                    atualizadoEm: now,
+                    criadoPor: adminAtual.uid,
+                    atualizadoPor: adminAtual.uid
+                });
+                ciclosCriados = 1;
+                const estudoRefs = estudos.map(() => db.collection('estudos').doc());
+                estudos.forEach((estudo, index) => {
+                    const estudoRef = estudoRefs[index];
+                    batch.set(estudoRef, estudosFundamentosMontarEstudoData(estudo, cicloInfo, index > 0 ? estudoRefs[index - 1].id : '', index < estudoRefs.length - 1 ? estudoRefs[index + 1].id : '', adminAtual.uid, now));
+                    estudosCriados += 1;
+                    const info = { id: estudoRef.id, numero: estudo.numero, titulo: estudo.titulo };
+                    estudo.perguntas.forEach((pergunta) => {
+                        estudosFundamentosAdicionarPerguntaBatch(batch, pergunta, cicloInfo, info, adminAtual.uid, now);
+                        perguntasCriadas += 1;
+                        gabaritosCriados += 1;
+                    });
+                });
+            } else if (modo === 'ciclo_existente') {
+                const cicloId = estudosFundamentosImportObrigatorio(payload, 'cicloIdExistente', 'cicloIdExistente', 160);
+                const cicloDoc = await db.collection('estudos_ciclos').doc(cicloId).get();
+                if (!cicloDoc.exists) throw new HttpsError('not-found', 'Ciclo existente nao encontrado.');
+                const cicloData = cicloDoc.data() || {};
+                cicloInfo = { id: cicloDoc.id, numero: Number(cicloData.numero || 0), titulo: estudosFundamentosImportTexto(cicloData.titulo, 300) };
+                const estudos = estudosFundamentosValidarEstudosImport(payload.estudos);
+                await estudosFundamentosValidarDuplicidadeEstudos(cicloInfo.id, estudos);
+                const estudoRefs = estudos.map(() => db.collection('estudos').doc());
+                estudos.forEach((estudo, index) => {
+                    const estudoRef = estudoRefs[index];
+                    batch.set(estudoRef, estudosFundamentosMontarEstudoData(estudo, cicloInfo, index > 0 ? estudoRefs[index - 1].id : '', index < estudoRefs.length - 1 ? estudoRefs[index + 1].id : '', adminAtual.uid, now));
+                    estudosCriados += 1;
+                    const info = { id: estudoRef.id, numero: estudo.numero, titulo: estudo.titulo };
+                    estudo.perguntas.forEach((pergunta) => {
+                        estudosFundamentosAdicionarPerguntaBatch(batch, pergunta, cicloInfo, info, adminAtual.uid, now);
+                        perguntasCriadas += 1;
+                        gabaritosCriados += 1;
+                    });
+                });
+            } else {
+                const cicloId = estudosFundamentosImportObrigatorio(payload, 'cicloIdExistente', 'cicloIdExistente', 160);
+                const estudoId = estudosFundamentosImportObrigatorio(payload, 'estudoIdExistente', 'estudoIdExistente', 160);
+                const [cicloDoc, estudoDoc] = await Promise.all([
+                    db.collection('estudos_ciclos').doc(cicloId).get(),
+                    db.collection('estudos').doc(estudoId).get()
+                ]);
+                if (!cicloDoc.exists) throw new HttpsError('not-found', 'Ciclo existente nao encontrado.');
+                if (!estudoDoc.exists) throw new HttpsError('not-found', 'Estudo existente nao encontrado.');
+                const cicloData = cicloDoc.data() || {};
+                const estudoData = estudoDoc.data() || {};
+                if (String(estudoData.cicloId || '') !== cicloId) throw new HttpsError('invalid-argument', 'O estudo selecionado nao pertence ao ciclo informado.');
+                cicloInfo = { id: cicloDoc.id, numero: Number(cicloData.numero || 0), titulo: estudosFundamentosImportTexto(cicloData.titulo, 300) };
+                estudoInfo = { id: estudoDoc.id, numero: Number(estudoData.numero || 0), titulo: estudosFundamentosImportTexto(estudoData.titulo, 300) };
+                const perguntasRaw = estudosFundamentosExtrairPerguntasModoEstudo(payload);
+                const perguntas = estudosFundamentosValidarPerguntasImport(perguntasRaw, 'perguntas', 10);
+                await estudosFundamentosValidarDuplicidadePerguntas(estudoInfo.id, perguntas);
+                perguntas.forEach((pergunta) => {
+                    estudosFundamentosAdicionarPerguntaBatch(batch, pergunta, cicloInfo, estudoInfo, adminAtual.uid, now);
+                    perguntasCriadas += 1;
+                    gabaritosCriados += 1;
+                });
+            }
+
+            const totalCriado = ciclosCriados + estudosCriados + perguntasCriadas + gabaritosCriados;
+            if (totalCriado > 450) throw new HttpsError('invalid-argument', 'Importacao grande demais. Divida em partes menores.');
+            await batch.commit();
+            console.log('importarCicloCompletoEstudosFundamentos concluida', {
+                adminUid: adminAtual.uid,
+                modo,
+                cicloId: cicloInfo?.id || '',
+                estudoId: estudoInfo?.id || '',
+                estudosCriados,
+                perguntasCriadas,
+                gabaritosCriados,
+                totalCriado
+            });
+            return {
+                success: true,
+                modo,
+                cicloId: cicloInfo?.id || '',
+                estudoId: estudoInfo?.id || '',
+                ciclosCriados,
+                estudosCriados,
+                perguntasCriadas,
+                gabaritosCriados,
+                totalCriado,
+                statusImportado: 'rascunho'
+            };
+        } catch (error) {
+            if (error instanceof HttpsError) throw error;
+            console.error('Erro ao importar conteudo de estudos', { adminUid: adminAtual.uid, modo, message: error?.message });
+            throw new HttpsError('internal', 'Nao foi possivel importar o conteudo de estudos.');
+        }
+    }
+);
 exports.finalizarTentativaEstudo = onCall(async (request) => {
     if (!request.auth?.uid) {
         throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
