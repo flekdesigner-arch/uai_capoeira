@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/acompanhar_alunos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
-import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/importar_ciclo_completo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_perguntas_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
@@ -87,13 +86,6 @@ class _GerenciarEstudosFundamentosScreenState
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const GerenciarCiclosEstudosScreen()),
-    );
-  }
-
-  Future<void> _abrirGerenciarEstudos() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const GerenciarEstudosScreen()),
     );
   }
 
@@ -457,12 +449,6 @@ class _GerenciarEstudosFundamentosScreenState
                 Icons.timeline_rounded,
                 'Gerenciar ciclos',
                 _abrirGerenciarCiclos,
-                'Abrir',
-              ),
-              _AtalhoItem(
-                Icons.article_rounded,
-                'Gerenciar estudos',
-                _abrirGerenciarEstudos,
                 'Abrir',
               ),
               _AtalhoItem(
