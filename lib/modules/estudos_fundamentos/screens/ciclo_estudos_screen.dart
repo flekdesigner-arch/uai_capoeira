@@ -3,16 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/progresso_estudo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/resultado_estudo_aluno_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/estudos_repository.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/progresso_estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/resultados_estudos_repository.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/screens/detalhe_estudo_screen.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class CicloEstudosScreen extends StatefulWidget {
   final EstudoCicloModel ciclo;
   final bool mostrarEmBreve;
   final Map<String, dynamic> aluno;
   final Map<String, dynamic> authPayload;
+  final EstudosConfigModel? config;
 
   const CicloEstudosScreen({
     super.key,
@@ -20,6 +25,7 @@ class CicloEstudosScreen extends StatefulWidget {
     required this.mostrarEmBreve,
     required this.aluno,
     required this.authPayload,
+    this.config,
   });
 
   @override
@@ -30,6 +36,8 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
   final EstudosRepository _repository = EstudosRepository();
   final ProgressoEstudosRepository _progressoRepository =
       ProgressoEstudosRepository();
+  final ResultadosEstudosRepository _resultadosRepository =
+      ResultadosEstudosRepository();
   int _reloadKey = 0;
 
   void _recarregar() => setState(() => _reloadKey++);
@@ -55,66 +63,91 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.uai;
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        title: Text(
-          widget.ciclo.titulo.isEmpty
-              ? 'Ciclo de estudos'
-              : widget.ciclo.titulo,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _recarregar,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Atualizar',
-          ),
-        ],
-      ),
-      body: !_cicloDisponivel
-          ? _estadoCentral(
-              icon: Icons.lock_outline_rounded,
-              titulo: 'Este ciclo será liberado em breve.',
-              texto: 'Volte mais tarde para acessar os estudos deste ciclo.',
-            )
-          : StreamBuilder<List<EstudoModel>>(
-              key: ValueKey(_reloadKey),
-              stream: _repository.watchEstudosVisiveisPorCiclo(
-                cicloId: widget.ciclo.id,
-                mostrarEmBreve: widget.mostrarEmBreve,
+    return EstudosAlunoTheme(
+      config: widget.config,
+      child: Builder(
+        builder: (context) {
+          final t = context.uai;
+          return Scaffold(
+            backgroundColor: t.background,
+            appBar: AppBar(
+              title: Text(
+                widget.ciclo.titulo.isEmpty
+                    ? 'Ciclo de estudos'
+                    : widget.ciclo.titulo,
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return _estadoCentral(
-                    icon: Icons.error_outline_rounded,
-                    titulo: 'Não foi possível carregar os estudos.',
-                    texto: 'Verifique sua conexao e tente novamente.',
-                    action: FilledButton.icon(
-                      onPressed: _recarregar,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Tentar novamente'),
-                    ),
-                  );
-                }
-                if (!snapshot.hasData) {
-                  return Center(
-                    child: CircularProgressIndicator(color: t.primary),
-                  );
-                }
-                final estudos = snapshot.data ?? const <EstudoModel>[];
-                return StreamBuilder<List<ProgressoEstudoModel>>(
-                  stream: _progressoRepository.watchProgressoAluno(_alunoId),
-                  builder: (context, progressoSnapshot) {
-                    final progressos =
-                        progressoSnapshot.data ??
-                        const <ProgressoEstudoModel>[];
-                    return _conteudo(context, estudos, progressos);
-                  },
-                );
-              },
+              actions: [
+                IconButton(
+                  onPressed: _recarregar,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: 'Atualizar',
+                ),
+              ],
             ),
+            body: !_cicloDisponivel
+                ? _estadoCentral(
+                    icon: Icons.lock_outline_rounded,
+                    titulo: 'Este ciclo será liberado em breve.',
+                    texto:
+                        'Volte mais tarde para acessar os estudos deste ciclo.',
+                  )
+                : StreamBuilder<List<EstudoModel>>(
+                    key: ValueKey(_reloadKey),
+                    stream: _repository.watchEstudosVisiveisPorCiclo(
+                      cicloId: widget.ciclo.id,
+                      mostrarEmBreve: widget.mostrarEmBreve,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return _estadoCentral(
+                          icon: Icons.error_outline_rounded,
+                          titulo: 'Não foi possível carregar os estudos.',
+                          texto: 'Verifique sua conexão e tente novamente.',
+                          action: FilledButton.icon(
+                            onPressed: _recarregar,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Tentar novamente'),
+                          ),
+                        );
+                      }
+                      if (!snapshot.hasData) {
+                        return Center(
+                          child: CircularProgressIndicator(color: t.primary),
+                        );
+                      }
+                      final estudos = snapshot.data ?? const <EstudoModel>[];
+                      return StreamBuilder<List<ProgressoEstudoModel>>(
+                        stream: _progressoRepository.watchProgressoAluno(
+                          _alunoId,
+                        ),
+                        builder: (context, progressoSnapshot) {
+                          final progressos =
+                              progressoSnapshot.data ??
+                              const <ProgressoEstudoModel>[];
+                          return StreamBuilder<List<ResultadoEstudoAlunoModel>>(
+                            stream: _resultadosRepository.watchResultadosAluno(
+                              _alunoId,
+                            ),
+                            builder: (context, resultadosSnapshot) {
+                              final resultados =
+                                  resultadosSnapshot.data ??
+                                  const <ResultadoEstudoAlunoModel>[];
+                              return _conteudo(
+                                context,
+                                estudos,
+                                progressos,
+                                resultados,
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+          );
+        },
+      ),
     );
   }
 
@@ -122,6 +155,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
     BuildContext context,
     List<EstudoModel> estudos,
     List<ProgressoEstudoModel> progressos,
+    List<ResultadoEstudoAlunoModel> resultados,
   ) {
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -137,7 +171,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _header(context, estudos, progressos),
+                _header(context, estudos, progressos, resultados),
                 const SizedBox(height: 12),
                 if (estudos.isEmpty)
                   _mensagemCard(
@@ -145,11 +179,12 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
                     icon: Icons.article_rounded,
                     titulo: 'Nenhum estudo publicado neste ciclo ainda.',
                     texto:
-                        'Quando uma aula for liberada, ela aparecera nesta lista.',
+                        'Quando uma aula for liberada, ela aparecerá nesta lista.',
                   )
                 else
                   ...estudos.map(
-                    (estudo) => _estudoCard(context, estudo, progressos),
+                    (estudo) =>
+                        _estudoCard(context, estudo, progressos, resultados),
                   ),
               ],
             ),
@@ -163,6 +198,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
     BuildContext context,
     List<EstudoModel> estudos,
     List<ProgressoEstudoModel> progressos,
+    List<ResultadoEstudoAlunoModel> resultados,
   ) {
     final t = context.uai;
     final publicados = estudos
@@ -279,6 +315,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
     BuildContext context,
     EstudoModel estudo,
     List<ProgressoEstudoModel> progressos,
+    List<ResultadoEstudoAlunoModel> resultados,
   ) {
     final t = context.uai;
     final bloqueado = estudo.status == EstudoCicloStatus.emBreve;
@@ -287,6 +324,9 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
         .firstOrNull;
     final concluido = progresso?.concluido == true;
     final iniciado = progresso?.iniciado == true;
+    final resultado = resultados
+        .where((r) => r.estudoId == estudo.id)
+        .firstOrNull;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(15),
@@ -315,7 +355,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
             children: [
               _statusChip(
                 context,
-                bloqueado ? 'Em breve' : 'Disponivel',
+                bloqueado ? 'Em breve' : 'Disponível',
                 bloqueado,
               ),
               _miniChip(
@@ -329,7 +369,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
                 'Ordem ${estudo.ordem}',
               ),
               if (concluido)
-                _statusChip(context, 'Concluido', false)
+                _statusChip(context, 'Concluído', false)
               else if (iniciado)
                 _miniChip(
                   context,
@@ -391,16 +431,76 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-              onPressed: bloqueado ? null : () => _abrirEstudo(estudo),
-              icon: Icon(
-                bloqueado
-                    ? Icons.lock_outline_rounded
-                    : Icons.menu_book_rounded,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.icon(
+                onPressed: bloqueado ? null : () => _abrirEstudo(estudo),
+                icon: Icon(
+                  bloqueado
+                      ? Icons.lock_outline_rounded
+                      : Icons.menu_book_rounded,
+                ),
+                label: Text(bloqueado ? 'Em breve' : 'Ler estudo'),
               ),
-              label: Text(bloqueado ? 'Em breve' : 'Ler estudo'),
+              _avaliacaoChip(context, progresso, resultado),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _avaliacaoChip(
+    BuildContext context,
+    ProgressoEstudoModel? progresso,
+    ResultadoEstudoAlunoModel? resultado,
+  ) {
+    final t = context.uai;
+    final temResultado = resultado != null;
+    final aprovado = resultado?.aprovado == true;
+    final color = temResultado
+        ? (aprovado ? t.success : t.warning)
+        : (progresso?.concluido == true ? t.info : t.textMuted);
+    final icon = temResultado
+        ? (aprovado ? Icons.verified_rounded : Icons.percent_rounded)
+        : (progresso?.concluido == true
+              ? Icons.done_all_rounded
+              : progresso?.iniciado == true
+              ? Icons.play_circle_outline_rounded
+              : Icons.radio_button_unchecked_rounded);
+    final String label;
+    if (temResultado) {
+      final nota = resultado.notaFormatada;
+      label = aprovado ? 'Melhor nota: $nota%' : 'Avaliação feita • $nota%';
+    } else if (progresso?.concluido == true) {
+      label = 'Leitura concluída';
+    } else if (progresso?.iniciado == true) {
+      label = 'Em andamento';
+    } else {
+      label = 'Ainda não iniciado';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(color.withValues(alpha: 0.10), t.card),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -446,6 +546,7 @@ class _CicloEstudosScreenState extends State<CicloEstudosScreen> {
           estudo: estudo,
           mostrarEmBreve: widget.mostrarEmBreve,
           alunoId: _alunoId,
+          config: widget.config,
         ),
       ),
     );

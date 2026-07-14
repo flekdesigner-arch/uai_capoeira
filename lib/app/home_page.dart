@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 
 // Services
 import 'package:uai_capoeira/modules/turmas/services/academia_cache_service.dart';
@@ -31,12 +36,47 @@ class _HomePageState extends State<HomePage> {
 
   bool _jaMostrouAvisoOffline = false;
   bool _registrouUltimoAcesso = false;
+  bool _cacaBugRegistrouHome = false;
+  bool _cacaBugRegistrouPerfil = false;
+  bool _cacaBugRegistrouErroPerfil = false;
+  bool _cacaBugRegistrouPrimeiroCarregamentoAcademias = false;
+  bool _homeInicializada = false;
 
   @override
   void initState() {
     super.initState();
-    _inicializarStreams();
     _registrarUltimoAcessoUsuario();
+    unawaited(_bootstrapHome());
+  }
+
+  Future<void> _bootstrapHome() async {
+    await _inicializarCacaBug();
+    if (!mounted) return;
+
+    _inicializarStreams();
+
+    setState(() {
+      _homeInicializada = true;
+    });
+  }
+
+  Future<void> _inicializarCacaBug() async {
+    if (currentUser == null) return;
+    if (_cacaBugRegistrouHome) return;
+
+    await CacaBugService.instance.inicializar(user: currentUser);
+
+    _cacaBugRegistrouHome = true;
+
+    await CacaBugService.instance.registrarEvento(
+      tipo: 'acao_usuario',
+      acao: CacaBugActions.abriuHome,
+      descricao: 'Usuário entrou na Home',
+      tela: 'HomePage',
+      arquivo: 'lib/app/home_page.dart',
+      rota: '/home',
+      status: 'success',
+    );
   }
 
   void _inicializarStreams() {
@@ -72,7 +112,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _carregarAcademias() async {
+  Future<List<Map<String, dynamic>>> _carregarAcademias({
+    bool origemRefreshManual = false,
+  }) async {
     final uid = currentUser?.uid;
 
     if (uid == null || uid.isEmpty) {
@@ -98,12 +140,44 @@ class _HomePageState extends State<HomePage> {
 
     debugPrint('HomePage: academias carregadas: ${academias.length}');
 
+    if (origemRefreshManual) {
+      unawaited(
+        CacaBugService.instance.registrarEvento(
+          tipo: 'acao_usuario',
+          acao: CacaBugActions.atualizouAcademias,
+          descricao: 'Usuário atualizou academias na Home',
+          tela: 'HomePage',
+          arquivo: 'lib/app/home_page.dart',
+          rota: '/home',
+          status: 'success',
+          dados: {'quantidade': academias.length, 'origem': 'refresh_manual'},
+        ),
+      );
+    } else if (!_cacaBugRegistrouPrimeiroCarregamentoAcademias) {
+      _cacaBugRegistrouPrimeiroCarregamentoAcademias = true;
+      unawaited(
+        CacaBugService.instance.registrarEvento(
+          tipo: 'acao_usuario',
+          acao: CacaBugActions.carregouAcademias,
+          descricao: 'Usuário carregou ${academias.length} academia(s)',
+          tela: 'HomePage',
+          arquivo: 'lib/app/home_page.dart',
+          rota: '/home',
+          status: 'success',
+          dados: {
+            'quantidade': academias.length,
+            'origem': 'carregamento_inicial',
+          },
+        ),
+      );
+    }
+
     return academias;
   }
 
   Future<void> _recarregarAcademias() async {
     setState(() {
-      _academiasFuture = _carregarAcademias();
+      _academiasFuture = _carregarAcademias(origemRefreshManual: true);
     });
   }
 
@@ -111,6 +185,10 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final t = context.uai;
+
+    if (!_homeInicializada) {
+      return _buildHomeBootstrapLoading();
+    }
 
     return Scaffold(
       backgroundColor: t.background,
@@ -155,6 +233,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildHomeBootstrapLoading() {
+    final t = context.uai;
+
+    return Scaffold(
+      backgroundColor: t.background,
+      body: Center(child: CircularProgressIndicator(color: t.primary)),
+    );
+  }
+
   Widget _buildPerfilStream(ThemeData theme) {
     if (currentUser == null) {
       return _buildPerfilOffline();
@@ -170,6 +257,19 @@ class _HomePageState extends State<HomePage> {
 
         if (snapshot.hasError) {
           debugPrint('Erro no stream do usuário: ${snapshot.error}');
+          if (!_cacaBugRegistrouErroPerfil) {
+            _cacaBugRegistrouErroPerfil = true;
+            unawaited(
+              CacaBugService.instance.registrarErro(
+                acao: CacaBugActions.erroCarregarPerfil,
+                descricao: 'Erro ao carregar perfil na Home',
+                tela: 'HomePage',
+                arquivo: 'lib/app/home_page.dart',
+                rota: '/home',
+                erro: snapshot.error,
+              ),
+            );
+          }
           return _buildPerfilComFallback(theme);
         }
 
@@ -182,6 +282,25 @@ class _HomePageState extends State<HomePage> {
         final String? photoUrl = userData['foto_url'] as String?;
 
         debugPrint('Perfil atualizado: $displayName');
+
+        if (displayName.trim().isNotEmpty && !_cacaBugRegistrouPerfil) {
+          _cacaBugRegistrouPerfil = true;
+          unawaited(
+            CacaBugService.instance.registrarEvento(
+              tipo: 'acao_usuario',
+              acao: CacaBugActions.carregouPerfil,
+              descricao: 'Usuário carregou o perfil na Home',
+              tela: 'HomePage',
+              arquivo: 'lib/app/home_page.dart',
+              rota: '/home',
+              status: 'success',
+              dados: {
+                'nome': displayName,
+                'temFoto': photoUrl != null && photoUrl.isNotEmpty,
+              },
+            ),
+          );
+        }
 
         return Column(
           children: [
@@ -542,8 +661,30 @@ class _HomePageState extends State<HomePage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(context.uai.cardRadius - 6),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          unawaited(
+            CacaBugService.instance
+                .registrarEvento(
+                  tipo: 'acao_usuario',
+                  acao: CacaBugActions.abriuAcademia,
+                  descricao:
+                      'Usuário abriu a academia ${academia['nome'] ?? 'Academia'}',
+                  tela: 'HomePage',
+                  arquivo: 'lib/app/home_page.dart',
+                  rota: '/home',
+                  status: 'success',
+                  dados: {
+                    'academiaId': academia['id'],
+                    'academiaNome': academia['nome'],
+                    'academiaCidade': academia['cidade'],
+                    'alunosCount': academia['alunos_count'],
+                    'turmasCount': academia['turmas_count'],
+                  },
+                )
+                .then((_) => CacaBugService.instance.flush(force: true)),
+          );
+
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => TurmasAcademiaScreen(
@@ -551,6 +692,20 @@ class _HomePageState extends State<HomePage> {
                 academiaNome: academia['nome'],
                 academiaCidade: academia['cidade'],
               ),
+            ),
+          );
+
+          if (!mounted) return;
+
+          unawaited(
+            CacaBugService.instance.registrarEvento(
+              tipo: 'navegacao',
+              acao: CacaBugActions.voltouHome,
+              descricao: 'Usuário voltou para a Home',
+              tela: 'HomePage',
+              arquivo: 'lib/app/home_page.dart',
+              rota: '/home',
+              status: 'success',
             ),
           );
         },

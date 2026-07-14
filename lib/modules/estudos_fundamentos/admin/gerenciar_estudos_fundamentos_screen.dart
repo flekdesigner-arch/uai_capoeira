@@ -13,6 +13,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dar
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_config_service.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class GerenciarEstudosFundamentosScreen extends StatefulWidget {
   const GerenciarEstudosFundamentosScreen({super.key});
@@ -169,6 +170,8 @@ class _GerenciarEstudosFundamentosScreenState
                           const SizedBox(height: 14),
                           _buildConfigPanel(),
                           const SizedBox(height: 14),
+                          _buildThemePanel(),
+                          const SizedBox(height: 14),
                           _buildResumoPanel(),
                           const SizedBox(height: 14),
                           _buildAtalhosPanel(),
@@ -304,6 +307,155 @@ class _GerenciarEstudosFundamentosScreenState
             child: LinearProgressIndicator(color: t.primary),
           ),
       ],
+    );
+  }
+
+  Widget _buildThemePanel() {
+    final t = context.uai;
+    final selected = EstudosThemePreset.isValid(_config.temaEstudosSelecionado)
+        ? _config.temaEstudosSelecionado
+        : EstudosThemePreset.pergaminhoAncestral;
+
+    return _section(
+      title: 'Tema visual da área de estudos',
+      icon: Icons.palette_rounded,
+      children: [
+        _switchTile(
+          title: 'Forçar tema visual nos estudos',
+          subtitle:
+              'Quando ativado, a Área do Aluno em Estudos/Fundamentos usará este tema visual, ignorando o tema dinâmico apenas neste módulo.',
+          value: _config.forcarTemaEstudos,
+          onChanged: (value) => _salvar(
+            _config.copyWith(
+              forcarTemaEstudos: value,
+              temaEstudosSelecionado: selected,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<String>(
+          initialValue: selected,
+          decoration: const InputDecoration(labelText: 'Tema selecionado'),
+          items: EstudosThemePreset.values
+              .map(
+                (value) => DropdownMenuItem(
+                  value: value,
+                  child: Text(EstudosThemePreset.label(value)),
+                ),
+              )
+              .toList(),
+          onChanged: _salvando
+              ? null
+              : (value) {
+                  if (value == null) return;
+                  _salvar(_config.copyWith(temaEstudosSelecionado: value));
+                },
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: EstudosThemePreset.values
+              .map((value) => _themePreview(value, value == selected))
+              .toList(),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _config.forcarTemaEstudos
+              ? 'Tema forçado ativo para a área de estudos do aluno.'
+              : 'Tema dinâmico atual mantido na área de estudos do aluno.',
+          style: TextStyle(
+            color: t.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _themePreview(String value, bool selected) {
+    final t = context.uai;
+    final tokens = EstudosThemePreset.tokens(value);
+    return InkWell(
+      borderRadius: BorderRadius.circular(t.cardRadius - 4),
+      onTap: _salvando
+          ? null
+          : () => _salvar(_config.copyWith(temaEstudosSelecionado: value)),
+      child: Container(
+        width: 250,
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          gradient: tokens.softGradient,
+          borderRadius: BorderRadius.circular(t.cardRadius - 4),
+          border: Border.all(
+            color: selected ? tokens.accent : tokens.border,
+            width: selected ? 2 : 1,
+          ),
+          boxShadow: selected ? tokens.softShadow : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    EstudosThemePreset.label(value),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: tokens.accent,
+                    size: 18,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              EstudosThemePreset.description(value),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: 12,
+                height: 1.25,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                _themeSwatch(tokens.background),
+                _themeSwatch(tokens.card),
+                _themeSwatch(tokens.primary),
+                _themeSwatch(tokens.accent),
+                _themeSwatch(tokens.success),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _themeSwatch(Color color) {
+    return Container(
+      width: 22,
+      height: 22,
+      margin: const EdgeInsets.only(right: 5),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
     );
   }
 

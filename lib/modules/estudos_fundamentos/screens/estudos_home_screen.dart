@@ -11,6 +11,7 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/progresso_
 import 'package:uai_capoeira/modules/estudos_fundamentos/screens/ciclo_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/screens/meu_progresso_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_config_service.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class EstudosHomeScreen extends StatefulWidget {
   final Map<String, dynamic> aluno;
@@ -54,103 +55,111 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.uai;
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        title: const Text(
-          'Estudos e Fundamentos',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _recarregar,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Atualizar',
-          ),
-        ],
-      ),
-      body: StreamBuilder<EstudosConfigModel>(
-        key: ValueKey(_reloadKey),
-        stream: _configService.watchConfig(),
-        builder: (context, configSnapshot) {
-          if (configSnapshot.hasError) {
-            return _buildEstadoCentral(
-              icon: Icons.error_outline_rounded,
-              titulo: 'Não foi possível carregar os estudos.',
-              texto: 'Verifique sua conexao e tente novamente.',
-              action: _retryButton(),
-            );
-          }
-          if (!configSnapshot.hasData) {
-            return Center(child: CircularProgressIndicator(color: t.primary));
-          }
-
-          final config = configSnapshot.data ?? EstudosConfigModel.defaults();
-          if (!config.ativo ||
-              !config.mostrarCardAreaAluno ||
-              _alunoId.isEmpty) {
-            return _buildEstadoCentral(
-              icon: Icons.lock_outline_rounded,
-              titulo:
-                  'Os Estudos e Fundamentos ainda nao estao disponiveis para os alunos.',
-              texto:
-                  'Quando o modulo for liberado, a linha do tempo aparecera aqui.',
-            );
-          }
-
-          return StreamBuilder<List<EstudoCicloModel>>(
-            stream: _ciclosRepository.watchCiclosVisiveisParaAluno(
-              mostrarEmBreve: config.mostrarEmBreve,
-            ),
-            builder: (context, ciclosSnapshot) {
-              if (ciclosSnapshot.hasError) {
-                return _buildEstadoCentral(
-                  icon: Icons.error_outline_rounded,
-                  titulo: 'Não foi possível carregar os estudos.',
-                  texto: 'Verifique sua conexao e tente novamente.',
-                  action: _retryButton(),
-                );
-              }
-              if (!ciclosSnapshot.hasData) {
-                return Center(
-                  child: CircularProgressIndicator(color: t.primary),
-                );
-              }
-              final ciclos = ciclosSnapshot.data ?? const <EstudoCicloModel>[];
-              return StreamBuilder<List<EstudoModel>>(
-                stream: _estudosRepository.watchEstudosPublicadosVisiveis(),
-                builder: (context, estudosSnapshot) {
-                  final todosEstudos =
-                      estudosSnapshot.data ?? const <EstudoModel>[];
-                  final ciclosIds = ciclos
-                      .where((c) => c.status == EstudoCicloStatus.publicado)
-                      .map((c) => c.id)
-                      .toSet();
-                  final estudosPublicados = todosEstudos
-                      .where((estudo) => ciclosIds.contains(estudo.cicloId))
-                      .toList();
-                  return StreamBuilder<List<ProgressoEstudoModel>>(
-                    stream: _progressoRepository.watchProgressoAluno(_alunoId),
-                    builder: (context, progressoSnapshot) {
-                      final progressos =
-                          progressoSnapshot.data ??
-                          const <ProgressoEstudoModel>[];
-                      return _buildConteudo(
-                        context,
-                        config,
-                        ciclos,
-                        estudosPublicados,
-                        progressos,
-                      );
-                    },
-                  );
-                },
+    return StreamBuilder<EstudosConfigModel>(
+      key: ValueKey(_reloadKey),
+      stream: _configService.watchConfig(),
+      builder: (context, configSnapshot) {
+        final config = configSnapshot.data ?? EstudosConfigModel.defaults();
+        return EstudosAlunoTheme(
+          config: configSnapshot.hasData ? config : null,
+          child: Builder(
+            builder: (context) {
+              final t = context.uai;
+              return Scaffold(
+                backgroundColor: t.background,
+                appBar: AppBar(
+                  title: const Text(
+                    'Estudos e Fundamentos',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  actions: [
+                    IconButton(
+                      onPressed: _recarregar,
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Atualizar',
+                    ),
+                  ],
+                ),
+                body: _buildBody(context, configSnapshot, config),
               );
             },
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context,
+    AsyncSnapshot<EstudosConfigModel> configSnapshot,
+    EstudosConfigModel config,
+  ) {
+    final t = context.uai;
+    if (configSnapshot.hasError) {
+      return _buildEstadoCentral(
+        icon: Icons.error_outline_rounded,
+        titulo: 'Não foi possível carregar os estudos.',
+        texto: 'Verifique sua conexão e tente novamente.',
+        action: _retryButton(),
+      );
+    }
+    if (!configSnapshot.hasData) {
+      return Center(child: CircularProgressIndicator(color: t.primary));
+    }
+    if (!config.ativo || !config.mostrarCardAreaAluno || _alunoId.isEmpty) {
+      return _buildEstadoCentral(
+        icon: Icons.lock_outline_rounded,
+        titulo:
+            'Os Estudos e Fundamentos ainda não estão disponíveis para os alunos.',
+        texto: 'Quando o módulo for liberado, a linha do tempo aparecerá aqui.',
+      );
+    }
+
+    return StreamBuilder<List<EstudoCicloModel>>(
+      stream: _ciclosRepository.watchCiclosVisiveisParaAluno(
+        mostrarEmBreve: config.mostrarEmBreve,
       ),
+      builder: (context, ciclosSnapshot) {
+        if (ciclosSnapshot.hasError) {
+          return _buildEstadoCentral(
+            icon: Icons.error_outline_rounded,
+            titulo: 'Não foi possível carregar os estudos.',
+            texto: 'Verifique sua conexão e tente novamente.',
+            action: _retryButton(),
+          );
+        }
+        if (!ciclosSnapshot.hasData) {
+          return Center(child: CircularProgressIndicator(color: t.primary));
+        }
+        final ciclos = ciclosSnapshot.data ?? const <EstudoCicloModel>[];
+        return StreamBuilder<List<EstudoModel>>(
+          stream: _estudosRepository.watchEstudosPublicadosVisiveis(),
+          builder: (context, estudosSnapshot) {
+            final todosEstudos = estudosSnapshot.data ?? const <EstudoModel>[];
+            final ciclosIds = ciclos
+                .where((c) => c.status == EstudoCicloStatus.publicado)
+                .map((c) => c.id)
+                .toSet();
+            final estudosPublicados = todosEstudos
+                .where((estudo) => ciclosIds.contains(estudo.cicloId))
+                .toList();
+            return StreamBuilder<List<ProgressoEstudoModel>>(
+              stream: _progressoRepository.watchProgressoAluno(_alunoId),
+              builder: (context, progressoSnapshot) {
+                final progressos =
+                    progressoSnapshot.data ?? const <ProgressoEstudoModel>[];
+                return _buildConteudo(
+                  context,
+                  config,
+                  ciclos,
+                  estudosPublicados,
+                  progressos,
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -179,6 +188,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                 const SizedBox(height: 12),
                 _progressoGeralCard(
                   context,
+                  config,
                   ciclos,
                   estudosPublicados,
                   progressos,
@@ -213,6 +223,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
 
   Widget _progressoGeralCard(
     BuildContext context,
+    EstudosConfigModel config,
     List<EstudoCicloModel> ciclos,
     List<EstudoModel> estudosPublicados,
     List<ProgressoEstudoModel> progressos,
@@ -259,21 +270,33 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                 ),
               ),
               TextButton.icon(
-                onPressed: () =>
-                    _abrirMeuProgresso(ciclos, estudosPublicados, progressos),
+                onPressed: () => _abrirMeuProgresso(
+                  config,
+                  ciclos,
+                  estudosPublicados,
+                  progressos,
+                ),
                 icon: const Icon(Icons.chevron_right_rounded),
                 label: const Text('Meu progresso'),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: resumo.total <= 0 ? 0 : resumo.percentual / 100,
-              minHeight: 10,
-              backgroundColor: t.cardAlt,
-              color: t.success,
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: 0,
+              end: resumo.total <= 0 ? 0 : resumo.percentual / 100,
+            ),
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, _) => ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: value,
+                minHeight: 10,
+                backgroundColor: t.cardAlt,
+                color: t.success,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -282,30 +305,48 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
             style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           Text(
-            '${resumo.percentual}% da jornada concluida',
+            '${resumo.percentual}% da jornada concluída',
             style: TextStyle(
               color: t.textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
-          if (ultimoEstudo != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              '?ltimo acesso: Estudo ${ultimoEstudo.numero.toString().padLeft(3, '0')} - ${ultimoEstudo.titulo}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: t.textSecondary,
-                fontWeight: FontWeight.w700,
-              ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: t.cardAlt,
+              borderRadius: BorderRadius.circular(t.cardRadius),
+              border: Border.all(color: t.border),
             ),
-          ],
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.history_rounded, color: t.textSecondary, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    ultimoEstudo == null
+                        ? 'Você ainda não iniciou nenhum estudo.'
+                        : 'Último acesso: Estudo ${ultimoEstudo.numero.toString().padLeft(3, '0')} — ${ultimoEstudo.titulo}',
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
   void _abrirMeuProgresso(
+    EstudosConfigModel config,
     List<EstudoCicloModel> ciclos,
     List<EstudoModel> estudosPublicados,
     List<ProgressoEstudoModel> progressos,
@@ -314,6 +355,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => MeuProgressoEstudosScreen(
+          config: config,
           alunoId: _alunoId,
           ciclos: ciclos
               .where((c) => c.status == EstudoCicloStatus.publicado)
@@ -380,7 +422,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                       '$totalCiclos ciclos liberados',
                       onPrimary,
                     ),
-                    _headerChip(context, 'Modulo ativo', onPrimary),
+                    _headerChip(context, 'Módulo ativo', onPrimary),
                   ],
                 ),
               ],
@@ -589,7 +631,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
                             ),
                             label: Text(
                               bloqueado
-                                  ? 'Este ciclo sera liberado em breve'
+                                  ? 'Este ciclo será liberado em breve'
                                   : 'Ver estudos',
                             ),
                           ),
@@ -645,6 +687,7 @@ class _EstudosHomeScreenState extends State<EstudosHomeScreen> {
           mostrarEmBreve: config.mostrarEmBreve,
           aluno: widget.aluno,
           authPayload: widget.authPayload,
+          config: config,
         ),
       ),
     );

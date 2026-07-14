@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -1153,6 +1153,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
   late String _status;
   late bool _mostrarNaLinhaDoTempo;
   late bool _mostrarComoEmBreve;
+  late bool _permitirTentarNovamente;
 
   @override
   void initState() {
@@ -1189,6 +1190,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     _status = e.status;
     _mostrarNaLinhaDoTempo = e.mostrarNaLinhaDoTempo;
     _mostrarComoEmBreve = e.mostrarComoEmBreve;
+    _permitirTentarNovamente = e.permitirTentarNovamente;
   }
 
   @override
@@ -1261,6 +1263,7 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
       status: novoStatus,
       mostrarNaLinhaDoTempo: _mostrarNaLinhaDoTempo,
       mostrarComoEmBreve: _mostrarComoEmBreve,
+      permitirTentarNovamente: _permitirTentarNovamente,
     );
     if (mounted) Navigator.pop(context, estudo);
   }
@@ -1644,6 +1647,14 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
                         'Mostrar como em breve',
                         _mostrarComoEmBreve,
                         (v) => setState(() => _mostrarComoEmBreve = v),
+                      ),
+                      const SizedBox(height: 8),
+                      _switchRow(
+                        'Permitir tentar novamente',
+                        _permitirTentarNovamente,
+                        (v) => setState(() => _permitirTentarNovamente = v),
+                        helperText:
+                            'Quando ativado, o aluno pode refazer a avaliação deste estudo. Quando desativado, vale apenas a primeira tentativa.',
                       ),
                       const SizedBox(height: 12),
                       _checklistEditorial(),
@@ -2068,7 +2079,12 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
     );
   }
 
-  Widget _switchRow(String title, bool value, ValueChanged<bool> onChanged) {
+  Widget _switchRow(
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged, {
+    String helperText = '',
+  }) {
     final t = context.uai;
     return Material(
       color: t.surface,
@@ -2085,14 +2101,32 @@ class EstudoFormDialogState extends State<EstudoFormDialog> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (helperText.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        helperText,
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 12,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+              const SizedBox(width: 8),
               Switch(
                 value: value,
                 activeThumbColor: t.primary,

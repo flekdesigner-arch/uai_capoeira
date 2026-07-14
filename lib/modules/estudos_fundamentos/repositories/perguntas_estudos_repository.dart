@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_model.dart';
@@ -72,12 +72,39 @@ class PerguntasEstudosRepository {
     if (!PerguntaEstudoStatus.isValid(status)) {
       throw ArgumentError('Status de pergunta invalido: $status');
     }
+    await _collection
+        .doc(perguntaId)
+        .set(_statusUpdateData(status), SetOptions(merge: true));
+  }
+
+  Future<void> alterarStatusEmLote(
+    Iterable<String> perguntaIds,
+    String status,
+  ) async {
+    if (!PerguntaEstudoStatus.isValid(status)) {
+      throw ArgumentError('Status de pergunta invalido: $status');
+    }
+    final ids = perguntaIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (ids.isEmpty) return;
+
+    final batch = _firestore.batch();
+    final data = _statusUpdateData(status);
+    for (final id in ids) {
+      batch.set(_collection.doc(id), data, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  Map<String, dynamic> _statusUpdateData(String status) {
     final uid = _auth.currentUser?.uid ?? '';
-    await _collection.doc(perguntaId).set({
+    return {
       'status': status,
       'atualizadoPor': uid,
       'atualizadoEm': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
   }
 
   Future<void> arquivarPergunta(String perguntaId) {

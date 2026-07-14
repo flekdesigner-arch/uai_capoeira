@@ -4,10 +4,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_avaliacao_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/resultado_tentativa_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/screens/resultado_estudo_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/avaliacao_estudos_service.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class ResponderEstudoScreen extends StatefulWidget {
   final String alunoId;
@@ -15,6 +17,8 @@ class ResponderEstudoScreen extends StatefulWidget {
   final String cicloId;
   final String estudoTitulo;
   final String cicloTitulo;
+  final bool permitirTentarNovamente;
+  final EstudosConfigModel? config;
 
   const ResponderEstudoScreen({
     super.key,
@@ -23,6 +27,8 @@ class ResponderEstudoScreen extends StatefulWidget {
     required this.cicloId,
     required this.estudoTitulo,
     required this.cicloTitulo,
+    this.permitirTentarNovamente = true,
+    this.config,
   });
 
   @override
@@ -130,13 +136,19 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
         builder: (_) => ResultadoEstudoScreen(
           estudoTitulo: widget.estudoTitulo,
           resultado: resultado,
-          tentarNovamenteBuilder: (_) => ResponderEstudoScreen(
-            alunoId: widget.alunoId,
-            estudoId: widget.estudoId,
-            cicloId: widget.cicloId,
-            estudoTitulo: widget.estudoTitulo,
-            cicloTitulo: widget.cicloTitulo,
-          ),
+          permitirTentarNovamente: widget.permitirTentarNovamente,
+          config: widget.config,
+          tentarNovamenteBuilder: widget.permitirTentarNovamente
+              ? (_) => ResponderEstudoScreen(
+                  alunoId: widget.alunoId,
+                  estudoId: widget.estudoId,
+                  cicloId: widget.cicloId,
+                  estudoTitulo: widget.estudoTitulo,
+                  cicloTitulo: widget.cicloTitulo,
+                  permitirTentarNovamente: widget.permitirTentarNovamente,
+                  config: widget.config,
+                )
+              : null,
         ),
       ),
     );
@@ -173,7 +185,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
         return 'Alguma resposta está inválida. Recarregue a atividade e tente novamente.';
       case 'unavailable':
       case 'deadline-exceeded':
-        return 'Falha de conexao com o servidor. Tente novamente.';
+        return 'Falha de conexão com o servidor. Tente novamente.';
       case 'not-found':
         return 'Não encontramos este estudo ou aluno.';
       default:
@@ -183,71 +195,85 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.uai;
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        title: Text(
-          widget.estudoTitulo.isEmpty ? 'Atividade' : widget.estudoTitulo,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _enviando ? null : _recarregar,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Atualizar',
-          ),
-        ],
-      ),
-      body: FutureBuilder<PerguntasEstudoAvaliacaoResult>(
-        future: _futurePerguntas,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator(color: t.primary));
-          }
-          if (snapshot.hasError) {
-            return _estadoCentral(
-              icon: Icons.error_outline_rounded,
-              titulo: 'Não foi possível carregar as perguntas.',
-              texto: snapshot.error is FirebaseFunctionsException
-                  ? _mensagemFunction(
-                      snapshot.error! as FirebaseFunctionsException,
-                    )
-                  : 'Verifique sua conexao e tente novamente.',
-              action: OutlinedButton.icon(
-                onPressed: _recarregar,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Tentar novamente'),
+    return EstudosAlunoTheme(
+      config: widget.config,
+      child: Builder(
+        builder: (context) {
+          final t = context.uai;
+          return Scaffold(
+            backgroundColor: t.background,
+            appBar: AppBar(
+              title: Text(
+                widget.estudoTitulo.isEmpty ? 'Atividade' : widget.estudoTitulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
-            );
-          }
+              actions: [
+                IconButton(
+                  onPressed: _enviando ? null : _recarregar,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: 'Atualizar',
+                ),
+              ],
+            ),
+            body: FutureBuilder<PerguntasEstudoAvaliacaoResult>(
+              future: _futurePerguntas,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: CircularProgressIndicator(color: t.primary),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _estadoCentral(
+                    context,
+                    icon: Icons.error_outline_rounded,
+                    titulo: 'Não foi possível carregar as perguntas.',
+                    texto: snapshot.error is FirebaseFunctionsException
+                        ? _mensagemFunction(
+                            snapshot.error! as FirebaseFunctionsException,
+                          )
+                        : 'Verifique sua conexão e tente novamente.',
+                    action: OutlinedButton.icon(
+                      onPressed: _recarregar,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Tentar novamente'),
+                    ),
+                  );
+                }
 
-          final result = snapshot.data;
-          final perguntas =
-              result?.perguntas ?? const <PerguntaAvaliacaoEstudoModel>[];
-          if (perguntas.isEmpty) {
-            return _estadoCentral(
-              icon: Icons.assignment_outlined,
-              titulo: 'Nenhuma pergunta disponível.',
-              texto:
-                  'Este estudo ainda não possui perguntas liberadas para resposta.',
-              action: OutlinedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_rounded),
-                label: const Text('Voltar ao estudo'),
-              ),
-            );
-          }
+                final result = snapshot.data;
+                final perguntas =
+                    result?.perguntas ?? const <PerguntaAvaliacaoEstudoModel>[];
+                if (perguntas.isEmpty) {
+                  return _estadoCentral(
+                    context,
+                    icon: Icons.assignment_outlined,
+                    titulo: 'Nenhuma pergunta disponível.',
+                    texto:
+                        'Este estudo ainda não possui perguntas liberadas para resposta.',
+                    action: OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: const Text('Voltar ao estudo'),
+                    ),
+                  );
+                }
 
-          return _conteudo(perguntas);
+                return _conteudo(context, perguntas);
+              },
+            ),
+          );
         },
       ),
     );
   }
 
-  Widget _conteudo(List<PerguntaAvaliacaoEstudoModel> perguntas) {
+  Widget _conteudo(
+    BuildContext context,
+    List<PerguntaAvaliacaoEstudoModel> perguntas,
+  ) {
     final t = context.uai;
     final respondidas = perguntas
         .where((pergunta) => (_selecoes[pergunta.perguntaId] ?? '').isNotEmpty)
@@ -262,10 +288,12 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
             children: [
               _cabecalho(context, respondidas, perguntas.length),
               const SizedBox(height: 12),
+              _avisoEducativo(context),
+              const SizedBox(height: 12),
               ...perguntas.asMap().entries.map(
                 (entry) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _perguntaCard(entry.key, entry.value),
+                  child: _perguntaCard(context, entry.key, entry.value),
                 ),
               ),
               const SizedBox(height: 4),
@@ -295,6 +323,35 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _avisoEducativo(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(t.accent.withValues(alpha: 0.12), t.card),
+        borderRadius: BorderRadius.circular(t.cardRadius + 2),
+        border: Border.all(color: t.accent.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.psychology_alt_rounded, color: t.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Tente responder primeiro com o que você aprendeu aqui. Isso fortalece sua memória, sua atenção e sua compreensão da Capoeira.',
+              style: TextStyle(
+                color: t.textPrimary,
+                height: 1.35,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -344,7 +401,11 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
     );
   }
 
-  Widget _perguntaCard(int index, PerguntaAvaliacaoEstudoModel pergunta) {
+  Widget _perguntaCard(
+    BuildContext context,
+    int index,
+    PerguntaAvaliacaoEstudoModel pergunta,
+  ) {
     final t = context.uai;
     final selected = _selecoes[pergunta.perguntaId];
     final suportada = pergunta.isSelecaoUnica;
@@ -416,22 +477,27 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: selecionada
-                          ? t.primary.withValues(alpha: 0.08)
-                          : Colors.transparent,
+                          ? Color.alphaBlend(
+                              t.accent.withValues(alpha: 0.16),
+                              t.cardAlt,
+                            )
+                          : t.cardAlt,
                       borderRadius: BorderRadius.circular(t.cardRadius),
                       border: Border.all(
-                        color: selecionada ? t.primary : t.border,
+                        color: selecionada ? t.accent : t.border,
                       ),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 15,
-                          backgroundColor: t.cardAlt,
+                          backgroundColor: selecionada
+                              ? t.accent.withValues(alpha: 0.18)
+                              : t.surface,
                           child: Text(
                             alternativa.displayLabel,
                             style: TextStyle(
-                              color: t.textSecondary,
+                              color: selecionada ? t.accent : t.textSecondary,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -453,7 +519,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
                           selecionada
                               ? Icons.radio_button_checked_rounded
                               : Icons.radio_button_unchecked_rounded,
-                          color: selecionada ? t.primary : t.textMuted,
+                          color: selecionada ? t.accent : t.textMuted,
                         ),
                       ],
                     ),
@@ -470,7 +536,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
     return _avisoPergunta(
       context,
       icon: Icons.block_rounded,
-      texto: 'Tipo de pergunta ainda nao suportado no app.',
+      texto: 'Tipo de pergunta ainda não suportado no app.',
     );
   }
 
@@ -478,7 +544,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
     return _avisoPergunta(
       context,
       icon: Icons.warning_amber_rounded,
-      texto: 'Pergunta sem alternativas disponiveis.',
+      texto: 'Pergunta sem alternativas disponíveis.',
     );
   }
 
@@ -513,7 +579,8 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
     );
   }
 
-  Widget _estadoCentral({
+  Widget _estadoCentral(
+    BuildContext context, {
     required IconData icon,
     required String titulo,
     required String texto,

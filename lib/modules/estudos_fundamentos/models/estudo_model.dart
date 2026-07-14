@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'estudo_ciclo_model.dart';
 
@@ -29,6 +29,7 @@ class EstudoModel {
   final String status;
   final bool mostrarNaLinhaDoTempo;
   final bool mostrarComoEmBreve;
+  final bool permitirTentarNovamente;
   final int duracaoEstimadaMin;
   final String estudoAnteriorId;
   final String proximoEstudoId;
@@ -64,6 +65,7 @@ class EstudoModel {
     required this.status,
     required this.mostrarNaLinhaDoTempo,
     required this.mostrarComoEmBreve,
+    required this.permitirTentarNovamente,
     required this.duracaoEstimadaMin,
     required this.estudoAnteriorId,
     required this.proximoEstudoId,
@@ -101,6 +103,7 @@ class EstudoModel {
       status: EstudoCicloStatus.rascunho,
       mostrarNaLinhaDoTempo: true,
       mostrarComoEmBreve: false,
+      permitirTentarNovamente: true,
       duracaoEstimadaMin: 0,
       estudoAnteriorId: '',
       proximoEstudoId: '',
@@ -150,6 +153,10 @@ class EstudoModel {
         fallback: true,
       ),
       mostrarComoEmBreve: _boolValue(map['mostrarComoEmBreve']),
+      permitirTentarNovamente: _boolValue(
+        map['permitirTentarNovamente'],
+        fallback: true,
+      ),
       duracaoEstimadaMin: _intValue(map['duracaoEstimadaMin'], fallback: 0),
       estudoAnteriorId: _text(map['estudoAnteriorId']),
       proximoEstudoId: _text(map['proximoEstudoId']),
@@ -194,6 +201,7 @@ class EstudoModel {
       'status': status,
       'mostrarNaLinhaDoTempo': mostrarNaLinhaDoTempo,
       'mostrarComoEmBreve': mostrarComoEmBreve,
+      'permitirTentarNovamente': permitirTentarNovamente,
       'duracaoEstimadaMin': duracaoEstimadaMin,
       'estudoAnteriorId': estudoAnteriorId,
       'proximoEstudoId': proximoEstudoId,
@@ -232,6 +240,7 @@ class EstudoModel {
     String? status,
     bool? mostrarNaLinhaDoTempo,
     bool? mostrarComoEmBreve,
+    bool? permitirTentarNovamente,
     int? duracaoEstimadaMin,
     String? estudoAnteriorId,
     String? proximoEstudoId,
@@ -268,6 +277,8 @@ class EstudoModel {
       mostrarNaLinhaDoTempo:
           mostrarNaLinhaDoTempo ?? this.mostrarNaLinhaDoTempo,
       mostrarComoEmBreve: mostrarComoEmBreve ?? this.mostrarComoEmBreve,
+      permitirTentarNovamente:
+          permitirTentarNovamente ?? this.permitirTentarNovamente,
       duracaoEstimadaMin: duracaoEstimadaMin ?? this.duracaoEstimadaMin,
       estudoAnteriorId: estudoAnteriorId ?? this.estudoAnteriorId,
       proximoEstudoId: proximoEstudoId ?? this.proximoEstudoId,

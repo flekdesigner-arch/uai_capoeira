@@ -1,12 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_ciclo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/progresso_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/repositories/progresso_estudos_repository.dart';
+import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class MeuProgressoEstudosScreen extends StatelessWidget {
+  final EstudosConfigModel? config;
   final String alunoId;
   final List<EstudoCicloModel> ciclos;
   final List<EstudoModel> estudosPublicados;
@@ -14,6 +17,7 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
 
   const MeuProgressoEstudosScreen({
     super.key,
+    this.config,
     required this.alunoId,
     required this.ciclos,
     required this.estudosPublicados,
@@ -22,62 +26,71 @@ class MeuProgressoEstudosScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.uai;
-    final repo = ProgressoEstudosRepository();
-    final resumo = repo.calcularResumo(
-      estudosObrigatoriosIds: estudosPublicados.map((e) => e.id),
-      progressos: progressos,
-    );
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        title: const Text(
-          'Meu progresso',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 980),
-            child: ListView(
-              padding: const EdgeInsets.all(18),
-              children: [
-                _resumoCard(context, resumo),
-                const SizedBox(height: 12),
-                _aviso(context),
-                const SizedBox(height: 12),
-                if (estudosPublicados.isEmpty)
-                  _mensagem(context, 'Nenhum estudo publicado ainda.')
-                else ...[
-                  Text(
-                    'Progresso por ciclo',
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ...ciclos.map((ciclo) => _cicloCard(context, repo, ciclo)),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Estudos',
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ...estudosPublicados.map(
-                    (estudo) => _estudoLinha(context, estudo),
-                  ),
-                ],
-              ],
+    return EstudosAlunoTheme(
+      config: config,
+      child: Builder(
+        builder: (context) {
+          final t = context.uai;
+          final repo = ProgressoEstudosRepository();
+          final resumo = repo.calcularResumo(
+            estudosObrigatoriosIds: estudosPublicados.map((e) => e.id),
+            progressos: progressos,
+          );
+          return Scaffold(
+            backgroundColor: t.background,
+            appBar: AppBar(
+              title: const Text(
+                'Meu progresso',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
-          ),
-        ),
+            body: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 980),
+                  child: ListView(
+                    padding: const EdgeInsets.all(18),
+                    children: [
+                      _resumoCard(context, resumo),
+                      const SizedBox(height: 12),
+                      _aviso(context),
+                      const SizedBox(height: 12),
+                      if (estudosPublicados.isEmpty)
+                        _mensagem(context, 'Nenhum estudo publicado ainda.')
+                      else ...[
+                        Text(
+                          'Progresso por ciclo',
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...ciclos.map(
+                          (ciclo) => _cicloCard(context, repo, ciclo),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Estudos',
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...estudosPublicados.map(
+                          (estudo) => _estudoLinha(context, estudo),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

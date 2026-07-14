@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -35,6 +35,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
 
   bool _salvando = false;
   EstudoModel? _estudoAtualizado;
+  final Set<String> _perguntasSelecionadas = <String>{};
 
   EstudoModel get _estudo => _estudoAtualizado ?? widget.estudo;
 
@@ -400,6 +401,88 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
     }
   }
 
+  void _alternarSelecaoPergunta(String perguntaId, bool selecionada) {
+    if (perguntaId.isEmpty) return;
+    setState(() {
+      if (selecionada) {
+        _perguntasSelecionadas.add(perguntaId);
+      } else {
+        _perguntasSelecionadas.remove(perguntaId);
+      }
+    });
+  }
+
+  void _selecionarTodasPerguntas(List<PerguntaEstudoModel> perguntas) {
+    setState(() {
+      _perguntasSelecionadas
+        ..clear()
+        ..addAll(
+          perguntas
+              .map((pergunta) => pergunta.id)
+              .where((id) => id.trim().isNotEmpty),
+        );
+    });
+  }
+
+  void _limparSelecaoPerguntas() {
+    if (_perguntasSelecionadas.isEmpty) return;
+    setState(_perguntasSelecionadas.clear);
+  }
+
+  Future<void> _alterarStatusPerguntasSelecionadas(
+    List<PerguntaEstudoModel> perguntas,
+    String status,
+  ) async {
+    final selecionadas = perguntas
+        .where((pergunta) => _perguntasSelecionadas.contains(pergunta.id))
+        .where(
+          (pergunta) =>
+              pergunta.status != status ||
+              status == PerguntaEstudoStatus.rascunho,
+        )
+        .toList(growable: false);
+    if (selecionadas.isEmpty) {
+      _mostrarMensagem('Nenhuma pergunta selecionada precisa desta alteração.');
+      return;
+    }
+
+    final incompletas = status == PerguntaEstudoStatus.ativa
+        ? selecionadas.where(_perguntaIncompleta).toList(growable: false)
+        : const <PerguntaEstudoModel>[];
+    final mensagemBase =
+        '${PerguntaEstudoStatus.label(status)} ${selecionadas.length} pergunta(s) selecionada(s)?';
+    final mensagem = incompletas.isEmpty
+        ? mensagemBase
+        : '$mensagemBase ${incompletas.length} pergunta(s) parecem incompletas e seguirão a mesma regra da ativação individual.';
+    final ok = await _confirmar(
+      titulo: 'Alterar perguntas selecionadas?',
+      mensagem: mensagem,
+      acao: 'Confirmar',
+    );
+    if (ok != true) return;
+
+    setState(() => _salvando = true);
+    try {
+      for (final pergunta in selecionadas) {
+        await _perguntasRepository.alterarStatus(pergunta.id, status);
+      }
+      if (!mounted) return;
+      setState(_perguntasSelecionadas.clear);
+      _mostrarMensagem(
+        '${selecionadas.length} perguntas atualizadas com sucesso.',
+      );
+    } catch (e, stack) {
+      _logErro(e, stack);
+      if (mounted) {
+        _mostrarMensagem(
+          'Não foi possível atualizar as perguntas selecionadas.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
   void _abrirGabarito(PerguntaEstudoModel pergunta) {
     if (pergunta.id.trim().isEmpty) {
       _mostrarMensagem('Salve a pergunta antes de cadastrar gabarito.');
@@ -601,6 +684,7 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
     List<PerguntaEstudoModel> perguntas,
   ) {
     final t = context.uai;
+    final selecionadas = _perguntasSelecionadas.length;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -608,24 +692,102 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
         borderRadius: BorderRadius.circular(t.cardRadius),
         border: Border.all(color: t.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Text(
-              '${perguntas.length} perguntas vinculadas',
-              style: TextStyle(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w900,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
+            children: [
+              Text(
+                selecionadas > 0
+                    ? '$selecionadas perguntas selecionadas'
+                    : '${perguntas.length} perguntas vinculadas',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
+              if (selecionadas == 0) ...[
+                OutlinedButton.icon(
+                  onPressed: perguntas.isEmpty || _salvando
+                      ? null
+                      : () => _selecionarTodasPerguntas(perguntas),
+                  icon: const Icon(Icons.checklist_rounded),
+                  label: const Text('Selecionar perguntas'),
+                ),
+                FilledButton.icon(
+                  onPressed: _salvando
+                      ? null
+                      : () => _novaPergunta(ciclos, perguntas),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Nova pergunta neste estudo'),
+                ),
+              ],
+            ],
+          ),
+          if (selecionadas > 0) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _batchButton(
+                  Icons.select_all_rounded,
+                  'Selecionar todas',
+                  _salvando ? null : () => _selecionarTodasPerguntas(perguntas),
+                ),
+                _batchButton(
+                  Icons.clear_rounded,
+                  'Limpar seleção',
+                  _salvando ? null : _limparSelecaoPerguntas,
+                ),
+                _batchButton(
+                  Icons.check_circle_rounded,
+                  'Ativar selecionadas',
+                  _salvando
+                      ? null
+                      : () => _alterarStatusPerguntasSelecionadas(
+                          perguntas,
+                          PerguntaEstudoStatus.ativa,
+                        ),
+                ),
+                _batchButton(
+                  Icons.visibility_off_rounded,
+                  'Desativar selecionadas',
+                  _salvando
+                      ? null
+                      : () => _alterarStatusPerguntasSelecionadas(
+                          perguntas,
+                          PerguntaEstudoStatus.inativa,
+                        ),
+                ),
+                _batchButton(
+                  Icons.edit_note_rounded,
+                  'Rascunho selecionadas',
+                  _salvando
+                      ? null
+                      : () => _alterarStatusPerguntasSelecionadas(
+                          perguntas,
+                          PerguntaEstudoStatus.rascunho,
+                        ),
+                ),
+                _batchButton(
+                  Icons.archive_rounded,
+                  'Arquivar selecionadas',
+                  _salvando
+                      ? null
+                      : () => _alterarStatusPerguntasSelecionadas(
+                          perguntas,
+                          PerguntaEstudoStatus.arquivada,
+                        ),
+                  danger: true,
+                ),
+              ],
             ),
-          ),
-          FilledButton.icon(
-            onPressed: _salvando
-                ? null
-                : () => _novaPergunta(ciclos, perguntas),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Nova pergunta neste estudo'),
-          ),
+          ],
         ],
       ),
     );
@@ -636,33 +798,57 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
     PerguntaEstudoModel pergunta,
   ) {
     final t = context.uai;
+    final selecionada = _perguntasSelecionadas.contains(pergunta.id);
+    final emModoSelecao = _perguntasSelecionadas.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: t.card,
+        color: selecionada
+            ? Color.alphaBlend(t.primary.withValues(alpha: 0.08), t.card)
+            : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
+        border: Border.all(
+          color: selecionada ? t.primary.withValues(alpha: 0.45) : t.border,
+        ),
         boxShadow: t.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _statusChip(pergunta.status),
-              _miniChip(
-                Icons.category_rounded,
-                PerguntaEstudoTipo.label(pergunta.tipo),
+              Checkbox(
+                value: selecionada,
+                onChanged: _salvando
+                    ? null
+                    : (value) =>
+                          _alternarSelecaoPergunta(pergunta.id, value ?? false),
               ),
-              _miniChip(
-                Icons.signal_cellular_alt_rounded,
-                PerguntaEstudoDificuldade.label(pergunta.dificuldade),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    _statusChip(pergunta.status),
+                    _miniChip(
+                      Icons.category_rounded,
+                      PerguntaEstudoTipo.label(pergunta.tipo),
+                    ),
+                    _miniChip(
+                      Icons.signal_cellular_alt_rounded,
+                      PerguntaEstudoDificuldade.label(pergunta.dificuldade),
+                    ),
+                    _miniChip(Icons.score_rounded, 'Peso ${pergunta.peso}'),
+                    _miniChip(
+                      Icons.swap_vert_rounded,
+                      'Ordem ${pergunta.ordem}',
+                    ),
+                  ],
+                ),
               ),
-              _miniChip(Icons.score_rounded, 'Peso ${pergunta.peso}'),
-              _miniChip(Icons.swap_vert_rounded, 'Ordem ${pergunta.ordem}'),
             ],
           ),
           const SizedBox(height: 9),
@@ -679,44 +865,65 @@ class _DetalheAdminEstudoScreenState extends State<DetalheAdminEstudoScreen> {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _actionButton(
-                Icons.edit_rounded,
-                'Editar',
-                _salvando ? null : () => _editarPergunta(ciclos, pergunta),
-              ),
-              _actionButton(
-                Icons.key_rounded,
-                'Gabarito',
-                _salvando ? null : () => _abrirGabarito(pergunta),
-              ),
-              _actionButton(
-                Icons.copy_rounded,
-                'Duplicar',
-                _salvando ? null : () => _duplicarPergunta(pergunta),
-              ),
-              _actionButton(
-                Icons.delete_forever_rounded,
-                'Apagar',
-                _salvando ? null : () => _apagarPergunta(pergunta),
-                danger: true,
-              ),
-              for (final status in PerguntaEstudoStatus.values)
-                if (pergunta.status != status)
-                  _actionButton(
-                    _statusIcon(status),
-                    PerguntaEstudoStatus.label(status),
-                    _salvando
-                        ? null
-                        : () => _alterarStatusPergunta(pergunta, status),
-                  ),
-            ],
-          ),
+          if (!emModoSelecao) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _actionButton(
+                  Icons.edit_rounded,
+                  'Editar',
+                  _salvando ? null : () => _editarPergunta(ciclos, pergunta),
+                ),
+                _actionButton(
+                  Icons.key_rounded,
+                  'Gabarito',
+                  _salvando ? null : () => _abrirGabarito(pergunta),
+                ),
+                _actionButton(
+                  Icons.copy_rounded,
+                  'Duplicar',
+                  _salvando ? null : () => _duplicarPergunta(pergunta),
+                ),
+                _actionButton(
+                  Icons.delete_forever_rounded,
+                  'Apagar',
+                  _salvando ? null : () => _apagarPergunta(pergunta),
+                  danger: true,
+                ),
+                for (final status in PerguntaEstudoStatus.values)
+                  if (pergunta.status != status)
+                    _actionButton(
+                      _statusIcon(status),
+                      PerguntaEstudoStatus.label(status),
+                      _salvando
+                          ? null
+                          : () => _alterarStatusPergunta(pergunta, status),
+                    ),
+              ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _batchButton(
+    IconData icon,
+    String label,
+    VoidCallback? onTap, {
+    bool danger = false,
+  }) {
+    final t = context.uai;
+    final color = danger ? t.error : t.primary;
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: danger ? t.error : t.border),
       ),
     );
   }

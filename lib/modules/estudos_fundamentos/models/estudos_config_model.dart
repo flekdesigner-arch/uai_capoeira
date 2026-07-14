@@ -4,6 +4,8 @@ class EstudosConfigModel {
   final bool ativo;
   final bool mostrarCardAreaAluno;
   final bool mostrarEmBreve;
+  final bool forcarTemaEstudos;
+  final String temaEstudosSelecionado;
   final DateTime? updatedAt;
   final String updatedBy;
 
@@ -11,6 +13,8 @@ class EstudosConfigModel {
     required this.ativo,
     required this.mostrarCardAreaAluno,
     required this.mostrarEmBreve,
+    this.forcarTemaEstudos = false,
+    this.temaEstudosSelecionado = 'dinamico',
     this.updatedAt,
     this.updatedBy = '',
   });
@@ -20,6 +24,8 @@ class EstudosConfigModel {
       ativo: false,
       mostrarCardAreaAluno: false,
       mostrarEmBreve: true,
+      forcarTemaEstudos: false,
+      temaEstudosSelecionado: 'dinamico',
     );
   }
 
@@ -32,6 +38,11 @@ class EstudosConfigModel {
       mostrarEmBreve: data['mostrarEmBreve'] is bool
           ? data['mostrarEmBreve'] == true
           : true,
+      forcarTemaEstudos: data['forcarTemaEstudos'] == true,
+      temaEstudosSelecionado: _textValue(
+        data['temaEstudosSelecionado'],
+        fallback: 'dinamico',
+      ),
       updatedAt: _dateFromValue(data['updatedAt']),
       updatedBy: data['updatedBy']?.toString() ?? '',
     );
@@ -42,6 +53,8 @@ class EstudosConfigModel {
       'ativo': ativo,
       'mostrarCardAreaAluno': mostrarCardAreaAluno,
       'mostrarEmBreve': mostrarEmBreve,
+      'forcarTemaEstudos': forcarTemaEstudos,
+      'temaEstudosSelecionado': temaEstudosSelecionado,
       'updatedBy': updatedBy,
       if (includeServerTimestamp)
         'updatedAt': FieldValue.serverTimestamp()
@@ -54,17 +67,27 @@ class EstudosConfigModel {
     bool? ativo,
     bool? mostrarCardAreaAluno,
     bool? mostrarEmBreve,
+    bool? forcarTemaEstudos,
+    String? temaEstudosSelecionado,
     DateTime? updatedAt,
     String? updatedBy,
   }) {
     return EstudosConfigModel(
       ativo: ativo ?? this.ativo,
-      mostrarCardAreaAluno:
-          mostrarCardAreaAluno ?? this.mostrarCardAreaAluno,
+      mostrarCardAreaAluno: mostrarCardAreaAluno ?? this.mostrarCardAreaAluno,
       mostrarEmBreve: mostrarEmBreve ?? this.mostrarEmBreve,
+      forcarTemaEstudos: forcarTemaEstudos ?? this.forcarTemaEstudos,
+      temaEstudosSelecionado:
+          temaEstudosSelecionado ?? this.temaEstudosSelecionado,
       updatedAt: updatedAt ?? this.updatedAt,
       updatedBy: updatedBy ?? this.updatedBy,
     );
+  }
+
+  static String _textValue(dynamic value, {required String fallback}) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return fallback;
+    return text;
   }
 
   static DateTime? _dateFromValue(dynamic value) {
