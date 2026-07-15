@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme_preset.dart';
 import 'app_theme_tokens.dart';
+import 'cloud_global_theme.dart';
+import 'cloud_global_theme_service.dart';
 import 'tema_global_service.dart';
 
 class UserThemeSettings {
@@ -230,6 +232,8 @@ class SavedUserTheme {
   }
 }
 
+enum ActiveThemeSource { official, global, user }
+
 class AppThemeController extends ChangeNotifier {
   AppThemeController._();
 
@@ -238,6 +242,8 @@ class AppThemeController extends ChangeNotifier {
   static const String _presetKey = 'uai_theme_preset';
   static const String _modeKey = 'uai_theme_mode';
   static const String _activeSavedThemeIdKey = 'uai_active_saved_theme_id';
+  static const String _activeThemeSourceKey = 'uai_active_theme_source';
+  static const String _activeGlobalThemeIdKey = 'uai_active_global_theme_id';
 
   static const String _customPrimaryKey = 'uai_custom_primary';
   static const String _customBackgroundKey = 'uai_custom_background';
@@ -258,15 +264,23 @@ class AppThemeController extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.light;
   UserThemeSettings _userTheme = UserThemeSettings.defaultDark;
   String? _activeSavedThemeId;
+  String? _activeGlobalThemeId;
+  ActiveThemeSource _activeThemeSource = ActiveThemeSource.official;
   bool _initialized = false;
   bool _listeningGlobalTheme = false;
 
   UaiThemePreset get currentPreset => _preset;
-  UaiThemePreset get effectivePreset =>
-      TemaGlobalService.instance.resolvePreset(
-        selectedPreset: _preset,
-        hasUserCustomTheme: _activeSavedThemeId != null,
-      );
+  UaiThemePreset get effectivePreset {
+    if (_activeThemeSource == ActiveThemeSource.global &&
+        _activeGlobalThemeId != null) {
+      return UaiThemePreset.usuarioPersonalizado;
+    }
+    return TemaGlobalService.instance.resolvePreset(
+      selectedPreset: _preset,
+      hasUserCustomTheme: _activeSavedThemeId != null,
+    );
+  }
+
   bool get allowsUserThemeChoice =>
       TemaGlobalService.instance.permitirUsuarioEscolher;
   bool get isGlobalThemeForced => TemaGlobalService.instance.forcarTemaGlobal;
@@ -276,6 +290,8 @@ class AppThemeController extends ChangeNotifier {
   UserThemeSettings get userTheme => _userTheme;
   UaiThemeTokens get userThemeTokens => _userTheme.toTokens();
   String? get activeSavedThemeId => _activeSavedThemeId;
+  String? get activeGlobalThemeId => _activeGlobalThemeId;
+  ActiveThemeSource get activeThemeSource => _activeThemeSource;
   bool get initialized => _initialized;
 
   CollectionReference<Map<String, dynamic>>? get _themesCollection {
@@ -298,10 +314,14 @@ class AppThemeController extends ChangeNotifier {
         _themeModeFromString(prefs.getString(_modeKey)) ?? ThemeMode.light;
     _userTheme = _readUserTheme(prefs);
     _activeSavedThemeId = prefs.getString(_activeSavedThemeIdKey);
+    _activeGlobalThemeId = prefs.getString(_activeGlobalThemeIdKey);
+    _activeThemeSource = _themeSourceFromString(
+      prefs.getString(_activeThemeSourceKey),
+    );
 
-    // Quando o tema ativo é um tema salvo na nuvem, a fonte correta é o Firebase.
-    // Antes, o app primeiro lia o cache local e só depois tentava buscar a nuvem.
-    // Se o FirebaseAuth ainda não estivesse pronto, ele ficava preso no cache antigo.
+    // Quando o tema ativo ÃƒÆ’Ã‚Â© um tema salvo na nuvem, a fonte correta ÃƒÆ’Ã‚Â© o Firebase.
+    // Antes, o app primeiro lia o cache local e sÃƒÆ’Ã‚Â³ depois tentava buscar a nuvem.
+    // Se o FirebaseAuth ainda nÃƒÆ’Ã‚Â£o estivesse pronto, ele ficava preso no cache antigo.
     if (_preset == UaiThemePreset.usuarioPersonalizado &&
         _activeSavedThemeId != null &&
         _activeSavedThemeId!.isNotEmpty) {
@@ -332,8 +352,8 @@ class AppThemeController extends ChangeNotifier {
           .firstWhere((user) => user != null)
           .timeout(const Duration(seconds: 2));
     } catch (_) {
-      // Se não conseguir autenticar nesse momento, mantém o cache local.
-      // Quando o usuário selecionar o tema salvo novamente, ele baixa da nuvem.
+      // Se nÃƒÆ’Ã‚Â£o conseguir autenticar nesse momento, mantÃƒÆ’Ã‚Â©m o cache local.
+      // Quando o usuÃƒÆ’Ã‚Â¡rio selecionar o tema salvo novamente, ele baixa da nuvem.
     }
   }
 
@@ -346,7 +366,14 @@ class AppThemeController extends ChangeNotifier {
 
     if (preset != UaiThemePreset.usuarioPersonalizado) {
       _activeSavedThemeId = null;
+      _activeGlobalThemeId = null;
+      _activeThemeSource = ActiveThemeSource.official;
       await prefs.remove(_activeSavedThemeIdKey);
+      await prefs.remove(_activeGlobalThemeIdKey);
+      await prefs.setString(
+        _activeThemeSourceKey,
+        _themeSourceToString(_activeThemeSource),
+      );
     }
 
     notifyListeners();
@@ -371,7 +398,14 @@ class AppThemeController extends ChangeNotifier {
 
       if (preset != UaiThemePreset.usuarioPersonalizado) {
         _activeSavedThemeId = null;
+        _activeGlobalThemeId = null;
+        _activeThemeSource = ActiveThemeSource.official;
         await prefs.remove(_activeSavedThemeIdKey);
+        await prefs.remove(_activeGlobalThemeIdKey);
+        await prefs.setString(
+          _activeThemeSourceKey,
+          _themeSourceToString(_activeThemeSource),
+        );
       }
 
       changed = true;
@@ -389,12 +423,19 @@ class AppThemeController extends ChangeNotifier {
   Future<void> applyUserTheme(UserThemeSettings settings) async {
     _userTheme = _sanitizeUserTheme(settings);
     _activeSavedThemeId = null;
+    _activeGlobalThemeId = null;
+    _activeThemeSource = ActiveThemeSource.user;
 
     final prefs = await SharedPreferences.getInstance();
     await _writeUserTheme(prefs, _userTheme);
     await prefs.setString(_presetKey, UaiThemePreset.usuarioPersonalizado.id);
     await prefs.setString(_modeKey, _themeModeToString(ThemeMode.light));
     await prefs.remove(_activeSavedThemeIdKey);
+    await prefs.remove(_activeGlobalThemeIdKey);
+    await prefs.setString(
+      _activeThemeSourceKey,
+      _themeSourceToString(_activeThemeSource),
+    );
 
     _preset = UaiThemePreset.usuarioPersonalizado;
     _themeMode = ThemeMode.light;
@@ -425,7 +466,9 @@ class AppThemeController extends ChangeNotifier {
   }) async {
     final collection = _themesCollection;
     if (collection == null) {
-      throw Exception('Você precisa estar logado para salvar temas na nuvem.');
+      throw Exception(
+        'VocÃƒÆ’Ã‚Âª precisa estar logado para salvar temas na nuvem.',
+      );
     }
 
     final sanitized = _sanitizeUserTheme(settings);
@@ -479,20 +522,116 @@ class AppThemeController extends ChangeNotifier {
     _preset = UaiThemePreset.usuarioPersonalizado;
     _themeMode = ThemeMode.light;
     _activeSavedThemeId = savedTheme.id;
+    _activeGlobalThemeId = null;
+    _activeThemeSource = ActiveThemeSource.user;
 
     final prefs = await SharedPreferences.getInstance();
     await _writeUserTheme(prefs, _userTheme);
     await prefs.setString(_presetKey, UaiThemePreset.usuarioPersonalizado.id);
     await prefs.setString(_modeKey, _themeModeToString(ThemeMode.light));
     await prefs.setString(_activeSavedThemeIdKey, savedTheme.id);
+    await prefs.remove(_activeGlobalThemeIdKey);
+    await prefs.setString(
+      _activeThemeSourceKey,
+      _themeSourceToString(_activeThemeSource),
+    );
 
     notifyListeners();
+  }
+
+  Future<void> applyCloudGlobalTheme(CloudGlobalTheme theme) async {
+    _userTheme = _sanitizeUserTheme(theme.toUserThemeSettings());
+    _preset = UaiThemePreset.usuarioPersonalizado;
+    _themeMode = ThemeMode.light;
+    _activeSavedThemeId = null;
+    _activeGlobalThemeId = theme.id;
+    _activeThemeSource = ActiveThemeSource.global;
+
+    final prefs = await SharedPreferences.getInstance();
+    await _writeUserTheme(prefs, _userTheme);
+    await prefs.setString(_presetKey, UaiThemePreset.usuarioPersonalizado.id);
+    await prefs.setString(_modeKey, _themeModeToString(ThemeMode.light));
+    await prefs.remove(_activeSavedThemeIdKey);
+    await prefs.setString(_activeGlobalThemeIdKey, theme.id);
+    await prefs.setString(
+      _activeThemeSourceKey,
+      _themeSourceToString(_activeThemeSource),
+    );
+
+    notifyListeners();
+  }
+
+  Future<bool> tryLoadActiveGlobalThemeFromFirebase({
+    bool notify = false,
+  }) async {
+    final activeId = _activeGlobalThemeId;
+    if (activeId == null || activeId.isEmpty) return false;
+
+    try {
+      final themes = await CloudGlobalThemeService.instance
+          .listAvailableForUsers();
+      CloudGlobalTheme? activeTheme;
+      for (final theme in themes) {
+        if (theme.id == activeId) {
+          activeTheme = theme;
+          break;
+        }
+      }
+
+      if (activeTheme == null) {
+        await _clearActiveGlobalThemeFallback();
+        if (notify) notifyListeners();
+        return false;
+      }
+
+      _userTheme = _sanitizeUserTheme(activeTheme.toUserThemeSettings());
+      _preset = UaiThemePreset.usuarioPersonalizado;
+      _themeMode = ThemeMode.light;
+      _activeThemeSource = ActiveThemeSource.global;
+
+      final prefs = await SharedPreferences.getInstance();
+      await _writeUserTheme(prefs, _userTheme);
+      await prefs.setString(_presetKey, UaiThemePreset.usuarioPersonalizado.id);
+      await prefs.setString(_modeKey, _themeModeToString(ThemeMode.light));
+      await prefs.setString(
+        _activeThemeSourceKey,
+        _themeSourceToString(_activeThemeSource),
+      );
+
+      if (notify) notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _clearActiveGlobalThemeFallback() async {
+    _activeGlobalThemeId = null;
+    _activeSavedThemeId = null;
+    _activeThemeSource = ActiveThemeSource.official;
+    _preset = TemaGlobalService.instance.resolvePreset(
+      selectedPreset: UaiThemePreset.uaiClassico,
+      hasUserCustomTheme: false,
+    );
+    _themeMode = ThemeMode.light;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_presetKey, _preset.id);
+    await prefs.setString(_modeKey, _themeModeToString(_themeMode));
+    await prefs.remove(_activeGlobalThemeIdKey);
+    await prefs.remove(_activeSavedThemeIdKey);
+    await prefs.setString(
+      _activeThemeSourceKey,
+      _themeSourceToString(_activeThemeSource),
+    );
   }
 
   Future<void> deleteSavedUserTheme(String themeId) async {
     final collection = _themesCollection;
     if (collection == null) {
-      throw Exception('Você precisa estar logado para excluir temas da nuvem.');
+      throw Exception(
+        'VocÃƒÆ’Ã‚Âª precisa estar logado para excluir temas da nuvem.',
+      );
     }
 
     await collection.doc(themeId).delete();
@@ -540,6 +679,8 @@ class AppThemeController extends ChangeNotifier {
     _preset = UaiThemePreset.uaiClassico;
     _themeMode = ThemeMode.light;
     _activeSavedThemeId = null;
+    _activeGlobalThemeId = null;
+    _activeThemeSource = ActiveThemeSource.official;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_presetKey, _preset.id);
@@ -547,6 +688,29 @@ class AppThemeController extends ChangeNotifier {
     await prefs.remove(_activeSavedThemeIdKey);
 
     notifyListeners();
+  }
+
+  ActiveThemeSource _themeSourceFromString(String? value) {
+    switch (value) {
+      case 'global':
+        return ActiveThemeSource.global;
+      case 'user':
+        return ActiveThemeSource.user;
+      case 'official':
+      default:
+        return ActiveThemeSource.official;
+    }
+  }
+
+  String _themeSourceToString(ActiveThemeSource source) {
+    switch (source) {
+      case ActiveThemeSource.global:
+        return 'global';
+      case ActiveThemeSource.user:
+        return 'user';
+      case ActiveThemeSource.official:
+        return 'official';
+    }
   }
 
   UserThemeSettings _readUserTheme(SharedPreferences prefs) {

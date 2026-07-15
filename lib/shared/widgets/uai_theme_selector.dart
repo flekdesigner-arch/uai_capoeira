@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/core/theme/cloud_global_theme.dart';
+import 'package:uai_capoeira/core/theme/cloud_global_theme_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
-import 'package:uai_capoeira/core/theme/tema_global_service.dart';
 
 class UaiThemeIconButton extends StatelessWidget {
   const UaiThemeIconButton({super.key});
@@ -47,18 +48,15 @@ class UaiThemeSelectorButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.uai;
     final controller = AppThemeController.instance;
-    final lockChoice =
-        controller.isGlobalThemeForced || !controller.allowsUserThemeChoice;
-    final globalLockedMessage = controller.isGlobalThemeForced
-        ? 'O tema global está ativo para todos os usuários no momento.'
-        : 'A escolha de tema está controlada pela administração no momento.';
 
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final activeName = controller.activeSavedThemeId == null
-            ? controller.effectivePreset.label
-            : 'Tema salvo ativo';
+        final activeName = switch (controller.activeThemeSource) {
+          ActiveThemeSource.global => 'Tema global da nuvem',
+          ActiveThemeSource.user => 'Tema salvo ativo',
+          ActiveThemeSource.official => controller.effectivePreset.label,
+        };
 
         return Material(
           color: tokens.card,
@@ -128,20 +126,30 @@ class _UaiThemeSelectorSheet extends StatefulWidget {
 
 class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
   late Future<List<SavedUserTheme>> _savedThemesFuture;
+  late Future<List<CloudGlobalTheme>> _cloudThemesFuture;
 
   @override
   void initState() {
     super.initState();
     _reloadSavedThemes();
+    _reloadCloudThemes();
   }
 
   void _reloadSavedThemes() {
     _savedThemesFuture = AppThemeController.instance.loadSavedUserThemes();
   }
 
+  void _reloadCloudThemes() {
+    _cloudThemesFuture = CloudGlobalThemeService.instance
+        .listAvailableForUsers();
+  }
+
   Future<void> _refresh() async {
-    setState(_reloadSavedThemes);
-    await _savedThemesFuture;
+    setState(() {
+      _reloadSavedThemes();
+      _reloadCloudThemes();
+    });
+    await Future.wait([_savedThemesFuture, _cloudThemesFuture]);
   }
 
   @override
@@ -243,7 +251,9 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                           selected:
                               preset == controller.effectivePreset &&
                               (preset != UaiThemePreset.usuarioPersonalizado ||
-                                  controller.activeSavedThemeId == null),
+                                  controller.activeThemeSource ==
+                                          ActiveThemeSource.user &&
+                                      controller.activeSavedThemeId == null),
                           onTap: () async {
                             if (lockChoice) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -271,6 +281,79 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                         ),
                         const SizedBox(height: 8),
                       ],
+                      const SizedBox(height: 8),
+                      _SectionTitle(
+                        title: 'Temas globais da nuvem',
+                        icon: Icons.cloud_sync_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      FutureBuilder<List<CloudGlobalTheme>>(
+                        future: _cloudThemesFuture,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: tokens.primary,
+                                ),
+                              ),
+                            );
+                          }
+
+                          if (snapshot.hasError) {
+                            return _InfoCard(
+                              icon: Icons.cloud_off_rounded,
+                              title: 'Não foi possível carregar temas globais',
+                              subtitle: _friendlyThemeLoadError(
+                                snapshot.error!,
+                              ),
+                            );
+                          }
+
+                          final themes = snapshot.data ?? [];
+                          if (themes.isEmpty) {
+                            return const _InfoCard(
+                              icon: Icons.public_off_rounded,
+                              title: 'Nenhum tema global disponível',
+                              subtitle:
+                                  'A administração ainda não liberou temas globais da nuvem.',
+                            );
+                          }
+
+                          return Column(
+                            children: [
+                              for (final theme in themes) ...[
+                                _CloudGlobalThemeTile(
+                                  theme: theme,
+                                  selected:
+                                      controller.activeThemeSource ==
+                                          ActiveThemeSource.global &&
+                                      controller.activeGlobalThemeId ==
+                                          theme.id,
+                                  onApply: () async {
+                                    if (lockChoice) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(globalLockedMessage),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    await controller.applyCloudGlobalTheme(
+                                      theme,
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: 8),
                       _SectionTitle(
                         title: 'Meus temas salvos na nuvem',
@@ -321,7 +404,7 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
                               icon: Icons.palette_outlined,
                               title: 'Nenhum tema salvo ainda',
                               subtitle:
-                                  'Crie um tema e toque em “Salvar na nuvem”.',
+                                  'Crie um tema e toque em Salvar na nuvem.',
                             );
                           }
 
@@ -398,7 +481,7 @@ class _UaiThemeSelectorSheetState extends State<_UaiThemeSelectorSheet> {
           ),
         ),
         content: Text(
-          'O tema “${theme.name}” será removido da sua conta.',
+          'O tema ${theme.name} será removido da sua conta.',
           style: TextStyle(color: tokens.textSecondary),
         ),
         actions: [
@@ -604,6 +687,158 @@ class _PresetTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CloudGlobalThemeTile extends StatelessWidget {
+  final CloudGlobalTheme theme;
+  final bool selected;
+  final VoidCallback onApply;
+
+  const _CloudGlobalThemeTile({
+    required this.theme,
+    required this.selected,
+    required this.onApply,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.uai;
+    final preview = theme.toTokens();
+    final isDark = theme.isDark;
+
+    return Material(
+      color: selected ? tokens.primary.withValues(alpha: 0.12) : tokens.card,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onApply,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? tokens.primary.withValues(alpha: 0.55)
+                  : tokens.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.previewColor,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.previewColor.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.cloud_rounded,
+                  color: _readableOn(theme.previewColor),
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            theme.nome,
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.cardAlt,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: tokens.border),
+                          ),
+                          child: Text(
+                            isDark ? 'Escuro' : 'Claro',
+                            style: TextStyle(
+                              color: tokens.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      theme.descricao.isEmpty
+                          ? 'Tema global liberado pela administração'
+                          : theme.descricao,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _MiniColor(color: preview.primary),
+                        _MiniColor(color: preview.accent),
+                        _MiniColor(color: preview.background),
+                        _MiniColor(color: preview.card),
+                        _MiniColor(color: preview.textPrimary),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check_circle_rounded, color: tokens.success)
+              else
+                Icon(Icons.chevron_right_rounded, color: tokens.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniColor extends StatelessWidget {
+  final Color color;
+
+  const _MiniColor({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.uai;
+    return Container(
+      width: 18,
+      height: 18,
+      margin: const EdgeInsets.only(right: 5),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: tokens.border),
       ),
     );
   }
@@ -1689,6 +1924,10 @@ class _ThemeNoticeCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyThemeLoadError(Object error) {
+  return 'Não foi possível carregar os temas globais agora. Tente novamente em instantes.';
 }
 
 Color _readableOn(Color background) {

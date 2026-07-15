@@ -15,19 +15,18 @@ class CloudGlobalThemeService {
   CollectionReference<Map<String, dynamic>> get _collection =>
       _firestore.collection('temas_globais');
 
-  Query<Map<String, dynamic>> get _availableForUsersQuery => _collection
-      .where('ativo', isEqualTo: true)
-      .where('disponivelParaUsuarios', isEqualTo: true)
-      .orderBy('atualizadoEm', descending: true)
-      .limit(40);
+  Query<Map<String, dynamic>> get _availableForUsersQuery =>
+      _collection.where('ativo', isEqualTo: true).limit(80);
 
   Stream<List<CloudGlobalTheme>> streamAvailableForUsers() {
-    return _availableForUsersQuery.snapshots().map(_themesFromSnapshot);
+    return _availableForUsersQuery.snapshots().map(
+      _availableThemesFromSnapshot,
+    );
   }
 
   Future<List<CloudGlobalTheme>> listAvailableForUsers() async {
     final snapshot = await _availableForUsersQuery.get();
-    return _themesFromSnapshot(snapshot);
+    return _availableThemesFromSnapshot(snapshot);
   }
 
   Future<List<CloudGlobalTheme>> listAllForAdmin() async {
@@ -139,6 +138,25 @@ class CloudGlobalThemeService {
 
   UserThemeSettings themeToUserThemeSettings(CloudGlobalTheme theme) {
     return theme.toUserThemeSettings();
+  }
+
+  List<CloudGlobalTheme> _availableThemesFromSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final themes = snapshot.docs
+        .map(CloudGlobalTheme.fromDoc)
+        .where((theme) => theme.ativo && theme.disponivelParaUsuarios)
+        .toList();
+    themes.sort((a, b) {
+      final aDate = a.atualizadoEm;
+      final bDate = b.atualizadoEm;
+      if (aDate == null && bDate == null) return a.nome.compareTo(b.nome);
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      return bDate.compareTo(aDate);
+    });
+    if (themes.length <= 40) return themes;
+    return themes.take(40).toList(growable: false);
   }
 
   List<CloudGlobalTheme> _themesFromSnapshot(

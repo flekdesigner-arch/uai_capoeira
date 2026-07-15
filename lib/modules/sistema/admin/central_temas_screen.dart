@@ -146,7 +146,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     _syncFromService();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('ConfiguraÃƒÂ§ÃƒÂ£o de tema recarregada.'),
+        content: Text('Configuração de tema recarregada.'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -190,7 +190,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       _syncFromService();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('ConfiguraÃƒÂ§ÃƒÂ£o global de tema salva.'),
+          content: Text('Configuração global de tema salva.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -305,7 +305,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             style: TextStyle(color: t.textPrimary),
           ),
           content: Text(
-            'O tema serÃ¡ desativado e removido das listas de usuÃ¡rios, sem exclusÃ£o fÃ­sica.',
+            'O tema será desativado e removido das listas de usuários, sem exclusão física.',
             style: TextStyle(color: t.textSecondary),
           ),
           actions: [
@@ -345,11 +345,11 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           backgroundColor: t.surface,
           surfaceTintColor: Colors.transparent,
           title: Text(
-            'Restaurar UAI ClÃƒÂ¡ssico?',
+            'Restaurar UAI Clássico?',
             style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
-            'Esta aÃƒÂ§ÃƒÂ£o volta o app para a configuraÃƒÂ§ÃƒÂ£o de seguranÃƒÂ§a padrÃƒÂ£o.',
+            'Esta ação volta o app para a configuração de segurança padrão.',
             style: TextStyle(color: t.textSecondary),
           ),
           actions: [
@@ -381,7 +381,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       _syncFromService();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('UAI ClÃƒÂ¡ssico restaurado com sucesso.'),
+          content: Text('UAI Clássico restaurado com sucesso.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -601,7 +601,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Controle a identidade visual global do app, campanhas e temas disponÃƒÂ­veis para os usuÃƒÂ¡rios.',
+                      'Controle a identidade visual global do app, campanhas e temas disponíveis para os usuários.',
                       style: TextStyle(
                         color: onHeader.withOpacity(0.90),
                         fontWeight: FontWeight.w600,
@@ -625,14 +625,14 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 background: headerBg,
               ),
               _previewBadge(
-                texto: 'PrÃƒÂ©via: ${selectedPreset.label}',
+                texto: 'Prévia: ${selectedPreset.label}',
                 accent: previewTokens.primary,
                 tokens: previewTokens,
                 background: headerBg,
               ),
               _previewBadge(
                 texto: config.forcarTemaGlobal
-                    ? 'Tema global forÃƒÂ§ado'
+                    ? 'Tema global forçado'
                     : 'Tema global livre',
                 accent: config.forcarTemaGlobal
                     ? previewTokens.warning
@@ -642,7 +642,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               ),
               _previewBadge(
                 texto: config.permitirUsuarioEscolher
-                    ? 'UsuÃƒÂ¡rios podem escolher'
+                    ? 'Usuários podem escolher'
                     : 'Escolha bloqueada',
                 accent: config.permitirUsuarioEscolher
                     ? previewTokens.info
@@ -675,7 +675,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Tema padrÃƒÂ£o global',
+      title: 'Tema padrão global',
       icon: Icons.hdr_strong_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,7 +686,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 : UaiThemePreset.uaiClassico.id,
             dropdownColor: t.surface,
             decoration: InputDecoration(
-              labelText: 'Tema padrÃƒÂ£o do app',
+              labelText: 'Tema padrão do app',
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: t.border),
@@ -721,7 +721,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           if (!UaiThemePresetX.isOfficialId(_draft.temaPadraoGlobal)) ...[
             const SizedBox(height: 10),
             Text(
-              'Tema invÃƒÂ¡lido detectado. O app vai cair no UAI ClÃƒÂ¡ssico.',
+              'Tema inválido detectado. O app vai cair no UAI Clássico.',
               style: TextStyle(color: t.warning, fontWeight: FontWeight.w700),
             ),
           ],
@@ -741,7 +741,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Logo dinÃƒÂ¢mica do tema',
+      title: 'Logo dinâmica do tema',
       icon: Icons.auto_awesome_motion_rounded,
       child: AnimatedBuilder(
         animation: UaiLogoService.instance,
@@ -756,7 +756,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Ajuste a identidade visual da logo do tema selecionado sem abrir a ediÃƒÂ§ÃƒÂ£o avanÃƒÂ§ada.',
+                'Ajuste a identidade visual da logo do tema selecionado sem abrir a edição avançada.',
                 style: TextStyle(color: t.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -783,9 +783,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 runSpacing: 8,
                 children: [
                   _accessiblePreviewPill(
-                    label: config.ativo
-                        ? 'Config. ativa'
-                        : 'PadrÃƒÂ£o automÃƒÂ¡tico',
+                    label: config.ativo ? 'Config. ativa' : 'Padrão automático',
                     accent: config.ativo ? t.primary : t.warning,
                     baseSurface: t.card,
                   ),
@@ -812,7 +810,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Tema em ediÃƒÂ§ÃƒÂ£o: $themeId',
+                'Tema em edição: $themeId',
                 style: TextStyle(
                   color: t.textSecondary,
                   fontWeight: FontWeight.w600,
@@ -858,15 +856,15 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     final t = context.uai;
     return _buildSectionCard(
       context,
-      title: 'Regras de aplicaÃƒÂ§ÃƒÂ£o',
+      title: 'Regras de aplicação',
       icon: Icons.toggle_on_rounded,
       child: Column(
         children: [
           _buildSwitchRow(
             context,
-            title: 'Ativar configuraÃƒÂ§ÃƒÂ£o global',
+            title: 'Ativar configuração global',
             subtitle:
-                'Quando desligado, o app usa a configuraÃƒÂ§ÃƒÂ£o local segura.',
+                'Quando desligado, o app usa a configuração local segura.',
             value: _draft.ativo,
             accent: t.primary,
             onChanged: (value) => setState(() {
@@ -877,9 +875,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           const SizedBox(height: 8),
           _buildSwitchRow(
             context,
-            title: 'ForÃƒÂ§ar tema global para todos',
+            title: 'Forçar tema global para todos',
             subtitle:
-                'Quando ativado, todos os usuÃƒÂ¡rios veem o tema global mesmo com escolha prÃƒÂ³pria.',
+                'Quando ativado, todos os usuários veem o tema global mesmo com escolha própria.',
             value: _draft.forcarTemaGlobal,
             accent: t.warning,
             onChanged: (value) => setState(() {
@@ -890,9 +888,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           const SizedBox(height: 8),
           _buildSwitchRow(
             context,
-            title: 'Permitir que usuÃƒÂ¡rios escolham tema',
+            title: 'Permitir que usuários escolham tema',
             subtitle:
-                'Quando desativado, a seleÃƒÂ§ÃƒÂ£o do usuÃƒÂ¡rio fica bloqueada pela administraÃƒÂ§ÃƒÂ£o.',
+                'Quando desativado, a seleção do usuário fica bloqueada pela administração.',
             value: _draft.permitirUsuarioEscolher,
             accent: t.info,
             onChanged: (value) => setState(() {
@@ -904,8 +902,8 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             const SizedBox(height: 10),
             Text(
               _draft.forcarTemaGlobal
-                  ? 'O tema global estÃƒÂ¡ ativo para todos os usuÃƒÂ¡rios no momento.'
-                  : 'A escolha de tema estÃƒÂ¡ controlada pela administraÃƒÂ§ÃƒÂ£o no momento.',
+                  ? 'O tema global está ativo para todos os usuários no momento.'
+                  : 'A escolha de tema está controlada pela administração no momento.',
               style: TextStyle(color: t.warning, fontWeight: FontWeight.w700),
             ),
           ],
@@ -920,7 +918,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Temas disponÃƒÂ­veis para usuÃƒÂ¡rios',
+      title: 'Temas disponíveis para usuários',
       icon: Icons.view_list_rounded,
       child: Column(
         children: [
@@ -936,7 +934,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text(
-                            'O UAI ClÃƒÂ¡ssico ÃƒÂ© o tema de seguranÃƒÂ§a do app e sempre ficarÃƒÂ¡ disponÃƒÂ­vel.',
+                            'O UAI Clássico é o tema de segurança do app e sempre ficará disponível.',
                           ),
                           backgroundColor: t.warning,
                         ),
@@ -974,7 +972,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Crie temas personalizados para disponibilizar a todos os usuÃ¡rios do app.',
+            'Crie temas personalizados para disponibilizar a todos os usuários do app.',
             style: TextStyle(color: t.textSecondary, height: 1.3),
           ),
           const SizedBox(height: 12),
@@ -1091,12 +1089,12 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                   ),
                 )
               : const Icon(Icons.save_rounded),
-          label: const Text('Salvar configuraÃƒÂ§ÃƒÂ£o'),
+          label: const Text('Salvar configuração'),
         ),
         OutlinedButton.icon(
           onPressed: _saving ? null : _restaurarUaiClassico,
           icon: const Icon(Icons.restart_alt_rounded),
-          label: const Text('Restaurar UAI ClÃƒÂ¡ssico'),
+          label: const Text('Restaurar UAI Clássico'),
         ),
         TextButton.icon(
           onPressed: _saving ? null : _reload,
@@ -1107,7 +1105,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           FilledButton.tonalIcon(
             onPressed: _saving ? null : _criarPadrao,
             icon: const Icon(Icons.add_circle_outline_rounded),
-            label: const Text('Criar configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o'),
+            label: const Text('Criar configuração padrão'),
           ),
       ],
     );
@@ -1134,7 +1132,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Ainda nÃƒÂ£o existe um documento de tema global. VocÃƒÂª pode criar a configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o agora.',
+                  'Ainda não existe um documento de tema global. Você pode criar a configuração padrão agora.',
                   style: TextStyle(
                     color: t.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -1147,7 +1145,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           FilledButton.icon(
             onPressed: _saving || user == null ? null : _criarPadrao,
             icon: const Icon(Icons.add_circle_outline_rounded),
-            label: const Text('Criar configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o'),
+            label: const Text('Criar configuração padrão'),
           ),
         ],
       ),
@@ -1191,7 +1189,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               Icon(Icons.lock_outline_rounded, color: t.error, size: 48),
               const SizedBox(height: 12),
               Text(
-                'VocÃƒÂª nÃƒÂ£o tem acesso ÃƒÂ  Central de Temas.',
+                'Você não tem acesso à Central de Temas.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: t.textPrimary,
@@ -1444,25 +1442,25 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     if (error is FirebaseException) {
       switch (error.code) {
         case 'permission-denied':
-          return 'VocÃª nÃ£o tem permissÃ£o para gerenciar temas globais.';
+          return 'Você não tem permissão para gerenciar temas globais.';
         case 'unavailable':
         case 'deadline-exceeded':
-          return 'NÃ£o foi possÃ­vel conectar ao Firebase agora. Verifique a conexÃ£o e tente novamente.';
+          return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
         default:
-          return 'NÃ£o foi possÃ­vel gerenciar o tema global agora.';
+          return 'Não foi possível gerenciar o tema global agora.';
       }
     }
 
     final text = error.toString();
     if (text.contains('permission-denied')) {
-      return 'VocÃª nÃ£o tem permissÃ£o para gerenciar temas globais.';
+      return 'Você não tem permissão para gerenciar temas globais.';
     }
     if (text.contains('unavailable') ||
         text.contains('deadline-exceeded') ||
         text.contains('channel')) {
-      return 'NÃ£o foi possÃ­vel conectar ao Firebase agora. Verifique a conexÃ£o e tente novamente.';
+      return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
     }
-    return 'NÃ£o foi possÃ­vel gerenciar o tema global agora.';
+    return 'Não foi possível gerenciar o tema global agora.';
   }
 
   String _friendlyError(Object error) {
@@ -1471,26 +1469,26 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     if (error is FirebaseException) {
       switch (error.code) {
         case 'permission-denied':
-          return 'VocÃƒÂª nÃƒÂ£o tem permissÃƒÂ£o para alterar a Central de Temas.';
+          return 'Você não tem permissão para alterar a Central de Temas.';
         case 'unavailable':
         case 'deadline-exceeded':
-          return 'NÃƒÂ£o foi possÃƒÂ­vel conectar ao Firebase agora. Verifique a conexÃƒÂ£o e tente novamente.';
+          return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
         default:
-          return 'NÃƒÂ£o foi possÃƒÂ­vel salvar a Central de Temas agora.';
+          return 'Não foi possível salvar a Central de Temas agora.';
       }
     }
 
     final text = error.toString();
     if (text.contains('permission-denied')) {
-      return 'VocÃƒÂª nÃƒÂ£o tem permissÃƒÂ£o para alterar a Central de Temas.';
+      return 'Você não tem permissão para alterar a Central de Temas.';
     }
     if (text.contains('unavailable') ||
         text.contains('deadline-exceeded') ||
         text.contains('channel')) {
-      return 'NÃƒÂ£o foi possÃƒÂ­vel conectar ao Firebase agora. Verifique a conexÃƒÂ£o e tente novamente.';
+      return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
     }
     if (text.contains('cloud_firestore') || text.contains('functions')) {
-      return 'NÃƒÂ£o foi possÃƒÂ­vel salvar a Central de Temas agora.';
+      return 'Não foi possível salvar a Central de Temas agora.';
     }
     return text.replaceFirst('Exception: ', '').trim();
   }
@@ -1514,7 +1512,7 @@ class _CloudGlobalThemeCard extends StatelessWidget {
     final t = context.uai;
     final tokens = theme.toTokens();
     final updated = theme.atualizadoEm == null
-        ? 'Sem atualizaÃ§Ã£o registrada'
+        ? 'Sem atualização registrada'
         : '${theme.atualizadoEm!.day.toString().padLeft(2, '0')}/${theme.atualizadoEm!.month.toString().padLeft(2, '0')}/${theme.atualizadoEm!.year}';
 
     return Container(
@@ -1584,8 +1582,8 @@ class _CloudGlobalThemeCard extends StatelessWidget {
                         ),
                         _PreviewPill(
                           label: theme.disponivelParaUsuarios
-                              ? 'UsuÃ¡rios'
-                              : 'UsuÃ¡rios bloqueado',
+                              ? 'Usuários'
+                              : 'Usuários bloqueados',
                           foreground: t.textPrimary,
                           background: t.card,
                           border: t.border,
@@ -1703,7 +1701,7 @@ class _CloudThemeMiniPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PrÃ©via do tema',
+            'Prévia do tema',
             style: TextStyle(
               color: tokens.textPrimary,
               fontWeight: FontWeight.w900,
@@ -1711,7 +1709,7 @@ class _CloudThemeMiniPreview extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Texto secundÃ¡rio e superfÃ­cie do card.',
+            'Texto secundário e superfície do card.',
             style: TextStyle(color: tokens.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -1724,7 +1722,7 @@ class _CloudThemeMiniPreview extends StatelessWidget {
                     backgroundColor: tokens.primary,
                     foregroundColor: _strongTextOn(tokens.primary),
                   ),
-                  child: const Text('BotÃ£o'),
+                  child: const Text('Botão'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1910,7 +1908,7 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _descricao,
-                  decoration: const InputDecoration(labelText: 'DescriÃ§Ã£o'),
+                  decoration: const InputDecoration(labelText: 'Descrição'),
                   maxLines: 2,
                 ),
                 const SizedBox(height: 10),
@@ -1929,12 +1927,12 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                       onSelected: (v) => setState(() => _ativo = v),
                     ),
                     FilterChip(
-                      label: const Text('DisponÃ­vel para usuÃ¡rios'),
+                      label: const Text('Disponível para usuários'),
                       selected: _usuarios,
                       onSelected: (v) => setState(() => _usuarios = v),
                     ),
                     FilterChip(
-                      label: const Text('DisponÃ­vel para Estudos'),
+                      label: const Text('Disponível para Estudos'),
                       selected: _estudos,
                       onSelected: (v) => setState(() => _estudos = v),
                     ),
@@ -1950,7 +1948,7 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                     _colorField(_background, 'Background'),
                     _colorField(_card, 'Card'),
                     _colorField(_textPrimary, 'Texto principal'),
-                    _colorField(_textSecondary, 'Texto secundÃ¡rio'),
+                    _colorField(_textSecondary, 'Texto secundário'),
                     _colorField(_border, 'Borda'),
                     _colorField(_success, 'Sucesso'),
                     _colorField(_warning, 'Aviso'),
@@ -2187,7 +2185,7 @@ class _ThemePreview extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'AppBar de prÃƒÂ©via',
+                    'AppBar de prévia',
                     style: TextStyle(
                       color: onPrimary,
                       fontWeight: FontWeight.w800,
@@ -2218,7 +2216,7 @@ class _ThemePreview extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Texto secundÃƒÂ¡rio',
+                  'Texto secundário',
                   style: TextStyle(color: theme.textSecondary),
                 ),
                 const SizedBox(height: 10),
@@ -2253,7 +2251,7 @@ class _ThemePreview extends StatelessWidget {
                           backgroundColor: theme.primary,
                           foregroundColor: onPrimary,
                         ),
-                        child: const Text('PrimÃƒÂ¡rio'),
+                        child: const Text('Primário'),
                       ),
                     ),
                     const SizedBox(width: 8),
