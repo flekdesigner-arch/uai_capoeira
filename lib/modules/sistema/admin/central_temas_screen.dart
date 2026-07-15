@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -1795,6 +1798,7 @@ class _CloudThemeFormDialog extends StatefulWidget {
 
 class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _random = math.Random();
   late final TextEditingController _nome;
   late final TextEditingController _descricao;
   late final TextEditingController _primary;
@@ -1884,6 +1888,7 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
       warning: _parseColor(_warning.text) ?? const Color(0xFFE8B451),
       error: _parseColor(_error.text) ?? const Color(0xFFFF4D5E),
     );
+    final contrastWarning = _hasLowContrast(preview);
 
     return AlertDialog(
       backgroundColor: t.surface,
@@ -1892,7 +1897,7 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
         widget.theme == null ? 'Criar tema global' : 'Editar tema global',
       ),
       content: SizedBox(
-        width: 720,
+        width: 760,
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
@@ -1914,7 +1919,8 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 12,
-                  runSpacing: 4,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     FilterChip(
                       label: const Text('Tema escuro'),
@@ -1935,6 +1941,11 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                       label: const Text('Disponível para Estudos'),
                       selected: _estudos,
                       onSelected: (v) => setState(() => _estudos = v),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: _generateMagicTheme,
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: const Text('Varinha mágica'),
                     ),
                   ],
                 ),
@@ -1957,6 +1968,45 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
                 ),
                 const SizedBox(height: 14),
                 _CloudThemeMiniPreview(tokens: preview),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _paletteDot(preview.primary),
+                    _paletteDot(preview.accent),
+                    _paletteDot(preview.background),
+                    _paletteDot(preview.card),
+                    _paletteDot(preview.textPrimary),
+                    _paletteDot(preview.textSecondary),
+                    _paletteDot(preview.success),
+                    _paletteDot(preview.warning),
+                    _paletteDot(preview.error),
+                  ],
+                ),
+                if (contrastWarning) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: t.warning,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Atenção: o texto principal pode ficar pouco legível nesse card.',
+                          style: TextStyle(
+                            color: t.warning,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1976,22 +2026,164 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
     );
   }
 
+  Widget _paletteDot(Color color) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: _readableOn(color).withValues(alpha: 0.35)),
+      ),
+    );
+  }
+
   Widget _colorField(TextEditingController controller, String label) {
+    final color = _parseColor(controller.text) ?? Colors.grey;
     return SizedBox(
-      width: 155,
+      width: 180,
       child: TextFormField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(
-            Icons.circle,
-            color: _parseColor(controller.text) ?? Colors.grey,
+          prefixIcon: Tooltip(
+            message: 'Selecionar cor',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _pickThemeColor(controller, label),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _readableOn(color).withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: const SizedBox(width: 18, height: 18),
+                ),
+              ),
+            ),
+          ),
+          suffixIcon: IconButton(
+            tooltip: 'Abrir seletor visual',
+            icon: const Icon(Icons.colorize_rounded),
+            onPressed: () => _pickThemeColor(controller, label),
           ),
         ),
         validator: _validColor,
-        onChanged: (_) => setState(() {}),
+        textCapitalization: TextCapitalization.characters,
+        onChanged: (value) {
+          final parsed = _parseColor(value);
+          if (parsed != null) {
+            controller.value = TextEditingValue(
+              text: _hex(parsed),
+              selection: TextSelection.collapsed(offset: _hex(parsed).length),
+            );
+          }
+          setState(() {});
+        },
       ),
     );
+  }
+
+  Future<void> _pickThemeColor(
+    TextEditingController controller,
+    String label,
+  ) async {
+    final initial = _parseColor(controller.text) ?? Colors.grey;
+    final selected = await showDialog<Color>(
+      context: context,
+      builder: (context) =>
+          _ThemeColorPickerDialog(title: label, initialColor: initial),
+    );
+    if (selected == null) return;
+    setState(() => controller.text = _hex(selected));
+  }
+
+  void _generateMagicTheme() {
+    final families = [
+      'Capoeira Terra',
+      'Mata Noturna',
+      'Dourado Elegante',
+      'Urbana Neon',
+      'Pergaminho',
+      'Bordô Premium',
+      'Azul Cerimonial',
+      'Infantil Alegre',
+    ];
+    final family = families[_random.nextInt(families.length)];
+    final dark = _dark;
+    final hue = _random.nextDouble() * 360;
+    final accentHue = (hue + 35 + _random.nextDouble() * 55) % 360;
+    final primary = HSLColor.fromAHSL(
+      1,
+      hue,
+      0.58 + _random.nextDouble() * 0.18,
+      dark ? 0.56 : 0.38,
+    ).toColor();
+    final accent = HSLColor.fromAHSL(
+      1,
+      accentHue,
+      0.62 + _random.nextDouble() * 0.16,
+      dark ? 0.62 : 0.44,
+    ).toColor();
+    final background = dark
+        ? HSLColor.fromAHSL(
+            1,
+            hue,
+            0.20,
+            0.07 + _random.nextDouble() * 0.04,
+          ).toColor()
+        : HSLColor.fromAHSL(
+            1,
+            hue,
+            0.20,
+            0.94 + _random.nextDouble() * 0.03,
+          ).toColor();
+    final card = dark
+        ? HSLColor.fromAHSL(
+            1,
+            hue,
+            0.18,
+            0.14 + _random.nextDouble() * 0.05,
+          ).toColor()
+        : HSLColor.fromAHSL(1, hue, 0.16, 0.985).toColor();
+    final border = dark
+        ? HSLColor.fromAHSL(1, hue, 0.20, 0.27).toColor()
+        : HSLColor.fromAHSL(1, hue, 0.15, 0.84).toColor();
+    final textPrimary = dark
+        ? const Color(0xFFF8FAFC)
+        : const Color(0xFF111827);
+    final textSecondary = dark
+        ? const Color(0xFFD5DAEA)
+        : const Color(0xFF4B5563);
+
+    setState(() {
+      _primary.text = _hex(primary);
+      _accent.text = _hex(accent);
+      _background.text = _hex(background);
+      _card.text = _hex(card);
+      _textPrimary.text = _hex(textPrimary);
+      _textSecondary.text = _hex(textSecondary);
+      _border.text = _hex(border);
+      _success.text = _hex(
+        HSLColor.fromAHSL(1, 145, 0.62, dark ? 0.55 : 0.35).toColor(),
+      );
+      _warning.text = _hex(
+        HSLColor.fromAHSL(1, 42, 0.82, dark ? 0.60 : 0.45).toColor(),
+      );
+      _error.text = _hex(
+        HSLColor.fromAHSL(1, 352, 0.76, dark ? 0.62 : 0.48).toColor(),
+      );
+      if (_nome.text.trim().isEmpty) _nome.text = family;
+      if (_descricao.text.trim().isEmpty) {
+        _descricao.text = dark
+            ? 'Tema escuro gerado para o app.'
+            : 'Tema claro gerado para o app.';
+      }
+    });
   }
 
   void _submit() {
@@ -2049,6 +2241,17 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
     });
   }
 
+  bool _hasLowContrast(UaiThemeTokens tokens) {
+    return _contrast(tokens.textPrimary, tokens.card) < 2.6 ||
+        _contrast(tokens.textPrimary, tokens.background) < 2.6;
+  }
+
+  double _contrast(Color a, Color b) {
+    final high = math.max(a.computeLuminance(), b.computeLuminance());
+    final low = math.min(a.computeLuminance(), b.computeLuminance());
+    return (high + 0.05) / (low + 0.05);
+  }
+
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? 'Informe um nome.' : null;
 
@@ -2062,9 +2265,166 @@ class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
         .replaceAll('#', '')
         .replaceAll('0x', '')
         .replaceAll('0X', '');
-    if (value.length == 6) value = 'FF$value';
-    if (value.length != 8) return null;
-    final parsed = int.tryParse(value, radix: 16);
+    if (value.length != 6) return null;
+    final parsed = int.tryParse('FF$value', radix: 16);
+    return parsed == null ? null : Color(parsed);
+  }
+
+  static String _hex(Color color) {
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+
+  static Color _readableOn(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+}
+
+class _ThemeColorPickerDialog extends StatefulWidget {
+  final String title;
+  final Color initialColor;
+
+  const _ThemeColorPickerDialog({
+    required this.title,
+    required this.initialColor,
+  });
+
+  @override
+  State<_ThemeColorPickerDialog> createState() =>
+      _ThemeColorPickerDialogState();
+}
+
+class _ThemeColorPickerDialogState extends State<_ThemeColorPickerDialog> {
+  late Color _color;
+  late final TextEditingController _hexController;
+
+  @override
+  void initState() {
+    super.initState();
+    _color = widget.initialColor.withAlpha(255);
+    _hexController = TextEditingController(text: _hex(_color));
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    const pickerWidth = 320.0;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      backgroundColor: Colors.transparent,
+      child: FractionallySizedBox(
+        widthFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 720),
+          child: Material(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(20),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Cor: ${widget.title}',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: _hexController,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: const InputDecoration(
+                              labelText: 'HEX',
+                              hintText: '#547A3B',
+                            ),
+                            onChanged: (value) {
+                              final parsed = _parseColor(value);
+                              if (parsed == null) return;
+                              setState(() => _color = parsed);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.center,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: pickerWidth,
+                              ),
+                              child: ColorPicker(
+                                pickerColor: _color,
+                                enableAlpha: false,
+                                hexInputBar: false,
+                                labelTypes: const [],
+                                displayThumbColor: true,
+                                portraitOnly: true,
+                                colorPickerWidth: pickerWidth,
+                                pickerAreaHeightPercent: 0.72,
+                                onColorChanged: (color) {
+                                  final opaque = color.withAlpha(255);
+                                  setState(() {
+                                    _color = opaque;
+                                    _hexController.text = _hex(opaque);
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(context, _color.withAlpha(255)),
+                        child: const Text('Aplicar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Color? _parseColor(String? raw) {
+    if (raw == null) return null;
+    var value = raw
+        .trim()
+        .replaceAll('#', '')
+        .replaceAll('0x', '')
+        .replaceAll('0X', '');
+    if (value.length != 6) return null;
+    final parsed = int.tryParse('FF$value', radix: 16);
     return parsed == null ? null : Color(parsed);
   }
 
