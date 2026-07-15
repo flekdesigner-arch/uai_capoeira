@@ -248,6 +248,34 @@ extension UaiThemePresetX on UaiThemePreset {
     UaiThemePreset.usuarioPersonalizado,
   ];
 
+  static const UaiThemePreset defaultEstudosPreset =
+      UaiThemePreset.pergaminhoAncestral;
+
+  static const List<UaiThemePreset> officialPresetsForEstudos = [
+    UaiThemePreset.pergaminhoAncestral,
+    UaiThemePreset.terraQuilombo,
+    UaiThemePreset.cafeImperial,
+    UaiThemePreset.sangueEOuro,
+    UaiThemePreset.mataNoturna,
+  ];
+
+  bool get isAvailableForEstudos => officialPresetsForEstudos.contains(this);
+
+  static bool isAvailableForEstudosId(String? id) {
+    if (id == null || id.trim().isEmpty) return false;
+    final clean = id.trim();
+    return officialPresetsForEstudos.any((preset) => preset.id == clean);
+  }
+
+  static UaiThemePreset? estudosPresetFromId(String? id) {
+    if (id == null || id.trim().isEmpty) return null;
+    final clean = id.trim();
+    for (final preset in officialPresetsForEstudos) {
+      if (preset.id == clean) return preset;
+    }
+    return null;
+  }
+
   static bool isOfficialId(String? id) {
     if (id == null || id.trim().isEmpty) return false;
     return officialPresets.any((preset) => preset.id == id.trim());

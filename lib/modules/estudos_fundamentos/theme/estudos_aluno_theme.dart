@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 
@@ -19,54 +21,23 @@ class EstudosThemePreset {
     mataNoturna,
   ];
 
-  static bool isValid(String value) => values.contains(value);
+  static bool isValid(String value) =>
+      UaiThemePresetX.isAvailableForEstudosId(value);
 
   static String label(String value) {
-    switch (value) {
-      case terraQuilombo:
-        return 'Terra Quilombo';
-      case cafeImperial:
-        return 'Café Imperial';
-      case sangueEOuro:
-        return 'Sangue e Ouro';
-      case mataNoturna:
-        return 'Mata Noturna';
-      case pergaminhoAncestral:
-      default:
-        return 'Pergaminho Ancestral';
-    }
+    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    return preset?.label ?? UaiThemePresetX.defaultEstudosPreset.label;
   }
 
   static String description(String value) {
-    switch (value) {
-      case terraQuilombo:
-        return 'Tons terrosos que remetem às raízes e à resistência.';
-      case cafeImperial:
-        return 'Paleta quente, elegante e acolhedora.';
-      case sangueEOuro:
-        return 'Contraste nobre, forte e marcante.';
-      case mataNoturna:
-        return 'Profundidade escura com atmosfera ancestral.';
-      case pergaminhoAncestral:
-      default:
-        return 'Visual clássico inspirado em pergaminhos e manuscritos antigos.';
-    }
+    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    return preset?.description ??
+        UaiThemePresetX.defaultEstudosPreset.description;
   }
 
   static UaiThemeTokens tokens(String value) {
-    switch (value) {
-      case terraQuilombo:
-        return UaiThemeTokens.terraQuilombo;
-      case cafeImperial:
-        return UaiThemeTokens.cafeImperial;
-      case sangueEOuro:
-        return UaiThemeTokens.sangueEOuro;
-      case mataNoturna:
-        return UaiThemeTokens.mataNoturna;
-      case pergaminhoAncestral:
-      default:
-        return UaiThemeTokens.pergaminhoAncestral;
-    }
+    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    return AppTheme.tokensFor(preset ?? UaiThemePresetX.defaultEstudosPreset);
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/acompanhar_alunos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_ciclos_estudos_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/importar_ciclo_completo_screen.dart';
@@ -13,7 +14,6 @@ import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudo_model.dar
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/estudos_config_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_estudo_model.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_config_service.dart';
-import 'package:uai_capoeira/modules/estudos_fundamentos/theme/estudos_aluno_theme.dart';
 
 class GerenciarEstudosFundamentosScreen extends StatefulWidget {
   const GerenciarEstudosFundamentosScreen({super.key});
@@ -312,9 +312,16 @@ class _GerenciarEstudosFundamentosScreenState
 
   Widget _buildThemePanel() {
     final t = context.uai;
-    final selected = EstudosThemePreset.isValid(_config.temaEstudosSelecionado)
-        ? _config.temaEstudosSelecionado
-        : EstudosThemePreset.pergaminhoAncestral;
+    final estudosPresets = UaiThemePresetX.officialPresetsForEstudos;
+    final selectedPreset =
+        UaiThemePresetX.estudosPresetFromId(_config.temaEstudosSelecionado) ??
+        UaiThemePresetX.defaultEstudosPreset;
+    final selected = selectedPreset.id;
+    final hasInvalidSavedTheme =
+        _config.temaEstudosSelecionado.trim().isNotEmpty &&
+        _config.temaEstudosSelecionado != 'dinamico' &&
+        UaiThemePresetX.estudosPresetFromId(_config.temaEstudosSelecionado) ==
+            null;
 
     return _section(
       title: 'Tema visual da área de estudos',
@@ -332,15 +339,36 @@ class _GerenciarEstudosFundamentosScreenState
             ),
           ),
         ),
+        if (hasInvalidSavedTheme) ...[
+          const SizedBox(height: 8),
+          _themeWarning(
+            'O tema salvo "${_config.temaEstudosSelecionado}" não está disponível para Estudos/Fundamentos. O preview usa ${selectedPreset.label} como fallback seguro.',
+          ),
+        ],
         const SizedBox(height: 4),
         DropdownButtonFormField<String>(
           initialValue: selected,
           decoration: const InputDecoration(labelText: 'Tema selecionado'),
-          items: EstudosThemePreset.values
+          items: estudosPresets
               .map(
-                (value) => DropdownMenuItem(
-                  value: value,
-                  child: Text(EstudosThemePreset.label(value)),
+                (preset) => DropdownMenuItem(
+                  value: preset.id,
+                  child: Row(
+                    children: [
+                      Icon(preset.icon, size: 18, color: preset.previewColor),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(preset.label)),
+                      const SizedBox(width: 8),
+                      Text(
+                        preset.isDark ? 'Escuro' : 'Claro',
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               )
               .toList(),
@@ -355,8 +383,8 @@ class _GerenciarEstudosFundamentosScreenState
         Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: EstudosThemePreset.values
-              .map((value) => _themePreview(value, value == selected))
+          children: estudosPresets
+              .map((preset) => _themePreview(preset, preset.id == selected))
               .toList(),
         ),
         const SizedBox(height: 8),
@@ -374,14 +402,44 @@ class _GerenciarEstudosFundamentosScreenState
     );
   }
 
-  Widget _themePreview(String value, bool selected) {
+  Widget _themeWarning(String message) {
     final t = context.uai;
-    final tokens = EstudosThemePreset.tokens(value);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: t.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, color: t.warning, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _themePreview(UaiThemePreset preset, bool selected) {
+    final t = context.uai;
+    final tokens = AppTheme.tokensFor(preset);
     return InkWell(
       borderRadius: BorderRadius.circular(t.cardRadius - 4),
       onTap: _salvando
           ? null
-          : () => _salvar(_config.copyWith(temaEstudosSelecionado: value)),
+          : () => _salvar(_config.copyWith(temaEstudosSelecionado: preset.id)),
       child: Container(
         width: 250,
         padding: const EdgeInsets.all(11),
@@ -399,9 +457,11 @@ class _GerenciarEstudosFundamentosScreenState
           children: [
             Row(
               children: [
+                Icon(preset.icon, color: tokens.accent, size: 18),
+                const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    EstudosThemePreset.label(value),
+                    preset.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -420,7 +480,7 @@ class _GerenciarEstudosFundamentosScreenState
             ),
             const SizedBox(height: 6),
             Text(
-              EstudosThemePreset.description(value),
+              preset.description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -428,6 +488,15 @@ class _GerenciarEstudosFundamentosScreenState
                 fontSize: 12,
                 height: 1.25,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              preset.isDark ? 'Tema escuro' : 'Tema claro',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 9),
