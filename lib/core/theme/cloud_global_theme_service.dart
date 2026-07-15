@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
 import 'app_theme_controller.dart';
 import 'cloud_global_theme.dart';
 
 class CloudGlobalThemeService {
   CloudGlobalThemeService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   static final CloudGlobalThemeService instance = CloudGlobalThemeService();
 
@@ -46,6 +47,9 @@ class CloudGlobalThemeService {
     bool ativo = true,
     bool disponivelParaUsuarios = false,
     bool disponivelParaEstudos = false,
+    Color? success,
+    Color? warning,
+    Color? error,
     String? themeId,
   }) async {
     final doc = themeId == null || themeId.trim().isEmpty
@@ -66,6 +70,9 @@ class CloudGlobalThemeService {
       'criadoEm': FieldValue.serverTimestamp(),
       'atualizadoEm': FieldValue.serverTimestamp(),
       ...settingsMap,
+      if (success != null) 'success': _hex(success),
+      if (warning != null) 'warning': _hex(warning),
+      if (error != null) 'error': _hex(error),
       'isDark': settings.background.computeLuminance() < 0.35,
       'previewColor': settingsMap['primary'],
       'arquivado': false,
@@ -82,6 +89,9 @@ class CloudGlobalThemeService {
     bool? ativo,
     bool? disponivelParaUsuarios,
     bool? disponivelParaEstudos,
+    Color? success,
+    Color? warning,
+    Color? error,
   }) async {
     final data = <String, dynamic>{
       'atualizadoEm': FieldValue.serverTimestamp(),
@@ -102,6 +112,9 @@ class CloudGlobalThemeService {
       data['isDark'] = settings.background.computeLuminance() < 0.35;
       data['previewColor'] = settingsMap['primary'];
     }
+    if (success != null) data['success'] = _hex(success);
+    if (warning != null) data['warning'] = _hex(warning);
+    if (error != null) data['error'] = _hex(error);
 
     await _collection.doc(themeId).set(data, SetOptions(merge: true));
   }
@@ -137,5 +150,9 @@ class CloudGlobalThemeService {
   static String _cleanText(String? value, String fallback) {
     final clean = value?.trim();
     return clean == null || clean.isEmpty ? fallback : clean;
+  }
+
+  static String _hex(Color color) {
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 }
