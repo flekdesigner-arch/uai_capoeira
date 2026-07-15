@@ -29,6 +29,16 @@ class AppTheme {
         return UaiThemeTokens.natal;
       case UaiThemePreset.batizadoUai:
         return UaiThemeTokens.batizadoUai;
+      case UaiThemePreset.pergaminhoAncestral:
+        return UaiThemeTokens.pergaminhoAncestral;
+      case UaiThemePreset.terraQuilombo:
+        return UaiThemeTokens.terraQuilombo;
+      case UaiThemePreset.cafeImperial:
+        return UaiThemeTokens.cafeImperial;
+      case UaiThemePreset.sangueEOuro:
+        return UaiThemeTokens.sangueEOuro;
+      case UaiThemePreset.mataNoturna:
+        return UaiThemeTokens.mataNoturna;
       case UaiThemePreset.usuarioPersonalizado:
         return AppThemeController.instance.userThemeTokens;
     }
@@ -37,6 +47,7 @@ class AppTheme {
   static bool _isDarkPreset(UaiThemePreset preset, UaiThemeTokens tokens) {
     if (preset == UaiThemePreset.uaiClassico) return false;
     if (preset == UaiThemePreset.batizadoUai) return false;
+    if (preset == UaiThemePreset.pergaminhoAncestral) return false;
     if (preset == UaiThemePreset.usuarioPersonalizado) {
       return tokens.background.computeLuminance() < 0.45;
     }

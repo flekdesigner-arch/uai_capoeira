@@ -11,6 +11,11 @@ enum UaiThemePreset {
   copaBrasil,
   natal,
   batizadoUai,
+  pergaminhoAncestral,
+  terraQuilombo,
+  cafeImperial,
+  sangueEOuro,
+  mataNoturna,
   usuarioPersonalizado,
 }
 
@@ -38,6 +43,16 @@ extension UaiThemePresetX on UaiThemePreset {
         return 'natal';
       case UaiThemePreset.batizadoUai:
         return 'batizado_uai';
+      case UaiThemePreset.pergaminhoAncestral:
+        return 'pergaminho_ancestral';
+      case UaiThemePreset.terraQuilombo:
+        return 'terra_quilombo';
+      case UaiThemePreset.cafeImperial:
+        return 'cafe_imperial';
+      case UaiThemePreset.sangueEOuro:
+        return 'sangue_e_ouro';
+      case UaiThemePreset.mataNoturna:
+        return 'mata_noturna';
       case UaiThemePreset.usuarioPersonalizado:
         return 'usuario_personalizado';
     }
@@ -65,6 +80,16 @@ extension UaiThemePresetX on UaiThemePreset {
         return 'Natal';
       case UaiThemePreset.batizadoUai:
         return 'Batizado UAI';
+      case UaiThemePreset.pergaminhoAncestral:
+        return 'Pergaminho Ancestral';
+      case UaiThemePreset.terraQuilombo:
+        return 'Terra Quilombo';
+      case UaiThemePreset.cafeImperial:
+        return 'Café Imperial';
+      case UaiThemePreset.sangueEOuro:
+        return 'Sangue e Ouro';
+      case UaiThemePreset.mataNoturna:
+        return 'Mata Noturna';
       case UaiThemePreset.usuarioPersonalizado:
         return 'Tema do Usuário';
     }
@@ -92,6 +117,16 @@ extension UaiThemePresetX on UaiThemePreset {
         return 'Tema festivo de Natal com vermelho, verde e dourado.';
       case UaiThemePreset.batizadoUai:
         return 'Tema claro cerimonial com azul e identidade UAI.';
+      case UaiThemePreset.pergaminhoAncestral:
+        return 'Visual clássico inspirado em pergaminhos e manuscritos antigos.';
+      case UaiThemePreset.terraQuilombo:
+        return 'Tons terrosos que remetem às raízes e à resistência.';
+      case UaiThemePreset.cafeImperial:
+        return 'Paleta quente, elegante e acolhedora.';
+      case UaiThemePreset.sangueEOuro:
+        return 'Contraste nobre, forte e marcante.';
+      case UaiThemePreset.mataNoturna:
+        return 'Profundidade escura com atmosfera ancestral.';
       case UaiThemePreset.usuarioPersonalizado:
         return 'Monte seu próprio tema com cores, cantos e fonte.';
     }
@@ -119,6 +154,16 @@ extension UaiThemePresetX on UaiThemePreset {
         return Icons.celebration_rounded;
       case UaiThemePreset.batizadoUai:
         return Icons.church_rounded;
+      case UaiThemePreset.pergaminhoAncestral:
+        return Icons.menu_book_rounded;
+      case UaiThemePreset.terraQuilombo:
+        return Icons.landscape_rounded;
+      case UaiThemePreset.cafeImperial:
+        return Icons.coffee_rounded;
+      case UaiThemePreset.sangueEOuro:
+        return Icons.shield_rounded;
+      case UaiThemePreset.mataNoturna:
+        return Icons.park_rounded;
       case UaiThemePreset.usuarioPersonalizado:
         return Icons.tune_rounded;
     }
@@ -146,6 +191,16 @@ extension UaiThemePresetX on UaiThemePreset {
         return const Color(0xFFB71C1C);
       case UaiThemePreset.batizadoUai:
         return const Color(0xFF3B82F6);
+      case UaiThemePreset.pergaminhoAncestral:
+        return const Color(0xFF9B6A2F);
+      case UaiThemePreset.terraQuilombo:
+        return const Color(0xFF9A4F2D);
+      case UaiThemePreset.cafeImperial:
+        return const Color(0xFF8B4A24);
+      case UaiThemePreset.sangueEOuro:
+        return const Color(0xFF7B1E2B);
+      case UaiThemePreset.mataNoturna:
+        return const Color(0xFF547A3B);
       case UaiThemePreset.usuarioPersonalizado:
         return const Color(0xFF6D5DF7);
     }
@@ -155,6 +210,7 @@ extension UaiThemePresetX on UaiThemePreset {
     switch (this) {
       case UaiThemePreset.uaiClassico:
       case UaiThemePreset.batizadoUai:
+      case UaiThemePreset.pergaminhoAncestral:
         return false;
       case UaiThemePreset.draculaUai:
       case UaiThemePreset.cafeTerra:
@@ -164,6 +220,10 @@ extension UaiThemePresetX on UaiThemePreset {
       case UaiThemePreset.novembroAzul:
       case UaiThemePreset.copaBrasil:
       case UaiThemePreset.natal:
+      case UaiThemePreset.terraQuilombo:
+      case UaiThemePreset.cafeImperial:
+      case UaiThemePreset.sangueEOuro:
+      case UaiThemePreset.mataNoturna:
       case UaiThemePreset.usuarioPersonalizado:
         return true;
     }
@@ -180,6 +240,11 @@ extension UaiThemePresetX on UaiThemePreset {
     UaiThemePreset.copaBrasil,
     UaiThemePreset.natal,
     UaiThemePreset.batizadoUai,
+    UaiThemePreset.pergaminhoAncestral,
+    UaiThemePreset.terraQuilombo,
+    UaiThemePreset.cafeImperial,
+    UaiThemePreset.sangueEOuro,
+    UaiThemePreset.mataNoturna,
     UaiThemePreset.usuarioPersonalizado,
   ];
 
