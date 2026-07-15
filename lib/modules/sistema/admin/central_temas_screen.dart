@@ -1231,11 +1231,31 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
   }
 
   String _friendlyError(Object error) {
+    debugPrint('[CentralTemasScreen] Erro ao salvar Central de Temas: $error');
+
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'permission-denied':
+          return 'Você não tem permissão para alterar a Central de Temas.';
+        case 'unavailable':
+        case 'deadline-exceeded':
+          return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
+        default:
+          return 'Não foi possível salvar a Central de Temas agora.';
+      }
+    }
+
     final text = error.toString();
-    if (text.contains('cloud_firestore') ||
-        text.contains('functions') ||
+    if (text.contains('permission-denied')) {
+      return 'Você não tem permissão para alterar a Central de Temas.';
+    }
+    if (text.contains('unavailable') ||
+        text.contains('deadline-exceeded') ||
         text.contains('channel')) {
-      return 'Não foi possível comunicar com o Firebase nesta versão.';
+      return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
+    }
+    if (text.contains('cloud_firestore') || text.contains('functions')) {
+      return 'Não foi possível salvar a Central de Temas agora.';
     }
     return text.replaceFirst('Exception: ', '').trim();
   }

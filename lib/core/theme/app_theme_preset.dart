@@ -281,6 +281,15 @@ extension UaiThemePresetX on UaiThemePreset {
     return officialPresets.any((preset) => preset.id == id.trim());
   }
 
+  static UaiThemePreset? presetFromId(String? id) {
+    if (id == null || id.trim().isEmpty) return null;
+    final clean = id.trim();
+    for (final preset in officialPresets) {
+      if (preset.id == clean) return preset;
+    }
+    return null;
+  }
+
   static UaiThemePreset fromId(String? id) {
     for (final preset in UaiThemePreset.values) {
       if (preset.id == id) return preset;

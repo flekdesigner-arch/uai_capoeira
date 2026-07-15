@@ -21,22 +21,21 @@ class EstudosThemePreset {
     mataNoturna,
   ];
 
-  static bool isValid(String value) =>
-      UaiThemePresetX.isAvailableForEstudosId(value);
+  static bool isValid(String value) => UaiThemePresetX.isOfficialId(value);
 
   static String label(String value) {
-    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    final preset = UaiThemePresetX.presetFromId(value);
     return preset?.label ?? UaiThemePresetX.defaultEstudosPreset.label;
   }
 
   static String description(String value) {
-    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    final preset = UaiThemePresetX.presetFromId(value);
     return preset?.description ??
         UaiThemePresetX.defaultEstudosPreset.description;
   }
 
   static UaiThemeTokens tokens(String value) {
-    final preset = UaiThemePresetX.estudosPresetFromId(value);
+    final preset = UaiThemePresetX.presetFromId(value);
     return AppTheme.tokensFor(preset ?? UaiThemePresetX.defaultEstudosPreset);
   }
 }

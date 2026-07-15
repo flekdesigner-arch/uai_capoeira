@@ -312,16 +312,15 @@ class _GerenciarEstudosFundamentosScreenState
 
   Widget _buildThemePanel() {
     final t = context.uai;
-    final estudosPresets = UaiThemePresetX.officialPresetsForEstudos;
+    final estudosPresets = UaiThemePresetX.officialPresets;
     final selectedPreset =
-        UaiThemePresetX.estudosPresetFromId(_config.temaEstudosSelecionado) ??
+        UaiThemePresetX.presetFromId(_config.temaEstudosSelecionado) ??
         UaiThemePresetX.defaultEstudosPreset;
     final selected = selectedPreset.id;
     final hasInvalidSavedTheme =
         _config.temaEstudosSelecionado.trim().isNotEmpty &&
         _config.temaEstudosSelecionado != 'dinamico' &&
-        UaiThemePresetX.estudosPresetFromId(_config.temaEstudosSelecionado) ==
-            null;
+        UaiThemePresetX.presetFromId(_config.temaEstudosSelecionado) == null;
 
     return _section(
       title: 'Tema visual da área de estudos',
@@ -342,33 +341,22 @@ class _GerenciarEstudosFundamentosScreenState
         if (hasInvalidSavedTheme) ...[
           const SizedBox(height: 8),
           _themeWarning(
-            'O tema salvo "${_config.temaEstudosSelecionado}" não está disponível para Estudos/Fundamentos. O preview usa ${selectedPreset.label} como fallback seguro.',
+            'O tema salvo "${_config.temaEstudosSelecionado}" não está disponível na Central de Temas. O preview usa ${selectedPreset.label} como fallback seguro.',
           ),
         ],
         const SizedBox(height: 4),
         DropdownButtonFormField<String>(
           initialValue: selected,
+          isExpanded: true,
           decoration: const InputDecoration(labelText: 'Tema selecionado'),
+          selectedItemBuilder: (context) => estudosPresets
+              .map((preset) => _themeDropdownSelectedItem(preset))
+              .toList(),
           items: estudosPresets
               .map(
                 (preset) => DropdownMenuItem(
                   value: preset.id,
-                  child: Row(
-                    children: [
-                      Icon(preset.icon, size: 18, color: preset.previewColor),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(preset.label)),
-                      const SizedBox(width: 8),
-                      Text(
-                        preset.isDark ? 'Escuro' : 'Claro',
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _themeDropdownMenuItem(preset),
                 ),
               )
               .toList(),
@@ -380,13 +368,7 @@ class _GerenciarEstudosFundamentosScreenState
                 },
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: estudosPresets
-              .map((preset) => _themePreview(preset, preset.id == selected))
-              .toList(),
-        ),
+        _themePreview(selectedPreset, true),
         const SizedBox(height: 8),
         Text(
           _config.forcarTemaEstudos
@@ -399,6 +381,97 @@ class _GerenciarEstudosFundamentosScreenState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _themeDropdownSelectedItem(UaiThemePreset preset) {
+    final t = context.uai;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(preset.icon, size: 18, color: preset.previewColor),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            preset.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          preset.isDark ? 'Escuro' : 'Claro',
+          style: TextStyle(
+            color: t.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _themeDropdownMenuItem(UaiThemePreset preset) {
+    final t = context.uai;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: preset.previewColor,
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: t.border.withValues(alpha: 0.55)),
+            ),
+            child: Icon(
+              preset.icon,
+              size: 14,
+              color: _readableOn(preset.previewColor),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 210,
+                child: Text(
+                  preset.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              SizedBox(
+                width: 210,
+                child: Text(
+                  preset.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Text(
+            preset.isDark ? 'Escuro' : 'Claro',
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

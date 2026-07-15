@@ -201,15 +201,21 @@ class TemaGlobalService extends ChangeNotifier {
       'atualizado_por_nome': nome,
     }, SetOptions(merge: true));
 
-    await _historico.add({
-      ...sanitized.toMap(),
-      'atualizado_em': FieldValue.serverTimestamp(),
-      'atualizado_por_uid': uid,
-      'atualizado_por_nome': nome,
-      'origem': origem,
-      'resumo': 'Configuração global de tema atualizada',
-    });
-
+    try {
+      await _historico.add({
+        ...sanitized.toMap(),
+        'atualizado_em': FieldValue.serverTimestamp(),
+        'atualizado_por_uid': uid,
+        'atualizado_por_nome': nome,
+        'origem': origem,
+        'resumo': 'Configuração global de tema atualizada',
+      });
+    } catch (e, st) {
+      debugPrint(
+        '[TemaGlobalService] Configuração salva, mas histórico não foi registrado: $e',
+      );
+      debugPrintStack(stackTrace: st);
+    }
     _documentExists = true;
     _config = sanitized;
     await _salvarCacheLocal(_config);
