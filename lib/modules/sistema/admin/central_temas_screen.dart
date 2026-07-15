@@ -6,6 +6,8 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/core/theme/cloud_global_theme.dart';
+import 'package:uai_capoeira/core/theme/cloud_global_theme_service.dart';
 import 'package:uai_capoeira/core/theme/tema_global_config.dart';
 import 'package:uai_capoeira/core/logo/uai_logo_config.dart';
 import 'package:uai_capoeira/core/logo/uai_logo_service.dart';
@@ -144,7 +146,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     _syncFromService();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Configuração de tema recarregada.'),
+        content: Text('ConfiguraÃƒÂ§ÃƒÂ£o de tema recarregada.'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -188,7 +190,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       _syncFromService();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Configuração global de tema salva.'),
+          content: Text('ConfiguraÃƒÂ§ÃƒÂ£o global de tema salva.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -207,6 +209,130 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     }
   }
 
+  String _adminDisplayName(User user) {
+    return user.displayName?.trim().isNotEmpty == true
+        ? user.displayName!.trim()
+        : (user.email ?? 'Admin');
+  }
+
+  void _showCloudThemeSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  void _showCloudThemeError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_friendlyCloudThemeError(error)),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: context.uai.error,
+      ),
+    );
+  }
+
+  Future<void> _openCloudThemeForm({CloudGlobalTheme? theme}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final result = await showDialog<_CloudThemeFormResult>(
+      context: context,
+      builder: (dialogContext) => _CloudThemeFormDialog(theme: theme),
+    );
+    if (result == null) return;
+
+    try {
+      if (theme == null) {
+        await CloudGlobalThemeService.instance.createGlobalTheme(
+          nome: result.nome,
+          descricao: result.descricao,
+          ativo: result.ativo,
+          disponivelParaUsuarios: result.disponivelParaUsuarios,
+          disponivelParaEstudos: result.disponivelParaEstudos,
+          settings: result.settings,
+          success: result.success,
+          warning: result.warning,
+          error: result.error,
+          criadoPorUid: user.uid,
+          criadoPorNome: _adminDisplayName(user),
+        );
+        _showCloudThemeSuccess('Tema global criado.');
+      } else {
+        await CloudGlobalThemeService.instance.updateGlobalTheme(
+          theme.id,
+          nome: result.nome,
+          descricao: result.descricao,
+          ativo: result.ativo,
+          disponivelParaUsuarios: result.disponivelParaUsuarios,
+          disponivelParaEstudos: result.disponivelParaEstudos,
+          settings: result.settings,
+          success: result.success,
+          warning: result.warning,
+          error: result.error,
+        );
+        _showCloudThemeSuccess('Tema global atualizado.');
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      _showCloudThemeError(e);
+    }
+  }
+
+  Future<void> _toggleCloudThemeActive(CloudGlobalTheme theme) async {
+    try {
+      await CloudGlobalThemeService.instance.setActive(theme.id, !theme.ativo);
+      _showCloudThemeSuccess(
+        theme.ativo ? 'Tema global desativado.' : 'Tema global ativado.',
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      _showCloudThemeError(e);
+    }
+  }
+
+  Future<void> _archiveCloudTheme(CloudGlobalTheme theme) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final t = dialogContext.uai;
+        return AlertDialog(
+          backgroundColor: t.surface,
+          surfaceTintColor: Colors.transparent,
+          title: Text(
+            'Arquivar tema global',
+            style: TextStyle(color: t.textPrimary),
+          ),
+          content: Text(
+            'O tema serÃ¡ desativado e removido das listas de usuÃ¡rios, sem exclusÃ£o fÃ­sica.',
+            style: TextStyle(color: t.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.archive_rounded),
+              label: const Text('Arquivar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirm != true) return;
+
+    try {
+      await CloudGlobalThemeService.instance.archiveGlobalTheme(theme.id);
+      _showCloudThemeSuccess('Tema global arquivado.');
+      if (mounted) setState(() {});
+    } catch (e) {
+      _showCloudThemeError(e);
+    }
+  }
+
   Future<void> _restaurarUaiClassico() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -219,11 +345,11 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           backgroundColor: t.surface,
           surfaceTintColor: Colors.transparent,
           title: Text(
-            'Restaurar UAI Clássico?',
+            'Restaurar UAI ClÃƒÂ¡ssico?',
             style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900),
           ),
           content: Text(
-            'Esta ação volta o app para a configuração de segurança padrão.',
+            'Esta aÃƒÂ§ÃƒÂ£o volta o app para a configuraÃƒÂ§ÃƒÂ£o de seguranÃƒÂ§a padrÃƒÂ£o.',
             style: TextStyle(color: t.textSecondary),
           ),
           actions: [
@@ -255,7 +381,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       _syncFromService();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('UAI Clássico restaurado com sucesso.'),
+          content: Text('UAI ClÃƒÂ¡ssico restaurado com sucesso.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -383,6 +509,8 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                                         ),
                                       ],
                                     ),
+                                    const SizedBox(height: 14),
+                                    _buildCloudGlobalThemesCard(context),
                                   ] else ...[
                                     _buildTemaPadraoCard(
                                       context,
@@ -400,6 +528,8 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                                     _buildTemasDisponiveisCard(context),
                                     const SizedBox(height: 14),
                                     _buildCampanhaCard(context),
+                                    const SizedBox(height: 14),
+                                    _buildCloudGlobalThemesCard(context),
                                   ],
                                   const SizedBox(height: 14),
                                   _buildActions(context),
@@ -471,7 +601,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Controle a identidade visual global do app, campanhas e temas disponíveis para os usuários.',
+                      'Controle a identidade visual global do app, campanhas e temas disponÃƒÂ­veis para os usuÃƒÂ¡rios.',
                       style: TextStyle(
                         color: onHeader.withOpacity(0.90),
                         fontWeight: FontWeight.w600,
@@ -495,14 +625,14 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 background: headerBg,
               ),
               _previewBadge(
-                texto: 'Prévia: ${selectedPreset.label}',
+                texto: 'PrÃƒÂ©via: ${selectedPreset.label}',
                 accent: previewTokens.primary,
                 tokens: previewTokens,
                 background: headerBg,
               ),
               _previewBadge(
                 texto: config.forcarTemaGlobal
-                    ? 'Tema global forçado'
+                    ? 'Tema global forÃƒÂ§ado'
                     : 'Tema global livre',
                 accent: config.forcarTemaGlobal
                     ? previewTokens.warning
@@ -512,7 +642,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               ),
               _previewBadge(
                 texto: config.permitirUsuarioEscolher
-                    ? 'Usuários podem escolher'
+                    ? 'UsuÃƒÂ¡rios podem escolher'
                     : 'Escolha bloqueada',
                 accent: config.permitirUsuarioEscolher
                     ? previewTokens.info
@@ -545,7 +675,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Tema padrão global',
+      title: 'Tema padrÃƒÂ£o global',
       icon: Icons.hdr_strong_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +686,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 : UaiThemePreset.uaiClassico.id,
             dropdownColor: t.surface,
             decoration: InputDecoration(
-              labelText: 'Tema padrão do app',
+              labelText: 'Tema padrÃƒÂ£o do app',
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: t.border),
@@ -591,7 +721,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           if (!UaiThemePresetX.isOfficialId(_draft.temaPadraoGlobal)) ...[
             const SizedBox(height: 10),
             Text(
-              'Tema inválido detectado. O app vai cair no UAI Clássico.',
+              'Tema invÃƒÂ¡lido detectado. O app vai cair no UAI ClÃƒÂ¡ssico.',
               style: TextStyle(color: t.warning, fontWeight: FontWeight.w700),
             ),
           ],
@@ -611,7 +741,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Logo dinâmica do tema',
+      title: 'Logo dinÃƒÂ¢mica do tema',
       icon: Icons.auto_awesome_motion_rounded,
       child: AnimatedBuilder(
         animation: UaiLogoService.instance,
@@ -626,7 +756,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Ajuste a identidade visual da logo do tema selecionado sem abrir a edição avançada.',
+                'Ajuste a identidade visual da logo do tema selecionado sem abrir a ediÃƒÂ§ÃƒÂ£o avanÃƒÂ§ada.',
                 style: TextStyle(color: t.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -653,7 +783,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 runSpacing: 8,
                 children: [
                   _accessiblePreviewPill(
-                    label: config.ativo ? 'Config. ativa' : 'Padrão automático',
+                    label: config.ativo
+                        ? 'Config. ativa'
+                        : 'PadrÃƒÂ£o automÃƒÂ¡tico',
                     accent: config.ativo ? t.primary : t.warning,
                     baseSurface: t.card,
                   ),
@@ -680,7 +812,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Tema em edição: $themeId',
+                'Tema em ediÃƒÂ§ÃƒÂ£o: $themeId',
                 style: TextStyle(
                   color: t.textSecondary,
                   fontWeight: FontWeight.w600,
@@ -726,15 +858,15 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     final t = context.uai;
     return _buildSectionCard(
       context,
-      title: 'Regras de aplicação',
+      title: 'Regras de aplicaÃƒÂ§ÃƒÂ£o',
       icon: Icons.toggle_on_rounded,
       child: Column(
         children: [
           _buildSwitchRow(
             context,
-            title: 'Ativar configuração global',
+            title: 'Ativar configuraÃƒÂ§ÃƒÂ£o global',
             subtitle:
-                'Quando desligado, o app usa a configuração local segura.',
+                'Quando desligado, o app usa a configuraÃƒÂ§ÃƒÂ£o local segura.',
             value: _draft.ativo,
             accent: t.primary,
             onChanged: (value) => setState(() {
@@ -745,9 +877,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           const SizedBox(height: 8),
           _buildSwitchRow(
             context,
-            title: 'Forçar tema global para todos',
+            title: 'ForÃƒÂ§ar tema global para todos',
             subtitle:
-                'Quando ativado, todos os usuários veem o tema global mesmo com escolha própria.',
+                'Quando ativado, todos os usuÃƒÂ¡rios veem o tema global mesmo com escolha prÃƒÂ³pria.',
             value: _draft.forcarTemaGlobal,
             accent: t.warning,
             onChanged: (value) => setState(() {
@@ -758,9 +890,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           const SizedBox(height: 8),
           _buildSwitchRow(
             context,
-            title: 'Permitir que usuários escolham tema',
+            title: 'Permitir que usuÃƒÂ¡rios escolham tema',
             subtitle:
-                'Quando desativado, a seleção do usuário fica bloqueada pela administração.',
+                'Quando desativado, a seleÃƒÂ§ÃƒÂ£o do usuÃƒÂ¡rio fica bloqueada pela administraÃƒÂ§ÃƒÂ£o.',
             value: _draft.permitirUsuarioEscolher,
             accent: t.info,
             onChanged: (value) => setState(() {
@@ -772,8 +904,8 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             const SizedBox(height: 10),
             Text(
               _draft.forcarTemaGlobal
-                  ? 'O tema global está ativo para todos os usuários no momento.'
-                  : 'A escolha de tema está controlada pela administração no momento.',
+                  ? 'O tema global estÃƒÂ¡ ativo para todos os usuÃƒÂ¡rios no momento.'
+                  : 'A escolha de tema estÃƒÂ¡ controlada pela administraÃƒÂ§ÃƒÂ£o no momento.',
               style: TextStyle(color: t.warning, fontWeight: FontWeight.w700),
             ),
           ],
@@ -788,7 +920,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
     return _buildSectionCard(
       context,
-      title: 'Temas disponíveis para usuários',
+      title: 'Temas disponÃƒÂ­veis para usuÃƒÂ¡rios',
       icon: Icons.view_list_rounded,
       child: Column(
         children: [
@@ -804,7 +936,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text(
-                            'O UAI Clássico é o tema de segurança do app e sempre ficará disponível.',
+                            'O UAI ClÃƒÂ¡ssico ÃƒÂ© o tema de seguranÃƒÂ§a do app e sempre ficarÃƒÂ¡ disponÃƒÂ­vel.',
                           ),
                           backgroundColor: t.warning,
                         ),
@@ -827,6 +959,82 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
             ),
             const SizedBox(height: 8),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCloudGlobalThemesCard(BuildContext context) {
+    final t = context.uai;
+    return _buildSectionCard(
+      context,
+      title: 'Temas globais da nuvem',
+      icon: Icons.cloud_sync_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Crie temas personalizados para disponibilizar a todos os usuÃ¡rios do app.',
+            style: TextStyle(color: t.textSecondary, height: 1.3),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: () => _openCloudThemeForm(),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Criar tema global'),
+            ),
+          ),
+          const SizedBox(height: 14),
+          FutureBuilder<List<CloudGlobalTheme>>(
+            future: CloudGlobalThemeService.instance.listAllForAdmin(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snapshot.hasError) {
+                return _buildErrorCard(
+                  context,
+                  _friendlyCloudThemeError(snapshot.error!),
+                );
+              }
+
+              final themes = snapshot.data ?? const <CloudGlobalTheme>[];
+              if (themes.isEmpty) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: t.cardAlt,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: t.border),
+                  ),
+                  child: Text(
+                    'Nenhum tema global da nuvem cadastrado.',
+                    style: TextStyle(color: t.textSecondary),
+                  ),
+                );
+              }
+
+              return Column(
+                children: [
+                  for (final theme in themes) ...[
+                    _CloudGlobalThemeCard(
+                      theme: theme,
+                      onEdit: () => _openCloudThemeForm(theme: theme),
+                      onToggleActive: () => _toggleCloudThemeActive(theme),
+                      onArchive: () => _archiveCloudTheme(theme),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -883,12 +1091,12 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                   ),
                 )
               : const Icon(Icons.save_rounded),
-          label: const Text('Salvar configuração'),
+          label: const Text('Salvar configuraÃƒÂ§ÃƒÂ£o'),
         ),
         OutlinedButton.icon(
           onPressed: _saving ? null : _restaurarUaiClassico,
           icon: const Icon(Icons.restart_alt_rounded),
-          label: const Text('Restaurar UAI Clássico'),
+          label: const Text('Restaurar UAI ClÃƒÂ¡ssico'),
         ),
         TextButton.icon(
           onPressed: _saving ? null : _reload,
@@ -899,7 +1107,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           FilledButton.tonalIcon(
             onPressed: _saving ? null : _criarPadrao,
             icon: const Icon(Icons.add_circle_outline_rounded),
-            label: const Text('Criar configuração padrão'),
+            label: const Text('Criar configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o'),
           ),
       ],
     );
@@ -926,7 +1134,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Ainda não existe um documento de tema global. Você pode criar a configuração padrão agora.',
+                  'Ainda nÃƒÂ£o existe um documento de tema global. VocÃƒÂª pode criar a configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o agora.',
                   style: TextStyle(
                     color: t.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -939,7 +1147,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
           FilledButton.icon(
             onPressed: _saving || user == null ? null : _criarPadrao,
             icon: const Icon(Icons.add_circle_outline_rounded),
-            label: const Text('Criar configuração padrão'),
+            label: const Text('Criar configuraÃƒÂ§ÃƒÂ£o padrÃƒÂ£o'),
           ),
         ],
       ),
@@ -983,7 +1191,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               Icon(Icons.lock_outline_rounded, color: t.error, size: 48),
               const SizedBox(height: 12),
               Text(
-                'Você não tem acesso à Central de Temas.',
+                'VocÃƒÂª nÃƒÂ£o tem acesso ÃƒÂ  Central de Temas.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: t.textPrimary,
@@ -1230,34 +1438,640 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
         hsl.saturation > 0.58;
   }
 
+  String _friendlyCloudThemeError(Object error) {
+    debugPrint('[CentralTemasScreen] Erro em tema global da nuvem: $error');
+
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'permission-denied':
+          return 'VocÃª nÃ£o tem permissÃ£o para gerenciar temas globais.';
+        case 'unavailable':
+        case 'deadline-exceeded':
+          return 'NÃ£o foi possÃ­vel conectar ao Firebase agora. Verifique a conexÃ£o e tente novamente.';
+        default:
+          return 'NÃ£o foi possÃ­vel gerenciar o tema global agora.';
+      }
+    }
+
+    final text = error.toString();
+    if (text.contains('permission-denied')) {
+      return 'VocÃª nÃ£o tem permissÃ£o para gerenciar temas globais.';
+    }
+    if (text.contains('unavailable') ||
+        text.contains('deadline-exceeded') ||
+        text.contains('channel')) {
+      return 'NÃ£o foi possÃ­vel conectar ao Firebase agora. Verifique a conexÃ£o e tente novamente.';
+    }
+    return 'NÃ£o foi possÃ­vel gerenciar o tema global agora.';
+  }
+
   String _friendlyError(Object error) {
     debugPrint('[CentralTemasScreen] Erro ao salvar Central de Temas: $error');
 
     if (error is FirebaseException) {
       switch (error.code) {
         case 'permission-denied':
-          return 'Você não tem permissão para alterar a Central de Temas.';
+          return 'VocÃƒÂª nÃƒÂ£o tem permissÃƒÂ£o para alterar a Central de Temas.';
         case 'unavailable':
         case 'deadline-exceeded':
-          return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
+          return 'NÃƒÂ£o foi possÃƒÂ­vel conectar ao Firebase agora. Verifique a conexÃƒÂ£o e tente novamente.';
         default:
-          return 'Não foi possível salvar a Central de Temas agora.';
+          return 'NÃƒÂ£o foi possÃƒÂ­vel salvar a Central de Temas agora.';
       }
     }
 
     final text = error.toString();
     if (text.contains('permission-denied')) {
-      return 'Você não tem permissão para alterar a Central de Temas.';
+      return 'VocÃƒÂª nÃƒÂ£o tem permissÃƒÂ£o para alterar a Central de Temas.';
     }
     if (text.contains('unavailable') ||
         text.contains('deadline-exceeded') ||
         text.contains('channel')) {
-      return 'Não foi possível conectar ao Firebase agora. Verifique a conexão e tente novamente.';
+      return 'NÃƒÂ£o foi possÃƒÂ­vel conectar ao Firebase agora. Verifique a conexÃƒÂ£o e tente novamente.';
     }
     if (text.contains('cloud_firestore') || text.contains('functions')) {
-      return 'Não foi possível salvar a Central de Temas agora.';
+      return 'NÃƒÂ£o foi possÃƒÂ­vel salvar a Central de Temas agora.';
     }
     return text.replaceFirst('Exception: ', '').trim();
+  }
+}
+
+class _CloudGlobalThemeCard extends StatelessWidget {
+  final CloudGlobalTheme theme;
+  final VoidCallback onEdit;
+  final VoidCallback onToggleActive;
+  final VoidCallback onArchive;
+
+  const _CloudGlobalThemeCard({
+    required this.theme,
+    required this.onEdit,
+    required this.onToggleActive,
+    required this.onArchive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final tokens = theme.toTokens();
+    final updated = theme.atualizadoEm == null
+        ? 'Sem atualizaÃ§Ã£o registrada'
+        : '${theme.atualizadoEm!.day.toString().padLeft(2, '0')}/${theme.atualizadoEm!.month.toString().padLeft(2, '0')}/${theme.atualizadoEm!.year}';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.cardAlt,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: theme.previewColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.border),
+                ),
+                child: Icon(
+                  Icons.palette_rounded,
+                  color: _previewReadableOn(theme.previewColor),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      theme.nome,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (theme.descricao.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        theme.descricao,
+                        style: TextStyle(color: t.textSecondary, height: 1.25),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _PreviewPill(
+                          label: theme.ativo ? 'Ativo' : 'Inativo',
+                          foreground: _strongTextOn(
+                            theme.ativo ? t.success : t.warning,
+                          ),
+                          background: Color.alphaBlend(
+                            (theme.ativo ? t.success : t.warning).withValues(
+                              alpha: 0.18,
+                            ),
+                            t.card,
+                          ),
+                          border: (theme.ativo ? t.success : t.warning)
+                              .withValues(alpha: 0.35),
+                        ),
+                        _PreviewPill(
+                          label: theme.disponivelParaUsuarios
+                              ? 'UsuÃ¡rios'
+                              : 'UsuÃ¡rios bloqueado',
+                          foreground: t.textPrimary,
+                          background: t.card,
+                          border: t.border,
+                        ),
+                        _PreviewPill(
+                          label: theme.disponivelParaEstudos
+                              ? 'Estudos'
+                              : 'Estudos bloqueado',
+                          foreground: t.textPrimary,
+                          background: t.card,
+                          border: t.border,
+                        ),
+                        _PreviewPill(
+                          label: theme.origem,
+                          foreground: t.textPrimary,
+                          background: t.card,
+                          border: t.border,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _colorDot('Primary', theme.primary, t),
+              if (theme.accent != null) _colorDot('Accent', theme.accent!, t),
+              _colorDot('Background', theme.background, t),
+              _colorDot('Card', theme.card, t),
+              _colorDot('Texto', theme.textPrimary, t),
+              if (theme.border != null) _colorDot('Borda', theme.border!, t),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _CloudThemeMiniPreview(tokens: tokens),
+          const SizedBox(height: 10),
+          Text(updated, style: TextStyle(color: t.textMuted, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_rounded),
+                label: const Text('Editar'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: onToggleActive,
+                icon: Icon(
+                  theme.ativo ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                ),
+                label: Text(theme.ativo ? 'Desativar' : 'Ativar'),
+              ),
+              TextButton.icon(
+                onPressed: onArchive,
+                icon: const Icon(Icons.archive_rounded),
+                label: const Text('Arquivar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _colorDot(String label, Color color, UaiThemeTokens t) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: t.border),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: t.textSecondary, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudThemeMiniPreview extends StatelessWidget {
+  final UaiThemeTokens tokens;
+
+  const _CloudThemeMiniPreview({required this.tokens});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tokens.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PrÃ©via do tema',
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Texto secundÃ¡rio e superfÃ­cie do card.',
+            style: TextStyle(color: tokens.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () {},
+                  style: FilledButton.styleFrom(
+                    backgroundColor: tokens.primary,
+                    foregroundColor: _strongTextOn(tokens.primary),
+                  ),
+                  child: const Text('BotÃ£o'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tokens.accent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tokens.success,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tokens.error,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudThemeFormResult {
+  final String nome;
+  final String descricao;
+  final bool ativo;
+  final bool disponivelParaUsuarios;
+  final bool disponivelParaEstudos;
+  final UserThemeSettings settings;
+  final Color success;
+  final Color warning;
+  final Color error;
+
+  const _CloudThemeFormResult({
+    required this.nome,
+    required this.descricao,
+    required this.ativo,
+    required this.disponivelParaUsuarios,
+    required this.disponivelParaEstudos,
+    required this.settings,
+    required this.success,
+    required this.warning,
+    required this.error,
+  });
+}
+
+class _CloudThemeFormDialog extends StatefulWidget {
+  final CloudGlobalTheme? theme;
+
+  const _CloudThemeFormDialog({this.theme});
+
+  @override
+  State<_CloudThemeFormDialog> createState() => _CloudThemeFormDialogState();
+}
+
+class _CloudThemeFormDialogState extends State<_CloudThemeFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nome;
+  late final TextEditingController _descricao;
+  late final TextEditingController _primary;
+  late final TextEditingController _accent;
+  late final TextEditingController _background;
+  late final TextEditingController _card;
+  late final TextEditingController _textPrimary;
+  late final TextEditingController _textSecondary;
+  late final TextEditingController _border;
+  late final TextEditingController _success;
+  late final TextEditingController _warning;
+  late final TextEditingController _error;
+  late bool _ativo;
+  late bool _usuarios;
+  late bool _estudos;
+  late bool _dark;
+
+  @override
+  void initState() {
+    super.initState();
+    final theme = widget.theme;
+    final defaults =
+        theme?.toUserThemeSettings() ?? UserThemeSettings.defaultDark;
+    _nome = TextEditingController(text: theme?.nome ?? '');
+    _descricao = TextEditingController(text: theme?.descricao ?? '');
+    _primary = TextEditingController(text: _hex(defaults.primary));
+    _accent = TextEditingController(
+      text: _hex(
+        defaults.accent ?? UaiThemeTokens.lighten(defaults.primary, 0.18),
+      ),
+    );
+    _background = TextEditingController(text: _hex(defaults.background));
+    _card = TextEditingController(text: _hex(defaults.card));
+    _textPrimary = TextEditingController(text: _hex(defaults.textPrimary));
+    _textSecondary = TextEditingController(
+      text: _hex(defaults.textSecondary ?? const Color(0xFFD5DAEA)),
+    );
+    _border = TextEditingController(
+      text: _hex(defaults.border ?? const Color(0xFF3E4260)),
+    );
+    _success = TextEditingController(
+      text: _hex(theme?.success ?? const Color(0xFF35D07F)),
+    );
+    _warning = TextEditingController(
+      text: _hex(theme?.warning ?? const Color(0xFFE8B451)),
+    );
+    _error = TextEditingController(
+      text: _hex(theme?.error ?? const Color(0xFFFF4D5E)),
+    );
+    _ativo = theme?.ativo ?? true;
+    _usuarios = theme?.disponivelParaUsuarios ?? false;
+    _estudos = theme?.disponivelParaEstudos ?? false;
+    _dark = theme?.isDark ?? true;
+  }
+
+  @override
+  void dispose() {
+    _nome.dispose();
+    _descricao.dispose();
+    _primary.dispose();
+    _accent.dispose();
+    _background.dispose();
+    _card.dispose();
+    _textPrimary.dispose();
+    _textSecondary.dispose();
+    _border.dispose();
+    _success.dispose();
+    _warning.dispose();
+    _error.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final settings = _settingsFromControllers();
+    final preview = UaiThemeTokens.custom(
+      primary: settings.primary,
+      accent: settings.accent,
+      background: settings.background,
+      surface: settings.surface,
+      card: settings.card,
+      textPrimary: settings.textPrimary,
+      textSecondary: settings.textSecondary,
+      border: settings.border,
+      success: _parseColor(_success.text) ?? const Color(0xFF35D07F),
+      warning: _parseColor(_warning.text) ?? const Color(0xFFE8B451),
+      error: _parseColor(_error.text) ?? const Color(0xFFFF4D5E),
+    );
+
+    return AlertDialog(
+      backgroundColor: t.surface,
+      surfaceTintColor: Colors.transparent,
+      title: Text(
+        widget.theme == null ? 'Criar tema global' : 'Editar tema global',
+      ),
+      content: SizedBox(
+        width: 720,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _nome,
+                  decoration: const InputDecoration(labelText: 'Nome'),
+                  validator: _required,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _descricao,
+                  decoration: const InputDecoration(labelText: 'DescriÃ§Ã£o'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    FilterChip(
+                      label: const Text('Tema escuro'),
+                      selected: _dark,
+                      onSelected: _applyDarkDefaults,
+                    ),
+                    FilterChip(
+                      label: const Text('Ativo'),
+                      selected: _ativo,
+                      onSelected: (v) => setState(() => _ativo = v),
+                    ),
+                    FilterChip(
+                      label: const Text('DisponÃ­vel para usuÃ¡rios'),
+                      selected: _usuarios,
+                      onSelected: (v) => setState(() => _usuarios = v),
+                    ),
+                    FilterChip(
+                      label: const Text('DisponÃ­vel para Estudos'),
+                      selected: _estudos,
+                      onSelected: (v) => setState(() => _estudos = v),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _colorField(_primary, 'Primary'),
+                    _colorField(_accent, 'Accent'),
+                    _colorField(_background, 'Background'),
+                    _colorField(_card, 'Card'),
+                    _colorField(_textPrimary, 'Texto principal'),
+                    _colorField(_textSecondary, 'Texto secundÃ¡rio'),
+                    _colorField(_border, 'Borda'),
+                    _colorField(_success, 'Sucesso'),
+                    _colorField(_warning, 'Aviso'),
+                    _colorField(_error, 'Erro'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _CloudThemeMiniPreview(tokens: preview),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _submit,
+          icon: const Icon(Icons.save_rounded),
+          label: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+
+  Widget _colorField(TextEditingController controller, String label) {
+    return SizedBox(
+      width: 155,
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(
+            Icons.circle,
+            color: _parseColor(controller.text) ?? Colors.grey,
+          ),
+        ),
+        validator: _validColor,
+        onChanged: (_) => setState(() {}),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (_formKey.currentState?.validate() != true) return;
+    Navigator.pop(
+      context,
+      _CloudThemeFormResult(
+        nome: _nome.text.trim(),
+        descricao: _descricao.text.trim(),
+        ativo: _ativo,
+        disponivelParaUsuarios: _usuarios,
+        disponivelParaEstudos: _estudos,
+        settings: _settingsFromControllers(),
+        success: _parseColor(_success.text) ?? const Color(0xFF35D07F),
+        warning: _parseColor(_warning.text) ?? const Color(0xFFE8B451),
+        error: _parseColor(_error.text) ?? const Color(0xFFFF4D5E),
+      ),
+    );
+  }
+
+  UserThemeSettings _settingsFromControllers() {
+    return UserThemeSettings(
+      primary:
+          _parseColor(_primary.text) ?? UserThemeSettings.defaultDark.primary,
+      accent: _parseColor(_accent.text),
+      background:
+          _parseColor(_background.text) ??
+          UserThemeSettings.defaultDark.background,
+      surface: _parseColor(_card.text) ?? UserThemeSettings.defaultDark.surface,
+      card: _parseColor(_card.text) ?? UserThemeSettings.defaultDark.card,
+      textPrimary:
+          _parseColor(_textPrimary.text) ??
+          UserThemeSettings.defaultDark.textPrimary,
+      textSecondary: _parseColor(_textSecondary.text),
+      border: _parseColor(_border.text),
+    );
+  }
+
+  void _applyDarkDefaults(bool value) {
+    setState(() {
+      _dark = value;
+      if (value) {
+        _background.text = '#07100B';
+        _card.text = '#142219';
+        _textPrimary.text = '#F4F0D8';
+        _textSecondary.text = '#D5DAEA';
+        _border.text = '#3E4260';
+      } else {
+        _background.text = '#F8FAFC';
+        _card.text = '#FFFFFF';
+        _textPrimary.text = '#111827';
+        _textSecondary.text = '#4B5563';
+        _border.text = '#E5E7EB';
+      }
+    });
+  }
+
+  String? _required(String? value) =>
+      value == null || value.trim().isEmpty ? 'Informe um nome.' : null;
+
+  String? _validColor(String? value) =>
+      _parseColor(value) == null ? 'Use HEX. Ex: #547A3B' : null;
+
+  static Color? _parseColor(String? raw) {
+    if (raw == null) return null;
+    var value = raw
+        .trim()
+        .replaceAll('#', '')
+        .replaceAll('0x', '')
+        .replaceAll('0X', '');
+    if (value.length == 6) value = 'FF$value';
+    if (value.length != 8) return null;
+    final parsed = int.tryParse(value, radix: 16);
+    return parsed == null ? null : Color(parsed);
+  }
+
+  static String _hex(Color color) {
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 }
 
@@ -1373,7 +2187,7 @@ class _ThemePreview extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'AppBar de prévia',
+                    'AppBar de prÃƒÂ©via',
                     style: TextStyle(
                       color: onPrimary,
                       fontWeight: FontWeight.w800,
@@ -1404,7 +2218,7 @@ class _ThemePreview extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Texto secundário',
+                  'Texto secundÃƒÂ¡rio',
                   style: TextStyle(color: theme.textSecondary),
                 ),
                 const SizedBox(height: 10),
@@ -1439,7 +2253,7 @@ class _ThemePreview extends StatelessWidget {
                           backgroundColor: theme.primary,
                           foregroundColor: onPrimary,
                         ),
-                        child: const Text('Primário'),
+                        child: const Text('PrimÃƒÂ¡rio'),
                       ),
                     ),
                     const SizedBox(width: 8),
