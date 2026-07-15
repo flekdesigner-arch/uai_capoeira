@@ -17,6 +17,7 @@ const {
   deleteDoc,
   getDoc,
   getDocs,
+  where,
 } = require("firebase/firestore");
 
 const PROJECT_ID = "demo-uai-capoeira-rules-extra";
@@ -83,6 +84,47 @@ async function main() {
       card: "#142219",
       textPrimary: "#F4F0D8",
       atualizadoEm: new Date("2026-07-14T12:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "temas_globais/tema_global_liberado"), {
+      nome: "Tema Global Liberado",
+      descricao: "Tema global disponivel para usuarios",
+      ativo: true,
+      disponivelParaUsuarios: true,
+      disponivelParaEstudos: false,
+      origem: "global_nuvem",
+      primary: "#547A3B",
+      background: "#07100B",
+      surface: "#0E1A12",
+      card: "#142219",
+      textPrimary: "#F4F0D8",
+      atualizadoEm: new Date("2026-07-15T12:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "temas_globais/tema_global_inativo"), {
+      nome: "Tema Global Inativo",
+      ativo: false,
+      disponivelParaUsuarios: true,
+      origem: "global_nuvem",
+      primary: "#8B4A24",
+      background: "#120D09",
+      surface: "#1E1510",
+      card: "#2B1D15",
+      textPrimary: "#F8E6CF",
+      atualizadoEm: new Date("2026-07-15T11:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "temas_globais/tema_global_indisponivel"), {
+      nome: "Tema Global Indisponivel",
+      ativo: true,
+      disponivelParaUsuarios: false,
+      origem: "global_nuvem",
+      primary: "#C0A052",
+      background: "#07100B",
+      surface: "#0E1A12",
+      card: "#142219",
+      textPrimary: "#F4F0D8",
+      atualizadoEm: new Date("2026-07-15T10:00:00.000Z"),
     });
 
     await setDoc(doc(db, "alunos/aluno_001"), {
@@ -290,6 +332,111 @@ async function main() {
       atualizadoEm: new Date("2026-07-15T12:20:00.000Z"),
     })
   );
+  console.log("Teste extra 22: usuario autenticado le tema global ativo e disponivel...");
+  await assertSucceeds(
+    getDoc(doc(alunoDb, "temas_globais/tema_global_liberado"))
+  );
+
+  console.log("Teste extra 23: usuario autenticado NAO le tema global inativo...");
+  await assertFails(
+    getDoc(doc(alunoDb, "temas_globais/tema_global_inativo"))
+  );
+
+  console.log("Teste extra 24: usuario autenticado NAO le tema global indisponivel...");
+  await assertFails(
+    getDoc(doc(alunoDb, "temas_globais/tema_global_indisponivel"))
+  );
+
+  console.log("Teste extra 25: query real lista temas globais ativos e disponiveis...");
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(alunoDb, "temas_globais"),
+        where("ativo", "==", true),
+        where("disponivelParaUsuarios", "==", true),
+        orderBy("atualizadoEm", "desc"),
+        limit(40)
+      )
+    )
+  );
+
+  console.log("Teste extra 26: usuario comum NAO cria tema global...");
+  await assertFails(
+    setDoc(doc(alunoDb, "temas_globais/tema_global_usuario"), {
+      nome: "Tema Global Usuario",
+      ativo: true,
+      disponivelParaUsuarios: true,
+      atualizadoEm: new Date("2026-07-15T12:30:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 27: usuario comum NAO edita tema global...");
+  await assertFails(
+    updateDoc(doc(alunoDb, "temas_globais/tema_global_liberado"), {
+      descricao: "Alteracao indevida",
+    })
+  );
+
+  console.log("Teste extra 28: usuario comum NAO exclui tema global...");
+  await assertFails(
+    deleteDoc(doc(alunoDb, "temas_globais/tema_global_liberado"))
+  );
+
+  console.log("Teste extra 29: anonimo NAO le tema global...");
+  await assertFails(
+    getDoc(doc(anonDb, "temas_globais/tema_global_liberado"))
+  );
+
+  console.log("Teste extra 30: anonimo NAO escreve tema global...");
+  await assertFails(
+    setDoc(doc(anonDb, "temas_globais/tema_global_anonimo"), {
+      nome: "Tema Global Anonimo",
+      ativo: true,
+      disponivelParaUsuarios: true,
+      atualizadoEm: new Date("2026-07-15T12:35:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 31: admin le todos os temas globais...");
+  await assertSucceeds(getDoc(doc(adminDb, "temas_globais/tema_global_liberado")));
+  await assertSucceeds(getDoc(doc(adminDb, "temas_globais/tema_global_inativo")));
+  await assertSucceeds(getDoc(doc(adminDb, "temas_globais/tema_global_indisponivel")));
+
+  console.log("Teste extra 32: admin cria tema global...");
+  await assertSucceeds(
+    setDoc(doc(adminDb, "temas_globais/tema_global_admin"), {
+      nome: "Tema Global Admin",
+      descricao: "Criado pelo admin",
+      ativo: true,
+      disponivelParaUsuarios: true,
+      origem: "global_nuvem",
+      primary: "#C0A052",
+      background: "#07100B",
+      surface: "#0E1A12",
+      card: "#142219",
+      textPrimary: "#F4F0D8",
+      atualizadoEm: new Date("2026-07-15T12:40:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 33: admin edita tema global...");
+  await assertSucceeds(
+    updateDoc(doc(adminDb, "temas_globais/tema_global_admin"), {
+      descricao: "Editado pelo admin",
+      atualizadoEm: new Date("2026-07-15T12:45:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 34: admin desativa/arquiva tema global...");
+  await assertSucceeds(
+    updateDoc(doc(adminDb, "temas_globais/tema_global_admin"), {
+      ativo: false,
+      disponivelParaUsuarios: false,
+      arquivado: true,
+      atualizadoEm: new Date("2026-07-15T12:50:00.000Z"),
+    })
+  );
+
   await testEnv.cleanup();
 
   console.log("");

@@ -206,6 +206,16 @@ service cloud.firestore {
       allow read, create, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    match /temas_globais/{themeId} {
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.ativo == true
+          && resource.data.disponivelParaUsuarios == true
+        );
+      allow create, update, delete: if isAdmin();
+    }
+
     match /usuarios/{userId}/permissoes_usuario/{document=**} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow create, update, delete: if isAdmin();
