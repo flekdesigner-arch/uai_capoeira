@@ -8,8 +8,15 @@ const {
 
 const {
   doc,
+  collection,
+  query,
+  orderBy,
+  limit,
   setDoc,
+  updateDoc,
+  deleteDoc,
   getDoc,
+  getDocs,
 } = require("firebase/firestore");
 
 const PROJECT_ID = "demo-uai-capoeira-rules-extra";
@@ -61,6 +68,23 @@ async function main() {
       status_conta: "ativa",
     });
 
+    await setDoc(doc(db, "usuarios/outro_uid"), {
+      tipo: "aluno",
+      peso_permissao: 0,
+      status_conta: "ativa",
+    });
+
+    await setDoc(doc(db, "usuarios/aluno_uid/temas_personalizados/tema_existente"), {
+      nome: "Tema Existente",
+      descricao: "Tema salvo para testes",
+      primary: "#547A3B",
+      background: "#07100B",
+      surface: "#0E1A12",
+      card: "#142219",
+      textPrimary: "#F4F0D8",
+      atualizadoEm: new Date("2026-07-14T12:00:00.000Z"),
+    });
+
     await setDoc(doc(db, "alunos/aluno_001"), {
       nome: "Aluno Teste",
       areaAlunoGoogleVinculado: true,
@@ -98,6 +122,7 @@ async function main() {
   const adminDb = testEnv.authenticatedContext("admin_uid").firestore();
   const permDb = testEnv.authenticatedContext("perm_uid").firestore();
   const alunoDb = testEnv.authenticatedContext("aluno_uid").firestore();
+  const outroDb = testEnv.authenticatedContext("outro_uid").firestore();
   const anonDb = testEnv.unauthenticatedContext().firestore();
 
   console.log("Teste extra 1: usuario com permissao granular consegue ler gabarito...");
@@ -183,6 +208,88 @@ async function main() {
     })
   );
 
+  console.log("Teste extra 11: dono consegue ler tema personalizado proprio...");
+  await assertSucceeds(
+    getDoc(doc(alunoDb, "usuarios/aluno_uid/temas_personalizados/tema_existente"))
+  );
+
+  console.log("Teste extra 12: query do app lista temas personalizados do proprio usuario...");
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(alunoDb, "usuarios/aluno_uid/temas_personalizados"),
+        orderBy("atualizadoEm", "desc"),
+        limit(40)
+      )
+    )
+  );
+
+  console.log("Teste extra 13: dono consegue criar tema personalizado proprio...");
+  await assertSucceeds(
+    setDoc(doc(alunoDb, "usuarios/aluno_uid/temas_personalizados/tema_novo"), {
+      nome: "Tema Novo",
+      descricao: "Criado pelo dono",
+      primary: "#C0A052",
+      background: "#07100B",
+      surface: "#0E1A12",
+      card: "#142219",
+      textPrimary: "#F4F0D8",
+      atualizadoEm: new Date("2026-07-15T12:00:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 14: dono consegue editar tema personalizado proprio...");
+  await assertSucceeds(
+    updateDoc(doc(alunoDb, "usuarios/aluno_uid/temas_personalizados/tema_novo"), {
+      descricao: "Atualizado pelo dono",
+      atualizadoEm: new Date("2026-07-15T12:05:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 15: dono consegue excluir tema personalizado proprio...");
+  await assertSucceeds(
+    deleteDoc(doc(alunoDb, "usuarios/aluno_uid/temas_personalizados/tema_novo"))
+  );
+
+  console.log("Teste extra 16: outro usuario NAO consegue ler tema alheio...");
+  await assertFails(
+    getDoc(doc(outroDb, "usuarios/aluno_uid/temas_personalizados/tema_existente"))
+  );
+
+  console.log("Teste extra 17: outro usuario NAO consegue escrever tema alheio...");
+  await assertFails(
+    setDoc(doc(outroDb, "usuarios/aluno_uid/temas_personalizados/tema_invasor"), {
+      nome: "Tema Invasor",
+      atualizadoEm: new Date("2026-07-15T12:10:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 18: anonimo NAO consegue ler tema personalizado...");
+  await assertFails(
+    getDoc(doc(anonDb, "usuarios/aluno_uid/temas_personalizados/tema_existente"))
+  );
+
+  console.log("Teste extra 19: anonimo NAO consegue escrever tema personalizado...");
+  await assertFails(
+    setDoc(doc(anonDb, "usuarios/aluno_uid/temas_personalizados/tema_anonimo"), {
+      nome: "Tema Anonimo",
+      atualizadoEm: new Date("2026-07-15T12:15:00.000Z"),
+    })
+  );
+
+  console.log("Teste extra 20: admin consegue ler tema personalizado de usuario...");
+  await assertSucceeds(
+    getDoc(doc(adminDb, "usuarios/aluno_uid/temas_personalizados/tema_existente"))
+  );
+
+  console.log("Teste extra 21: admin consegue gerenciar tema personalizado de usuario...");
+  await assertSucceeds(
+    setDoc(doc(adminDb, "usuarios/aluno_uid/temas_personalizados/tema_admin"), {
+      nome: "Tema Admin",
+      descricao: "Gerenciado pelo admin",
+      atualizadoEm: new Date("2026-07-15T12:20:00.000Z"),
+    })
+  );
   await testEnv.cleanup();
 
   console.log("");

@@ -156,6 +156,10 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
+    match /usuarios/{userId}/temas_personalizados/{themeId} {
+      allow read, create, update, delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
     match /usuarios/{userId}/permissoes_usuario/{document=**} {
       allow read, write: if isSignedIn();
     }
