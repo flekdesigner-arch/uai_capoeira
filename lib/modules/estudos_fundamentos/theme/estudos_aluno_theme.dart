@@ -91,16 +91,84 @@ class EstudosAlunoTheme extends StatelessWidget {
     final base = Theme.of(context);
     final appBarBg = tokens.surface;
     final appBarFg = tokens.readableTextOn(appBarBg);
+    final primaryButtonFg = tokens.readableTextOn(tokens.primary);
+    final secondaryButtonBg = tokens.cardAlt;
+    final secondaryButtonFg = tokens.textPrimary;
     final themed = base.copyWith(
       scaffoldBackgroundColor: tokens.background,
       primaryColor: tokens.primary,
       colorScheme: base.colorScheme.copyWith(
         primary: tokens.primary,
+        onPrimary: primaryButtonFg,
         secondary: tokens.accent,
+        onSecondary: tokens.readableTextOn(tokens.accent),
         surface: tokens.surface,
         error: tokens.error,
+        onError: tokens.readableTextOn(tokens.error),
         onSurface: tokens.textPrimary,
         outline: tokens.border,
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style:
+            TextButton.styleFrom(
+              foregroundColor: tokens.accent,
+              iconColor: tokens.accent,
+              disabledForegroundColor: tokens.textMuted,
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ).copyWith(
+              overlayColor: WidgetStatePropertyAll(
+                tokens.accent.withValues(alpha: 0.10),
+              ),
+            ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style:
+            OutlinedButton.styleFrom(
+              foregroundColor: secondaryButtonFg,
+              iconColor: tokens.accent,
+              disabledForegroundColor: tokens.textMuted,
+              side: BorderSide(color: tokens.border),
+              backgroundColor: secondaryButtonBg.withValues(alpha: 0.72),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(tokens.buttonRadius),
+              ),
+            ).copyWith(
+              side: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return BorderSide(
+                    color: tokens.border.withValues(alpha: 0.45),
+                  );
+                }
+                if (states.contains(WidgetState.pressed) ||
+                    states.contains(WidgetState.hovered) ||
+                    states.contains(WidgetState.focused)) {
+                  return BorderSide(color: tokens.accent);
+                }
+                return BorderSide(color: tokens.border);
+              }),
+              overlayColor: WidgetStatePropertyAll(
+                tokens.accent.withValues(alpha: 0.10),
+              ),
+            ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style:
+            FilledButton.styleFrom(
+              backgroundColor: tokens.primary,
+              foregroundColor: primaryButtonFg,
+              iconColor: primaryButtonFg,
+              disabledBackgroundColor: tokens.cardAlt,
+              disabledForegroundColor: tokens.textMuted,
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(tokens.buttonRadius),
+              ),
+            ).copyWith(
+              overlayColor: WidgetStatePropertyAll(
+                tokens.accent.withValues(alpha: 0.12),
+              ),
+            ),
       ),
       appBarTheme: base.appBarTheme.copyWith(
         backgroundColor: appBarBg,
