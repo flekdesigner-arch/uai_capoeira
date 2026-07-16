@@ -109,6 +109,21 @@ service cloud.firestore {
         );
     }
 
+    function podeGerenciarAluno() {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && usuarioContaLiberada(request.auth.uid)
+          && exists(permissoesUsuarioDoc(request.auth.uid))
+          && (
+            get(permissoesUsuarioDoc(request.auth.uid)).data.pode_editar_aluno == true
+            || get(permissoesUsuarioDoc(request.auth.uid)).data.pode_desativar_aluno == true
+            || get(permissoesUsuarioDoc(request.auth.uid)).data.pode_ativar_alunos == true
+            || get(permissoesUsuarioDoc(request.auth.uid)).data.pode_mudar_turma == true
+          )
+        );
+    }
+
     function canManageControleAtualizacoes() {
       return isAdmin()
         || (
@@ -204,6 +219,13 @@ service cloud.firestore {
     match /alunos/{document} {
       allow read: if true;
       allow write: if isSignedIn();
+    }
+
+    match /alunos/{alunoId}/historico_edicoes/{historicoId} {
+      allow read: if podeGerenciarAluno();
+      allow create: if podeGerenciarAluno();
+      allow update: if podeGerenciarAluno();
+      allow delete: if false;
     }
 
     match /usuarios/{userId} {

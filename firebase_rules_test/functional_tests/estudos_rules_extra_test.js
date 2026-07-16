@@ -15,6 +15,7 @@ const {
   setDoc,
   updateDoc,
   deleteDoc,
+  runTransaction,
   writeBatch,
   getDoc,
   getDocs,
@@ -72,6 +73,35 @@ async function main() {
 
     await setDoc(doc(db, "usuarios/avaliador_uid/permissoes_usuario/configuracoes"), {
       pode_avaliar_aluno: true,
+    });
+    await setDoc(doc(db, "usuarios/editor_uid"), {
+      tipo: "usuario",
+      peso_permissao: 10,
+      status_conta: "ativa",
+    });
+
+    await setDoc(doc(db, "usuarios/editor_uid/permissoes_usuario/configuracoes"), {
+      pode_editar_aluno: true,
+    });
+
+    await setDoc(doc(db, "usuarios/desativador_uid"), {
+      tipo: "usuario",
+      peso_permissao: 10,
+      status_conta: "ativa",
+    });
+
+    await setDoc(doc(db, "usuarios/desativador_uid/permissoes_usuario/configuracoes"), {
+      pode_desativar_aluno: true,
+    });
+
+    await setDoc(doc(db, "usuarios/mudanca_turma_uid"), {
+      tipo: "usuario",
+      peso_permissao: 10,
+      status_conta: "ativa",
+    });
+
+    await setDoc(doc(db, "usuarios/mudanca_turma_uid/permissoes_usuario/configuracoes"), {
+      pode_mudar_turma: true,
     });
     await setDoc(doc(db, "usuarios/aluno_uid"), {
       tipo: "aluno",
@@ -174,6 +204,9 @@ async function main() {
   const adminDb = testEnv.authenticatedContext("admin_uid").firestore();
   const permDb = testEnv.authenticatedContext("perm_uid").firestore();
   const avaliadorDb = testEnv.authenticatedContext("avaliador_uid").firestore();
+  const editorDb = testEnv.authenticatedContext("editor_uid").firestore();
+  const desativadorDb = testEnv.authenticatedContext("desativador_uid").firestore();
+  const mudancaTurmaDb = testEnv.authenticatedContext("mudanca_turma_uid").firestore();
   const alunoDb = testEnv.authenticatedContext("aluno_uid").firestore();
   const outroDb = testEnv.authenticatedContext("outro_uid").firestore();
   const anonDb = testEnv.unauthenticatedContext().firestore();
@@ -557,6 +590,126 @@ async function main() {
   avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_batch_avaliador/historico/hist_batch_avaliador"), { aluno_id: "aluno_batch_avaliador", nota_final: 8.8, tipo: "primeira_avaliacao" });
   avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), { total_avaliacoes: 3 }, { merge: true });
   await assertSucceeds(avaliadorBatch.commit());
+  console.log("Teste extra 53: admin cria historico de edicao do aluno...");
+  await assertSucceeds(setDoc(doc(adminDb, "alunos/aluno_001/historico_edicoes/hist_admin"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "manual",
+    status: "aplicada",
+    resumo: "Edicao admin",
+  }));
+
+  console.log("Teste extra 54: admin le e lista historico de edicoes...");
+  await assertSucceeds(getDoc(doc(adminDb, "alunos/aluno_001/historico_edicoes/hist_admin")));
+  await assertSucceeds(getDocs(query(collection(adminDb, "alunos/aluno_001/historico_edicoes"), orderBy("criado_em", "desc"))));
+
+  console.log("Teste extra 55: admin atualiza historico para reversao/status...");
+  await assertSucceeds(updateDoc(doc(adminDb, "alunos/aluno_001/historico_edicoes/hist_admin"), {
+    status: "revertida",
+    revertido: true,
+  }));
+
+  console.log("Teste extra 56: usuario com pode_editar_aluno cria historico...");
+  await assertSucceeds(setDoc(doc(editorDb, "alunos/aluno_001/historico_edicoes/hist_editor"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "manual",
+    status: "aplicada",
+    resumo: "Edicao manual",
+  }));
+
+  console.log("Teste extra 57: usuario com pode_desativar_aluno cria historico...");
+  await assertSucceeds(setDoc(doc(desativadorDb, "alunos/aluno_001/historico_edicoes/hist_desativacao"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "desativacao",
+    status: "aplicada",
+    resumo: "Aluno desativado",
+  }));
+
+  console.log("Teste extra 58: usuario com pode_mudar_turma cria historico...");
+  await assertSucceeds(setDoc(doc(mudancaTurmaDb, "alunos/aluno_001/historico_edicoes/hist_mudanca_turma"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "manual",
+    subtipo_edicao: "mudanca_turma",
+    status: "aplicada",
+    resumo: "Mudanca de turma",
+  }));
+
+  console.log("Teste extra 59: usuario sem permissao NAO le historico...");
+  await assertFails(getDoc(doc(alunoDb, "alunos/aluno_001/historico_edicoes/hist_admin")));
+  await assertFails(getDocs(collection(alunoDb, "alunos/aluno_001/historico_edicoes")));
+
+  console.log("Teste extra 60: usuario sem permissao NAO cria historico...");
+  await assertFails(setDoc(doc(alunoDb, "alunos/aluno_001/historico_edicoes/hist_sem_permissao"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "manual",
+  }));
+
+  console.log("Teste extra 61: anonimo NAO le nem escreve historico...");
+  await assertFails(getDoc(doc(anonDb, "alunos/aluno_001/historico_edicoes/hist_admin")));
+  await assertFails(setDoc(doc(anonDb, "alunos/aluno_001/historico_edicoes/hist_anon"), {
+    aluno_id: "aluno_001",
+    tipo_edicao: "manual",
+  }));
+
+  console.log("Teste extra 62: delete de historico de edicao e sempre negado...");
+  await assertFails(deleteDoc(doc(adminDb, "alunos/aluno_001/historico_edicoes/hist_editor")));
+  await assertFails(deleteDoc(doc(editorDb, "alunos/aluno_001/historico_edicoes/hist_editor")));
+
+  console.log("Teste extra 63: transaction de reversao passa para usuario autorizado...");
+  await assertSucceeds(runTransaction(editorDb, async (transaction) => {
+    const alunoRef = doc(editorDb, "alunos/aluno_001");
+    const historicoRef = doc(editorDb, "alunos/aluno_001/historico_edicoes/hist_desativacao");
+    const reversaoRef = doc(editorDb, "alunos/aluno_001/historico_edicoes/hist_reversao_editor");
+    await transaction.get(alunoRef);
+    await transaction.get(historicoRef);
+    transaction.update(alunoRef, {
+      status_atividade: "ATIVO(A)",
+      ultima_edicao_tipo: "reversao",
+      ultima_edicao_origem: "historico_edicoes_aluno",
+    });
+    transaction.update(historicoRef, {
+      status: "revertida",
+      revertido: true,
+    });
+    transaction.set(reversaoRef, {
+      aluno_id: "aluno_001",
+      tipo_edicao: "reversao",
+      status: "aplicada",
+      historico_revertido_id: "hist_desativacao",
+    });
+  }));
+
+  console.log("Teste extra 64: transaction de reversao falha para usuario sem permissao...");
+  await assertFails(runTransaction(alunoDb, async (transaction) => {
+    const alunoRef = doc(alunoDb, "alunos/aluno_001");
+    const historicoRef = doc(alunoDb, "alunos/aluno_001/historico_edicoes/hist_mudanca_turma");
+    const reversaoRef = doc(alunoDb, "alunos/aluno_001/historico_edicoes/hist_reversao_sem_permissao");
+    await transaction.get(alunoRef);
+    await transaction.get(historicoRef);
+    transaction.update(alunoRef, { status_atividade: "ATIVO(A)" });
+    transaction.update(historicoRef, { status: "revertida", revertido: true });
+    transaction.set(reversaoRef, { aluno_id: "aluno_001", tipo_edicao: "reversao" });
+  }));
+
+  console.log("Teste extra 65: cache_alunos continua acessivel para admin...");
+  await assertSucceeds(setDoc(doc(adminDb, "cache_alunos/aluno_001"), {
+    dados: { alunoId: "aluno_001", nome: "Aluno Teste" },
+    valido_ate: "2026-07-16T13:00:00.000Z",
+  }));
+  await assertSucceeds(getDoc(doc(adminDb, "cache_alunos/aluno_001")));
+  await assertSucceeds(deleteDoc(doc(adminDb, "cache_alunos/aluno_001")));
+
+  console.log("Teste extra 66: cache_alunos segue negado para usuario autenticado nao-admin...");
+  await assertFails(setDoc(doc(editorDb, "cache_alunos/aluno_001"), {
+    dados: { alunoId: "aluno_001" },
+  }));
+  await assertFails(getDoc(doc(editorDb, "cache_alunos/aluno_001")));
+  await assertFails(deleteDoc(doc(editorDb, "cache_alunos/aluno_001")));
+
+  console.log("Teste extra 67: cache_alunos segue negado para anonimo...");
+  await assertFails(getDoc(doc(anonDb, "cache_alunos/aluno_001")));
+  await assertFails(setDoc(doc(anonDb, "cache_alunos/aluno_001"), {
+    dados: { alunoId: "aluno_001" },
+  }));
 
   await testEnv.cleanup();
 
