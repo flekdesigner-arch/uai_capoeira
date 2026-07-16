@@ -15,6 +15,7 @@ const {
   setDoc,
   updateDoc,
   deleteDoc,
+  writeBatch,
   getDoc,
   getDocs,
   where,
@@ -63,6 +64,15 @@ async function main() {
       pode_gerenciar_estudos_fundamentos: true,
     });
 
+    await setDoc(doc(db, "usuarios/avaliador_uid"), {
+      tipo: "usuario",
+      peso_permissao: 10,
+      status_conta: "ativa",
+    });
+
+    await setDoc(doc(db, "usuarios/avaliador_uid/permissoes_usuario/configuracoes"), {
+      pode_avaliar_aluno: true,
+    });
     await setDoc(doc(db, "usuarios/aluno_uid"), {
       tipo: "aluno",
       peso_permissao: 0,
@@ -163,6 +173,7 @@ async function main() {
 
   const adminDb = testEnv.authenticatedContext("admin_uid").firestore();
   const permDb = testEnv.authenticatedContext("perm_uid").firestore();
+  const avaliadorDb = testEnv.authenticatedContext("avaliador_uid").firestore();
   const alunoDb = testEnv.authenticatedContext("aluno_uid").firestore();
   const outroDb = testEnv.authenticatedContext("outro_uid").firestore();
   const anonDb = testEnv.unauthenticatedContext().firestore();
@@ -436,6 +447,116 @@ async function main() {
       atualizadoEm: new Date("2026-07-15T12:50:00.000Z"),
     })
   );
+  console.log("Teste extra 35: admin cria ciclo de avaliacao...");
+  await assertSucceeds(setDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), {
+    id: "2026_07",
+    nome: "Julho 2026",
+    ano: 2026,
+    mes: 7,
+    status: "aberto",
+    total_avaliacoes: 0,
+  }));
+
+  console.log("Teste extra 36: admin lista ciclos de avaliacao...");
+  await assertSucceeds(getDocs(query(collection(adminDb, "turmas/turma_001/ciclos_avaliacao"), orderBy("ano", "desc"), orderBy("mes", "desc"))));
+
+  console.log("Teste extra 37: admin fecha e reabre ciclo...");
+  await assertSucceeds(updateDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), { status: "fechado" }));
+  await assertSucceeds(updateDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), { status: "aberto" }));
+
+  console.log("Teste extra 38: admin cria avaliacao do ciclo...");
+  await assertSucceeds(setDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_001"), {
+    aluno_id: "aluno_001",
+    nota_final: 8.5,
+    status: "avaliado",
+  }));
+
+  console.log("Teste extra 39: admin cria historico da avaliacao...");
+  await assertSucceeds(setDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_001/historico/hist_admin"), {
+    aluno_id: "aluno_001",
+    nota_final: 8.5,
+    tipo: "primeira_avaliacao",
+  }));
+
+  console.log("Teste extra 40: admin salva resumo de avaliacao do aluno...");
+  await assertSucceeds(setDoc(doc(adminDb, "turmas/turma_001/avaliacoes_alunos/aluno_001"), {
+    aluno_id: "aluno_001",
+    aluno_nome: "Aluno Teste",
+    ultima_nota: 8.5,
+  }));
+
+  console.log("Teste extra 41: usuario com pode_avaliar_aluno lista ciclos...");
+  await assertSucceeds(getDocs(collection(avaliadorDb, "turmas/turma_001/ciclos_avaliacao")));
+
+  console.log("Teste extra 42: usuario com pode_avaliar_aluno cria e atualiza avaliacao...");
+  await assertSucceeds(setDoc(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002"), {
+    aluno_id: "aluno_002",
+    nota_final: 7.0,
+    status: "avaliado",
+  }));
+  await assertSucceeds(updateDoc(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002"), {
+    nota_final: 7.5,
+  }));
+
+  console.log("Teste extra 43: usuario com pode_avaliar_aluno cria historico...");
+  await assertSucceeds(setDoc(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002/historico/hist_avaliador"), {
+    aluno_id: "aluno_002",
+    nota_final: 7.5,
+    tipo: "atualizacao",
+  }));
+
+  console.log("Teste extra 44: usuario com pode_avaliar_aluno salva resumo...");
+  await assertSucceeds(setDoc(doc(avaliadorDb, "turmas/turma_001/avaliacoes_alunos/aluno_002"), {
+    aluno_id: "aluno_002",
+    aluno_nome: "Aluno Dois",
+    ultima_nota: 7.5,
+  }));
+
+  console.log("Teste extra 45: usuario logado sem permissao NAO cria ciclo...");
+  await assertFails(setDoc(doc(alunoDb, "turmas/turma_001/ciclos_avaliacao/2026_08"), {
+    id: "2026_08",
+    nome: "Agosto 2026",
+  }));
+
+  console.log("Teste extra 46: usuario logado sem permissao NAO cria avaliacao...");
+  await assertFails(setDoc(doc(alunoDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_003"), {
+    aluno_id: "aluno_003",
+    nota_final: 9,
+  }));
+
+  console.log("Teste extra 47: usuario logado sem permissao NAO cria historico...");
+  await assertFails(setDoc(doc(alunoDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_001/historico/hist_sem_permissao"), {
+    aluno_id: "aluno_001",
+    nota_final: 9,
+  }));
+
+  console.log("Teste extra 48: anonimo NAO le nem escreve avaliacao administrativa...");
+  await assertFails(getDocs(collection(anonDb, "turmas/turma_001/ciclos_avaliacao")));
+  await assertFails(setDoc(doc(anonDb, "turmas/turma_001/ciclos_avaliacao/2026_09"), { id: "2026_09" }));
+
+  console.log("Teste extra 49: delete de avaliacao/historico negado para professor nao-admin...");
+  await assertFails(deleteDoc(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002")));
+  await assertFails(deleteDoc(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002/historico/hist_avaliador")));
+
+  console.log("Teste extra 50: delete permitido apenas para admin...");
+  await assertSucceeds(deleteDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002/historico/hist_avaliador")));
+  await assertSucceeds(deleteDoc(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_002")));
+
+  console.log("Teste extra 51: batch real da tela passa para admin...");
+  const adminBatch = writeBatch(adminDb);
+  adminBatch.set(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_batch_admin"), { aluno_id: "aluno_batch_admin", nota_final: 9.2 }, { merge: true });
+  adminBatch.set(doc(adminDb, "turmas/turma_001/avaliacoes_alunos/aluno_batch_admin"), { aluno_id: "aluno_batch_admin", ultima_nota: 9.2 }, { merge: true });
+  adminBatch.set(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_batch_admin/historico/hist_batch_admin"), { aluno_id: "aluno_batch_admin", nota_final: 9.2, tipo: "primeira_avaliacao" });
+  adminBatch.set(doc(adminDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), { total_avaliacoes: 2 }, { merge: true });
+  await assertSucceeds(adminBatch.commit());
+
+  console.log("Teste extra 52: batch real da tela passa para usuario com pode_avaliar_aluno...");
+  const avaliadorBatch = writeBatch(avaliadorDb);
+  avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_batch_avaliador"), { aluno_id: "aluno_batch_avaliador", nota_final: 8.8 }, { merge: true });
+  avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/avaliacoes_alunos/aluno_batch_avaliador"), { aluno_id: "aluno_batch_avaliador", ultima_nota: 8.8 }, { merge: true });
+  avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07/avaliacoes/aluno_batch_avaliador/historico/hist_batch_avaliador"), { aluno_id: "aluno_batch_avaliador", nota_final: 8.8, tipo: "primeira_avaliacao" });
+  avaliadorBatch.set(doc(avaliadorDb, "turmas/turma_001/ciclos_avaliacao/2026_07"), { total_avaliacoes: 3 }, { merge: true });
+  await assertSucceeds(avaliadorBatch.commit());
 
   await testEnv.cleanup();
 

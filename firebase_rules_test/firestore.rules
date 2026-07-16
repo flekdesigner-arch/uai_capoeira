@@ -99,6 +99,16 @@ service cloud.firestore {
         );
     }
 
+    function podeAvaliarAluno() {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && usuarioContaLiberada(request.auth.uid)
+          && exists(permissoesUsuarioDoc(request.auth.uid))
+          && get(permissoesUsuarioDoc(request.auth.uid)).data.pode_avaliar_aluno == true
+        );
+    }
+
     function canManageControleAtualizacoes() {
       return isAdmin()
         || (
@@ -298,6 +308,24 @@ service cloud.firestore {
     match /turmas/{turmaId}/avaliacoes_alunos/{document} {
       allow read: if true;
       allow write: if isSignedIn();
+    }
+
+    match /turmas/{turmaId}/ciclos_avaliacao/{cicloId} {
+      allow read: if podeAvaliarAluno();
+      allow create, update: if podeAvaliarAluno();
+      allow delete: if isAdmin();
+    }
+
+    match /turmas/{turmaId}/ciclos_avaliacao/{cicloId}/avaliacoes/{alunoId} {
+      allow read: if podeAvaliarAluno();
+      allow create, update: if podeAvaliarAluno();
+      allow delete: if isAdmin();
+    }
+
+    match /turmas/{turmaId}/ciclos_avaliacao/{cicloId}/avaliacoes/{alunoId}/historico/{historyId} {
+      allow read: if podeAvaliarAluno();
+      allow create: if podeAvaliarAluno();
+      allow update, delete: if isAdmin();
     }
     match /chamadas/{document} {
       allow read: if true;
