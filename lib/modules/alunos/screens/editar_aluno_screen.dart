@@ -20,6 +20,22 @@ Color _readableOn(Color background) {
 }
 
 // 🔐 IMPORTAR SERVIÇO DE PERMISSÕES
+
+String _mensagemErroAmigavelEditarAluno(
+  Object erro, {
+  String contexto = 'ação',
+}) {
+  if (erro is FirebaseException) {
+    if (erro.code == 'permission-denied') {
+      return 'Você não tem permissão para realizar esta ação.';
+    }
+    if (erro.code == 'unavailable' || erro.code == 'deadline-exceeded') {
+      return 'Não foi possível comunicar com o Firebase agora. Verifique sua conexão.';
+    }
+  }
+  return 'Não foi possível concluir esta $contexto. Tente novamente.';
+}
+
 class PermissaoService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -374,9 +390,13 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         _isLoading = false;
       });
       if (_isMounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro ao carregar dados: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _mensagemErroAmigavelEditarAluno(e, contexto: 'carga de dados'),
+            ),
+          ),
+        );
       }
     }
   }
@@ -732,9 +752,13 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     } catch (e) {
       debugPrint('Erro ao carregar dados do aluno: $e');
       if (_isMounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro ao carregar dados: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _mensagemErroAmigavelEditarAluno(e, contexto: 'carga de dados'),
+            ),
+          ),
+        );
       }
       rethrow;
     }
@@ -948,7 +972,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     } catch (e) {
       if (_isMounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro ao selecionar imagem: $e")),
+          SnackBar(
+            content: Text(
+              _mensagemErroAmigavelEditarAluno(
+                e,
+                contexto: 'seleção da imagem',
+              ),
+            ),
+          ),
         );
       }
     }
@@ -1149,7 +1180,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           if (_isMounted) {
             _fecharSplashSalvandoAluno();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Erro ao fazer upload da imagem: $e")),
+              SnackBar(
+                content: Text(
+                  _mensagemErroAmigavelEditarAluno(
+                    e,
+                    contexto: 'upload da imagem',
+                  ),
+                ),
+              ),
             );
           }
           return;
@@ -1250,16 +1288,30 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
         await alunoRef.update(dataToSave);
 
-        await AlunoHistoricoEdicaoService().registrarEdicaoManual(
-          alunoId: widget.alunoId!,
-          dadosAntes: dadosAntes,
-          dadosDepois: dadosDepois,
-          origem: 'editar_aluno_screen',
-          subtipoEdicao: mudouTurmaOuAcademiaAoSalvar
-              ? 'mudanca_turma'
-              : 'dados_cadastrais',
-          resumoPersonalizado: resumoMudancaTurma,
-        );
+        try {
+          await AlunoHistoricoEdicaoService().registrarEdicaoManual(
+            alunoId: widget.alunoId!,
+            dadosAntes: dadosAntes,
+            dadosDepois: dadosDepois,
+            origem: 'editar_aluno_screen',
+            subtipoEdicao: mudouTurmaOuAcademiaAoSalvar
+                ? 'mudanca_turma'
+                : 'dados_cadastrais',
+            resumoPersonalizado: resumoMudancaTurma,
+          );
+        } catch (e) {
+          debugPrint('Erro ao registrar histórico de edição do aluno: $e');
+          if (_isMounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Os dados foram salvos, mas não foi possível registrar o histórico.',
+                ),
+                backgroundColor: context.uai.warning,
+              ),
+            );
+          }
+        }
 
         if (_turmaOriginalId != null &&
             _turmaOriginalId!.isNotEmpty &&
@@ -1298,9 +1350,16 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     } catch (e) {
       if (_isMounted) {
         _fecharSplashSalvandoAluno();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro ao salvar: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _mensagemErroAmigavelEditarAluno(
+                e,
+                contexto: 'salvamento do aluno',
+              ),
+            ),
+          ),
+        );
       }
     } finally {
       if (_isMounted) {
@@ -1486,7 +1545,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Erro ao excluir aluno: $e'),
+              content: Text(
+                _mensagemErroAmigavelEditarAluno(
+                  e,
+                  contexto: 'exclusão do aluno',
+                ),
+              ),
               backgroundColor: context.uai.error,
             ),
           );
@@ -2129,7 +2193,9 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao editar foto: $e'),
+          content: Text(
+            _mensagemErroAmigavelEditarAluno(e, contexto: 'edição da foto'),
+          ),
           backgroundColor: context.uai.error,
         ),
       );

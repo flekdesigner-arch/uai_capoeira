@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,8 @@ import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:xml/xml.dart' as xml;
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'editar_aluno_screen.dart';
 import 'package:uai_capoeira/modules/turmas/screens/cadastro_aluno_turma_screen.dart';
@@ -42,7 +45,7 @@ Color _onPrimary(BuildContext context) {
   final t = context.uai;
   final temaEscuro =
       t.background.computeLuminance() < 0.45 ||
-          t.surface.computeLuminance() < 0.45;
+      t.surface.computeLuminance() < 0.45;
 
   // No tema Verde Neon o primary é claro, mas o tema é dark.
   // Para cabeçalhos com primaryGradient, branco fica muito mais legível.
@@ -56,8 +59,7 @@ Color _appBarBgOf(BuildContext context) =>
 
 Color _appBarFgOf(BuildContext context) =>
     Theme.of(context).appBarTheme.foregroundColor ??
-        _readableOn(_appBarBgOf(context));
-
+    _readableOn(_appBarBgOf(context));
 
 bool _isWideDashboardContext(BuildContext context) {
   final width = MediaQuery.sizeOf(context).width;
@@ -97,10 +99,10 @@ Widget _dashboardWidthLimiterOf(BuildContext context, Widget child) {
 }
 
 int _dashboardColumnsOf(
-    double width, {
-      double minItemWidth = 360,
-      int maxColumns = 4,
-    }) {
+  double width, {
+  double minItemWidth = 360,
+  int maxColumns = 4,
+}) {
   if (width <= 0) return 1;
   final raw = (width / minItemWidth).floor();
   return raw.clamp(1, maxColumns).toInt();
@@ -121,10 +123,10 @@ Widget _dashboardResponsiveWrapOf({
           children: children
               .map(
                 (child) => Padding(
-              padding: EdgeInsets.only(bottom: runSpacing),
-              child: SizedBox(width: double.infinity, child: child),
-            ),
-          )
+                  padding: EdgeInsets.only(bottom: runSpacing),
+                  child: SizedBox(width: double.infinity, child: child),
+                ),
+              )
               .toList(),
         );
       }
@@ -145,6 +147,21 @@ Widget _dashboardResponsiveWrapOf({
       );
     },
   );
+}
+
+String _mensagemErroAmigavelAlunoDetalhe(
+  Object erro, {
+  String contexto = 'ação',
+}) {
+  if (erro is FirebaseException) {
+    if (erro.code == 'permission-denied') {
+      return 'Você não tem permissão para realizar esta ação.';
+    }
+    if (erro.code == 'unavailable' || erro.code == 'deadline-exceeded') {
+      return 'Não foi possível comunicar com o Firebase agora. Verifique sua conexão.';
+    }
+  }
+  return 'Não foi possível concluir esta $contexto. Tente novamente.';
 }
 
 class CacheService {
@@ -303,7 +320,7 @@ class PermissaoService {
         final data = doc.data();
         if (data != null && data is Map<String, dynamic>) {
           final permissoes = data.map(
-                (key, value) => MapEntry(key, value as bool? ?? false),
+            (key, value) => MapEntry(key, value as bool? ?? false),
           );
 
           // Salva no cache
@@ -454,7 +471,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final t = (c ?? context).uai;
     final temaEscuro =
         t.background.computeLuminance() < 0.45 ||
-            t.surface.computeLuminance() < 0.45;
+        t.surface.computeLuminance() < 0.45;
 
     if (temaEscuro) return Colors.white;
 
@@ -463,11 +480,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
   Color _appBarBg([BuildContext? c]) =>
       Theme.of(c ?? context).appBarTheme.backgroundColor ??
-          (c ?? context).uai.primary;
+      (c ?? context).uai.primary;
 
   Color _appBarFg([BuildContext? c]) =>
       Theme.of(c ?? context).appBarTheme.foregroundColor ??
-          _readableOn(_appBarBg(c));
+      _readableOn(_appBarBg(c));
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final PermissaoService _permissaoService = PermissaoService();
@@ -487,6 +504,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   // Dados do aluno
   Map<String, dynamic>? _alunoData;
   bool _carregandoAluno = true;
+  String? _cacaBugUltimoHashAlunoCarregado;
 
   //  CONTROLE PARA RECARREGAR FREQUÊNCIA QUANDO VOLTAR DA EDIÇÃO
   int _frequenciaKey = 0;
@@ -635,10 +653,14 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _verTermoAluno(
-      BuildContext context,
-      String alunoId,
-      Map<String, dynamic> alunoData,
-      ) async {
+    BuildContext context,
+    String alunoId,
+    Map<String, dynamic> alunoData,
+  ) async {
+    final nomeAluno = _cacaBugTextoSeguro(
+      alunoData['nome'],
+      fallback: 'Aluno sem nome',
+    );
     final inscricaoId = alunoData['inscricao_id'];
 
     if (inscricaoId == null) {
@@ -652,6 +674,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     }
 
     try {
+      _cacaBugRegistrarEventoAcao(
+        acao: CacaBugActions.visualizouTermoAluno,
+        descricao: 'Usuário abriu o termo do aluno $nomeAluno',
+      );
       final doc = await FirebaseFirestore.instance
           .collection('inscricoes_aprovadas')
           .doc(inscricaoId)
@@ -680,20 +706,288 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         ),
       );
     } catch (e) {
+      _cacaBugRegistrarErroAcao(
+        acao: CacaBugActions.erroVisualizarTermoAluno,
+        descricao: 'Erro ao visualizar o termo do aluno $nomeAluno',
+        erro: e,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao carregar termo: $e'),
+          content: Text(
+            _mensagemErroAmigavelAlunoDetalhe(e, contexto: 'carga do termo'),
+          ),
           backgroundColor: context.uai.error,
         ),
       );
     }
   }
 
+  String _cacaBugTextoSeguro(dynamic value, {String fallback = ''}) {
+    final texto = value?.toString().trim() ?? '';
+    return texto.isEmpty ? fallback : texto;
+  }
+
+  String _cacaBugErroResumo(Object erro) {
+    final texto = erro
+        .toString()
+        .replaceAll(RegExp(r'https?:\/\/\S+'), '[url]')
+        .replaceAll(RegExp(r'wa\.me\/\S+'), '[url]')
+        .replaceAll(RegExp(r'\+?\d[\d\s().-]{7,}'), '[numero]')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (texto.length <= 180) return texto;
+    return '${texto.substring(0, 180)}...';
+  }
+
+  Map<String, dynamic> _cacaBugDadosAlunoSeguros(
+    Map<String, dynamic> data, {
+    required String fonteDados,
+    bool teveErroServidor = false,
+  }) {
+    final temFoto = [
+      data['foto_perfil_aluno'],
+      data['foto_url'],
+      data['fotoUrl'],
+      data['foto'],
+    ].any((value) => _cacaBugTextoSeguro(value).isNotEmpty);
+    final graduacao = _cacaBugTextoSeguro(
+      data['graduacao_id'] ?? data['graduacao'] ?? data['graduacao_nome'],
+    );
+    return {
+      'alunoId': widget.alunoId,
+      'alunoNome': _cacaBugTextoSeguro(
+        data['nome'],
+        fallback: 'Aluno sem nome',
+      ),
+      'turmaId': _cacaBugTextoSeguro(data['turma_id']),
+      'turmaNome': _cacaBugTextoSeguro(data['turma']),
+      'academiaId': _cacaBugTextoSeguro(data['academia_id']),
+      'academiaNome': _cacaBugTextoSeguro(data['academia']),
+      'statusAtividade': _cacaBugTextoSeguro(data['status_atividade']),
+      'fonteDados': fonteDados,
+      'temFoto': temFoto,
+      'temGraduacao': graduacao.isNotEmpty,
+      'modoAcesso': 'gestao',
+      if (teveErroServidor) 'teveErroServidor': true,
+    };
+  }
+
+  void _registrarCacaBugDetalheCarregado(
+    Map<String, dynamic> data, {
+    required String fonteDados,
+    bool forcarServidor = false,
+    bool teveErroServidor = false,
+  }) {
+    final dados = _cacaBugDadosAlunoSeguros(
+      data,
+      fonteDados: fonteDados,
+      teveErroServidor: teveErroServidor,
+    );
+    final hash = [
+      widget.alunoId,
+      dados['alunoNome'],
+      dados['turmaId'],
+      dados['statusAtividade'],
+      fonteDados,
+      teveErroServidor.toString(),
+    ].join('|');
+    if (!forcarServidor && _cacaBugUltimoHashAlunoCarregado == hash) return;
+    _cacaBugUltimoHashAlunoCarregado = hash;
+
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'sistema',
+        acao: CacaBugActions.carregouDetalheAluno,
+        descricao: 'Usuário carregou os dados do aluno ${dados['alunoNome']}',
+        tela: 'AlunoDetalheScreen',
+        arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
+        rota: '/alunos/detalhe',
+        status: 'success',
+        dados: dados,
+      ),
+    );
+  }
+
+  void _registrarCacaBugErroDetalhe({
+    required Object erro,
+    required String fonteDados,
+    required String motivo,
+  }) {
+    final erroResumo = _cacaBugErroResumo(erro);
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: CacaBugActions.erroCarregarDetalheAluno,
+        descricao: 'Erro ao carregar detalhe do aluno ${widget.alunoId}',
+        tela: 'AlunoDetalheScreen',
+        arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
+        rota: '/alunos/detalhe',
+        erro: Exception(erroResumo),
+        dados: {
+          'alunoId': widget.alunoId,
+          'motivo': motivo,
+          'fonteDados': fonteDados,
+          'erroTipo': erro.runtimeType.toString(),
+          'erroResumo': erroResumo,
+          'modoAcesso': 'gestao',
+        },
+      ),
+    );
+  }
+
+  Map<String, dynamic> _cacaBugDadosAlunoAcao({
+    String? acao,
+    Map<String, dynamic>? extra,
+  }) {
+    final data = _alunoData ?? const <String, dynamic>{};
+    return {
+      'alunoId': widget.alunoId,
+      'alunoNome': _cacaBugTextoSeguro(
+        data['nome'],
+        fallback: 'Aluno sem nome',
+      ),
+      'turmaId': _cacaBugTextoSeguro(data['turma_id']),
+      'turmaNome': _cacaBugTextoSeguro(data['turma']),
+      'academiaId': _cacaBugTextoSeguro(data['academia_id']),
+      'academiaNome': _cacaBugTextoSeguro(data['academia']),
+      'statusAtividade': _cacaBugTextoSeguro(data['status_atividade']),
+      'origem': 'detalhe_aluno',
+      'modoAcesso': 'gestao',
+      if (acao != null) 'acao': acao,
+      if (extra != null) ...extra,
+    };
+  }
+
+  void _cacaBugRegistrarEventoAcao({
+    required String acao,
+    required String descricao,
+    String tipo = 'acao_usuario',
+    Map<String, dynamic>? extra,
+  }) {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: tipo,
+        acao: acao,
+        descricao: descricao,
+        tela: 'AlunoDetalheScreen',
+        arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
+        rota: '/alunos/detalhe',
+        status: 'success',
+        dados: _cacaBugDadosAlunoAcao(acao: acao, extra: extra),
+      ),
+    );
+  }
+
+  void _cacaBugRegistrarErroAcao({
+    required String acao,
+    required String descricao,
+    required Object erro,
+    Map<String, dynamic>? extra,
+  }) {
+    final erroResumo = _cacaBugErroResumo(erro);
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: acao,
+        descricao: descricao,
+        tela: 'AlunoDetalheScreen',
+        arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
+        rota: '/alunos/detalhe',
+        erro: Exception(erroResumo),
+        dados: _cacaBugDadosAlunoAcao(
+          acao: acao,
+          extra: {
+            if (extra != null) ...extra,
+            'sucesso': false,
+            'erroTipo': erro.runtimeType.toString(),
+            'erroResumo': erroResumo,
+          },
+        ),
+      ),
+    );
+  }
+
+  void _cacaBugRegistrarContato({
+    required String canal,
+    required String destinoTipo,
+    required bool temContato,
+    String status = 'abriu_app_externo',
+  }) {
+    final nomeAluno = _cacaBugDadosAlunoAcao()['alunoNome'];
+    final descricao = canal == 'telefone'
+        ? 'Usuário iniciou ligação para destino $destinoTipo do aluno $nomeAluno'
+        : 'Usuário iniciou contato por WhatsApp com destino $destinoTipo do aluno $nomeAluno';
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.iniciouContatoAluno,
+      descricao: descricao,
+      extra: {
+        'canal': canal,
+        'destinoTipo': destinoTipo,
+        'temContato': temContato,
+        'status': status,
+      },
+    );
+  }
+
+  void _cacaBugRegistrarErroContato({
+    required String canal,
+    required String destinoTipo,
+    required bool temContato,
+    required Object erro,
+  }) {
+    final nomeAluno = _cacaBugDadosAlunoAcao()['alunoNome'];
+    _cacaBugRegistrarErroAcao(
+      acao: CacaBugActions.erroContatoAluno,
+      descricao: 'Erro ao iniciar contato externo do aluno $nomeAluno',
+      erro: erro,
+      extra: {
+        'canal': canal,
+        'destinoTipo': destinoTipo,
+        'temContato': temContato,
+        'status': 'erro',
+      },
+    );
+  }
+
+  Future<void> _abrirHistoricoEdicoesAluno(String alunoNome) async {
+    final nomeAluno = _cacaBugTextoSeguro(
+      alunoNome,
+      fallback: 'Aluno sem nome',
+    );
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.abriuHistoricoEdicoesAluno,
+      descricao: 'Usuário abriu o histórico de edições do aluno $nomeAluno',
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HistoricoEdicoesAlunoScreen(
+          alunoId: widget.alunoId,
+          alunoNome: nomeAluno,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.voltouHistoricoEdicoesAluno,
+      descricao: 'Usuário voltou do histórico de edições do aluno $nomeAluno',
+    );
+    await _carregarDadosAluno(forcarServidor: true);
+  }
+
   // VERIFICAR CONEXÃO COM INTERNET
+
   Future<bool> _temInternet() async {
     try {
-      var connectivityResult = await _connectivity.checkConnectivity();
-      return connectivityResult != ConnectivityResult.none;
+      final connectivityResult = await _connectivity.checkConnectivity();
+      if (connectivityResult is List<ConnectivityResult>) {
+        return connectivityResult.isNotEmpty &&
+            !connectivityResult.every(
+              (result) => result == ConnectivityResult.none,
+            );
+      }
+      if (connectivityResult is ConnectivityResult) {
+        return connectivityResult != ConnectivityResult.none;
+      }
+      return false;
     } catch (e) {
       debugPrint('Erro ao verificar internet: $e');
       return false;
@@ -727,6 +1021,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             _carregandoAluno = false;
             _frequenciaKey++;
           });
+          _registrarCacaBugDetalheCarregado(
+            cachedData,
+            fonteDados: 'cache',
+            forcarServidor: forcarServidor,
+          );
           debugPrint(
             'Dados do aluno carregados do cache em memoria no Windows',
           );
@@ -746,6 +1045,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             _carregandoAluno = false;
             _frequenciaKey++;
           });
+          _registrarCacaBugDetalheCarregado(
+            cachedData,
+            fonteDados: 'cache_offline',
+            forcarServidor: forcarServidor,
+          );
           debugPrint('✓ Dados do aluno carregados do CACHE offline');
           return;
         }
@@ -773,6 +1077,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             _carregandoAluno = false;
             _frequenciaKey++;
           });
+          _registrarCacaBugDetalheCarregado(
+            fallbackCache,
+            fonteDados: 'fallback_cache',
+            forcarServidor: forcarServidor,
+            teveErroServidor: true,
+          );
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -799,6 +1109,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           _carregandoAluno = false;
           _frequenciaKey++;
         });
+        _registrarCacaBugDetalheCarregado(
+          data,
+          fonteDados: 'servidor',
+          forcarServidor: forcarServidor,
+        );
       } else {
         await _cache.invalidateAluno(widget.alunoId);
         if (!mounted) return;
@@ -806,8 +1121,18 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           _alunoData = null;
           _carregandoAluno = false;
         });
+        _registrarCacaBugErroDetalhe(
+          erro: StateError('Documento do aluno não encontrado'),
+          fonteDados: 'nao_encontrado',
+          motivo: 'documento_nao_encontrado',
+        );
       }
     } catch (e) {
+      _registrarCacaBugErroDetalhe(
+        erro: e,
+        fonteDados: forcarServidor ? 'servidor' : 'servidor_ou_cache',
+        motivo: 'erro_carregamento',
+      );
       debugPrint('Erro ao carregar aluno: $e');
       if (!mounted) return;
       setState(() {
@@ -891,9 +1216,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
   //  VERIFICAR PERMISSÃO E INTERNET PARA AÇÕES ESCRITA
   Future<bool> _verificarPermissaoEOnline(
-      String permissao, {
-        String? acao,
-      }) async {
+    String permissao, {
+    String? acao,
+  }) async {
     if (_carregandoPermissoes || !_permissoesCarregadas) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1013,11 +1338,21 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   // FUNÇÕES DE CONTATO (FUNCIONAM OFFLINE)
-  Future<void> _launchPhone(String phone) async {
+  Future<void> _launchPhone(
+    String phone, {
+    String destinoTipo = 'aluno',
+  }) async {
+    final temContato = phone.trim().isNotEmpty;
     try {
       var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
 
       if (digits.isEmpty) {
+        _cacaBugRegistrarContato(
+          canal: 'telefone',
+          destinoTipo: destinoTipo,
+          temContato: false,
+          status: 'sem_contato',
+        );
         throw Exception('Número de telefone não cadastrado');
       }
 
@@ -1035,15 +1370,30 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       final url = Uri(scheme: 'tel', path: digits);
 
       if (await canLaunchUrl(url)) {
+        _cacaBugRegistrarContato(
+          canal: 'telefone',
+          destinoTipo: destinoTipo,
+          temContato: true,
+        );
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
         throw Exception('Não foi possível abrir o aplicativo de telefone');
       }
     } catch (e) {
+      if (temContato) {
+        _cacaBugRegistrarErroContato(
+          canal: 'telefone',
+          destinoTipo: destinoTipo,
+          temContato: temContato,
+          erro: e,
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao realizar chamada: $e'),
+            content: Text(
+              _mensagemErroAmigavelAlunoDetalhe(e, contexto: 'chamada'),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -1063,11 +1413,28 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _abrirWhatsApp(
-      String numero, {
-        String? mensagem,
-        bool isApp = true,
-      }) async {
+    String numero, {
+    String? mensagem,
+    bool isApp = true,
+    String canal = 'whatsapp',
+    String destinoTipo = 'aluno',
+  }) async {
+    final temContato = numero.trim().isNotEmpty;
     try {
+      if (!temContato) {
+        _cacaBugRegistrarContato(
+          canal: canal,
+          destinoTipo: destinoTipo,
+          temContato: false,
+          status: 'sem_contato',
+        );
+        throw Exception('Contato de WhatsApp não cadastrado');
+      }
+      _cacaBugRegistrarContato(
+        canal: canal,
+        destinoTipo: destinoTipo,
+        temContato: true,
+      );
       String cleanedPhone = _formatarNumeroWhatsApp(numero);
       String url = 'https://wa.me/$cleanedPhone';
 
@@ -1109,6 +1476,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
+      _cacaBugRegistrarErroContato(
+        canal: canal,
+        destinoTipo: destinoTipo,
+        temContato: temContato,
+        erro: e,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1122,11 +1495,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _convidarParaGrupo(
-      BuildContext context,
-      String? linkGrupo,
-      String contatoAluno,
-      String? contatoResponsavel,
-      ) async {
+    BuildContext context,
+    String? linkGrupo,
+    String contatoAluno,
+    String? contatoResponsavel,
+  ) async {
     if (linkGrupo == null || linkGrupo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1203,14 +1576,19 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ElevatedButton(
                 onPressed: () async {
                   Navigator.pop(context);
-                  await _abrirWhatsApp(contatoAluno, mensagem: mensagem);
+                  await _abrirWhatsApp(
+                    contatoAluno,
+                    mensagem: mensagem,
+                    canal: 'whatsapp_grupo',
+                    destinoTipo: 'grupo',
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                  Theme.of(context).appBarTheme.backgroundColor ??
+                      Theme.of(context).appBarTheme.backgroundColor ??
                       context.uai.primary,
                   foregroundColor:
-                  Theme.of(context).appBarTheme.foregroundColor ??
+                      Theme.of(context).appBarTheme.foregroundColor ??
                       _readableOn(
                         Theme.of(context).appBarTheme.backgroundColor ??
                             context.uai.primary,
@@ -1222,14 +1600,19 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ElevatedButton(
                 onPressed: () async {
                   Navigator.pop(context);
-                  await _abrirWhatsApp(contatoResponsavel, mensagem: mensagem);
+                  await _abrirWhatsApp(
+                    contatoResponsavel,
+                    mensagem: mensagem,
+                    canal: 'whatsapp_grupo',
+                    destinoTipo: 'grupo',
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                  Theme.of(context).appBarTheme.backgroundColor ??
+                      Theme.of(context).appBarTheme.backgroundColor ??
                       context.uai.primary,
                   foregroundColor:
-                  Theme.of(context).appBarTheme.foregroundColor ??
+                      Theme.of(context).appBarTheme.foregroundColor ??
                       _readableOn(
                         Theme.of(context).appBarTheme.backgroundColor ??
                             context.uai.primary,
@@ -1251,7 +1634,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao buscar mensagem de convite: $e'),
+            content: Text(
+              _mensagemErroAmigavelAlunoDetalhe(
+                e,
+                contexto: 'convite para o grupo',
+              ),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -1533,6 +1921,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     await _abrirWhatsApp(
                       destino['numero']!,
                       mensagem: mensagem,
+                      canal: 'whatsapp_acesso_area_aluno',
+                      destinoTipo: 'area_aluno',
                     );
                   },
                   icon: Icon(Icons.send_rounded, size: 18),
@@ -1558,7 +1948,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao enviar acesso da Área do Aluno: $e'),
+          content: Text(
+            _mensagemErroAmigavelAlunoDetalhe(
+              e,
+              contexto: 'envio de acesso da Área do Aluno',
+            ),
+          ),
           backgroundColor: context.uai.error,
         ),
       );
@@ -1566,6 +1961,25 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   //  FUNÇÕES DE GERENCIAMENTO COM VALIDAÇÃO DE PERMISSÃO E INTERNET
+
+  Future<void> _navegarEditarAluno(Widget screen) async {
+    final nomeAluno = _cacaBugDadosAlunoAcao()['alunoNome'];
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.clicouEditarAluno,
+      descricao: 'Usuário clicou para editar o aluno $nomeAluno',
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => screen),
+    );
+    if (!mounted) return;
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.voltouDeEditarAluno,
+      descricao: 'Usuário voltou da edição do aluno $nomeAluno',
+    );
+    await _carregarDadosAluno(forcarServidor: true);
+  }
+
   Future<void> _editarAluno(BuildContext context) async {
     final temPermissao = await _verificarPermissaoEOnline(
       'pode_editar_aluno',
@@ -1596,14 +2010,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     if (pesoPermissao >= 100) {
       print('✓ Redirecionando para EditarAlunoScreen (peso: $pesoPermissao)');
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EditarAlunoScreen(alunoId: widget.alunoId),
-        ),
-      ).then((_) {
-        _carregarDadosAluno(forcarServidor: true);
-      });
+      await _navegarEditarAluno(EditarAlunoScreen(alunoId: widget.alunoId));
     } else {
       print(
         'Redirecionando para CadastroAlunoTurmaScreen (peso: $pesoPermissao)',
@@ -1626,44 +2033,26 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             print(
               'Aviso: Academia não encontrada, redirecionando para EditarAlunoScreen',
             );
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    EditarAlunoScreen(alunoId: widget.alunoId),
-              ),
-            ).then((_) {
-              _carregarDadosAluno(forcarServidor: true);
-            });
+            await _navegarEditarAluno(
+              EditarAlunoScreen(alunoId: widget.alunoId),
+            );
             return;
           }
 
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CadastroAlunoTurmaScreen(
-                alunoId: widget.alunoId,
-                turmaId: turmaId,
-                turmaNome: turmaNome,
-                academiaId: academiaId,
-                academiaNome: academiaNome,
-              ),
+          await _navegarEditarAluno(
+            CadastroAlunoTurmaScreen(
+              alunoId: widget.alunoId,
+              turmaId: turmaId,
+              turmaNome: turmaNome,
+              academiaId: academiaId,
+              academiaNome: academiaNome,
             ),
-          ).then((_) {
-            _carregarDadosAluno(forcarServidor: true);
-          });
+          );
         } else {
           print(
             'Aviso: Aluno não encontrado, redirecionando para EditarAlunoScreen',
           );
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => EditarAlunoScreen(alunoId: widget.alunoId),
-            ),
-          ).then((_) {
-            _carregarDadosAluno(forcarServidor: true);
-          });
+          await _navegarEditarAluno(EditarAlunoScreen(alunoId: widget.alunoId));
         }
       } catch (e) {
         print('Erro ao buscar dados do aluno: $e');
@@ -1675,14 +2064,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           ),
         );
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EditarAlunoScreen(alunoId: widget.alunoId),
-          ),
-        ).then((_) {
-          _carregarDadosAluno(forcarServidor: true);
-        });
+        await _navegarEditarAluno(EditarAlunoScreen(alunoId: widget.alunoId));
       }
     }
   }
@@ -1764,8 +2146,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   List<Map<String, String>> _destinosWhatsAppAluno(
-      Map<String, dynamic> alunoData,
-      ) {
+    Map<String, dynamic> alunoData,
+  ) {
     final contatoAluno = alunoData['contato_aluno']?.toString();
     final contatoResponsavel = alunoData['contato_responsavel']?.toString();
     final destinos = <Map<String, String>>[];
@@ -1792,8 +2174,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<_DesativacaoAlunoPayload?> _mostrarDialogDesativacaoAluno(
-      Map<String, dynamic> alunoData,
-      ) async {
+    Map<String, dynamic> alunoData,
+  ) async {
     final motivos = _motivosDesativacaoAluno();
     final destinos = _destinosWhatsAppAluno(alunoData);
     final observacaoController = TextEditingController();
@@ -1891,7 +2273,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
                               onTap: () => setSheetState(
-                                    () => motivoSelecionado = motivo,
+                                () => motivoSelecionado = motivo,
                               ),
                               child: Container(
                                 padding: const EdgeInsets.all(11),
@@ -1914,7 +2296,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             motivo.titulo,
@@ -1937,7 +2319,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                       value: motivo.id,
                                       groupValue: motivoSelecionado?.id,
                                       onChanged: (_) => setSheetState(
-                                            () => motivoSelecionado = motivo,
+                                        () => motivoSelecionado = motivo,
                                       ),
                                     ),
                                   ],
@@ -1968,16 +2350,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                             onChanged: destinos.isEmpty
                                 ? null
                                 : (value) => setSheetState(
-                                  () => enviarWhatsApp = value ?? false,
-                            ),
+                                    () => enviarWhatsApp = value ?? false,
+                                  ),
                             contentPadding: EdgeInsets.zero,
                             title: const Text(
                               'Enviar aviso por WhatsApp após desativar',
                             ),
                             subtitle: destinos.isEmpty
                                 ? const Text(
-                              'Nenhum contato válido cadastrado.',
-                            )
+                                    'Nenhum contato válido cadastrado.',
+                                  )
                                 : null,
                             controlAffinity: ListTileControlAffinity.leading,
                           ),
@@ -1992,7 +2374,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 selected: destinoWhatsApp == destino['id'],
                                 label: Text(destino['label']!),
                                 onSelected: (_) => setSheetState(
-                                      () => destinoWhatsApp = destino['id']!,
+                                  () => destinoWhatsApp = destino['id']!,
                                 ),
                               );
                             }).toList(),
@@ -2020,7 +2402,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   motivo: motivoSelecionado!,
                                   observacao: observacaoController.text.trim(),
                                   enviarWhatsApp:
-                                  enviarWhatsApp && destinos.isNotEmpty,
+                                      enviarWhatsApp && destinos.isNotEmpty,
                                   destinoWhatsApp: destinoWhatsApp,
                                 ),
                               );
@@ -2068,9 +2450,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _registrarWhatsAppDesativacao(
-      String alunoId,
-      _DesativacaoAlunoPayload payload,
-      ) async {
+    String alunoId,
+    _DesativacaoAlunoPayload payload,
+  ) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -2083,9 +2465,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _enviarWhatsAppDesativacao(
-      Map<String, dynamic> alunoData,
-      _DesativacaoAlunoPayload payload,
-      ) async {
+    Map<String, dynamic> alunoData,
+    _DesativacaoAlunoPayload payload,
+  ) async {
     if (!payload.enviarWhatsApp) return;
 
     final destinos = _destinosWhatsAppAluno(alunoData).where((destino) {
@@ -2112,7 +2494,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     ].join('\n');
 
     for (final destino in destinos) {
-      await _abrirWhatsApp(destino['numero']!, mensagem: mensagem);
+      await _abrirWhatsApp(
+        destino['numero']!,
+        mensagem: mensagem,
+        canal: 'whatsapp',
+        destinoTipo: destino['id'] == 'responsavel' ? 'responsavel' : 'aluno',
+      );
     }
   }
 
@@ -2143,6 +2530,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final dadosAntes = Map<String, dynamic>.from(alunoSnap.data() ?? {});
     final payload = await _mostrarDialogDesativacaoAluno(dadosAntes);
     if (payload == null || !mounted) return;
+
+    _cacaBugRegistrarEventoAcao(
+      acao: CacaBugActions.iniciouDesativarAluno,
+      descricao:
+          'Usuário iniciou a desativação do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+      extra: {
+        'statusAnterior': _cacaBugTextoSeguro(dadosAntes['status_atividade']),
+        'statusNovo': 'INATIVO(A)',
+      },
+    );
 
     showDialog<void>(
       context: context,
@@ -2246,6 +2643,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         motivoTitulo: payload.motivo.titulo,
         observacao: payload.observacao,
       );
+      _cacaBugRegistrarEventoAcao(
+        acao: CacaBugActions.desativouAluno,
+        descricao:
+            'Usuário desativou o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+        extra: {
+          'statusAnterior': _cacaBugTextoSeguro(dadosAntes['status_atividade']),
+          'statusNovo': 'INATIVO(A)',
+          'sucesso': true,
+        },
+      );
 
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (!mounted) return;
@@ -2264,11 +2671,26 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         await _registrarWhatsAppDesativacao(alunoId, payload);
       }
     } catch (e) {
+      _cacaBugRegistrarErroAcao(
+        acao: CacaBugActions.erroDesativarAluno,
+        descricao:
+            'Erro ao desativar o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+        erro: e,
+        extra: {
+          'statusAnterior': _cacaBugTextoSeguro(dadosAntes['status_atividade']),
+          'statusNovo': 'INATIVO(A)',
+        },
+      );
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao desativar aluno: $e'),
+          content: Text(
+            _mensagemErroAmigavelAlunoDetalhe(
+              e,
+              contexto: 'desativação do aluno',
+            ),
+          ),
           backgroundColor: context.uai.error,
         ),
       );
@@ -2295,10 +2717,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _ativarAluno(
-      BuildContext context,
-      String alunoId,
-      Map<String, dynamic> alunoData,
-      ) async {
+    BuildContext context,
+    String alunoId,
+    Map<String, dynamic> alunoData,
+  ) async {
     final temPermissao = await _verificarPermissaoEOnline(
       'pode_ativar_alunos',
       acao: 'ativar aluno',
@@ -2358,11 +2780,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           'id': doc.id,
           'nome': dados['nome'] ?? 'Sem nome',
           'horario':
-          dados['horario_display'] ??
+              dados['horario_display'] ??
               dados['horario_inicio'] ??
               'Sem horário',
           'dias':
-          (dados['dias_semana_display'] as List?)?.join(', ') ??
+              (dados['dias_semana_display'] as List?)?.join(', ') ??
               (dados['dias_semana'] as List?)?.join(', ') ??
               'Sem dias definidos',
           'nivel': dados['nivel'] ?? 'Não especificado',
@@ -2413,16 +2835,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       final isSelected = selectedTurmaId == turma['id'];
                       final temVaga = turma['tem_vaga'] as bool;
                       final capacidadeMaxima =
-                      turma['capacidade_maxima'] as int;
+                          turma['capacidade_maxima'] as int;
                       final totalAlunos = turma['total_alunos'] as int;
 
                       return Card(
                         margin: EdgeInsets.only(bottom: 8),
                         color: isSelected
                             ? Color.alphaBlend(
-                          context.uai.error.withOpacity(0.08),
-                          context.uai.card,
-                        )
+                                context.uai.error.withOpacity(0.08),
+                                context.uai.card,
+                              )
                             : !temVaga
                             ? context.uai.cardAlt
                             : context.uai.card,
@@ -2440,11 +2862,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                         child: InkWell(
                           onTap: temVaga
                               ? () {
-                            setState(() {
-                              selectedTurmaId = turma['id'];
-                              selectedTurmaNome = turma['nome'];
-                            });
-                          }
+                                  setState(() {
+                                    selectedTurmaId = turma['id'];
+                                    selectedTurmaNome = turma['nome'];
+                                  });
+                                }
                               : null,
                           child: Padding(
                             padding: EdgeInsets.all(12),
@@ -2466,11 +2888,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                            MainAxisAlignment.spaceBetween,
                                         children: [
                                           Expanded(
                                             child: Text(
@@ -2496,7 +2918,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 color: context.uai.error
                                                     .withOpacity(0.16),
                                                 borderRadius:
-                                                BorderRadius.circular(10),
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Text(
                                                 'LOTADA',
@@ -2548,13 +2970,13 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                           SizedBox(width: 6),
                                           _buildTurmaChip(
                                             label:
-                                            '$totalAlunos/$capacidadeMaxima alunos',
+                                                '$totalAlunos/$capacidadeMaxima alunos',
                                             color: temVaga
                                                 ? context.uai.warning
-                                                .withOpacity(0.16)
+                                                      .withOpacity(0.16)
                                                 : context.uai.error.withOpacity(
-                                              0.16,
-                                            ),
+                                                    0.16,
+                                                  ),
                                             textColor: temVaga
                                                 ? context.uai.warning
                                                 : context.uai.error,
@@ -2582,71 +3004,119 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ElevatedButton(
                 onPressed: selectedTurmaId != null
                     ? () async {
-                  final temVaga = await _verificarCapacidadeTurma(
-                    selectedTurmaId!,
-                  );
+                        final temVaga = await _verificarCapacidadeTurma(
+                          selectedTurmaId!,
+                        );
 
-                  if (!temVaga) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Esta turma não tem mais vagas disponíveis.',
-                          ),
-                          backgroundColor: context.uai.error,
-                        ),
-                      );
-                    }
-                    return;
-                  }
+                        if (!temVaga) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Esta turma não tem mais vagas disponíveis.',
+                                ),
+                                backgroundColor: context.uai.error,
+                              ),
+                            );
+                          }
+                          return;
+                        }
 
-                  await _firestore
-                      .collection('turmas')
-                      .doc(selectedTurmaId!)
-                      .update({
-                    'alunos': FieldValue.arrayUnion([widget.alunoId]),
-                  });
+                        try {
+                          _cacaBugRegistrarEventoAcao(
+                            acao: CacaBugActions.iniciouAtivarAluno,
+                            descricao:
+                                'Usuário iniciou a ativação do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                            extra: {
+                              'statusAnterior': _cacaBugTextoSeguro(
+                                alunoData['status_atividade'],
+                              ),
+                              'statusNovo': 'ATIVO(A)',
+                              'turmaDestinoId': selectedTurmaId,
+                              'turmaDestinoNome': selectedTurmaNome,
+                            },
+                          );
 
-                  final alunoRef = _firestore
-                      .collection('alunos')
-                      .doc(widget.alunoId);
-                  final turmaRef = _firestore
-                      .collection('turmas')
-                      .doc(selectedTurmaId!);
-                  final batch = _firestore.batch();
+                          await _firestore
+                              .collection('turmas')
+                              .doc(selectedTurmaId!)
+                              .update({
+                                'alunos': FieldValue.arrayUnion([
+                                  widget.alunoId,
+                                ]),
+                              });
 
-                  batch.set(turmaRef, {
-                    'alunos': FieldValue.arrayUnion([widget.alunoId]),
-                    'atualizado_em': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true));
+                          final alunoRef = _firestore
+                              .collection('alunos')
+                              .doc(widget.alunoId);
+                          final turmaRef = _firestore
+                              .collection('turmas')
+                              .doc(selectedTurmaId!);
+                          final batch = _firestore.batch();
 
-                  batch.update(alunoRef, {
-                    'status_atividade': 'ATIVO(A)',
-                    'turma_id': selectedTurmaId,
-                    'turma': selectedTurmaNome,
-                    'data_ativacao': FieldValue.serverTimestamp(),
-                    'data_desativacao': null,
-                    'atualizado_em': FieldValue.serverTimestamp(),
-                  });
+                          batch.set(turmaRef, {
+                            'alunos': FieldValue.arrayUnion([widget.alunoId]),
+                            'atualizado_em': FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
 
-                  await batch.commit();
-                  await _atualizarContadorTurmaAuditoria(
-                    selectedTurmaId!,
-                  );
-                  await _cache.invalidateAluno(widget.alunoId);
+                          batch.update(alunoRef, {
+                            'status_atividade': 'ATIVO(A)',
+                            'turma_id': selectedTurmaId,
+                            'turma': selectedTurmaNome,
+                            'data_ativacao': FieldValue.serverTimestamp(),
+                            'data_desativacao': null,
+                            'atualizado_em': FieldValue.serverTimestamp(),
+                          });
 
-                  if (!mounted) return;
-                  Navigator.pop(context);
+                          await batch.commit();
+                          _cacaBugRegistrarEventoAcao(
+                            acao: CacaBugActions.ativouAluno,
+                            descricao:
+                                'Usuário ativou o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                            extra: {
+                              'statusAnterior': _cacaBugTextoSeguro(
+                                alunoData['status_atividade'],
+                              ),
+                              'statusNovo': 'ATIVO(A)',
+                              'turmaDestinoId': selectedTurmaId,
+                              'turmaDestinoNome': selectedTurmaNome,
+                              'sucesso': true,
+                            },
+                          );
+                          await _atualizarContadorTurmaAuditoria(
+                            selectedTurmaId!,
+                          );
+                          await _cache.invalidateAluno(widget.alunoId);
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Aluno ativado com sucesso!'),
-                      backgroundColor: context.uai.success,
-                    ),
-                  );
+                          if (!mounted) return;
+                          Navigator.pop(context);
 
-                  await _carregarDadosAluno(forcarServidor: true);
-                }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Aluno ativado com sucesso!'),
+                              backgroundColor: context.uai.success,
+                            ),
+                          );
+
+                          await _carregarDadosAluno(forcarServidor: true);
+                        } catch (e) {
+                          _cacaBugRegistrarErroAcao(
+                            acao: CacaBugActions.erroAtivarAluno,
+                            descricao:
+                                'Erro ao ativar o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                            erro: e,
+                            extra: {
+                              'statusAnterior': _cacaBugTextoSeguro(
+                                alunoData['status_atividade'],
+                              ),
+                              'statusNovo': 'ATIVO(A)',
+                              'turmaDestinoId': selectedTurmaId,
+                              'turmaDestinoNome': selectedTurmaNome,
+                            },
+                          );
+                          rethrow;
+                        }
+                      }
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.success,
@@ -2691,10 +3161,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Future<void> _mudarTurma(
-      BuildContext context,
-      String alunoId,
-      Map<String, dynamic> alunoData,
-      ) async {
+    BuildContext context,
+    String alunoId,
+    Map<String, dynamic> alunoData,
+  ) async {
     final temPermissao = await _verificarPermissaoEOnline(
       'pode_mudar_turma',
       acao: 'mudar aluno de turma',
@@ -2785,18 +3255,18 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             : (alunos > alunosCount ? alunos : alunosCount);
         final temVaga =
             capacidadeMaxima <= 0 ||
-                totalAlunos < capacidadeMaxima ||
-                isTurmaAtual;
+            totalAlunos < capacidadeMaxima ||
+            isTurmaAtual;
 
         return {
           'id': doc.id,
           'nome': dados['nome'] ?? 'Sem nome',
           'horario':
-          dados['horario_display'] ??
+              dados['horario_display'] ??
               dados['horario_inicio'] ??
               'Sem horário',
           'dias':
-          (dados['dias_semana_display'] as List?)?.join(', ') ??
+              (dados['dias_semana_display'] as List?)?.join(', ') ??
               (dados['dias_semana'] as List?)?.join(', ') ??
               'Sem dias definidos',
           'nivel': dados['nivel'] ?? 'Não especificado',
@@ -2849,16 +3319,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       final isTurmaAtual = turma['isTurmaAtual'] == true;
                       final temVaga = turma['tem_vaga'] as bool;
                       final capacidadeMaxima =
-                      turma['capacidade_maxima'] as int;
+                          turma['capacidade_maxima'] as int;
                       final totalAlunos = turma['total_alunos'] as int;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         color: isSelected
                             ? Color.alphaBlend(
-                          context.uai.error.withOpacity(0.08),
-                          context.uai.card,
-                        )
+                                context.uai.error.withOpacity(0.08),
+                                context.uai.card,
+                              )
                             : isTurmaAtual
                             ? context.uai.cardAlt
                             : !temVaga
@@ -2880,12 +3350,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                         child: InkWell(
                           onTap: temVaga || isTurmaAtual
                               ? () {
-                            setState(() {
-                              selectedTurmaId = turma['id'] as String?;
-                              selectedTurmaNome = turma['nome']
-                                  ?.toString();
-                            });
-                          }
+                                  setState(() {
+                                    selectedTurmaId = turma['id'] as String?;
+                                    selectedTurmaNome = turma['nome']
+                                        ?.toString();
+                                  });
+                                }
                               : null,
                           child: Padding(
                             padding: const EdgeInsets.all(12),
@@ -2909,7 +3379,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         children: [
@@ -2938,14 +3408,14 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 left: 8,
                                               ),
                                               padding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 2,
-                                              ),
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: context.uai.border,
                                                 borderRadius:
-                                                BorderRadius.circular(10),
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Text(
                                                 'ATUAL',
@@ -2962,15 +3432,15 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 left: 8,
                                               ),
                                               padding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 2,
-                                              ),
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: context.uai.error
                                                     .withOpacity(0.16),
                                                 borderRadius:
-                                                BorderRadius.circular(10),
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Text(
                                                 'LOTADA',
@@ -3014,7 +3484,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                           Expanded(
                                             child: _buildTurmaChip(
                                               label:
-                                              turma['nivel']?.toString() ??
+                                                  turma['nivel']?.toString() ??
                                                   'N/A',
                                               color: context.uai.info
                                                   .withOpacity(0.16),
@@ -3025,8 +3495,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                           Expanded(
                                             child: _buildTurmaChip(
                                               label:
-                                              turma['faixa_etaria']
-                                                  ?.toString() ??
+                                                  turma['faixa_etaria']
+                                                      ?.toString() ??
                                                   'N/A',
                                               color: context.uai.success
                                                   .withOpacity(0.16),
@@ -3043,9 +3513,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                   ? context.uai.border
                                                   : temVaga
                                                   ? context.uai.warning
-                                                  .withOpacity(0.16)
+                                                        .withOpacity(0.16)
                                                   : context.uai.error
-                                                  .withOpacity(0.16),
+                                                        .withOpacity(0.16),
                                               textColor: isTurmaAtual
                                                   ? context.uai.textSecondary
                                                   : temVaga
@@ -3076,117 +3546,178 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ElevatedButton(
                 onPressed: selectedTurmaId != null
                     ? () async {
-                  if (selectedTurmaId == turmaAtualId) {
-                    Navigator.pop(context);
-                    return;
-                  }
+                        if (selectedTurmaId == turmaAtualId) {
+                          Navigator.pop(context);
+                          return;
+                        }
+                        var erroEtapa = 'pre_validacao';
+                        final selectedId = selectedTurmaId;
+                        if (selectedId == null || selectedId.isEmpty) return;
 
-                  try {
-                    final temVaga = await _verificarCapacidadeTurma(
-                      selectedTurmaId!,
-                    );
+                        try {
+                          erroEtapa = 'verificar_capacidade';
+                          final temVaga = await _verificarCapacidadeTurma(
+                            selectedId,
+                          );
 
-                    if (!temVaga) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text(
-                              'Esta turma não tem mais vagas disponíveis.',
+                          if (!temVaga) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text(
+                                    'Esta turma não tem mais vagas disponíveis.',
+                                  ),
+                                  backgroundColor: context.uai.error,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+
+                          final turmaNovaId = selectedId;
+                          final turmaNovaNome = selectedTurmaNome ?? 'Sem nome';
+                          _cacaBugRegistrarEventoAcao(
+                            acao: CacaBugActions.iniciouMudarTurmaAluno,
+                            descricao:
+                                'Usuário iniciou mudança de turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                            extra: {
+                              'turmaOrigemId': turmaAtualId,
+                              'turmaOrigemNome': turmaAtualNome,
+                              'turmaDestinoId': turmaNovaId,
+                              'turmaDestinoNome': turmaNovaNome,
+                              'academiaId': academiaId,
+                              'academiaNome': academiaNome,
+                            },
+                          );
+                          final alunoRef = _firestore
+                              .collection('alunos')
+                              .doc(alunoId);
+                          final batch = _firestore.batch();
+
+                          if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
+                            batch.update(
+                              _firestore.collection('turmas').doc(turmaAtualId),
+                              {
+                                'alunos': FieldValue.arrayRemove([alunoId]),
+                                'atualizado_em': FieldValue.serverTimestamp(),
+                              },
+                            );
+                          }
+
+                          batch.update(
+                            _firestore.collection('turmas').doc(turmaNovaId),
+                            {
+                              'alunos': FieldValue.arrayUnion([alunoId]),
+                              'atualizado_em': FieldValue.serverTimestamp(),
+                            },
+                          );
+
+                          batch.update(alunoRef, {
+                            'turma_id': turmaNovaId,
+                            'turma': turmaNovaNome,
+                            'data_mudanca_turma': FieldValue.serverTimestamp(),
+                            'atualizado_em': FieldValue.serverTimestamp(),
+                          });
+                          erroEtapa = 'batch_commit';
+                          await batch.commit();
+
+                          erroEtapa = 'atualizar_contador_origem';
+                          if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
+                            await _atualizarContadorTurmaAuditoria(
+                              turmaAtualId,
+                            );
+                          }
+                          erroEtapa = 'atualizar_contador_destino';
+                          await _atualizarContadorTurmaAuditoria(turmaNovaId);
+
+                          final resumo =
+                              'Mudança de turma: ${turmaAtualNome ?? 'Turma não informada'} → $turmaNovaNome';
+                          final dadosDepois =
+                              Map<String, dynamic>.from(dadosAntes)..addAll({
+                                'turma_id': turmaNovaId,
+                                'turma': turmaNovaNome,
+                                'academia_id': academiaId,
+                                'academia': academiaNome,
+                              });
+                          erroEtapa = 'registrar_historico';
+                          await AlunoHistoricoEdicaoService()
+                              .registrarEdicaoManual(
+                                alunoId: alunoId,
+                                dadosAntes: dadosAntes,
+                                dadosDepois: dadosDepois,
+                                origem: 'aluno_detalhe_mudar_turma',
+                                subtipoEdicao: 'mudanca_turma',
+                                resumoPersonalizado: resumo,
+                              );
+
+                          erroEtapa = 'invalidar_cache';
+                          await _cache.invalidateAluno(alunoId);
+
+                          if (!mounted) return;
+                          Navigator.pop(context);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'Aluno transferido para nova turma com sucesso!',
+                              ),
+                              backgroundColor: context.uai.success,
                             ),
-                            backgroundColor: context.uai.error,
-                          ),
-                        );
+                          );
+
+                          erroEtapa = 'recarregar_dados';
+                          await _carregarDadosAluno(forcarServidor: true);
+
+                          _cacaBugRegistrarEventoAcao(
+                            acao: CacaBugActions.mudouTurmaAluno,
+                            descricao:
+                                'Usuário mudou o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']} para outra turma',
+                            extra: {
+                              'turmaOrigemId': turmaAtualId,
+                              'turmaOrigemNome':
+                                  turmaAtualNome ?? 'Turma não informada',
+                              'turmaDestinoId': turmaNovaId,
+                              'turmaDestinoNome': turmaNovaNome,
+                              'academiaId': academiaId,
+                              'academiaNome':
+                                  academiaNome ?? 'Academia não informada',
+                              'sucesso': true,
+                            },
+                          );
+                        } catch (e) {
+                          _cacaBugRegistrarErroAcao(
+                            acao: CacaBugActions.erroMudarTurmaAluno,
+                            descricao:
+                                'Erro ao mudar turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                            erro: e,
+                            extra: {
+                              'erroEtapa': erroEtapa,
+                              'turmaOrigemId': turmaAtualId,
+                              'turmaOrigemNome':
+                                  turmaAtualNome ?? 'Turma não informada',
+                              'turmaDestinoId': selectedId,
+                              'turmaDestinoNome':
+                                  selectedTurmaNome ?? 'Turma não informada',
+                              'academiaId': academiaId,
+                              'academiaNome':
+                                  academiaNome ?? 'Academia não informada',
+                            },
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _mensagemErroAmigavelAlunoDetalhe(
+                                    e,
+                                    contexto: 'mudança de turma',
+                                  ),
+                                ),
+                                backgroundColor: context.uai.error,
+                              ),
+                            );
+                          }
+                        }
                       }
-                      return;
-                    }
-
-                    final turmaNovaId = selectedTurmaId!;
-                    final turmaNovaNome = selectedTurmaNome ?? 'Sem nome';
-                    final alunoRef = _firestore
-                        .collection('alunos')
-                        .doc(alunoId);
-                    final batch = _firestore.batch();
-
-                    if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
-                      batch.update(
-                        _firestore.collection('turmas').doc(turmaAtualId),
-                        {
-                          'alunos': FieldValue.arrayRemove([alunoId]),
-                          'atualizado_em': FieldValue.serverTimestamp(),
-                        },
-                      );
-                    }
-
-                    batch.update(
-                      _firestore.collection('turmas').doc(turmaNovaId),
-                      {
-                        'alunos': FieldValue.arrayUnion([alunoId]),
-                        'atualizado_em': FieldValue.serverTimestamp(),
-                      },
-                    );
-
-                    batch.update(alunoRef, {
-                      'turma_id': turmaNovaId,
-                      'turma': turmaNovaNome,
-                      'data_mudanca_turma': FieldValue.serverTimestamp(),
-                      'atualizado_em': FieldValue.serverTimestamp(),
-                    });
-
-                    await batch.commit();
-
-                    if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
-                      await _atualizarContadorTurmaAuditoria(
-                        turmaAtualId,
-                      );
-                    }
-                    await _atualizarContadorTurmaAuditoria(turmaNovaId);
-
-                    final resumo =
-                        'Mudança de turma: ${turmaAtualNome ?? 'Sem turma'} → $turmaNovaNome';
-                    final dadosDepois =
-                    Map<String, dynamic>.from(dadosAntes)..addAll({
-                      'turma_id': turmaNovaId,
-                      'turma': turmaNovaNome,
-                      'academia_id': academiaId,
-                      'academia': academiaNome,
-                    });
-
-                    await AlunoHistoricoEdicaoService()
-                        .registrarEdicaoManual(
-                      alunoId: alunoId,
-                      dadosAntes: dadosAntes,
-                      dadosDepois: dadosDepois,
-                      origem: 'aluno_detalhe_mudar_turma',
-                      subtipoEdicao: 'mudanca_turma',
-                      resumoPersonalizado: resumo,
-                    );
-
-                    await _cache.invalidateAluno(alunoId);
-
-                    if (!mounted) return;
-                    Navigator.pop(context);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          'Aluno transferido para nova turma com sucesso!',
-                        ),
-                        backgroundColor: context.uai.success,
-                      ),
-                    );
-
-                    await _carregarDadosAluno(forcarServidor: true);
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Erro ao mudar turma: $e'),
-                          backgroundColor: context.uai.error,
-                        ),
-                      );
-                    }
-                  }
-                }
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.uai.primary,
@@ -3554,7 +4085,19 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                               child: ElevatedButton.icon(
                                 onPressed: () {
                                   Navigator.pop(context);
-                                  _launchPhone(numero);
+                                  _launchPhone(
+                                    numero,
+                                    destinoTipo:
+                                        "${contato['titulo']} ${contato['subtitulo']}"
+                                            .toLowerCase()
+                                            .contains('emerg')
+                                        ? 'emergencia'
+                                        : ("${contato['titulo']} ${contato['subtitulo']}"
+                                                  .toLowerCase()
+                                                  .contains('respons')
+                                              ? 'responsavel'
+                                              : 'aluno'),
+                                  );
                                 },
                                 icon: Icon(Icons.call_rounded, size: 20),
                                 label: Text('LIGAR AGORA'),
@@ -3578,7 +4121,17 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   _abrirWhatsApp(
                                     numero,
                                     mensagem:
-                                    'Olá, preciso falar sobre $nomeAluno.',
+                                        'Ol\u00E1, preciso falar sobre $nomeAluno.',
+                                    destinoTipo:
+                                        "${contato['titulo']} ${contato['subtitulo']}"
+                                            .toLowerCase()
+                                            .contains('emerg')
+                                        ? 'emergencia'
+                                        : ("${contato['titulo']} ${contato['subtitulo']}"
+                                                  .toLowerCase()
+                                                  .contains('respons')
+                                              ? 'responsavel'
+                                              : 'aluno'),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -3718,7 +4271,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: temPrincipal
-                            ? () => _launchPhone(contatoPrincipal)
+                            ? () => _launchPhone(
+                                contatoPrincipal,
+                                destinoTipo: 'aluno',
+                              )
                             : null,
                         icon: Icon(
                           temPrincipal
@@ -3817,7 +4373,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           color: context.uai.primaryDark,
                           icon: Icons.family_restroom_rounded,
                           mensagemWhatsApp:
-                          'Olá, preciso falar sobre $nomeAluno.',
+                              'Olá, preciso falar sobre $nomeAluno.',
                         );
                         final alunoCard = _buildContactPersonCard(
                           titulo: 'Aluno',
@@ -3855,7 +4411,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                         icon: Icons.emergency_share_rounded,
                         fullWidth: true,
                         mensagemWhatsApp:
-                        'Olá, preciso falar sobre $nomeAluno.',
+                            'Olá, preciso falar sobre $nomeAluno.',
                       ),
                     ],
                     SizedBox(height: 12),
@@ -3865,14 +4421,14 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           child: OutlinedButton.icon(
                             onPressed: temPrincipal
                                 ? () => _mostrarOpcoesContatoEmergencia(
-                              nomeAluno: nomeAluno,
-                              contatoAluno: contatoAluno,
-                              nomeResponsavel: nomeResponsavel,
-                              contatoResponsavel: contatoResponsavel,
-                              nomeContatoEmergencia:
-                              nomeContatoEmergencia,
-                              contatoEmergencia: contatoEmergencia,
-                            )
+                                    nomeAluno: nomeAluno,
+                                    contatoAluno: contatoAluno,
+                                    nomeResponsavel: nomeResponsavel,
+                                    contatoResponsavel: contatoResponsavel,
+                                    nomeContatoEmergencia:
+                                        nomeContatoEmergencia,
+                                    contatoEmergencia: contatoEmergencia,
+                                  )
                                 : null,
                             icon: Icon(Icons.contact_phone_rounded, size: 18),
                             label: const Text(
@@ -3898,30 +4454,30 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           child: FutureBuilder<DocumentSnapshot>(
                             future: turmaId != null && turmaId.isNotEmpty
                                 ? _firestore
-                                .collection('turmas')
-                                .doc(turmaId)
-                                .get()
+                                      .collection('turmas')
+                                      .doc(turmaId)
+                                      .get()
                                 : null,
                             builder: (context, snapshot) {
                               String? whatsappUrl;
                               if (snapshot.hasData && snapshot.data!.exists) {
                                 final turmaData =
-                                snapshot.data!.data()
-                                as Map<String, dynamic>?;
+                                    snapshot.data!.data()
+                                        as Map<String, dynamic>?;
                                 whatsappUrl =
-                                turmaData?['whatsapp_url'] as String?;
+                                    turmaData?['whatsapp_url'] as String?;
                               }
 
                               return OutlinedButton.icon(
                                 onPressed:
-                                whatsappUrl != null &&
-                                    whatsappUrl.isNotEmpty
+                                    whatsappUrl != null &&
+                                        whatsappUrl.isNotEmpty
                                     ? () => _convidarParaGrupo(
-                                  context,
-                                  whatsappUrl,
-                                  contatoAluno,
-                                  contatoResponsavel,
-                                )
+                                        context,
+                                        whatsappUrl,
+                                        contatoAluno,
+                                        contatoResponsavel,
+                                      )
                                     : null,
                                 icon: Icon(Icons.group_add_rounded, size: 18),
                                 label: const Text(
@@ -4132,7 +4688,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: temNumero ? () => _launchPhone(numero!) : null,
+                  onPressed: temNumero
+                      ? () => _launchPhone(
+                          numero!,
+                          destinoTipo: titulo.toLowerCase().contains('emerg')
+                              ? 'emergencia'
+                              : (titulo.toLowerCase().contains('respons')
+                                    ? 'responsavel'
+                                    : 'aluno'),
+                        )
+                      : null,
                   icon: Icon(Icons.call_rounded, size: 16),
                   label: Text(
                     fullWidth ? 'Ligar' : 'Ligar',
@@ -4157,8 +4722,15 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                 height: 40,
                 child: ElevatedButton(
                   onPressed: temNumero
-                      ? () =>
-                      _abrirWhatsApp(numero!, mensagem: mensagemWhatsApp)
+                      ? () => _abrirWhatsApp(
+                          numero!,
+                          mensagem: mensagemWhatsApp,
+                          destinoTipo: titulo.toLowerCase().contains('emerg')
+                              ? 'emergencia'
+                              : (titulo.toLowerCase().contains('respons')
+                                    ? 'responsavel'
+                                    : 'aluno'),
+                        )
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.uai.success,
@@ -4222,8 +4794,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         : null;
     final temHistorico =
         ultimaEdicao != null ||
-            (nomeUsuario != null && nomeUsuario.isNotEmpty) ||
-            (resumo != null && resumo.isNotEmpty);
+        (nomeUsuario != null && nomeUsuario.isNotEmpty) ||
+        (resumo != null && resumo.isNotEmpty);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -4261,16 +4833,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                 ),
                 TextButton.icon(
                   onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => HistoricoEdicoesAlunoScreen(
-                          alunoId: widget.alunoId,
-                          alunoNome: data['nome']?.toString() ?? 'Aluno',
-                        ),
-                      ),
+                    await _abrirHistoricoEdicoesAluno(
+                      data['nome']?.toString() ?? 'Aluno',
                     );
-                    if (mounted) _carregarDadosAluno();
                   },
                   icon: const Icon(Icons.history_edu_rounded, size: 18),
                   label: const Text('Ver histórico'),
@@ -4383,12 +4948,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       ),
                       child: loading
                           ? Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: CircularProgressIndicator(
-                          color: accent,
-                          strokeWidth: 3,
-                        ),
-                      )
+                              padding: const EdgeInsets.all(18),
+                              child: CircularProgressIndicator(
+                                color: accent,
+                                strokeWidth: 3,
+                              ),
+                            )
                           : Icon(icon, size: 40, color: accent),
                     ),
                     const SizedBox(height: 18),
@@ -4515,22 +5080,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       children: [
                         Expanded(
                           flex: 5,
-                          child: Column(
-                            children: [
-                              emergency,
-                              informacoes,
-                            ],
-                          ),
+                          child: Column(children: [emergency, informacoes]),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           flex: 6,
-                          child: Column(
-                            children: [
-                              frequencia,
-                              eventos,
-                            ],
-                          ),
+                          child: Column(children: [frequencia, eventos]),
                         ),
                       ],
                     ),
@@ -4662,46 +5217,44 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         boxShadow: t.cardShadow,
       ),
       child: compact
-          ? Column(
-        children: [
-          foto,
-          const SizedBox(height: 16),
-          infos,
-        ],
-      )
+          ? Column(children: [foto, const SizedBox(height: 16), infos])
           : Row(
-        children: [
-          foto,
-          const SizedBox(width: 22),
-          Expanded(child: infos),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-            decoration: BoxDecoration(
-              color: onGradient.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onGradient.withOpacity(0.14)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.touch_app_rounded, color: onGradient, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  'Toque na foto',
-                  style: TextStyle(
-                    color: onGradient.withOpacity(0.86),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                foto,
+                const SizedBox(width: 22),
+                Expanded(child: infos),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: onGradient.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: onGradient.withOpacity(0.14)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.touch_app_rounded,
+                        color: onGradient,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Toque na foto',
+                        style: TextStyle(
+                          color: onGradient.withOpacity(0.86),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -4729,7 +5282,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: t.card.withOpacity(0.22),
-                border: Border.all(color: _onPrimary(context).withOpacity(0.45), width: 2),
+                border: Border.all(
+                  color: _onPrimary(context).withOpacity(0.45),
+                  width: 2,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.18),
@@ -4741,21 +5297,22 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               child: ClipOval(
                 child: fotoUrl != null && fotoUrl.trim().isNotEmpty
                     ? CachedNetworkImage(
-                  imageUrl: fotoUrl,
-                  fit: BoxFit.cover,
-                  width: 116,
-                  height: 116,
-                  placeholder: (context, url) => Container(
-                    color: t.cardAlt,
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: t.primary,
-                      ),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => _fotoHeroFallback(inicial),
-                )
+                        imageUrl: fotoUrl,
+                        fit: BoxFit.cover,
+                        width: 116,
+                        height: 116,
+                        placeholder: (context, url) => Container(
+                          color: t.cardAlt,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: t.primary,
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) =>
+                            _fotoHeroFallback(inicial),
+                      )
                     : _fotoHeroFallback(inicial),
               ),
             ),
@@ -4769,7 +5326,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             decoration: BoxDecoration(
               color: statusColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _readableOn(statusColor).withOpacity(0.90), width: 2),
+              border: Border.all(
+                color: _readableOn(statusColor).withOpacity(0.90),
+                width: 2,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: statusColor.withOpacity(0.28),
@@ -4863,7 +5423,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       return _buildPerfilStateScaffold(
         icon: Icons.person_off_rounded,
         title: 'Aluno não encontrado',
-        message: 'Não foi possível localizar este cadastro. Ele pode ter sido removido ou estar indisponível no momento.',
+        message:
+            'Não foi possível localizar este cadastro. Ele pode ter sido removido ou estar indisponível no momento.',
         accent: context.uai.error,
         buttonText: 'Voltar',
         onPressed: () => Navigator.pop(context),
@@ -4876,18 +5437,18 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final contatoResponsavel = data['contato_responsavel'] as String?;
     final nomeResponsavel =
         data['nome_responsavel']?.toString() ??
-            data['responsavel']?.toString() ??
-            data['responsavel_nome']?.toString() ??
-            'Responsável';
+        data['responsavel']?.toString() ??
+        data['responsavel_nome']?.toString() ??
+        'Responsável';
     final contatoEmergencia =
         data['contato_emergencia']?.toString() ??
-            data['telefone_emergencia']?.toString() ??
-            data['emergencia_contato']?.toString() ??
-            '';
+        data['telefone_emergencia']?.toString() ??
+        data['emergencia_contato']?.toString() ??
+        '';
     final nomeContatoEmergencia =
         data['nome_contato_emergencia']?.toString() ??
-            data['responsavel_emergencia']?.toString() ??
-            'Contato de emergência';
+        data['responsavel_emergencia']?.toString() ??
+        'Contato de emergência';
     final monitor = data['monitor'] as String?;
     final idade = data['idade'] as String?;
     final nome = data['nome'] as String? ?? 'N/A';
@@ -4903,10 +5464,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       appBar: AppBar(
         title: Text('Perfil do Aluno'),
         backgroundColor:
-        Theme.of(context).appBarTheme.backgroundColor ??
+            Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-        Theme.of(context).appBarTheme.foregroundColor ??
+            Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
@@ -5085,16 +5646,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   await _carregarDadosAluno(forcarServidor: true);
                   break;
                 case 'historico_edicoes':
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HistoricoEdicoesAlunoScreen(
-                        alunoId: widget.alunoId,
-                        alunoNome: nome,
-                      ),
-                    ),
-                  );
-                  await _carregarDadosAluno(forcarServidor: true);
+                  await _abrirHistoricoEdicoesAluno(nome);
                   break;
                 case 'historico':
                   Navigator.push(
@@ -5216,8 +5768,17 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
   //  VERIFICAR INTERNET
   Future<bool> _temInternet() async {
     try {
-      var connectivityResult = await _connectivity.checkConnectivity();
-      return connectivityResult != ConnectivityResult.none;
+      final connectivityResult = await _connectivity.checkConnectivity();
+      if (connectivityResult is List<ConnectivityResult>) {
+        return connectivityResult.isNotEmpty &&
+            !connectivityResult.every(
+              (result) => result == ConnectivityResult.none,
+            );
+      }
+      if (connectivityResult is ConnectivityResult) {
+        return connectivityResult != ConnectivityResult.none;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -5262,7 +5823,9 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao atualizar: $e'),
+            content: Text(
+              _mensagemErroAmigavelAlunoDetalhe(e, contexto: 'atualização'),
+            ),
             backgroundColor: context.uai.error,
           ),
         );
@@ -5437,13 +6000,13 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
               );
               query = query
                   .where(
-                'data_aula',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno),
-              )
+                    'data_aula',
+                    isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno),
+                  )
                   .where(
-                'data_aula',
-                isLessThanOrEqualTo: Timestamp.fromDate(fimAno),
-              );
+                    'data_aula',
+                    isLessThanOrEqualTo: Timestamp.fromDate(fimAno),
+                  );
             }
             break;
         }
@@ -5526,14 +6089,14 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           : null,
       child: fotoUrl == null || fotoUrl.isEmpty
           ? Text(
-        _dadosAluno?['nome']?.toString().substring(0, 1).toUpperCase() ??
-            '?',
-        style: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.bold,
-          color: _onCardMuted(context),
-        ),
-      )
+              _dadosAluno?['nome']?.toString().substring(0, 1).toUpperCase() ??
+                  '?',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: _onCardMuted(context),
+              ),
+            )
           : null,
     );
   }
@@ -6395,8 +6958,8 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
             .whereType<xml.XmlElement>()
             .firstWhere(
               (e) => e.getAttribute('id') == id,
-          orElse: () => xml.XmlElement(xml.XmlName('')),
-        );
+              orElse: () => xml.XmlElement(xml.XmlName('')),
+            );
         if (element.name.local.isNotEmpty) {
           final style = element.getAttribute('style') ?? '';
           final hex =
@@ -6432,9 +6995,9 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
   }
 
   Future<void> _abrirDetalhesParticipacao(
-      Map<String, dynamic> participacao,
-      String id,
-      ) async {
+    Map<String, dynamic> participacao,
+    String id,
+  ) async {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -6615,83 +7178,83 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
               ),
             )
           else if (_erro != null)
-              Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Icon(Icons.error_outline, size: 48, color: context.uai.error),
-                    SizedBox(height: 12),
-                    Text(
-                      'Erro ao carregar eventos',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: context.uai.primaryDark,
-                      ),
+            Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: context.uai.error),
+                  SizedBox(height: 12),
+                  Text(
+                    'Erro ao carregar eventos',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: context.uai.primaryDark,
                     ),
-                    Text(
-                      _erro!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _onCardMuted(context),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-            else if (_participacoes.isEmpty)
-                Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.event_busy, size: 48, color: context.uai.border),
-                      SizedBox(height: 12),
-                      Text(
-                        'Nenhum evento participado',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _onCardMuted(context),
-                        ),
-                      ),
-                      Text(
-                        'Este aluno ainda não participou de eventos',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.uai.textMuted,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
                   ),
-                )
-              else
-                Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      ..._participacoes
-                          .take(_expanded ? _participacoes.length : 3)
-                          .map((participacao) {
+                  Text(
+                    _erro!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _onCardMuted(context),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else if (_participacoes.isEmpty)
+            Padding(
+              padding: EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(Icons.event_busy, size: 48, color: context.uai.border),
+                  SizedBox(height: 12),
+                  Text(
+                    'Nenhum evento participado',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _onCardMuted(context),
+                    ),
+                  ),
+                  Text(
+                    'Este aluno ainda não participou de eventos',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.uai.textMuted,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  ..._participacoes
+                      .take(_expanded ? _participacoes.length : 3)
+                      .map((participacao) {
                         final eventoDetalhes =
-                        participacao['evento_detalhes']
-                        as Map<String, dynamic>?;
+                            participacao['evento_detalhes']
+                                as Map<String, dynamic>?;
                         final nomeEvento =
                             eventoDetalhes?['nome'] ??
-                                participacao['evento_nome'] ??
-                                'Evento';
+                            participacao['evento_nome'] ??
+                            'Evento';
                         final dataEvento = _formatarData(
                           eventoDetalhes?['data'] ??
                               participacao['data_evento'],
                         );
                         final tipoEvento =
                             eventoDetalhes?['tipo_evento'] ??
-                                participacao['tipo_evento'] ??
-                                '';
+                            participacao['tipo_evento'] ??
+                            '';
                         final certificado = _extrairCertificadoUrl(
                           participacao,
                         );
                         final graduacaoEvento =
-                        participacao['graduacao'] as String?;
+                            participacao['graduacao'] as String?;
 
                         return InkWell(
                           onTap: () => _abrirDetalhesParticipacao(
@@ -6728,7 +7291,7 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         nomeEvento,
@@ -6839,35 +7402,35 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
                           ),
                         );
                       })
-                          .toList(),
+                      .toList(),
 
-                      if (_participacoes.length > 3)
-                        Padding(
-                          padding: EdgeInsets.only(top: 8),
-                          child: TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _expanded = !_expanded;
-                              });
-                            },
-                            icon: Icon(
-                              _expanded ? Icons.expand_less : Icons.expand_more,
-                              color: context.uai.warning,
-                            ),
-                            label: Text(
-                              _expanded
-                                  ? 'Ver menos'
-                                  : 'Ver todos (${_participacoes.length})',
-                              style: TextStyle(
-                                color: context.uai.warning,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                  if (_participacoes.length > 3)
+                    Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _expanded = !_expanded;
+                          });
+                        },
+                        icon: Icon(
+                          _expanded ? Icons.expand_less : Icons.expand_more,
+                          color: context.uai.warning,
+                        ),
+                        label: Text(
+                          _expanded
+                              ? 'Ver menos'
+                              : 'Ver todos (${_participacoes.length})',
+                          style: TextStyle(
+                            color: context.uai.warning,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -7109,7 +7672,7 @@ class _CardInformacoesModernoState extends State<CardInformacoesModerno> {
                   _buildInfoItem(
                     label: 'Telefone',
                     value:
-                    dados['contato_aluno']?.toString() ?? 'Não informado',
+                        dados['contato_aluno']?.toString() ?? 'Não informado',
                     icon: Icons.phone,
                     iconColor: context.uai.success,
                   ),
@@ -7138,7 +7701,7 @@ class _CardInformacoesModernoState extends State<CardInformacoesModerno> {
                   _buildInfoItem(
                     label: 'Nome do responsável',
                     value:
-                    dados['nome_responsavel']?.toString() ??
+                        dados['nome_responsavel']?.toString() ??
                         'Não informado',
                     icon: Icons.person_outline,
                     iconColor: context.uai.associacao,
@@ -7147,7 +7710,7 @@ class _CardInformacoesModernoState extends State<CardInformacoesModerno> {
                   _buildInfoItem(
                     label: 'Contato do responsável',
                     value:
-                    dados['contato_responsavel']?.toString() ??
+                        dados['contato_responsavel']?.toString() ??
                         'Não informado',
                     icon: Icons.phone_android,
                     iconColor: context.uai.inscricoes,
@@ -7177,7 +7740,7 @@ class _CardInformacoesModernoState extends State<CardInformacoesModerno> {
                   _buildInfoItem(
                     label: 'Cadastrado por',
                     value:
-                    dados['cadastro_realizado_por']?.toString() ??
+                        dados['cadastro_realizado_por']?.toString() ??
                         'Sistema',
                     icon: Icons.person_add,
                     iconColor: context.uai.textMuted,

@@ -14,6 +14,18 @@ Color _onCard(BuildContext context) => _readableOn(context.uai.card);
 Color _onCardMuted(BuildContext context) => _onCard(context).withOpacity(0.68);
 Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
+String _mensagemErroAmigavelAvaliacao(Object erro, {String contexto = 'ação'}) {
+  if (erro is FirebaseException) {
+    if (erro.code == 'permission-denied') {
+      return 'Você não tem permissão para realizar esta ação.';
+    }
+    if (erro.code == 'unavailable' || erro.code == 'deadline-exceeded') {
+      return 'Não foi possível comunicar com o Firebase agora. Verifique sua conexão.';
+    }
+  }
+  return 'Não foi possível concluir esta $contexto. Tente novamente.';
+}
+
 class AvaliacaoAlunosTurmaScreen extends StatefulWidget {
   final String turmaId;
   final String turmaNome;
@@ -430,7 +442,11 @@ class _AvaliacaoAlunosTurmaScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _mostrarSnack('Erro ao carregar avaliações: $e', context.uai.error);
+      debugPrint('Erro ao carregar avaliações: $e');
+      _mostrarSnack(
+        _mensagemErroAmigavelAvaliacao(e, contexto: 'carga de avaliações'),
+        context.uai.error,
+      );
     }
   }
 
@@ -576,7 +592,11 @@ class _AvaliacaoAlunosTurmaScreenState
     try {
       await _carregarAvaliacoesDoCicloAtual();
     } catch (e) {
-      _mostrarSnack('Erro ao trocar ciclo: $e', context.uai.error);
+      debugPrint('Erro ao trocar ciclo: $e');
+      _mostrarSnack(
+        _mensagemErroAmigavelAvaliacao(e, contexto: 'troca de ciclo'),
+        context.uai.error,
+      );
     }
 
     if (!mounted) return;
@@ -737,7 +757,11 @@ class _AvaliacaoAlunosTurmaScreenState
       if (!mounted) return;
       setState(() {});
     } catch (e) {
-      _mostrarSnack('Erro ao criar ciclo: $e', context.uai.error);
+      debugPrint('Erro ao criar ciclo: $e');
+      _mostrarSnack(
+        _mensagemErroAmigavelAvaliacao(e, contexto: 'criação do ciclo'),
+        context.uai.error,
+      );
     } finally {
       if (mounted) setState(() => _isCriandoCiclo = false);
     }
@@ -909,7 +933,11 @@ class _AvaliacaoAlunosTurmaScreenState
         novoStatus == 'finalizado' ? context.uai.warning : context.uai.success,
       );
     } catch (e) {
-      _mostrarSnack('Erro ao alterar status do ciclo: $e', context.uai.error);
+      debugPrint('Erro ao alterar status do ciclo: $e');
+      _mostrarSnack(
+        _mensagemErroAmigavelAvaliacao(e, contexto: 'alteração do ciclo'),
+        context.uai.error,
+      );
     }
   }
 
@@ -1134,7 +1162,11 @@ class _AvaliacaoAlunosTurmaScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      _mostrarSnack('Erro ao salvar avaliação: $e', context.uai.error);
+      debugPrint('Erro ao salvar avaliação: $e');
+      _mostrarSnack(
+        _mensagemErroAmigavelAvaliacao(e, contexto: 'avaliação'),
+        context.uai.error,
+      );
     }
   }
 

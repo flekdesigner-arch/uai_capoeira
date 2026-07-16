@@ -5,6 +5,18 @@ import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/alunos/services/aluno_historico_edicao_service.dart';
 
+String _mensagemErroAmigavelHistoricoAluno(Object? erro) {
+  if (erro is FirebaseException) {
+    if (erro.code == 'permission-denied') {
+      return 'Você não tem permissão para acessar este histórico.';
+    }
+    if (erro.code == 'unavailable' || erro.code == 'deadline-exceeded') {
+      return 'Não foi possível comunicar com o Firebase agora. Verifique sua conexão.';
+    }
+  }
+  return 'Não foi possível concluir esta ação. Tente novamente.';
+}
+
 class HistoricoEdicoesAlunoScreen extends StatefulWidget {
   const HistoricoEdicoesAlunoScreen({
     super.key,
@@ -212,7 +224,7 @@ class _HistoricoEdicoesAlunoScreenState
             return _buildEstado(
               icon: Icons.error_outline_rounded,
               titulo: 'Não foi possível carregar o histórico.',
-              subtitulo: snapshot.error.toString(),
+              subtitulo: _mensagemErroAmigavelHistoricoAluno(snapshot.error),
             );
           }
 
