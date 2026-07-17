@@ -115,6 +115,59 @@ async function main() {
       status_conta: "ativa",
     });
 
+    await setDoc(doc(db, "usuarios/aluno_uid/notificacoes/notif_aniversario"), {
+      tipo: "aniversario",
+      titulo: "Aniversariante do dia",
+      mensagem: "Hoje tem aniversariante.",
+      lida: false,
+      criada_em: new Date("2026-07-17T10:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "usuarios/outro_uid/notificacoes/notif_outro"), {
+      tipo: "atualizacao",
+      titulo: "Nova versao",
+      mensagem: "Atualizacao disponivel.",
+      lida: false,
+      criada_em: new Date("2026-07-17T11:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "notificacoes/notif_raiz_aluno"), {
+      user_id: "aluno_uid",
+      tipo: "geral",
+      titulo: "Aviso legado",
+      mensagem: "Notificacao raiz legada.",
+      lida: false,
+      criada_em: new Date("2026-07-17T12:00:00.000Z"),
+    });
+
+    await setDoc(doc(db, "notificacoes/notif_raiz_outro"), {
+      user_id: "outro_uid",
+      tipo: "geral",
+      titulo: "Aviso de outro usuario",
+      mensagem: "Notificacao raiz de outro usuario.",
+      lida: false,
+      criada_em: new Date("2026-07-17T12:30:00.000Z"),
+    });
+
+    await setDoc(doc(db, "mensagens_aniversario/msg_ativa"), {
+      texto: "Feliz aniversario, {nome}!",
+      categoria: "neutra",
+      ativa: true,
+    });
+
+    await setDoc(doc(db, "configuracoes/app"), {
+      versao_atual: "1.0.3",
+      ultima_versao_id: "v1_0_3",
+      atualizacao_obrigatoria: false,
+    });
+
+    await setDoc(doc(db, "versoes_app/v1_0_3"), {
+      versao: "1.0.3",
+      publicada: true,
+      publicadoEm: new Date("2026-07-17T13:00:00.000Z"),
+      titulo: "Versao 1.0.3",
+    });
+
     await setDoc(doc(db, "usuarios/aluno_uid/temas_personalizados/tema_existente"), {
       nome: "Tema Existente",
       descricao: "Tema salvo para testes",
@@ -710,6 +763,76 @@ async function main() {
   await assertFails(setDoc(doc(anonDb, "cache_alunos/aluno_001"), {
     dados: { alunoId: "aluno_001" },
   }));
+
+  console.log("Teste extra 68: usuario le suas notificacoes na subcolecao...");
+  await assertSucceeds(getDoc(doc(alunoDb, "usuarios/aluno_uid/notificacoes/notif_aniversario")));
+  await assertSucceeds(getDocs(query(collection(alunoDb, "usuarios/aluno_uid/notificacoes"), orderBy("criada_em", "desc"), limit(80))));
+
+  console.log("Teste extra 69: anonimo NAO le notificacoes internas...");
+  await assertFails(getDoc(doc(anonDb, "usuarios/aluno_uid/notificacoes/notif_aniversario")));
+  await assertFails(getDocs(collection(anonDb, "usuarios/aluno_uid/notificacoes")));
+
+  console.log("Teste extra 70: usuario NAO le notificacoes de outro usuario...");
+  await assertFails(getDoc(doc(alunoDb, "usuarios/outro_uid/notificacoes/notif_outro")));
+  await assertFails(getDocs(collection(alunoDb, "usuarios/outro_uid/notificacoes")));
+
+  console.log("Teste extra 71: admin le notificacoes de qualquer usuario...");
+  await assertSucceeds(getDoc(doc(adminDb, "usuarios/aluno_uid/notificacoes/notif_aniversario")));
+  await assertSucceeds(getDocs(collection(adminDb, "usuarios/outro_uid/notificacoes")));
+
+  console.log("Teste extra 72: usuario marca sua propria notificacao como lida...");
+  await assertSucceeds(setDoc(doc(alunoDb, "usuarios/aluno_uid/notificacoes/notif_aniversario"), {
+    lida: true,
+    lida_em: new Date("2026-07-17T14:00:00.000Z"),
+  }, { merge: true }));
+
+  console.log("Teste extra 73: usuario NAO altera notificacao de outro usuario...");
+  await assertFails(setDoc(doc(alunoDb, "usuarios/outro_uid/notificacoes/notif_outro"), {
+    lida: true,
+    lida_em: new Date("2026-07-17T14:05:00.000Z"),
+  }, { merge: true }));
+
+  console.log("Teste extra 74: usuario NAO altera campos estruturais da propria notificacao...");
+  await assertFails(setDoc(doc(alunoDb, "usuarios/aluno_uid/notificacoes/notif_aniversario"), {
+    titulo: "Titulo adulterado",
+  }, { merge: true }));
+
+  console.log("Teste extra 75: notificacoes raiz legadas respeitam user_id...");
+  await assertSucceeds(getDocs(query(collection(alunoDb, "notificacoes"), where("user_id", "==", "aluno_uid"), where("lida", "==", false))));
+  await assertFails(getDoc(doc(alunoDb, "notificacoes/notif_raiz_outro")));
+  await assertSucceeds(updateDoc(doc(alunoDb, "notificacoes/notif_raiz_aluno"), {
+    lida: true,
+    data_leitura: new Date("2026-07-17T14:10:00.000Z"),
+  }));
+  await assertFails(updateDoc(doc(alunoDb, "notificacoes/notif_raiz_outro"), {
+    lida: true,
+    data_leitura: new Date("2026-07-17T14:15:00.000Z"),
+  }));
+
+  console.log("Teste extra 76: usuario sincroniza apenas seus proprios tokens FCM...");
+  await assertSucceeds(updateDoc(doc(alunoDb, "usuarios/aluno_uid"), {
+    current_fcm_token: "token_aluno",
+    fcm_tokens: ["token_aluno"],
+  }));
+  await assertFails(updateDoc(doc(alunoDb, "usuarios/outro_uid"), {
+    current_fcm_token: "token_invasor",
+    fcm_tokens: ["token_invasor"],
+  }));
+  await assertSucceeds(updateDoc(doc(adminDb, "usuarios/outro_uid"), {
+    current_fcm_token: "token_admin_manutencao",
+    fcm_tokens: ["token_admin_manutencao"],
+  }));
+
+  console.log("Teste extra 77: mensagens_aniversario continuam legiveis pelo app...");
+  await assertSucceeds(getDocs(query(collection(alunoDb, "mensagens_aniversario"), where("ativa", "==", true))));
+  await assertSucceeds(getDocs(query(collection(anonDb, "mensagens_aniversario"), where("ativa", "==", true))));
+
+  console.log("Teste extra 78: versoes_app e configuracoes/app continuam acessiveis...");
+  await assertSucceeds(getDoc(doc(anonDb, "configuracoes/app")));
+  await assertSucceeds(getDoc(doc(alunoDb, "configuracoes/app")));
+  await assertSucceeds(getDoc(doc(alunoDb, "versoes_app/v1_0_3")));
+  await assertSucceeds(getDocs(query(collection(alunoDb, "versoes_app"), where("publicada", "==", true), orderBy("publicadoEm", "desc"), limit(50))));
+  await assertFails(getDoc(doc(anonDb, "versoes_app/v1_0_3")));
 
   await testEnv.cleanup();
 

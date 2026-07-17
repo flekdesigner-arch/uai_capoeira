@@ -237,6 +237,41 @@ service cloud.firestore {
     match /usuarios/{userId}/temas_personalizados/{themeId} {
       allow read, create, update, delete: if isAdmin() || isSelf(userId);
     }
+    match /usuarios/{userId}/notificacoes/{notificacaoId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSelf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "lida",
+            "lida_em",
+            "data_leitura"
+          ])
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /notificacoes/{notificacaoId} {
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.user_id == request.auth.uid
+        );
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.user_id == request.auth.uid
+          && request.resource.data.user_id == resource.data.user_id
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "lida",
+            "lida_em",
+            "data_leitura"
+          ])
+        );
+      allow delete: if isAdmin();
+    }
 
     match /temas_globais/{themeId} {
       allow read: if isAdmin()
