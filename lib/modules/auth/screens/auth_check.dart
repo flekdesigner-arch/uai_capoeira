@@ -9,13 +9,11 @@ import 'package:uai_capoeira/main.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
+import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
 
-  // ═══════════════════════════════════════════════════════════
-  // CRIA DOCUMENTO DO USUÁRIO SE ELE AINDA NÃO EXISTIR
-  // ═══════════════════════════════════════════════════════════
   Future<void> _criarDocumentoUsuarioSeNecessario(User user) async {
     final userRef = FirebaseFirestore.instance
         .collection('usuarios')
@@ -26,27 +24,17 @@ class AuthCheck extends StatelessWidget {
       return;
     }
 
-    debugPrint(
-      '📝 Documento do usuário não existe. Criando para: ${user.email}',
+    debugPrint('Perfil do usuario nao existe. Preparando via Function.');
+
+    await UserService.ensureInitialUserProfile(
+      user,
+      isGoogleLogin: user.providerData.any(
+        (provider) => provider.providerId == 'google.com',
+      ),
+      origem: 'auth_check',
     );
 
-    await userRef.set({
-      'uid': user.uid,
-      'nome_completo': user.displayName ?? 'Usuário Google',
-      'email': user.email,
-      'contato': '',
-      'foto_url': user.photoURL ?? '',
-      'status_conta': 'pendente',
-      'peso_permissao': 0,
-      'tipo': 'pendente',
-      'aprovado_por': '',
-      'aprovado_por_nome': '',
-      'aprovado_em': null,
-      'data_cadastro': FieldValue.serverTimestamp(),
-      'ultima_atualizacao': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    debugPrint('✅ Documento do usuário criado com sucesso.');
+    debugPrint('Perfil do usuario preparado com sucesso.');
   }
 
   // ═══════════════════════════════════════════════════════════

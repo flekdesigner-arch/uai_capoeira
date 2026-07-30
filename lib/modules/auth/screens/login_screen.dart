@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -308,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await _verificarAcessoENavegar(user, provider: 'google');
     } on FirebaseAuthException catch (e) {
-      String message = 'Erro no login com Google';
+      String message = 'Nao foi possivel entrar com Google.';
 
       if (e.code == 'account-exists-with-different-credential') {
         message =
@@ -323,9 +324,18 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       _showErrorSnackBar(message);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint(
+        'Erro ao preparar perfil apos login Google: ${e.code} - ${e.message}',
+      );
+      _showErrorSnackBar(
+        'Seu login foi feito, mas nao foi possivel preparar seu perfil. Tente novamente.',
+      );
     } catch (e) {
-      print('❌ Erro inesperado no login com Google: $e');
-      _showErrorSnackBar('Erro ao conectar com Google. Tente novamente.');
+      debugPrint('Erro inesperado no login com Google: $e');
+      _showErrorSnackBar(
+        'Nao foi possivel entrar com Google. Tente novamente.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

@@ -19,6 +19,116 @@ const ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL = 70;
 const ESTUDOS_VERSAO_AVALIACAO = 1;
 const ESTUDOS_PERGUNTA_STATUS_AVALIAVEL = new Set(['publicado', 'ativa']);
 
+function textoPerfilUsuarioSeguro(value, maxLength = 120) {
+    if (typeof value !== 'string') return '';
+    return value.trim().replace(/\s+/g, ' ').slice(0, maxLength);
+}
+
+function providerPerfilUsuarioSeguro(value) {
+    const provider = textoPerfilUsuarioSeguro(value, 40).toLowerCase();
+    const permitidos = new Set(['google', 'google.com', 'password', 'email', 'auth']);
+    return permitidos.has(provider) ? provider : 'auth';
+}
+
+exports.criarPerfilUsuarioInicial = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+        }
+
+        const uid = request.auth.uid;
+        const payload = request.data && typeof request.data === 'object' ? request.data : {};
+        const token = request.auth.token || {};
+        const agora = admin.firestore.FieldValue.serverTimestamp();
+
+        const emailToken = textoPerfilUsuarioSeguro(token.email || '', 180).toLowerCase();
+        const emailPayload = textoPerfilUsuarioSeguro(payload.email || '', 180).toLowerCase();
+        const nomeToken = textoPerfilUsuarioSeguro(token.name || '', 120);
+        const nomePayload = textoPerfilUsuarioSeguro(payload.nome || '', 120);
+        const fotoToken = textoPerfilUsuarioSeguro(token.picture || '', 500);
+        const fotoPayload = textoPerfilUsuarioSeguro(payload.fotoUrl || payload.foto_url || '', 500);
+        const contatoPayload = textoPerfilUsuarioSeguro(payload.contato || '', 40);
+        const origem = textoPerfilUsuarioSeguro(payload.origem || 'auth', 60) || 'auth';
+        const plataforma = textoPerfilUsuarioSeguro(payload.plataforma || '', 40);
+        const provider = providerPerfilUsuarioSeguro(payload.provider || token.firebase?.sign_in_provider || 'auth');
+
+        const email = emailToken || emailPayload;
+        const nome = nomeToken || nomePayload || 'Usuario';
+        const fotoUrl = fotoToken || fotoPayload;
+
+        const userRef = db.collection('usuarios').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            const dadosCriacao = {
+                uid,
+                email,
+                nome,
+                nome_completo: nome,
+                foto_url: fotoUrl,
+                tipo: 'usuario',
+                peso_permissao: 0,
+                status_conta: 'pendente',
+                origem_cadastro: origem,
+                provider,
+                criado_em: agora,
+                atualizado_em: agora,
+                ultimo_login: agora,
+                ultimo_provider: provider,
+                ultima_origem_login: origem,
+            };
+
+            if (contatoPayload) dadosCriacao.contato = contatoPayload;
+            if (plataforma) dadosCriacao.plataforma_cadastro = plataforma;
+
+            await userRef.set(dadosCriacao);
+            console.log('Perfil inicial criado com seguranca.', { uid, provider, origem });
+
+            return {
+                success: true,
+                created: true,
+                status_conta: 'pendente',
+                tipo: 'usuario',
+                peso_permissao: 0,
+                uid,
+            };
+        }
+
+        const atual = userDoc.data() || {};
+        const update = {
+            atualizado_em: agora,
+            ultimo_login: agora,
+            ultimo_provider: provider,
+            ultima_origem_login: origem,
+        };
+
+        if (emailToken && atual.email !== emailToken) update.email = emailToken;
+        if (nome && !textoPerfilUsuarioSeguro(atual.nome || '', 120)) update.nome = nome;
+        if (nome && !textoPerfilUsuarioSeguro(atual.nome_completo || '', 120)) update.nome_completo = nome;
+        if (fotoUrl) update.foto_url = fotoUrl;
+        if (contatoPayload && !textoPerfilUsuarioSeguro(atual.contato || '', 40)) update.contato = contatoPayload;
+        if (plataforma) update.ultima_plataforma_login = plataforma;
+
+        await userRef.set(update, { merge: true });
+        console.log('Perfil existente atualizado com campos seguros.', { uid, provider, origem });
+
+        const dataFinal = { ...atual, ...update };
+        return {
+            success: true,
+            created: false,
+            status_conta: dataFinal.status_conta || 'pendente',
+            tipo: dataFinal.tipo || 'usuario',
+            peso_permissao: Number(dataFinal.peso_permissao || 0),
+            uid,
+        };
+    }
+);
+
 function estudosTextoSeguro(value) {
     return typeof value === 'string' ? value.trim() : '';
 }

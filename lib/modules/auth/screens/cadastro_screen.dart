@@ -1,7 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:uai_capoeira/shared/services/validation_service.dart';
 import 'package:uai_capoeira/shared/services/phone_mask_service.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
@@ -318,7 +317,16 @@ class _CadastroScreenState extends State<CadastroScreen> {
       String errorMessage = _getFriendlyErrorMessage(e.code);
 
       _showErrorSnackBar(errorMessage);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint(
+        'Erro ao preparar perfil apos cadastro: ${e.code} - ${e.message}',
+      );
+      if (mounted) Navigator.pop(context);
+      _showErrorSnackBar(
+        'Seu cadastro foi criado, mas nao foi possivel preparar seu perfil. Tente novamente.',
+      );
     } catch (e) {
+      debugPrint('Erro inesperado no cadastro: $e');
       if (mounted) Navigator.pop(context);
       _showErrorSnackBar('Ocorreu um erro inesperado. Tente novamente.');
     }
